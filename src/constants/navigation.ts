@@ -1,5 +1,5 @@
 import {
-  BarChart3,
+  Apple, Dumbbell, BarChart3,
   CalendarCheck,
   CreditCard,
   LayoutDashboard,
@@ -25,7 +25,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Billing & Payments", to: "/billing", icon: CreditCard, group: "Workspace" },
   { label: "Attendance", to: "/attendance", icon: CalendarCheck, group: "Workspace" },
   { label: "Follow-ups", to: "/follow-ups", icon: MessageSquareHeart, group: "Workspace" },
-  { label: "Reports", to: "/reports", icon: BarChart3, group: "Workspace" },
+  { label: "Reports", to: "/reports", icon: Apple, Dumbbell, BarChart3, group: "Workspace" },
   { label: "Settings", to: "/settings", icon: Settings, group: "Management" },
 ];
 

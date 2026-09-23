@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { UserPlus, Users } from "lucide-react";
+import { Apple, Dumbbell, UserPlus, Users } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { StatCard, StatCardSkeleton } from "@/components/common/stat-card";
 import { ErrorState } from "@/components/common/error-state";
@@ -30,6 +30,8 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 const QUICK_ACTIONS = [
   { label: "Create Inquiry", icon: UserPlus, variant: "default" as const, to: "/inquiries" as const },
   { label: "Create Client", icon: Users, variant: "outline" as const, to: "/clients" as const },
+  { label: "Assign Workout", icon: Dumbbell, variant: "outline" as const, to: "/workouts" as const },
+  { label: "Assign Diet", icon: Apple, variant: "outline" as const, to: "/diets" as const },
 ];
 
 function DashboardPage() {

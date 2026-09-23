@@ -11,7 +11,8 @@ service cloud.firestore {
     match /{collection}/{docId} {
       allow read, write: if isStaff() && collection in [
         'packages', 'inquiries', 'clients', 'memberships',
-        'followups', 'invoices', 'attendance', 'settings'
+        'followups', 'invoices', 'attendance', 'settings',
+        'workoutPlans', 'workoutAssignments', 'dietPlans', 'dietAssignments'
       ];
     }
 

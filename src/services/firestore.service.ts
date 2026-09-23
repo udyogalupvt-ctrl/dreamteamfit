@@ -22,6 +22,10 @@ export const COLLECTIONS = {
   invoices: "invoices",
   attendance: "attendance",
   settings: "settings",
+  workoutPlans: "workoutPlans",
+  workoutAssignments: "workoutAssignments",
+  dietPlans: "dietPlans",
+  dietAssignments: "dietAssignments",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

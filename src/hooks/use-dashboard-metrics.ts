@@ -4,7 +4,7 @@ import {
   BadgeIndianRupee,
   Cake,
   CalendarCheck,
-  CreditCard,
+  CreditCard, Apple, Dumbbell,
   MessageSquareHeart,
   RefreshCcw,
   UserPlus,
@@ -75,6 +75,8 @@ export function useDashboardMetrics() {
       { id: "follow-ups", label: "Follow-ups", value: formatNumber(followUpsDue), hint: "inquiries due today", icon: MessageSquareHeart, tone: "warning" },
       { id: "renewals", label: "Upcoming Renewals", value: formatNumber(renewals), hint: "ending in 7 days", icon: RefreshCcw, tone: "info" },
       {
+      { id: "workouts", label: "Active Workouts", value: "—", hint: "Coming soon", icon: Dumbbell, tone: "primary" },
+      { id: "diets", label: "Diet Plans", value: "—", hint: "Coming soon", icon: Apple, tone: "success" },
         id: "birthdays",
         label: "Birthdays Today",
         value: withDob.length ? formatNumber(birthdays) : "—",
@@ -116,7 +118,7 @@ export function useDashboardMetrics() {
         description: `Ends ${m.endDate}`,
         at: m.createdAt,
         tone: "success" as const,
-        icon: CreditCard,
+        icon: CreditCard, Apple, Dumbbell,
       })),
     ]
       .sort((a, b) => b.at.getTime() - a.at.getTime())
