@@ -244,6 +244,14 @@ export interface Booking extends BaseDoc {
   endTime: string;
   status: BookingStatus;
   notes: string;
+  /** PT linkage (empty for non-PT bookings). Session trainer is trainerId; assigned trainer kept separately. */
+  ptAssignmentId: string;
+  ptPackageId: string;
+  ptPackageNameSnapshot: string;
+  assignedTrainerId: string;
+  assignedTrainerNameSnapshot: string;
+  trainerOverride: boolean;
+  dateOverride: boolean;
 }
 
 export interface GroupClass extends BaseDoc {
@@ -457,7 +465,8 @@ export interface TrainerPayout extends BaseDoc { trainerId: string; trainerNameS
 export interface ManualIncome extends BaseDoc { title: string; category: string; amount: number; method: PaymentMethod; date: string; notes: string; createdBy: string }
 export const IMPORT_TYPES = ["packages", "trainers", "clients", "memberships", "expenses"] as const;
 export type ImportType = (typeof IMPORT_TYPES)[number];
-export interface ImportBatch extends BaseDoc { filename: string; uploadedBy: string; uploadedAt: Date; dataType: ImportType; rowsFound: number; rowsImported: number; rowsSkipped: number; rowsFailed: number }
+export interface ImportBatch extends BaseDoc { filename: string; uploadedBy: string; uploadedAt: Date; dataType: ImportType; rowsFound: number; rowsImported: number; rowsSkipped: number; rowsFailed: number; duplicates: number; status: ImportBatchStatus; fingerprint: string }
+export type ImportBatchStatus = "processing" | "completed" | "completed_with_errors" | "failed";
 export const CUSTOMER_RESPONSES = ["Interested", "Not Interested", "Call Back", "Will Visit", "Will Join Later", "Needs Time", "Price Concern", "Needs Family Approval", "No Answer", "Wrong Number", "Other"] as const;
 export const NEXT_ACTIONS = ["Call Again", "Customer Will Call", "Customer Will Visit", "Schedule Gym Visit", "Send Details", "Waiting for Decision", "Other"] as const;
 export interface LeadLog extends BaseDoc { inquiryId: string | null; clientId: string; customerSaid: string; response: string; nextAction: string; nextCallDate: string; nextCallTime: string; expectedJoinDate: string; expectedVisitDate: string; priority: FollowUpPriority; notes: string; createdBy: string }
