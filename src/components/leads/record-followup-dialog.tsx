@@ -49,7 +49,7 @@ export function RecordFollowUpDialog({ target, onClose }: { target: Target | nul
 }
 
 export function LeadTimeline({ field, id }: { field: "inquiryId" | "clientId"; id: string }) {
-  const logs = useLive((ok, fail) => subscribeLeadLogs(field, id, ok, fail), [], [field, id]);
+  const logs = useLive((ok, fail) => subscribeLeadLogs(field, id, ok, fail), [] as LeadLog[], [field, id]);
   if (logs.loading) return <p className="text-meta">Loading timeline…</p>;
   if (!logs.data.length) return <p className="text-meta">No conversations recorded yet.</p>;
   return (

@@ -58,7 +58,7 @@ export function EnrollmentWizard({ options, onClose }: { options: EnrollmentOpen
   const ptPackages = useLive(subscribePtPackages, [], []);
   const trainers = useLive(subscribeTrainers, [], []);
   const settings = useLive(subscribeBusinessSettings, DEFAULT_BILLING_SETTINGS, []);
-  const enrollment = useLive(enrollmentId ? (ok, fail) => subscribeEnrollment(enrollmentId, ok, fail) : null, null, [enrollmentId]);
+  const enrollment = useLive(enrollmentId ? (ok, fail) => subscribeEnrollment(enrollmentId, ok, fail) : null, null as Enrollment | null, [enrollmentId]);
   const invoices = useLive(subscribeInvoices, [], []);
   const invoice: Invoice | null = invoices.data.find((i) => i.id === (invoiceId ?? enrollment.data?.invoiceId)) ?? null;
 
