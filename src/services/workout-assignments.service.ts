@@ -1,0 +1,13 @@
+import { doc, getDocs, orderBy, query, serverTimestamp, updateDoc, where, writeBatch, type DocumentData } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { addDaysISO, todayISO } from "@/lib/format";
+import { assignmentStatusSchema, workoutAssignmentSchema } from "@/lib/plan-validation";
+import type { AssignmentStatus, WorkoutAssignment, WorkoutPlan } from "@/types/models";
+import { col, COLLECTIONS, subscribeCollection, subscribeQuery, toDate } from "./firestore.service";
+
+const mapAssignment=(id:string,d:DocumentData):WorkoutAssignment=>({id,clientId:d["clientId"]??"",workoutPlanId:d["workoutPlanId"]??"",planNameSnapshot:d["planNameSnapshot"]??"",goalSnapshot:d["goalSnapshot"]??"Custom",assignedDate:d["assignedDate"]??"",startDate:d["startDate"]??"",endDate:d["endDate"]??"",status:d["status"]??"cancelled",notes:d["notes"]??"",createdAt:toDate(d["createdAt"]),updatedAt:toDate(d["updatedAt"])});
+const sort=(v:WorkoutAssignment[])=>[...v].sort((a,b)=>b.startDate.localeCompare(a.startDate)||b.createdAt.getTime()-a.createdAt.getTime());
+export const subscribeWorkoutAssignments=(onData:(v:WorkoutAssignment[])=>void,onError:(e:Error)=>void)=>subscribeCollection(COLLECTIONS.workoutAssignments,mapAssignment,onData,onError,orderBy("createdAt","desc"));
+export const subscribeClientWorkoutAssignments=(clientId:string,onData:(v:WorkoutAssignment[])=>void,onError:(e:Error)=>void)=>subscribeQuery(query(col(COLLECTIONS.workoutAssignments),where("clientId","==",clientId)),mapAssignment,v=>onData(sort(v)),onError);
+export async function createWorkoutAssignment(input:{clientId:string;plan:WorkoutPlan;startDate:string;notes:string}){const safe=workoutAssignmentSchema.parse({clientId:input.clientId,workoutPlanId:input.plan.id,startDate:input.startDate,notes:input.notes});const endDate=addDaysISO(safe.startDate,input.plan.durationWeeks*7);const current=await getDocs(query(col(COLLECTIONS.workoutAssignments),where("clientId","==",safe.clientId)));const batch=writeBatch(db);current.docs.filter(d=>d.data()["status"]==="active").forEach(d=>batch.update(d.ref,{status:"completed",updatedAt:serverTimestamp()}));const ref=doc(col(COLLECTIONS.workoutAssignments));batch.set(ref,{clientId:safe.clientId,workoutPlanId:input.plan.id,planNameSnapshot:input.plan.name,goalSnapshot:input.plan.goal,assignedDate:todayISO(),startDate:safe.startDate,endDate,status:"active",notes:safe.notes,createdAt:serverTimestamp(),updatedAt:serverTimestamp()});await batch.commit();return ref.id;}
+export async function updateWorkoutAssignmentStatus(id:string,status:AssignmentStatus){await updateDoc(doc(db,COLLECTIONS.workoutAssignments,id),{status:assignmentStatusSchema.parse(status),updatedAt:serverTimestamp()});}
