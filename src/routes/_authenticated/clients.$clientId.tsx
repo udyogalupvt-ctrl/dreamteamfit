@@ -397,7 +397,7 @@ function MembershipHero({ m, onCancel }: { m: Membership; onCancel: () => void }
 
 function ActivityTimeline({ client, memberships }: { client: Client; memberships: Membership[] }) {
   const items: { id: string; title: string; when: Date; tone: StatTone; icon: typeof History }[] = [
-    { id: "created", title: client.inquiryId ? "Converted from inquiry" : "Client profile created", when: client.createdAt, tone: "primary", icon: History },
+    { id: "created", title: client.inquiryId ? "Converted from inquiry" : "Client profile created", when: client.createdAt, tone: "primary" as StatTone, icon: History },
     ...memberships.map((m) => ({
       id: m.id,
       title: `Membership added · ${m.packageNameSnapshot} (${formatDateISO(m.startDate)} → ${formatDateISO(m.endDate)})`,

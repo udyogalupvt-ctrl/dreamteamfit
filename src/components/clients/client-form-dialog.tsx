@@ -68,7 +68,7 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   client?: Client | null;
   /** Prefill + link when converting an inquiry. */
-  initial?: Partial<ClientInput>;
+  initial?: Partial<ClientInput> | undefined;
   inquiryId?: string | null;
   title?: string;
   description?: string;
