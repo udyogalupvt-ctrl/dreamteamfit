@@ -1,12 +1,13 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CreditCard, FileText, MessageSquareHeart, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/page-header";
-import { StatCard } from "@/components/common/stat-card";
+import { StatCard, StatCardSkeleton } from "@/components/common/stat-card";
+import { ErrorState } from "@/components/common/error-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DASHBOARD_STATS, RECENT_ACTIVITY } from "@/constants/demo-data";
+import { useDashboardMetrics } from "@/hooks/use-dashboard-metrics";
 import { toneIcon } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 
@@ -29,13 +30,15 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 });
 
 const QUICK_ACTIONS = [
-  { label: "Create Inquiry", icon: UserPlus, variant: "default" as const },
-  { label: "Create Client", icon: Users, variant: "outline" as const },
+  { label: "Create Inquiry", icon: UserPlus, variant: "default" as const, to: "/inquiries" as const },
+  { label: "Create Client", icon: Users, variant: "outline" as const, to: "/clients" as const },
   { label: "Create Follow-up", icon: MessageSquareHeart, variant: "outline" as const },
   { label: "Create POS Bill", icon: CreditCard, variant: "outline" as const },
 ];
 
 function DashboardPage() {
+  const navigate = useNavigate();
+  const { stats, ratios, activity, loading, error } = useDashboardMetrics();
   const soon = (label: string) =>
     toast.info(`${label} arrives in the next build stage`, {
       description: "The foundation is ready — module logic ships next.",
@@ -58,16 +61,22 @@ function DashboardPage() {
         }
       />
 
+      {error ? <ErrorState error={error} title="Couldn't load live metrics" /> : null}
+
       {/* Stats: swipeable on mobile, grid from sm up */}
       <section aria-label="Key metrics">
         <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-4 sm:overflow-visible sm:px-0 lg:grid-cols-4">
-          {DASHBOARD_STATS.map((metric) => (
-            <StatCard
-              key={metric.id}
-              metric={metric}
-              className="w-[74vw] shrink-0 snap-start sm:w-auto"
-            />
-          ))}
+          {loading
+            ? stats.map((m) => (
+                <StatCardSkeleton key={m.id} className="w-[74vw] shrink-0 snap-start sm:w-auto" />
+              ))
+            : stats.map((metric) => (
+                <StatCard
+                  key={metric.id}
+                  metric={metric}
+                  className="w-[74vw] shrink-0 snap-start sm:w-auto"
+                />
+              ))}
         </div>
       </section>
 
@@ -79,13 +88,13 @@ function DashboardPage() {
             <Badge variant="secondary">Most used</Badge>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {QUICK_ACTIONS.map(({ label, icon: Icon, variant }) => (
+            {QUICK_ACTIONS.map(({ label, icon: Icon, variant, ...rest }) => (
               <Button
                 key={label}
                 variant={variant}
                 size="lg"
                 className="h-14 min-w-0 justify-start gap-3"
-                onClick={() => soon(label)}
+                onClick={() => ("to" in rest && rest.to ? void navigate({ to: rest.to }) : soon(label))}
               >
                 <Icon aria-hidden />
                 {label}
@@ -94,11 +103,7 @@ function DashboardPage() {
           </div>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            {[
-              { label: "Collection target", value: "78%", tone: "bg-success" },
-              { label: "Renewal rate", value: "64%", tone: "bg-info" },
-              { label: "Follow-up closure", value: "41%", tone: "bg-warning" },
-            ].map((item) => (
+            {ratios.map((r) => ({ ...r, value: r.pct === null ? "—" : `${r.pct}%` })).map((item) => (
               <div key={item.label} className="rounded-xl border border-border bg-muted/40 p-3">
                 <p className="text-meta">{item.label}</p>
                 <p className="font-display mt-1 text-xl font-extrabold tabular-nums">
@@ -107,7 +112,7 @@ function DashboardPage() {
                 <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border">
                   <div
                     className={cn("h-full rounded-full", item.tone)}
-                    style={{ width: item.value }}
+                    style={{ width: `${item.pct ?? 0}%` }}
                   />
                 </div>
               </div>
@@ -123,8 +128,13 @@ function DashboardPage() {
               <FileText aria-hidden /> View all
             </Button>
           </div>
+          {!loading && activity.length === 0 ? (
+            <p className="text-meta py-8 text-center">
+              No activity yet — new inquiries, clients and memberships show up here.
+            </p>
+          ) : null}
           <ul className="mt-3 divide-y divide-border">
-            {RECENT_ACTIVITY.map((item) => {
+            {activity.map((item) => {
               const Icon = item.icon;
               return (
                 <li key={item.id} className="flex items-start gap-3 py-3">

@@ -1,6 +1,5 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { initialsOf } from "@/lib/format";
-import { cloudinaryUrl } from "@/lib/cloudinary";
 import { cn } from "@/lib/utils";
 
 /** Uses a Cloudinary-transformed thumbnail when the URL is a Cloudinary upload. */
@@ -22,7 +21,6 @@ export function ClientAvatar({
   size?: number;
   className?: string;
 }) {
-  void cloudinaryUrl;
   return (
     <Avatar className={cn("shrink-0 ring-1 ring-border", className)} style={{ width: size, height: size }}>
       {url ? <AvatarImage src={thumb(url, size)} alt={name} className="object-cover" /> : null}
