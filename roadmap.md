@@ -11,7 +11,7 @@
 
 # WhatsApp Cloud API
 - [x] Add opt-in-safe client and message data foundation
-- [ ] Add secure provider, authenticated sends, webhook and delivery tracking
-- [ ] Connect invoice, renewal, birthday and follow-up workflows
-- [ ] Add settings and message history UI
+- [x] Add secure provider, authenticated sends, webhook and delivery tracking
+- [x] Connect invoice, renewal, birthday and follow-up workflows
+- [x] Add settings and message history UI
 - [ ] Verify mock flows, duplicate protection and responsive states
