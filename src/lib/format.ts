@@ -62,6 +62,7 @@ export const INQUIRY_STATUS_META: Record<InquiryStatus, { label: string; tone: S
   contacted: { label: "Contacted", tone: "violet" },
   interested: { label: "Interested", tone: "primary" },
   follow_up: { label: "Follow-up", tone: "warning" },
+  expected_to_join: { label: "Expected to join", tone: "success" },
   converted: { label: "Converted", tone: "success" },
   lost: { label: "Lost", tone: "danger" },
 };
@@ -71,6 +72,7 @@ export const MEMBERSHIP_STATUS_META: Record<MembershipStatus, { label: string; t
   pending: { label: "Upcoming", tone: "info" },
   expired: { label: "Expired", tone: "danger" },
   cancelled: { label: "Cancelled", tone: "warning" },
+  biometric_pending: { label: "Biometric pending", tone: "warning" },
 };
 
 export const ASSIGNMENT_STATUS_META: Record<AssignmentStatus, { label: string; tone: StatTone }> = {
