@@ -14,11 +14,13 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedAttendanceRouteImport } from './routes/_authenticated/attendance'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
+import { Route as AuthenticatedBookingsRouteImport } from './routes/_authenticated/bookings'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDietPlansRouteImport } from './routes/_authenticated/diet-plans'
 import { Route as AuthenticatedFollowUpsRouteImport } from './routes/_authenticated/follow-ups'
 import { Route as AuthenticatedInquiriesRouteImport } from './routes/_authenticated/inquiries'
 import { Route as AuthenticatedPackagesRouteImport } from './routes/_authenticated/packages'
+import { Route as AuthenticatedPtSessionsRouteImport } from './routes/_authenticated/pt-sessions'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedWorkoutPlansRouteImport } from './routes/_authenticated/workout-plans'
@@ -49,6 +51,11 @@ const AuthenticatedBillingRoute = AuthenticatedBillingRouteImport.update({
   path: '/billing',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedBookingsRoute = AuthenticatedBookingsRouteImport.update({
+  id: '/bookings',
+  path: '/bookings',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -72,6 +79,11 @@ const AuthenticatedInquiriesRoute = AuthenticatedInquiriesRouteImport.update({
 const AuthenticatedPackagesRoute = AuthenticatedPackagesRouteImport.update({
   id: '/packages',
   path: '/packages',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedPtSessionsRoute = AuthenticatedPtSessionsRouteImport.update({
+  id: '/pt-sessions',
+  path: '/pt-sessions',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
@@ -108,11 +120,13 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/billing': typeof AuthenticatedBillingRoute
+  '/bookings': typeof AuthenticatedBookingsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/diet-plans': typeof AuthenticatedDietPlansRoute
   '/follow-ups': typeof AuthenticatedFollowUpsRoute
   '/inquiries': typeof AuthenticatedInquiriesRoute
   '/packages': typeof AuthenticatedPackagesRoute
+  '/pt-sessions': typeof AuthenticatedPtSessionsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/workout-plans': typeof AuthenticatedWorkoutPlansRoute
@@ -124,11 +138,13 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/billing': typeof AuthenticatedBillingRoute
+  '/bookings': typeof AuthenticatedBookingsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/diet-plans': typeof AuthenticatedDietPlansRoute
   '/follow-ups': typeof AuthenticatedFollowUpsRoute
   '/inquiries': typeof AuthenticatedInquiriesRoute
   '/packages': typeof AuthenticatedPackagesRoute
+  '/pt-sessions': typeof AuthenticatedPtSessionsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/workout-plans': typeof AuthenticatedWorkoutPlansRoute
@@ -142,11 +158,13 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authenticated/attendance': typeof AuthenticatedAttendanceRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
+  '/_authenticated/bookings': typeof AuthenticatedBookingsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/diet-plans': typeof AuthenticatedDietPlansRoute
   '/_authenticated/follow-ups': typeof AuthenticatedFollowUpsRoute
   '/_authenticated/inquiries': typeof AuthenticatedInquiriesRoute
   '/_authenticated/packages': typeof AuthenticatedPackagesRoute
+  '/_authenticated/pt-sessions': typeof AuthenticatedPtSessionsRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/workout-plans': typeof AuthenticatedWorkoutPlansRoute
@@ -160,11 +178,13 @@ export interface FileRouteTypes {
     | '/login'
     | '/attendance'
     | '/billing'
+    | '/bookings'
     | '/dashboard'
     | '/diet-plans'
     | '/follow-ups'
     | '/inquiries'
     | '/packages'
+    | '/pt-sessions'
     | '/reports'
     | '/settings'
     | '/workout-plans'
@@ -176,11 +196,13 @@ export interface FileRouteTypes {
     | '/login'
     | '/attendance'
     | '/billing'
+    | '/bookings'
     | '/dashboard'
     | '/diet-plans'
     | '/follow-ups'
     | '/inquiries'
     | '/packages'
+    | '/pt-sessions'
     | '/reports'
     | '/settings'
     | '/workout-plans'
@@ -193,11 +215,13 @@ export interface FileRouteTypes {
     | '/login'
     | '/_authenticated/attendance'
     | '/_authenticated/billing'
+    | '/_authenticated/bookings'
     | '/_authenticated/dashboard'
     | '/_authenticated/diet-plans'
     | '/_authenticated/follow-ups'
     | '/_authenticated/inquiries'
     | '/_authenticated/packages'
+    | '/_authenticated/pt-sessions'
     | '/_authenticated/reports'
     | '/_authenticated/settings'
     | '/_authenticated/workout-plans'
@@ -248,6 +272,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBillingRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/bookings': {
+      id: '/_authenticated/bookings'
+      path: '/bookings'
+      fullPath: '/bookings'
+      preLoaderRoute: typeof AuthenticatedBookingsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -281,6 +312,13 @@ declare module '@tanstack/react-router' {
       path: '/packages'
       fullPath: '/packages'
       preLoaderRoute: typeof AuthenticatedPackagesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/pt-sessions': {
+      id: '/_authenticated/pt-sessions'
+      path: '/pt-sessions'
+      fullPath: '/pt-sessions'
+      preLoaderRoute: typeof AuthenticatedPtSessionsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/reports': {
@@ -324,11 +362,13 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAttendanceRoute: typeof AuthenticatedAttendanceRoute
   AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
+  AuthenticatedBookingsRoute: typeof AuthenticatedBookingsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDietPlansRoute: typeof AuthenticatedDietPlansRoute
   AuthenticatedFollowUpsRoute: typeof AuthenticatedFollowUpsRoute
   AuthenticatedInquiriesRoute: typeof AuthenticatedInquiriesRoute
   AuthenticatedPackagesRoute: typeof AuthenticatedPackagesRoute
+  AuthenticatedPtSessionsRoute: typeof AuthenticatedPtSessionsRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedWorkoutPlansRoute: typeof AuthenticatedWorkoutPlansRoute
@@ -339,11 +379,13 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAttendanceRoute: AuthenticatedAttendanceRoute,
   AuthenticatedBillingRoute: AuthenticatedBillingRoute,
+  AuthenticatedBookingsRoute: AuthenticatedBookingsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDietPlansRoute: AuthenticatedDietPlansRoute,
   AuthenticatedFollowUpsRoute: AuthenticatedFollowUpsRoute,
   AuthenticatedInquiriesRoute: AuthenticatedInquiriesRoute,
   AuthenticatedPackagesRoute: AuthenticatedPackagesRoute,
+  AuthenticatedPtSessionsRoute: AuthenticatedPtSessionsRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedWorkoutPlansRoute: AuthenticatedWorkoutPlansRoute,
