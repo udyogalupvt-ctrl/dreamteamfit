@@ -1,7 +1,7 @@
 import type { CommunicationProviderName,NotificationStatus } from "@/types/models";
-export interface CommunicationMessage{recipientName:string;phone:string;type:"renewal"|"birthday"|"follow_up";message:string;referenceId:string}
+export interface CommunicationMessage{recipientName:string;phone:string;type:"renewal"|"birthday"|"follow_up"|"invoice";message:string;referenceId:string}
 export interface CommunicationResult{status:NotificationStatus;provider:CommunicationProviderName;message:string;sentAt:Date|null;error:string}
 export interface CommunicationProvider{name:CommunicationProviderName;sendMessage(input:CommunicationMessage):Promise<CommunicationResult>;getStatus(referenceId:string):Promise<NotificationStatus>}
 export class MockCommunicationProvider implements CommunicationProvider{name="mock" as const;async sendMessage(input:CommunicationMessage){console.info(`${input.type==="renewal"?"Renewal reminder":"Birthday greeting"} queued for ${input.recipientName}`);return {status:"queued" as const,provider:this.name,message:input.message,sentAt:null,error:""}}async getStatus(){return "queued" as const}}
-export class WhatsAppCommunicationProvider implements CommunicationProvider{name="whatsapp" as const;async sendMessage(_input:CommunicationMessage):Promise<CommunicationResult>{throw new Error("WhatsApp provider is not configured.")}async getStatus(){return "failed" as const}}
+export class WhatsAppCommunicationProvider implements CommunicationProvider{name="whatsapp" as const;async sendMessage(_input:CommunicationMessage):Promise<CommunicationResult>{throw new Error("WhatsApp sends must use the secure backend service.")}async getStatus(){return "failed" as const}}
 export const communicationProvider=(name:CommunicationProviderName="mock"):CommunicationProvider=>name==="mock"?new MockCommunicationProvider():new WhatsAppCommunicationProvider();

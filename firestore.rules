@@ -16,8 +16,13 @@ service cloud.firestore {
         'bookings', 'groupClasses', 'classEnrollments',
         'expenses', 'expenseActivities', 'biometricDevices',
         'renewalNotifications', 'birthdayNotifications', 'notifications', 'automationActivities',
-        'whatsappMessages', 'whatsappWebhookEvents'
+        'whatsappMessages'
       ];
+    }
+
+    match /whatsappWebhookEvents/{eventId} {
+      allow read: if isStaff();
+      allow write: if false;
     }
 
     match /publicInvoices/{token} {
