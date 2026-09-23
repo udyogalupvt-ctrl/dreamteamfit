@@ -17,14 +17,14 @@ the member opens it and can view, download the PDF, or print.
 ## 1. Create these 4 templates
 
 Meta Business Manager → WhatsApp Manager → Message templates → **Create template**.
-For all four: Category **Utility**, Language **English (en)**, no header, no footer.
+Language **English (en)**, no header, no footer. Category is given for each template below.
 Names must match exactly (also editable in *Settings → WhatsApp*).
 
 Replace `YOUR-APP-DOMAIN` with the address where the app is hosted (for example
 `app.rebuildfitness.in`). The button URL can't be changed freely after approval, so decide the
 domain first.
 
-### `gym_payment_receipt` — sent right after payment
+### `gym_payment_receipt` — sent right after payment (Utility)
 
 **Body**
 
@@ -55,20 +55,21 @@ Samples: {{1}} `Ravi Kumar` · {{2}} `Rebuild Fitness` · {{3}} `INV-2026-000004
 
 The app fills the button's {{1}} with the bill's secret code, so each member only sees their own bill.
 
-### `gym_renewal_reminder` — 7 days before the plan ends
+### `gym_membership_expiry` — 7 days before the plan ends (Utility)
+
+Kept strictly factual so Meta approves it as **Utility** (no motivational or sales wording).
 
 ```
-Hi {{1}}, your {{2}} membership ends on {{3}} ⏳
+Hello {{1}}, this is an account update from {{2}}.
 
-You've put in the work, so don't let the momentum stop now! 💪
-Renew at the front desk and keep your streak going strong.
+Your membership is valid until {{3}}. To continue your gym access without a break, please renew your plan at the front desk on or before this date.
 
-Your goals don't take a break, and neither should you. 🔥
+If you have already renewed, please ignore this message.
 ```
 
 Samples: `Ravi Kumar` · `Rebuild Fitness` · `23 Oct 2026`. No button.
 
-### `gym_birthday_wish` — on the member's birthday, morning
+### `gym_birthday_wish` — on the member's birthday, morning (Marketing only)
 
 ```
 Happy birthday, {{1}}! 🎉🎂
@@ -80,10 +81,10 @@ Celebrate hard, train harder. Keep crushing it! 💪
 
 Samples: `Ravi Kumar` · `Rebuild Fitness`. No button.
 
-### `gym_miss_you` — missed-workout nudge, 9:30 PM (optional, off by default)
+### `gym_miss_you` — missed-workout nudge, 9:30 PM (Marketing; optional, off by default)
 
 ```
-Hey {{1}}, we missed you at {{2}} today! 👋
+Hey {{1}}, we have missed you at {{2}}! 👋
 
 It's been {{3}} days since your last workout.
 
@@ -102,10 +103,12 @@ because every message has a WhatsApp charge; switch it on in *Settings → Remin
 
 ### About the category
 
-Submit all four as **Utility**, but Meta decides the final category. The payment receipt and
-renewal reminder are account updates and stay Utility. Meta usually moves birthday wishes and
-missed-workout nudges to **Marketing**: they still send, at the marketing rate. To keep
-everything Utility, leave birthday wishes and the missed-workout nudge switched off.
+- `gym_payment_receipt` and `gym_membership_expiry` are account updates → **Utility**.
+- `gym_birthday_wish` and `gym_miss_you` are greetings / engagement. Meta classifies these as
+  **Marketing** whatever the wording, so create them as Marketing. They still send, at the
+  marketing rate. Keep them switched off in *Settings → Reminders* if you want Utility-only costs.
+- If a Utility template is flagged, remove anything promotional (offers, "don't miss out",
+  motivation, many emojis) and resubmit under a new name.
 
 {{2}} is always the gym name from *Settings → Gym & bills*, so the same templates work for every
 gym you run on this WhatsApp number.

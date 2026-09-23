@@ -13,7 +13,7 @@ export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   templateLanguage: "en",
   invoiceTemplate: "gym_payment_receipt",
   autoSendInvoice: true,
-  renewalTemplate: "gym_renewal_reminder",
+  renewalTemplate: "gym_membership_expiry",
   birthdayTemplate: "gym_birthday_wish",
   absenceTemplate: "gym_miss_you",
   followUpTemplate: "follow_up_message",

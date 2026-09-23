@@ -78,7 +78,7 @@ async function whatsappSettings() {
     live: s["mode"] === "whatsapp",
     countryCode: String(s["defaultCountryCode"] ?? "91"),
     language: String(s["templateLanguage"] ?? "en"),
-    renewalTemplate: String(s["renewalTemplate"] ?? "gym_renewal_reminder"),
+    renewalTemplate: String(s["renewalTemplate"] ?? "gym_membership_expiry"),
     birthdayTemplate: String(s["birthdayTemplate"] ?? "gym_birthday_wish"),
     absenceTemplate: String(s["absenceTemplate"] ?? "gym_miss_you"),
   };
