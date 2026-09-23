@@ -59,6 +59,7 @@ function StatusRow({ label, ok, detail }: { label: string; ok: boolean; detail: 
 }
 
 function SettingsPage() {
+  const { configured: isFirebaseConfigured } = useAuth();
   const [gymName, setGymName] = useState(GYM_NAME);
 
   return (
