@@ -2,6 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { NAV_ITEMS } from "@/constants/navigation";
 import { cn } from "@/lib/utils";
 import type { NavGroupLabel } from "@/types";
+import { useNavigationCounts } from "@/hooks/use-navigation-counts";
 
 const GROUPS: NavGroupLabel[] = ["Workspace", "Management"];
 
@@ -12,6 +13,7 @@ interface NavListProps {
 
 export function NavList({ collapsed = false, onNavigate }: NavListProps) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const counts = useNavigationCounts();
 
   return (
     <nav aria-label="Main" className="flex flex-col gap-5">
@@ -24,6 +26,12 @@ export function NavList({ collapsed = false, onNavigate }: NavListProps) {
             {items.map((item) => {
               const active = pathname === item.to || pathname.startsWith(`${item.to}/`);
               const Icon = item.icon;
+              const badge =
+                item.to === "/inquiries"
+                  ? counts.inquiries
+                  : item.to === "/follow-ups"
+                    ? counts.followUps
+                    : undefined;
               return (
                 <Link
                   key={item.to}
@@ -49,9 +57,9 @@ export function NavList({ collapsed = false, onNavigate }: NavListProps) {
                   {!collapsed ? (
                     <>
                       <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                      {item.badge ? (
+                      {badge ? (
                         <span className="shrink-0 rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-bold text-foreground tabular-nums">
-                          {item.badge}
+                          {badge}
                         </span>
                       ) : null}
                     </>
