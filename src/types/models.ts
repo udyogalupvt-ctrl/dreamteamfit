@@ -430,11 +430,11 @@ export type CommunicationProviderName = "mock" | "whatsapp";
 export type AutomationStatus = "pending" | "queued" | "sent" | "failed" | "cancelled";
 export interface RenewalNotification extends BaseDoc { membershipId:string; clientId:string; clientNameSnapshot:string; phoneSnapshot:string; expiryDate:string; reminderDate:string; type:"renewal_7_days"; status:AutomationStatus; provider:CommunicationProviderName; message:string; sentAt:Date|null; }
 export interface BirthdayNotification extends BaseDoc { clientId:string; clientNameSnapshot:string; phoneSnapshot:string; birthdayDate:string; year:number; type:"birthday"; status:AutomationStatus; provider:CommunicationProviderName; message:string; sentAt:Date|null; }
-export type NotificationType = "renewal" | "birthday" | "follow_up";
+export type NotificationType = "renewal" | "birthday" | "follow_up" | "absence";
 export type NotificationStatus = "scheduled" | AutomationStatus;
 export interface Notification extends BaseDoc { type:NotificationType; referenceId:string; clientId:string; clientNameSnapshot:string; phoneSnapshot:string; message:string; status:NotificationStatus; provider:CommunicationProviderName; scheduledFor:string; sentAt:Date|null; error:string; }
 export interface AutomationActivity extends BaseDoc { type:"followup_created"|"followup_completed"|"renewal_queued"|"birthday_queued"|"automation_failed"; referenceId:string; clientId:string; clientNameSnapshot:string; description:string; }
-export interface AutomationSettings { automationEnabled:boolean; renewalEnabled:boolean; renewalDaysBefore:number; birthdayEnabled:boolean; followUpRemindersEnabled:boolean; renewalTemplate:string; birthdayTemplate:string; timezone:string; }
+export interface AutomationSettings { automationEnabled:boolean; renewalEnabled:boolean; renewalDaysBefore:number; birthdayEnabled:boolean; followUpRemindersEnabled:boolean; absenceEnabled:boolean; absenceDays:number; renewalTemplate:string; birthdayTemplate:string; timezone:string; }
 
 export const WHATSAPP_MESSAGE_TYPES = ["invoice", "renewal", "birthday", "follow_up", "test"] as const;
 export type WhatsAppMessageType = (typeof WHATSAPP_MESSAGE_TYPES)[number];
@@ -473,6 +473,8 @@ export interface WhatsAppSettings {
   autoSendInvoice: boolean;
   renewalTemplate: string;
   birthdayTemplate: string;
+  /** Sent when a member has not punched in for `absenceDays` days (Settings → Reminders). */
+  absenceTemplate: string;
   followUpTemplate: string;
 }
 

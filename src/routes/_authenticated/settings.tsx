@@ -359,6 +359,13 @@ function WhatsAppSettingsPanel() {
                     onChange={(e) => set("birthdayTemplate", e.target.value.trim())}
                   />
                 </Field>
+                <Field label="Absence nudge template" htmlFor="wa-abs">
+                  <Input
+                    id="wa-abs"
+                    value={f.absenceTemplate}
+                    onChange={(e) => set("absenceTemplate", e.target.value.trim())}
+                  />
+                </Field>
               </div>
             </>
           ) : null}
@@ -454,6 +461,31 @@ function ReminderSettings() {
               className="min-h-28"
               value={f.birthdayTemplate}
               onChange={(e) => set("birthdayTemplate", e.target.value)}
+            />
+          </Field>
+        ) : null}
+        <ToggleRow
+          label="Missed-workout nudge"
+          hint="Motivating WhatsApp message with a quote when a member stops coming. Each message costs WhatsApp charges, so it is off by default."
+          checked={f.automationEnabled && f.absenceEnabled}
+          onChange={(v) =>
+            setF((x) => ({ ...x, automationEnabled: v || x.automationEnabled, absenceEnabled: v }))
+          }
+        />
+        {f.absenceEnabled ? (
+          <Field
+            label="Send after this many days without a thumb punch"
+            htmlFor="abs-days"
+            className="sm:max-w-xs"
+            hint="Checked every night at 9:30 PM after closing. One message per absence; sent again only after they come back and miss again."
+          >
+            <Input
+              id="abs-days"
+              type="number"
+              min="2"
+              max="30"
+              value={f.absenceDays}
+              onChange={(e) => set("absenceDays", Math.max(2, Number(e.target.value) || 3))}
             />
           </Field>
         ) : null}

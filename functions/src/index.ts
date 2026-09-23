@@ -15,6 +15,12 @@ export {
 initializeApp();
 const db = getFirestore(),
   TZ = "Asia/Kolkata";
+type Kind = "renewal" | "birthday" | "absence";
+const COLLECTION: Record<Kind, string> = {
+  renewal: "renewalNotifications",
+  birthday: "birthdayNotifications",
+  absence: "absenceNotifications",
+};
 type MembershipRow = { id: string; clientId: string; endDate: string; status: string };
 type ClientRow = {
   id: string;
@@ -54,6 +60,8 @@ async function settings() {
     renewalEnabled: true,
     renewalDaysBefore: 7,
     birthdayEnabled: true,
+    absenceEnabled: false,
+    absenceDays: 3,
     renewalTemplate: "Hi {{name}}, your Rebuild Fitness membership expires on {{expiryDate}}.",
     birthdayTemplate: "Happy Birthday {{name}}! — REBUILD FITNESS",
     ...s.data(),
@@ -72,18 +80,17 @@ async function whatsappSettings() {
     language: String(s["templateLanguage"] ?? "en"),
     renewalTemplate: String(s["renewalTemplate"] ?? "gym_renewal_reminder"),
     birthdayTemplate: String(s["birthdayTemplate"] ?? "gym_birthday_wish"),
+    absenceTemplate: String(s["absenceTemplate"] ?? "gym_miss_you"),
   };
 }
 async function queue(
-  kind: "renewal" | "birthday",
+  kind: Kind,
   key: string,
   c: DocumentData,
   message: string,
   extra: Record<string, unknown>,
 ) {
-  const specific = db.doc(
-    `${kind === "renewal" ? "renewalNotifications" : "birthdayNotifications"}/${key}`,
-  );
+  const specific = db.doc(`${COLLECTION[kind]}/${key}`);
   return db.runTransaction(async (tx) => {
     if ((await tx.get(specific)).exists) return false;
     const now = FieldValue.serverTimestamp(),
@@ -107,11 +114,16 @@ async function queue(
       error: "",
     });
     tx.set(db.doc(`automationActivities/${key}`), {
-      type: kind === "renewal" ? "renewal_queued" : "birthday_queued",
+      type: `${kind}_queued`,
       referenceId: key,
       clientId: c.id,
       clientNameSnapshot: c.fullName,
-      description: kind === "renewal" ? "Renewal reminder queued" : "Birthday greeting queued",
+      description:
+        kind === "renewal"
+          ? "Renewal reminder queued"
+          : kind === "birthday"
+            ? "Birthday greeting queued"
+            : "Missed-workout nudge queued",
       createdAt: now,
       updatedAt: now,
     });
@@ -124,7 +136,7 @@ async function queue(
  * WhatsApp messages. Without the API the reminder stays in Message History for staff.
  */
 async function deliver(
-  kind: "renewal" | "birthday",
+  kind: Kind,
   key: string,
   c: ClientRow,
   bodyParams: string[],
@@ -132,7 +144,12 @@ async function deliver(
 ) {
   if (!wa.live || !c.whatsappOptIn) return;
   const to = whatsappNumber(c.whatsappPhone || c.phone, wa.countryCode);
-  const templateName = kind === "renewal" ? wa.renewalTemplate : wa.birthdayTemplate;
+  const templateName =
+    kind === "renewal"
+      ? wa.renewalTemplate
+      : kind === "birthday"
+        ? wa.birthdayTemplate
+        : wa.absenceTemplate;
   const result = to
     ? await sendTemplateMessage({ to, templateName, language: wa.language, bodyParams })
     : ({ ok: false, error: "Invalid WhatsApp number." } as const);
@@ -140,7 +157,7 @@ async function deliver(
   const patch = result.ok
     ? { status: "sent", provider: "whatsapp", sentAt: now, error: "", updatedAt: now }
     : { status: "failed", provider: "whatsapp", error: result.error, updatedAt: now };
-  const collection = kind === "renewal" ? "renewalNotifications" : "birthdayNotifications";
+  const collection = COLLECTION[kind];
   await Promise.all([
     db.doc(`${collection}/${key}`).update(patch),
     db.doc(`notifications/${key}`).update(patch),
@@ -226,10 +243,91 @@ export async function processBirthdayNotifications() {
     if (queued) await deliver("birthday", key, c, [c.fullName, wa.gymName], wa);
   }
 }
+/** Rotated so members don't get the same line twice in a row. Keep each under ~150 chars. */
+const QUOTES = [
+  "The only bad workout is the one you skipped.",
+  "Discipline is doing it even on the days you don't feel like it.",
+  "Small steps every day add up to big results.",
+  "Your body can do it. It's your mind you have to convince.",
+  "Progress, not perfection.",
+  "Don't wish for it. Work for it.",
+  "Strong today, stronger tomorrow.",
+  "Sweat now, shine later.",
+  "The hardest part is showing up. You've done it before, do it again.",
+  "Consistency beats motivation every single time.",
+  "Every rep brings you closer to your goal.",
+  "You don't have to be extreme, just consistent.",
+];
+const pickQuote = (key: string) =>
+  QUOTES[[...key].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) >>> 0, 7) % QUOTES.length]!;
+const daysBetween = (from: string, to: string) =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+
+/**
+ * Missed-workout nudge (off by default; Settings → Reminders). A member with a running plan and a
+ * registered thumb whose last allowed thumb punch at the door is `absenceDays` or more days ago
+ * gets ONE motivating message per absence. It repeats only after they come back and miss again.
+ */
+export async function processAbsenceNudges() {
+  const cfg = await settings();
+  if (!cfg.automationEnabled || !cfg.absenceEnabled) return;
+  const wa = await whatsappSettings();
+  const minDays = Math.max(2, Number(cfg.absenceDays) || 3);
+  const today = date();
+  const [clients, plans, pts, visits] = await Promise.all([
+    db.collection("clients").where("firstThumbRegistered", "==", true).get(),
+    db.collection("memberships").where("status", "in", ["active", "pending"]).get(),
+    db.collection("ptAssignments").where("status", "==", "active").get(),
+    db.collection("attendance").where("attendanceDate", ">=", plus(today, -180)).get(),
+  ]);
+  const lastVisit = new Map<string, string>();
+  visits.docs.forEach((v) => {
+    const d = v.data();
+    if (d["accessDecision"] !== "allowed" || !d["clientId"]) return;
+    const prev = lastVisit.get(d["clientId"]);
+    if (!prev || d["attendanceDate"] > prev) lastVisit.set(d["clientId"], d["attendanceDate"]);
+  });
+  const runningStart = new Map<string, string>();
+  for (const doc of [...plans.docs, ...pts.docs]) {
+    const d = doc.data();
+    if (d["startDate"] > today || d["endDate"] < today) continue;
+    const prev = runningStart.get(d["clientId"]);
+    if (!prev || d["startDate"] < prev) runningStart.set(d["clientId"], d["startDate"]);
+  }
+  for (const doc of clients.docs) {
+    const c = { id: doc.id, ...doc.data() } as ClientRow & { biometricStatus?: string };
+    const planStart = runningStart.get(c.id);
+    if (c.biometricStatus !== "active" || !planStart) continue;
+    const last = lastVisit.get(c.id);
+    // Never visited on this plan: count from the day the plan started.
+    const since = last && last >= planStart ? last : planStart;
+    const gap = daysBetween(since, today);
+    if (gap < minDays) continue;
+    const key = id(c.id, "absence", since);
+    const quote = pickQuote(key);
+    const queued = await queue(
+      "absence",
+      key,
+      c,
+      `Hey ${c.fullName}, we missed you! ${gap} days since your last workout. "${quote}"`,
+      { absentDays: gap, lastVisitDate: last ?? "", type: "absence" },
+    );
+    if (queued) await deliver("absence", key, c, [c.fullName, wa.gymName, String(gap), quote], wa);
+  }
+}
+
 export const dailyRetentionAutomation = onSchedule(
   { schedule: "every day 08:00", timeZone: TZ, secrets: [whatsappAccessToken] },
   async () => {
     await processRenewalReminders();
     await processBirthdayNotifications();
+  },
+);
+
+/** 9:30 PM, after the gym closes, so today's thumb punches are final before counting absences. */
+export const nightlyAbsenceNudges = onSchedule(
+  { schedule: "every day 21:30", timeZone: TZ, secrets: [whatsappAccessToken] },
+  async () => {
+    await processAbsenceNudges();
   },
 );

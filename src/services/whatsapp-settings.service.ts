@@ -11,10 +11,11 @@ export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   phoneNumberIdHint: "",
   businessAccountIdHint: "",
   templateLanguage: "en",
-  invoiceTemplate: "gym_bill",
+  invoiceTemplate: "gym_payment_receipt",
   autoSendInvoice: true,
   renewalTemplate: "gym_renewal_reminder",
   birthdayTemplate: "gym_birthday_wish",
+  absenceTemplate: "gym_miss_you",
   followUpTemplate: "follow_up_message",
 };
 

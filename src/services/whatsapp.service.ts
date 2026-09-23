@@ -153,7 +153,7 @@ export async function sendWhatsAppMessage(input: SendInput) {
 }
 
 /**
- * Sends the bill through the WhatsApp Cloud API ("gym_bill" template). The template's
+ * Sends the bill through the WhatsApp Cloud API ("gym_payment_receipt" template). The template's
  * "View bill" button opens the bill page, where the member can view, download or print it.
  * Each payment state is sent once, so after collecting a balance the updated bill can go again.
  */
@@ -176,7 +176,7 @@ export async function sendInvoiceWhatsApp(
     referenceId: `${invoice.id}_${invoice.amountPaid}`,
     templateName: wa.invoiceTemplate,
     templateLanguage: wa.templateLanguage,
-    // Order must match the approved "gym_bill" template: name, gym, bill no., paid, balance.
+    // Order must match the approved "gym_payment_receipt" template: name, gym, bill no., paid, balance.
     parameters: [
       invoice.clientNameSnapshot,
       business.businessName || "our gym",
