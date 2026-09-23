@@ -5,4 +5,5 @@
 - [x] Build secure anonymous public invoice route with download and print
 - [x] Add real billing settings and client membership/invoice integration
 - [x] Connect Dashboard, Reports, global search, quick actions, and client Billing history
-- [ ] Verify end-to-end workflow, public access, PDFs, persistence, responsive layouts, and themes
+- [ ] Enable Firebase Storage and deploy storage rules (blocked: Firebase CLI authentication required)
+- [x] Verify billing transaction, membership, public invoice, revenue, reports, client history, persistence, responsive layouts, and themes
