@@ -1,5 +1,5 @@
 import { addDays, format, parseISO } from "date-fns";
-import type { InquiryStatus, LeadSource, MembershipStatus } from "@/types/models";
+import type { AssignmentStatus, InquiryStatus, LeadSource, MembershipStatus } from "@/types/models";
 import type { StatTone } from "@/types";
 
 /** Digits only, last 10 digits (strips +91 / leading 0) for reliable comparison. */
@@ -70,6 +70,12 @@ export const MEMBERSHIP_STATUS_META: Record<MembershipStatus, { label: string; t
   active: { label: "Active", tone: "success" },
   pending: { label: "Upcoming", tone: "info" },
   expired: { label: "Expired", tone: "danger" },
+  cancelled: { label: "Cancelled", tone: "warning" },
+};
+
+export const ASSIGNMENT_STATUS_META: Record<AssignmentStatus, { label: string; tone: StatTone }> = {
+  active: { label: "Active", tone: "success" },
+  completed: { label: "Completed", tone: "info" },
   cancelled: { label: "Cancelled", tone: "warning" },
 };
 

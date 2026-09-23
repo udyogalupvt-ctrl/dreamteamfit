@@ -1,5 +1,5 @@
 import {
-  Apple,
+  Salad,
   BarChart3,
   CalendarCheck,
   CreditCard,
@@ -28,8 +28,8 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Attendance", to: "/attendance", icon: CalendarCheck, group: "Workspace" },
   { label: "Follow-ups", to: "/follow-ups", icon: MessageSquareHeart, group: "Workspace" },
   { label: "Reports", to: "/reports", icon: BarChart3, group: "Workspace" },
-  { label: "Workout Plans", to: "/workouts", icon: Dumbbell, group: "Workspace" },
-  { label: "Diet Plans", to: "/diets", icon: Apple, group: "Workspace" },
+  { label: "Workout Plans", to: "/workout-plans", icon: Dumbbell, group: "Workspace" },
+  { label: "Diet Plans", to: "/diet-plans", icon: Salad, group: "Workspace" },
   { label: "Settings", to: "/settings", icon: Settings, group: "Management" },
 ];
 
