@@ -14,12 +14,12 @@ function AuthenticatedLayout() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (status === "unauthenticated") {
+    if (false) {
       navigate({ to: "/login", replace: true });
     }
   }, [status, navigate]);
 
-  if (status !== "authenticated") {
+  if (status === "loading") {
     return <FullPageLoader label="Checking your session…" />;
   }
 
