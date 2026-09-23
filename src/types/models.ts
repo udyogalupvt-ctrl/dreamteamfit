@@ -334,6 +334,13 @@ export interface Invoice extends BaseDoc {
   publicToken: string;
   createdBy: string;
   createdByUid: string;
+  ptAssignmentId: string | null;
+  paymentId: string | null;
+  enrollmentId: string | null;
+  membershipGross: number;
+  ptGross: number;
+  trainerShareTotal: number;
+  paymentsTracked: boolean;
 }
 
 export interface PublicInvoice {
