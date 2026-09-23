@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { CheckCircle2, CircleAlert } from "lucide-react";
+import { CheckCircle2, CircleAlert, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/page-header";
 import { FormSection } from "@/components/common/form-section";
@@ -28,7 +28,9 @@ import { DEFAULT_BILLING_SETTINGS, saveBusinessSettings, subscribeBusinessSettin
 import { DEFAULT_AUTOMATION_SETTINGS } from "@/lib/automation-templates";
 import { saveAutomationSettings, subscribeAutomationSettings } from "@/services/automation-settings.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import type { AutomationSettings, BusinessBillingSettings } from "@/types/models";
+import type { AutomationSettings, BusinessBillingSettings, WhatsAppSettings } from "@/types/models";
+import { DEFAULT_WHATSAPP_SETTINGS,saveWhatsAppSettings,subscribeWhatsAppSettings } from "@/services/whatsapp-settings.service";
+import { testWhatsAppConnection } from "@/services/whatsapp.service";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -75,11 +77,17 @@ function SettingsPage() {
   const [billing,setBilling]=useState<BusinessBillingSettings>(DEFAULT_BILLING_SETTINGS);
   const automationLive=useLive(subscribeAutomationSettings,DEFAULT_AUTOMATION_SETTINGS,[]);
   const [automation,setAutomation]=useState<AutomationSettings>(DEFAULT_AUTOMATION_SETTINGS);
+  const whatsappLive=useLive(subscribeWhatsAppSettings,DEFAULT_WHATSAPP_SETTINGS,[]);
+  const [whatsapp,setWhatsapp]=useState<WhatsAppSettings>(DEFAULT_WHATSAPP_SETTINGS);
+  const [testingWhatsapp,setTestingWhatsapp]=useState(false);
   useEffect(()=>setBilling(billingLive.data),[billingLive.data]);
   useEffect(()=>setAutomation(automationLive.data),[automationLive.data]);
+  useEffect(()=>setWhatsapp(whatsappLive.data),[whatsappLive.data]);
   const update=<K extends keyof BusinessBillingSettings>(key:K,value:BusinessBillingSettings[K])=>setBilling(v=>({...v,[key]:value}));
   const saveBilling=async()=>{try{await saveBusinessSettings(billing);toast.success("Billing settings saved")}catch(e){toast.error(firestoreErrorMessage(e))}};
   const saveAutomation=async()=>{try{await saveAutomationSettings(automation);toast.success("Automation settings saved")}catch(e){toast.error(firestoreErrorMessage(e))}};
+  const saveWhatsapp=async()=>{try{await saveWhatsAppSettings(whatsapp);toast.success("WhatsApp settings saved")}catch(e){toast.error(firestoreErrorMessage(e))}};
+  const testWhatsapp=async()=>{setTestingWhatsapp(true);try{const result=await testWhatsAppConnection();result.configured?toast.success(result.detail):toast.warning(result.detail)}catch(e){toast.error(firestoreErrorMessage(e))}finally{setTestingWhatsapp(false)}};
 
   return (
     <div className="space-y-6">
@@ -97,6 +105,7 @@ function SettingsPage() {
           <TabsTrigger value="connections">Connections</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="automation">Automation</TabsTrigger>
+          <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general" className="space-y-4">
@@ -182,6 +191,7 @@ function SettingsPage() {
             />
           </FormSection>
         </TabsContent>
+        <TabsContent value="whatsapp"><FormSection title="WhatsApp Cloud API" description="Mock mode records safe test deliveries. Live mode uses credentials stored only in Firebase Functions." footer={<div className="flex flex-wrap gap-2"><Button variant="outline" disabled={testingWhatsapp||whatsapp.mode!=="whatsapp"} onClick={()=>void testWhatsapp()}><MessageCircle/>{testingWhatsapp?"Testing…":"Test connection"}</Button><Button onClick={()=>void saveWhatsapp()}>Save WhatsApp settings</Button></div>}><div className="grid gap-4 sm:grid-cols-2"><div className="sm:col-span-2"><StatusRow label="WhatsApp delivery" ok={whatsapp.mode==="mock"} detail={whatsapp.mode==="mock"?"Mock mode is active. No message leaves the app.":"Live mode selected. Use Test connection to verify server credentials."}/></div><div className="grid gap-1.5"><Label htmlFor="wa-mode">Provider mode</Label><Select value={whatsapp.mode} onValueChange={value=>setWhatsapp(x=>({...x,mode:value as WhatsAppSettings["mode"],enabled:true}))}><SelectTrigger id="wa-mode"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="mock">Mock</SelectItem><SelectItem value="whatsapp">WhatsApp Cloud API</SelectItem></SelectContent></Select></div><div className="grid gap-1.5"><Label htmlFor="wa-country">Default country code</Label><Input id="wa-country" value={whatsapp.defaultCountryCode} onChange={e=>setWhatsapp(x=>({...x,defaultCountryCode:e.target.value.replace(/\D/g,"")}))}/></div><div className="grid gap-1.5"><Label htmlFor="wa-language">Template language</Label><Input id="wa-language" value={whatsapp.templateLanguage} onChange={e=>setWhatsapp(x=>({...x,templateLanguage:e.target.value}))}/></div><div className="grid gap-1.5"><Label htmlFor="wa-version">Graph API version</Label><Input id="wa-version" value={whatsapp.graphApiVersion} onChange={e=>setWhatsapp(x=>({...x,graphApiVersion:e.target.value}))}/></div>{[["invoiceTemplate","Invoice template"],["renewalTemplate","Renewal template"],["birthdayTemplate","Birthday template"],["followUpTemplate","Follow-up template"]].map(([key,label])=><div className="grid gap-1.5" key={key}><Label htmlFor={`wa-${key}`}>{label}</Label><Input id={`wa-${key}`} value={String(whatsapp[key as keyof WhatsAppSettings])} onChange={e=>setWhatsapp(x=>({...x,[key]:e.target.value}))}/></div>)}</div><p className="text-meta">Access tokens, app secrets and webhook verification tokens are never stored or displayed here.</p></FormSection></TabsContent>
       </Tabs>
     </div>
   );
