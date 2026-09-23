@@ -30,8 +30,10 @@ import { subscribeClassEnrollments } from "@/services/class-enrollments.service"
 import { subscribeExpenseActivities, subscribeExpenses } from "@/services/expenses.service";
 import { subscribeInvoices } from "@/services/invoices.service";
 import type { ActivityItem, StatMetric } from "@/types";
-import type { AttendanceEvent, Booking, ClassEnrollment, Client, DietAssignment, Expense, ExpenseActivity, GroupClass, Inquiry, Invoice, Membership, WorkoutAssignment } from "@/types/models";
+import type { AttendanceEvent, AutomationActivity, Booking, ClassEnrollment, Client, DietAssignment, Expense, ExpenseActivity, FollowUp, GroupClass, Inquiry, Invoice, Membership, WorkoutAssignment } from "@/types/models";
 import { subscribeAttendance } from "@/services/attendance.service";
+import { subscribeFollowUps } from "@/services/followups.service";
+import { subscribeAutomationActivities } from "@/services/notifications.service";
 import { attendanceSummary } from "@/lib/attendance-utils";
 
 /** Derives dashboard numbers from live Firestore data only — nothing is invented. */
@@ -48,9 +50,11 @@ export function useDashboardMetrics() {
   const expenseActivities = useLive<ExpenseActivity[]>(subscribeExpenseActivities, [], []);
   const invoices = useLive<Invoice[]>(subscribeInvoices, [], []);
   const attendance = useLive<AttendanceEvent[]>(subscribeAttendance, [], []);
+  const followUps = useLive<FollowUp[]>(subscribeFollowUps, [], []);
+  const automationActivities = useLive<AutomationActivity[]>(subscribeAutomationActivities, [], []);
 
-  const loading = clients.loading || memberships.loading || inquiries.loading || workouts.loading || diets.loading || bookings.loading || classes.loading || enrollments.loading || expenses.loading || expenseActivities.loading || invoices.loading || attendance.loading;
-  const error = clients.error ?? memberships.error ?? inquiries.error ?? workouts.error ?? diets.error ?? bookings.error ?? classes.error ?? enrollments.error ?? expenses.error ?? expenseActivities.error ?? invoices.error ?? attendance.error;
+  const loading = clients.loading || memberships.loading || inquiries.loading || workouts.loading || diets.loading || bookings.loading || classes.loading || enrollments.loading || expenses.loading || expenseActivities.loading || invoices.loading || attendance.loading || followUps.loading || automationActivities.loading;
+  const error = clients.error ?? memberships.error ?? inquiries.error ?? workouts.error ?? diets.error ?? bookings.error ?? classes.error ?? enrollments.error ?? expenses.error ?? expenseActivities.error ?? invoices.error ?? attendance.error ?? followUps.error ?? automationActivities.error;
 
   const result = useMemo(() => {
     const today = todayISO();
@@ -75,12 +79,16 @@ export function useDashboardMetrics() {
     let active = 0;
     let expired = 0;
     let renewals = 0;
+    let expiringToday = 0;
+    let expiringIn7Days = 0;
     byClient.forEach((list) => {
       const statuses = list.map((m) => ({ m, s: effectiveMembershipStatus(m) }));
       const current = statuses.find((x) => x.s === "active");
       if (current) {
         active += 1;
         if (current.m.endDate <= in7) renewals += 1;
+        if (current.m.endDate === today) expiringToday += 1;
+        if (current.m.endDate === in7) expiringIn7Days += 1;
       } else if (!statuses.some((x) => x.s === "pending") && statuses.some((x) => x.s === "expired")) {
         expired += 1;
       }
@@ -89,13 +97,7 @@ export function useDashboardMetrics() {
     const newClients = clients.data.filter((c) => c.createdAt >= monthStart).length;
     const withDob = clients.data.filter((c) => c.dateOfBirth);
     const birthdays = withDob.filter((c) => c.dateOfBirth!.slice(5) === today.slice(5)).length;
-    const followUpsDue = inquiries.data.filter(
-      (i) =>
-        i.nextFollowUpDate &&
-        i.nextFollowUpDate <= today &&
-        i.status !== "converted" &&
-        i.status !== "lost",
-    ).length;
+    const followUpsDue = followUps.data.filter((item) => item.status === "pending" && item.followUpDate <= today).length;
 
     const stats: StatMetric[] = [
       { id: "new-clients", label: "New Clients", value: formatNumber(newClients), hint: "this month", icon: UserPlus, tone: "primary" },
@@ -106,7 +108,7 @@ export function useDashboardMetrics() {
       { id: "active", label: "Active Members", value: formatNumber(active), hint: "with a running membership", icon: UserRoundCheck, tone: "info" },
       { id: "expired", label: "Expired Members", value: formatNumber(expired), hint: "no active plan", icon: UserRoundX, tone: "danger" },
       { id: "attendance", label: "Today's Visits", value: formatNumber(attendanceTotals.visits), hint: `${attendanceTotals.present} present · ${attendanceTotals.blocked} blocked`, icon: CalendarCheck, tone: "violet" },
-      { id: "follow-ups", label: "Follow-ups", value: formatNumber(followUpsDue), hint: "inquiries due today", icon: MessageSquareHeart, tone: "warning" },
+      { id: "follow-ups", label: "Follow-ups", value: formatNumber(followUpsDue), hint: "pending and due", icon: MessageSquareHeart, tone: "warning" },
       { id: "renewals", label: "Upcoming Renewals", value: formatNumber(renewals), hint: "ending in 7 days", icon: RefreshCcw, tone: "info" },
       { id: "workouts", label: "Workout Plans Assigned", value: formatNumber(workouts.data.filter((item) => item.status === "active").length), hint: "currently active", icon: Dumbbell, tone: "primary" },
       { id: "diets", label: "Diet Plans Assigned", value: formatNumber(diets.data.filter((item) => item.status === "active").length), hint: "currently active", icon: Salad, tone: "success" },
@@ -119,8 +121,8 @@ export function useDashboardMetrics() {
       {
         id: "birthdays",
         label: "Birthdays Today",
-        value: withDob.length ? formatNumber(birthdays) : "—",
-        hint: withDob.length ? "clients" : "add birth dates to track",
+        value: formatNumber(birthdays),
+        hint: birthdays ? "clients" : "No birthdays today",
         icon: Cake,
         tone: "violet",
       },
@@ -193,6 +195,7 @@ export function useDashboardMetrics() {
         icon: ReceiptIndianRupee,
       })),
       ...invoices.data.slice(0,8).map(item=>({id:`invoice-${item.id}`,title:`${item.invoiceNumber} generated`,description:`${item.clientNameSnapshot} · ${formatPrice(item.amountPaid)} collected`,at:item.createdAt,tone:"success" as const,icon:BadgeIndianRupee})),
+      ...automationActivities.data.slice(0,8).map(item=>({id:`automation-${item.id}`,title:item.description,description:item.clientNameSnapshot,at:item.createdAt,tone:item.type==="automation_failed"?"danger" as const:"warning" as const,icon:MessageSquareHeart})),
     ]
       .sort((a, b) => b.at.getTime() - a.at.getTime())
       .slice(0, 6)
@@ -203,8 +206,8 @@ export function useDashboardMetrics() {
       ...classes.data.filter((item) => item.date === today && item.status === "scheduled").map((item) => ({ id: `class-${item.id}`, time: item.startTime, title: item.name, detail: `${item.bookedCount}/${item.capacity} booked · Trainer ${item.trainerNameSnapshot}` })),
     ].sort((a, b) => a.time.localeCompare(b.time));
 
-    return { stats, ratios, activity, todaySchedule };
-  }, [clients.data, memberships.data, inquiries.data, workouts.data, diets.data, bookings.data, classes.data, enrollments.data, expenses.data, expenseActivities.data, invoices.data, attendance.data]);
+    return { stats, ratios, activity, todaySchedule, retention: { expiringToday, expiringIn7Days, expired, birthdays } };
+  }, [clients.data, memberships.data, inquiries.data, workouts.data, diets.data, bookings.data, classes.data, enrollments.data, expenses.data, expenseActivities.data, invoices.data, attendance.data, followUps.data, automationActivities.data]);
 
   return { ...result, loading, error };
 }

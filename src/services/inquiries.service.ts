@@ -68,6 +68,10 @@ export async function createInquiry(input: InquiryInput) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  if (input.nextFollowUpDate) {
+    const { syncInquiryFollowUp } = await import("./followups.service");
+    await syncInquiryFollowUp(ref.id);
+  }
   return ref.id;
 }
 
@@ -75,4 +79,8 @@ export async function updateInquiry(id: string, input: Partial<InquiryInput>) {
   const patch: Record<string, unknown> = { ...input, updatedAt: serverTimestamp() };
   if (input.phone !== undefined) patch["phoneNormalized"] = normalizePhone(input.phone);
   await updateDoc(doc(db, COLLECTIONS.inquiries, id), patch);
+  if (input.nextFollowUpDate !== undefined && input.nextFollowUpDate) {
+    const { syncInquiryFollowUp } = await import("./followups.service");
+    await syncInquiryFollowUp(id);
+  }
 }

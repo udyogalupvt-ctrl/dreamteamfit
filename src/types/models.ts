@@ -355,3 +355,23 @@ export interface BusinessBillingSettings {
   invoicePrefix: string;
   currency: string;
 }
+
+export const FOLLOWUP_STATUSES = ["pending", "completed", "cancelled", "overdue"] as const;
+export type FollowUpStatus = (typeof FOLLOWUP_STATUSES)[number];
+export const FOLLOWUP_PRIORITIES = ["low", "medium", "high"] as const;
+export type FollowUpPriority = (typeof FOLLOWUP_PRIORITIES)[number];
+export const FOLLOWUP_SOURCES = ["inquiry", "membership", "renewal", "sales", "general"] as const;
+export type FollowUpSource = (typeof FOLLOWUP_SOURCES)[number];
+export const CALL_OUTCOMES = ["Interested", "Not Interested", "Call Back", "Will Visit", "Will Join Later", "Joined", "No Answer", "Wrong Number", "Other"] as const;
+export type CallOutcome = (typeof CALL_OUTCOMES)[number];
+export interface FollowUp extends BaseDoc { clientId:string; inquiryId:string|null; clientNameSnapshot:string; phoneSnapshot:string; source:FollowUpSource; reason:string; notes:string; followUpDate:string; followUpTime:string; status:FollowUpStatus; priority:FollowUpPriority; assignedTo:string; lastContactDate:string|null; nextAction:string; outcome:string; automated:boolean; parentFollowUpId:string|null; }
+
+export type CommunicationProviderName = "mock" | "whatsapp";
+export type AutomationStatus = "pending" | "queued" | "sent" | "failed" | "cancelled";
+export interface RenewalNotification extends BaseDoc { membershipId:string; clientId:string; clientNameSnapshot:string; phoneSnapshot:string; expiryDate:string; reminderDate:string; type:"renewal_7_days"; status:AutomationStatus; provider:CommunicationProviderName; message:string; sentAt:Date|null; }
+export interface BirthdayNotification extends BaseDoc { clientId:string; clientNameSnapshot:string; phoneSnapshot:string; birthdayDate:string; year:number; type:"birthday"; status:AutomationStatus; provider:CommunicationProviderName; message:string; sentAt:Date|null; }
+export type NotificationType = "renewal" | "birthday" | "follow_up";
+export type NotificationStatus = "scheduled" | AutomationStatus;
+export interface Notification extends BaseDoc { type:NotificationType; referenceId:string; clientId:string; clientNameSnapshot:string; phoneSnapshot:string; message:string; status:NotificationStatus; provider:CommunicationProviderName; scheduledFor:string; sentAt:Date|null; error:string; }
+export interface AutomationActivity extends BaseDoc { type:"followup_created"|"followup_completed"|"renewal_queued"|"birthday_queued"|"automation_failed"; referenceId:string; clientId:string; clientNameSnapshot:string; description:string; }
+export interface AutomationSettings { automationEnabled:boolean; renewalEnabled:boolean; renewalDaysBefore:number; birthdayEnabled:boolean; followUpRemindersEnabled:boolean; renewalTemplate:string; birthdayTemplate:string; timezone:string; }
