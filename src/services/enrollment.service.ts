@@ -3,7 +3,7 @@ import { db } from "@/lib/firebase";
 import { normalizePhone, todayISO } from "@/lib/format";
 import { calculateInvoiceTotals, createPublicToken, derivePaymentStatus } from "@/lib/invoice-utils";
 import { adapterFor } from "@/lib/biometric-adapters";
-import type { BiometricDevice, BusinessBillingSettings, Client, Enrollment, GymPackage, PtPackage, ShareType, Trainer } from "@/types/models";
+import type { BiometricDevice, BusinessBillingSettings, Client, Enrollment, GymPackage, PaymentMethod, PtPackage, ShareType, Trainer } from "@/types/models";
 import type { ClientInput } from "./clients.service";
 import { mapClient } from "./clients.service";
 import { allocatePayment } from "./finance.service";
@@ -31,7 +31,7 @@ export interface EnrollmentInput {
   startDate: string;
   discount: number;
   amountPaid: number;
-  method: Enrollment extends never ? never : import("@/types/models").PaymentMethod;
+  method: PaymentMethod;
   notes: string;
   settings: BusinessBillingSettings;
   staff: { uid: string; name: string };
@@ -214,7 +214,6 @@ export async function registerFirstThumb(enrollmentId: string, device: Biometric
   }
   batch.update(doc(db, COLLECTIONS.clients, client.id), {
     biometricUserId, biometricDeviceId: device.id, biometricStatus: "active", firstThumbRegistered: true, status: "active", updatedAt: now,
-    ...(e.membershipId ? {} : {}),
   });
   if (e.membershipId) {
     const mSnap = await getDoc(doc(db, COLLECTIONS.memberships, e.membershipId));
