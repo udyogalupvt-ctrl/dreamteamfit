@@ -18,6 +18,7 @@ import { Route as AuthenticatedBookingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDietPlansRouteImport } from './routes/_authenticated/diet-plans'
 import { Route as AuthenticatedFollowUpsRouteImport } from './routes/_authenticated/follow-ups'
+import { Route as AuthenticatedGroupClassesRouteImport } from './routes/_authenticated/group-classes'
 import { Route as AuthenticatedInquiriesRouteImport } from './routes/_authenticated/inquiries'
 import { Route as AuthenticatedPackagesRouteImport } from './routes/_authenticated/packages'
 import { Route as AuthenticatedPtSessionsRouteImport } from './routes/_authenticated/pt-sessions'
@@ -71,6 +72,12 @@ const AuthenticatedFollowUpsRoute = AuthenticatedFollowUpsRouteImport.update({
   path: '/follow-ups',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedGroupClassesRoute =
+  AuthenticatedGroupClassesRouteImport.update({
+    id: '/group-classes',
+    path: '/group-classes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedInquiriesRoute = AuthenticatedInquiriesRouteImport.update({
   id: '/inquiries',
   path: '/inquiries',
@@ -124,6 +131,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/diet-plans': typeof AuthenticatedDietPlansRoute
   '/follow-ups': typeof AuthenticatedFollowUpsRoute
+  '/group-classes': typeof AuthenticatedGroupClassesRoute
   '/inquiries': typeof AuthenticatedInquiriesRoute
   '/packages': typeof AuthenticatedPackagesRoute
   '/pt-sessions': typeof AuthenticatedPtSessionsRoute
@@ -142,6 +150,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/diet-plans': typeof AuthenticatedDietPlansRoute
   '/follow-ups': typeof AuthenticatedFollowUpsRoute
+  '/group-classes': typeof AuthenticatedGroupClassesRoute
   '/inquiries': typeof AuthenticatedInquiriesRoute
   '/packages': typeof AuthenticatedPackagesRoute
   '/pt-sessions': typeof AuthenticatedPtSessionsRoute
@@ -162,6 +171,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/diet-plans': typeof AuthenticatedDietPlansRoute
   '/_authenticated/follow-ups': typeof AuthenticatedFollowUpsRoute
+  '/_authenticated/group-classes': typeof AuthenticatedGroupClassesRoute
   '/_authenticated/inquiries': typeof AuthenticatedInquiriesRoute
   '/_authenticated/packages': typeof AuthenticatedPackagesRoute
   '/_authenticated/pt-sessions': typeof AuthenticatedPtSessionsRoute
@@ -182,6 +192,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/diet-plans'
     | '/follow-ups'
+    | '/group-classes'
     | '/inquiries'
     | '/packages'
     | '/pt-sessions'
@@ -200,6 +211,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/diet-plans'
     | '/follow-ups'
+    | '/group-classes'
     | '/inquiries'
     | '/packages'
     | '/pt-sessions'
@@ -219,6 +231,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/diet-plans'
     | '/_authenticated/follow-ups'
+    | '/_authenticated/group-classes'
     | '/_authenticated/inquiries'
     | '/_authenticated/packages'
     | '/_authenticated/pt-sessions'
@@ -300,6 +313,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFollowUpsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/group-classes': {
+      id: '/_authenticated/group-classes'
+      path: '/group-classes'
+      fullPath: '/group-classes'
+      preLoaderRoute: typeof AuthenticatedGroupClassesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/inquiries': {
       id: '/_authenticated/inquiries'
       path: '/inquiries'
@@ -366,6 +386,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDietPlansRoute: typeof AuthenticatedDietPlansRoute
   AuthenticatedFollowUpsRoute: typeof AuthenticatedFollowUpsRoute
+  AuthenticatedGroupClassesRoute: typeof AuthenticatedGroupClassesRoute
   AuthenticatedInquiriesRoute: typeof AuthenticatedInquiriesRoute
   AuthenticatedPackagesRoute: typeof AuthenticatedPackagesRoute
   AuthenticatedPtSessionsRoute: typeof AuthenticatedPtSessionsRoute
@@ -383,6 +404,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDietPlansRoute: AuthenticatedDietPlansRoute,
   AuthenticatedFollowUpsRoute: AuthenticatedFollowUpsRoute,
+  AuthenticatedGroupClassesRoute: AuthenticatedGroupClassesRoute,
   AuthenticatedInquiriesRoute: AuthenticatedInquiriesRoute,
   AuthenticatedPackagesRoute: AuthenticatedPackagesRoute,
   AuthenticatedPtSessionsRoute: AuthenticatedPtSessionsRoute,
