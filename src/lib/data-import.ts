@@ -99,7 +99,7 @@ export function parseDate(v: unknown): string | null {
 export const parseNumber = (v: unknown) => { if (typeof v === "number") return v; const s = String(v ?? "").replace(/[₹,\s]|rs\.?|inr/gi, ""); return s === "" ? NaN : Number(s); };
 const str = (v: unknown) => (v instanceof Date ? parseDate(v) ?? "" : String(v ?? "")).trim();
 
-export type Resolution = { mode: "map"; id: string } | { mode: "create"; price?: number; durationDays?: number } | { mode: "skip" };
+export type Resolution = { mode: "map"; id: string } | { mode: "create"; price?: number | undefined; durationDays?: number | undefined } | { mode: "skip" };
 export type DupAction = "skip" | "update" | "create";
 export interface RowError { field: string; reason: string }
 export interface ValidatedRow { row: number; raw: RawRow; data: Record<string, unknown>; errors: RowError[]; warnings: string[]; duplicate: { id: string; label: string; incoming: string } | null; action: DupAction | "create" | "skip" }
