@@ -185,8 +185,7 @@ export function validateRows(type: ImportType, rows: RawRow[], mapping: Record<s
         if (t) { data["trainerId"] = t.id; data["trainerNameSnapshot"] = t.name; }
         else if (tr?.mode === "map") { const m = ctx.trainers.find((x) => x.id === tr.id); if (m) { data["trainerId"] = m.id; data["trainerNameSnapshot"] = m.name; } }
         else if (tr?.mode === "create") { data["createTrainer"] = tname; data["trainerNameSnapshot"] = tname; }
-        else { warnings.push(`Unknown trainer "${tname}" — trainer assignment skipped`); errors.length === errors.length; }
-        if (!t && !tr) warnings.push(`Trainer "${tname}" does not exist`);
+        else warnings.push(`Trainer "${tname}" does not exist — trainer assignment skipped`);
       }
       dupKey = `${data["clientId"]}|${data["packageNameSnapshot"]}|${data["startDate"]}|${data["endDate"]}`;
       const ex = ctx.memberships.find((m) => m.clientId === data["clientId"] && key(m.packageNameSnapshot) === key(String(data["packageNameSnapshot"] ?? "")) && m.startDate === data["startDate"] && m.endDate === data["endDate"]);
