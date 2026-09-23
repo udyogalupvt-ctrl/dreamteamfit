@@ -166,7 +166,12 @@ export function useDashboardMetrics() {
       .slice(0, 6)
       .map((a) => ({ ...a, time: formatDistanceToNow(a.at, { addSuffix: true }) }));
 
-    return { stats, ratios, activity };
+    const todaySchedule = [
+      ...bookings.data.filter((item) => item.date === today && item.status === "scheduled").map((item) => ({ id: `booking-${item.id}`, time: item.startTime, title: item.clientNameSnapshot || "Group class booking", detail: item.trainerNameSnapshot ? `Trainer ${item.trainerNameSnapshot}` : item.bookingType.replace("_", " ") })),
+      ...classes.data.filter((item) => item.date === today && item.status === "scheduled").map((item) => ({ id: `class-${item.id}`, time: item.startTime, title: item.name, detail: `${item.bookedCount}/${item.capacity} booked · Trainer ${item.trainerNameSnapshot}` })),
+    ].sort((a, b) => a.time.localeCompare(b.time));
+
+    return { stats, ratios, activity, todaySchedule };
   }, [clients.data, memberships.data, inquiries.data, workouts.data, diets.data, bookings.data, classes.data, enrollments.data]);
 
   return { ...result, loading, error };

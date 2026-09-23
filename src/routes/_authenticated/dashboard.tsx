@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CalendarPlus, Dumbbell, Salad, UserPlus, Users } from "lucide-react";
+import { CalendarClock, CalendarPlus, Dumbbell, Salad, UserPlus, Users } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { StatCard, StatCardSkeleton } from "@/components/common/stat-card";
 import { ErrorState } from "@/components/common/error-state";
@@ -37,7 +37,7 @@ const QUICK_ACTIONS = [
 
 function DashboardPage() {
   const navigate = useNavigate();
-  const { stats, ratios, activity, loading, error } = useDashboardMetrics();
+  const { stats, ratios, activity, todaySchedule, loading, error } = useDashboardMetrics();
 
   return (
     <div className="space-y-6">
@@ -64,6 +64,17 @@ function DashboardPage() {
                 />
               ))}
         </div>
+      </section>
+
+      <section className="surface-card min-w-0 p-5">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-section-title">Today's Schedule</h2>
+          <Button variant="ghost" size="sm" onClick={() => void navigate({ to: "/bookings" })}>View bookings</Button>
+        </div>
+        {!loading && todaySchedule.length === 0 ? <p className="text-meta py-8 text-center">No bookings today</p> : null}
+        <ul className="mt-3 divide-y divide-border">
+          {todaySchedule.map((item) => <li key={item.id} className="flex items-center gap-3 py-3"><span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/15 text-primary-foreground"><CalendarClock className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{item.title}</p><p className="truncate text-xs text-muted-foreground">{item.detail}</p></div><span className="text-sm font-semibold tabular-nums">{item.time}</span></li>)}
+        </ul>
       </section>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)] lg:gap-6">
