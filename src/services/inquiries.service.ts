@@ -15,7 +15,7 @@ import { col, COLLECTIONS, subscribeCollection, toDate } from "./firestore.servi
 export type InquiryInput = Pick<
   Inquiry,
   "name" | "phone" | "email" | "source" | "fitnessGoal" | "notes" | "status" | "nextFollowUpDate"
->;
+> & Partial<Pick<Inquiry, "lastContactDate" | "expectedJoinDate" | "expectedVisitDate" | "assignedTo">>;
 
 export const mapInquiry = (id: string, d: DocumentData): Inquiry => ({
   id,
@@ -28,6 +28,10 @@ export const mapInquiry = (id: string, d: DocumentData): Inquiry => ({
   notes: d["notes"] ?? "",
   status: d["status"] ?? "new",
   nextFollowUpDate: d["nextFollowUpDate"] ?? null,
+  lastContactDate: d["lastContactDate"] ?? null,
+  expectedJoinDate: d["expectedJoinDate"] ?? null,
+  expectedVisitDate: d["expectedVisitDate"] ?? null,
+  assignedTo: d["assignedTo"] ?? "",
   convertedToClient: Boolean(d["convertedToClient"]),
   clientId: d["clientId"] ?? null,
   createdAt: toDate(d["createdAt"]),

@@ -6,8 +6,12 @@ export interface BaseDoc {
   updatedAt: Date;
 }
 
+export const PACKAGE_CATEGORIES = ["Strength + Cardio", "Strength Only", "Cardio Only", "Custom"] as const;
+export type PackageCategory = (typeof PACKAGE_CATEGORIES)[number];
+
 export interface GymPackage extends BaseDoc {
   name: string;
+  category: PackageCategory;
   description: string;
   durationDays: number;
   price: number;
@@ -19,6 +23,7 @@ export const INQUIRY_STATUSES = [
   "contacted",
   "interested",
   "follow_up",
+  "expected_to_join",
   "converted",
   "lost",
 ] as const;
@@ -46,6 +51,10 @@ export interface Inquiry extends BaseDoc {
   notes: string;
   status: InquiryStatus;
   nextFollowUpDate: string | null;
+  lastContactDate: string | null;
+  expectedJoinDate: string | null;
+  expectedVisitDate: string | null;
+  assignedTo: string;
   convertedToClient: boolean;
   clientId: string | null;
 }
@@ -87,6 +96,8 @@ export interface Client extends BaseDoc {
   whatsappPhone: string;
   whatsappStatus: "opted_out" | "ready" | "invalid";
   lastWhatsappMessageAt: Date | null;
+  firstThumbRegistered: boolean;
+  enrollmentId: string | null;
 }
 
 export const BIOMETRIC_STATUSES = ["not_enrolled", "active", "disabled"] as const;
@@ -146,7 +157,7 @@ export interface AccessDecision {
   membershipId: string | null;
 }
 
-export const MEMBERSHIP_STATUSES = ["active", "expired", "cancelled", "pending"] as const;
+export const MEMBERSHIP_STATUSES = ["active", "expired", "cancelled", "pending", "biometric_pending"] as const;
 export type MembershipStatus = (typeof MEMBERSHIP_STATUSES)[number];
 
 export interface Membership extends BaseDoc {
@@ -417,3 +428,29 @@ export interface WhatsAppSettings {
   birthdayTemplate: string;
   followUpTemplate: string;
 }
+
+// ---------------- PT, trainers, payments, enrollment, finance, import ----------------
+export const PT_DURATION_TYPES = ["day", "monthly", "yearly", "custom"] as const;
+export type PtDurationType = (typeof PT_DURATION_TYPES)[number];
+export interface PtPackage extends BaseDoc { name: string; durationType: PtDurationType; durationDays: number; price: number; description: string; isActive: boolean }
+export const SHARE_TYPES = ["percentage", "fixed"] as const;
+export type ShareType = (typeof SHARE_TYPES)[number];
+export interface Trainer extends BaseDoc { name: string; phone: string; email: string; specialization: string; joiningDate: string; status: "active" | "inactive"; defaultShareType: ShareType; defaultTrainerShare: number; notes: string }
+export const PT_ASSIGNMENT_STATUSES = ["pending", "active", "completed", "cancelled"] as const;
+export type PtAssignmentStatus = (typeof PT_ASSIGNMENT_STATUSES)[number];
+export interface ShareSnapshot { ptPrice: number; trainerShareType: ShareType; trainerShareValue: number; trainerShareAmount: number; gymShareAmount: number }
+export interface PtAssignment extends BaseDoc, ShareSnapshot { clientId: string; clientNameSnapshot: string; ptPackageId: string; ptPackageNameSnapshot: string; trainerId: string; trainerNameSnapshot: string; startDate: string; endDate: string; status: PtAssignmentStatus; invoiceId: string; enrollmentId: string | null }
+export interface Payment extends BaseDoc { clientId: string; clientNameSnapshot: string; invoiceId: string; invoiceNumber: string; membershipId: string | null; ptAssignmentId: string | null; amount: number; method: PaymentMethod; paymentDate: string; kind: "initial" | "balance"; trainerShareAmount: number; gymAmount: number; membershipGymAmount: number; ptGymAmount: number; otherGymAmount: number; createdBy: string }
+export const ENROLLMENT_FLOW_STATUSES = ["draft", "payment_pending", "payment_completed", "biometric_pending", "active", "cancelled"] as const;
+export type EnrollmentFlowStatus = (typeof ENROLLMENT_FLOW_STATUSES)[number];
+export interface Enrollment extends BaseDoc { clientId: string; clientNameSnapshot: string; status: EnrollmentFlowStatus; membershipId: string | null; ptAssignmentId: string | null; invoiceId: string; paymentId: string | null; biometricDeviceId: string; biometricUserId: string; firstThumbRegistered: boolean; lastError: string }
+export const PAYOUT_STATUSES = ["pending", "paid", "cancelled"] as const;
+export type PayoutStatus = (typeof PAYOUT_STATUSES)[number];
+export interface TrainerPayout extends BaseDoc { trainerId: string; trainerNameSnapshot: string; clientId: string; clientNameSnapshot: string; ptAssignmentId: string; ptPackageNameSnapshot: string; invoiceId: string; grossAmount: number; trainerShareAmount: number; gymShareAmount: number; paymentDate: string; status: PayoutStatus; paidAt: string | null }
+export interface ManualIncome extends BaseDoc { title: string; category: string; amount: number; method: PaymentMethod; date: string; notes: string; createdBy: string }
+export const IMPORT_TYPES = ["packages", "trainers", "clients", "memberships", "expenses"] as const;
+export type ImportType = (typeof IMPORT_TYPES)[number];
+export interface ImportBatch extends BaseDoc { filename: string; uploadedBy: string; uploadedAt: Date; dataType: ImportType; rowsFound: number; rowsImported: number; rowsSkipped: number; rowsFailed: number }
+export const CUSTOMER_RESPONSES = ["Interested", "Not Interested", "Call Back", "Will Visit", "Will Join Later", "Needs Time", "Price Concern", "Needs Family Approval", "No Answer", "Wrong Number", "Other"] as const;
+export const NEXT_ACTIONS = ["Call Again", "Customer Will Call", "Customer Will Visit", "Schedule Gym Visit", "Send Details", "Waiting for Decision", "Other"] as const;
+export interface LeadLog extends BaseDoc { inquiryId: string | null; clientId: string; customerSaid: string; response: string; nextAction: string; nextCallDate: string; nextCallTime: string; expectedJoinDate: string; expectedVisitDate: string; priority: FollowUpPriority; notes: string; createdBy: string }
