@@ -1,9 +1,10 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, CalendarCheck, CalendarPlus, CreditCard, Dumbbell, MessageSquareHeart, Package, ReceiptIndianRupee, Salad, UserPlus, Users, UsersRound } from "lucide-react";
+import { Bell, CalendarPlus, CreditCard, MessageSquareHeart, ReceiptIndianRupee, UserPlus, Users } from "lucide-react";
 import { GlobalSearch } from "@/components/layout/global-search";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { UserMenu } from "@/components/layout/user-menu";
+import { useEnrollment } from "@/components/enrollment/enrollment-context";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -16,6 +17,7 @@ import {
 
 export function Topbar() {
   const navigate = useNavigate();
+  const { openEnrollment } = useEnrollment();
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
@@ -34,17 +36,12 @@ export function Topbar() {
               <Button size="sm" className="hidden sm:inline-flex">Quick add</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => openEnrollment()}><Users aria-hidden /> New Member</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => navigate({ to: "/leads" })}><UserPlus aria-hidden /> Inquiry</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => navigate({ to: "/clients" })}><Users aria-hidden /> Client</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => navigate({ to: "/packages" })}><Package aria-hidden /> Package</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => navigate({ to: "/workout-plans", search: { create: true } })}><Dumbbell aria-hidden /> Workout plan</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => navigate({ to: "/diet-plans", search: { create: true } })}><Salad aria-hidden /> Diet plan</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => navigate({ to: "/bookings", search: { create: true } })}><CalendarPlus aria-hidden /> Booking</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => navigate({ to: "/group-classes" })}><UsersRound aria-hidden /> Group class</DropdownMenuItem>
-               <DropdownMenuItem onSelect={() => navigate({ to: "/expenses", search: { create: true } })}><ReceiptIndianRupee aria-hidden /> Expense</DropdownMenuItem>
-               <DropdownMenuItem onSelect={() => navigate({ to: "/billing", search: { create: true } })}><CreditCard aria-hidden /> Bill</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => navigate({ to: "/attendance" })}><CalendarCheck aria-hidden /> Attendance</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => navigate({ to: "/leads", search: { tab: "followups" } })}><MessageSquareHeart aria-hidden /> Follow-up</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate({ to: "/leads", search: { tab: "followups" } })}><MessageSquareHeart aria-hidden /> Follow-up</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate({ to: "/bookings", search: { create: true } })}><CalendarPlus aria-hidden /> Book PT / Class</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate({ to: "/expenses", search: { create: true } })}><ReceiptIndianRupee aria-hidden /> Expense</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate({ to: "/billing", search: { create: true } })}><CreditCard aria-hidden /> Bill (only when needed)</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
