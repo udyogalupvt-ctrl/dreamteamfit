@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CalendarClock, CalendarPlus, CreditCard, Dumbbell, ReceiptIndianRupee, Salad, UserPlus, Users } from "lucide-react";
+import { CalendarCheck, CalendarClock, CalendarPlus, CreditCard, Dumbbell, ReceiptIndianRupee, Salad, UserPlus, Users } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { StatCard, StatCardSkeleton } from "@/components/common/stat-card";
 import { ErrorState } from "@/components/common/error-state";
@@ -33,6 +33,7 @@ const QUICK_ACTIONS = [
   { label: "Create Booking", icon: CalendarPlus, variant: "default" as const, to: "/bookings" as const, search: { create: true } },
   { label: "Add Expense", icon: ReceiptIndianRupee, variant: "outline" as const, to: "/expenses" as const, search: { create: true } },
   { label: "Create Bill", icon: CreditCard, variant: "default" as const, to: "/billing" as const, search: { create: true } },
+  { label: "Record Attendance", icon: CalendarCheck, variant: "outline" as const, to: "/attendance" as const },
   { label: "Add Workout Plan", icon: Dumbbell, variant: "outline" as const, to: "/workout-plans" as const, search: { create: true } },
   { label: "Add Diet Plan", icon: Salad, variant: "outline" as const, to: "/diet-plans" as const, search: { create: true } },
 ];
