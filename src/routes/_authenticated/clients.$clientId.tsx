@@ -31,6 +31,8 @@ import { ClientFormDialog } from "@/components/clients/client-form-dialog";
 import { AddMembershipDialog } from "@/components/clients/add-membership-dialog";
 import { AddWorkoutDialog } from "@/components/clients/add-workout-dialog";
 import { AddDietDialog } from "@/components/clients/add-diet-dialog";
+import { ClientBookingsSection } from "@/components/clients/client-bookings-section";
+import { BookingFormDialog } from "@/components/scheduling/booking-form-dialog";
 import { AssignmentSection } from "@/components/clients/assignment-section";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -50,7 +52,10 @@ import { cancelMembership, subscribeClientMemberships } from "@/services/members
 import { subscribeClientWorkoutAssignments, updateWorkoutAssignmentStatus } from "@/services/workout-assignments.service";
 import { subscribeClientDietAssignments, updateDietAssignmentStatus } from "@/services/diet-assignments.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import type { Client, DietAssignment, Membership, WorkoutAssignment } from "@/types/models";
+import { subscribeClientBookings } from "@/services/bookings.service";
+import { subscribeClientEnrollments } from "@/services/class-enrollments.service";
+import { subscribeGroupClasses } from "@/services/group-classes.service";
+import type { Booking, ClassEnrollment, Client, DietAssignment, GroupClass, Membership, WorkoutAssignment } from "@/types/models";
 import type { StatTone } from "@/types";
 import { CLOUDINARY_CLIENT_FOLDER } from "@/constants/navigation";
 
@@ -88,11 +93,15 @@ function ClientProfilePage() {
     [],
     [clientId],
   );
+  const bookings = useLive<Booking[]>((ok, fail) => subscribeClientBookings(clientId, ok, fail), [], [clientId]);
+  const enrollments = useLive<ClassEnrollment[]>((ok, fail) => subscribeClientEnrollments(clientId, ok, fail), [], [clientId]);
+  const groupClasses = useLive<GroupClass[]>(subscribeGroupClasses, [], []);
   const [editOpen, setEditOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addWorkoutOpen, setAddWorkoutOpen] = useState(false);
   const [addDietOpen, setAddDietOpen] = useState(false);
+  const [addBookingOpen, setAddBookingOpen] = useState(false);
   const [cancelling, setCancelling] = useState<Membership | null>(null);
 
   const crumbs = [
@@ -220,6 +229,7 @@ function ClientProfilePage() {
             <TabsTrigger value="membership">Membership</TabsTrigger>
             <TabsTrigger value="workout">Workout</TabsTrigger>
             <TabsTrigger value="diet">Diet</TabsTrigger>
+            <TabsTrigger value="bookings">Bookings</TabsTrigger>
             <TabsTrigger value="billing">Billing</TabsTrigger>
             <TabsTrigger value="attendance">Attendance</TabsTrigger>
             <TabsTrigger value="followups">Follow-ups</TabsTrigger>
@@ -296,6 +306,10 @@ function ClientProfilePage() {
               (error) => toast.error(firestoreErrorMessage(error)),
             )}
           />
+        </TabsContent>
+
+        <TabsContent value="bookings">
+          <ClientBookingsSection bookings={bookings.data} enrollments={enrollments.data} classes={groupClasses.data} loading={bookings.loading || enrollments.loading || groupClasses.loading} error={bookings.error ?? enrollments.error ?? groupClasses.error} onAdd={() => setAddBookingOpen(true)} />
         </TabsContent>
 
         <TabsContent value="membership" className="space-y-4">
@@ -392,6 +406,7 @@ function ClientProfilePage() {
       />
       <AddWorkoutDialog open={addWorkoutOpen} onOpenChange={setAddWorkoutOpen} clientId={c.id} />
       <AddDietDialog open={addDietOpen} onOpenChange={setAddDietOpen} clientId={c.id} />
+      <BookingFormDialog open={addBookingOpen} onOpenChange={setAddBookingOpen} initialClient={c} />
       <PhotoDialog open={photoOpen} onOpenChange={setPhotoOpen} client={c} />
       <ConfirmDialog
         open={!!cancelling}

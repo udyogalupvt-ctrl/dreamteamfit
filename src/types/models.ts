@@ -146,3 +146,50 @@ export interface DietAssignment extends BaseDoc {
   status: AssignmentStatus;
   notes: string;
 }
+
+
+export const BOOKING_TYPES = ["pt", "group_class", "general"] as const;
+export type BookingType = (typeof BOOKING_TYPES)[number];
+export const BOOKING_STATUSES = ["scheduled", "completed", "cancelled", "no_show"] as const;
+export type BookingStatus = (typeof BOOKING_STATUSES)[number];
+export const GROUP_CLASS_STATUSES = ["scheduled", "completed", "cancelled"] as const;
+export type GroupClassStatus = (typeof GROUP_CLASS_STATUSES)[number];
+export const ENROLLMENT_STATUSES = ["enrolled", "cancelled", "attended", "no_show"] as const;
+export type EnrollmentStatus = (typeof ENROLLMENT_STATUSES)[number];
+
+export interface Booking extends BaseDoc {
+  clientId: string;
+  clientNameSnapshot: string;
+  bookingType: BookingType;
+  trainerId: string;
+  trainerNameSnapshot: string;
+  groupClassId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  status: BookingStatus;
+  notes: string;
+}
+
+export interface GroupClass extends BaseDoc {
+  name: string;
+  description: string;
+  trainerId: string;
+  trainerNameSnapshot: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  capacity: number;
+  bookedCount: number;
+  location: string;
+  status: GroupClassStatus;
+}
+
+export interface ClassEnrollment {
+  id: string;
+  groupClassId: string;
+  clientId: string;
+  clientNameSnapshot: string;
+  enrolledAt: Date;
+  status: EnrollmentStatus;
+}

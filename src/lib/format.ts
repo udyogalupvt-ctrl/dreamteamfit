@@ -1,5 +1,5 @@
 import { addDays, format, parseISO } from "date-fns";
-import type { AssignmentStatus, InquiryStatus, LeadSource, MembershipStatus } from "@/types/models";
+import type { AssignmentStatus, BookingStatus, EnrollmentStatus, GroupClassStatus, InquiryStatus, LeadSource, MembershipStatus } from "@/types/models";
 import type { StatTone } from "@/types";
 
 /** Digits only, last 10 digits (strips +91 / leading 0) for reliable comparison. */
@@ -78,6 +78,34 @@ export const ASSIGNMENT_STATUS_META: Record<AssignmentStatus, { label: string; t
   completed: { label: "Completed", tone: "info" },
   cancelled: { label: "Cancelled", tone: "warning" },
 };
+
+export const BOOKING_STATUS_META: Record<BookingStatus, { label: string; tone: StatTone }> = {
+  scheduled: { label: "Scheduled", tone: "primary" },
+  completed: { label: "Completed", tone: "success" },
+  cancelled: { label: "Cancelled", tone: "warning" },
+  no_show: { label: "No-show", tone: "danger" },
+};
+
+export const GROUP_CLASS_STATUS_META: Record<GroupClassStatus, { label: string; tone: StatTone }> = {
+  scheduled: { label: "Scheduled", tone: "primary" },
+  completed: { label: "Completed", tone: "success" },
+  cancelled: { label: "Cancelled", tone: "warning" },
+};
+
+export const ENROLLMENT_STATUS_META: Record<EnrollmentStatus, { label: string; tone: StatTone }> = {
+  enrolled: { label: "Enrolled", tone: "primary" },
+  attended: { label: "Attended", tone: "success" },
+  cancelled: { label: "Cancelled", tone: "warning" },
+  no_show: { label: "No-show", tone: "danger" },
+};
+
+export function formatTime(value: string): string {
+  if (!/^\d{2}:\d{2}$/.test(value)) return value || "—";
+  const [hours = 0, minutes = 0] = value.split(":").map(Number);
+  return new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", hour12: true }).format(
+    new Date(2000, 0, 1, hours, minutes),
+  );
+}
 
 /** Status adjusted for dates: an "active" membership past its end date reads as expired. */
 export function effectiveMembershipStatus(m: {

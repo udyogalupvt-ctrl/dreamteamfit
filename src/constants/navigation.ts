@@ -2,6 +2,7 @@ import {
   Salad,
   BarChart3,
   CalendarCheck,
+  CalendarClock,
   CreditCard,
   Dumbbell,
   LayoutDashboard,
@@ -10,6 +11,7 @@ import {
   Settings,
   UserPlus,
   Users,
+  UsersRound,
 } from "lucide-react";
 import type { NavItem } from "@/types";
 
@@ -23,6 +25,9 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, group: "Workspace" },
   { label: "Inquiries", to: "/inquiries", icon: UserPlus, group: "Workspace" },
   { label: "Clients", to: "/clients", icon: Users, group: "Workspace" },
+  { label: "Bookings", to: "/bookings", icon: CalendarClock, group: "Workspace" },
+  { label: "PT Sessions", to: "/pt-sessions", icon: Dumbbell, group: "Workspace" },
+  { label: "Group Classes", to: "/group-classes", icon: UsersRound, group: "Workspace" },
   { label: "Packages", to: "/packages", icon: Package, group: "Workspace" },
   { label: "Billing & Payments", to: "/billing", icon: CreditCard, group: "Workspace" },
   { label: "Attendance", to: "/attendance", icon: CalendarCheck, group: "Workspace" },

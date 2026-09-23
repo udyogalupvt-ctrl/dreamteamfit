@@ -4,6 +4,7 @@ import {
   BadgeIndianRupee,
   Cake,
   CalendarCheck,
+  CalendarClock,
   CreditCard,
   Dumbbell,
   MessageSquareHeart,
@@ -13,6 +14,7 @@ import {
   UserRoundCheck,
   UserRoundX,
   Users,
+  UsersRound,
 } from "lucide-react";
 import { useLive } from "@/hooks/use-live-query";
 import { effectiveMembershipStatus, formatNumber, todayISO } from "@/lib/format";
@@ -21,8 +23,11 @@ import { subscribeInquiries } from "@/services/inquiries.service";
 import { subscribeMemberships } from "@/services/memberships.service";
 import { subscribeWorkoutAssignments } from "@/services/workout-assignments.service";
 import { subscribeDietAssignments } from "@/services/diet-assignments.service";
+import { subscribeBookings } from "@/services/bookings.service";
+import { subscribeGroupClasses } from "@/services/group-classes.service";
+import { subscribeClassEnrollments } from "@/services/class-enrollments.service";
 import type { ActivityItem, StatMetric } from "@/types";
-import type { Client, DietAssignment, Inquiry, Membership, WorkoutAssignment } from "@/types/models";
+import type { Booking, ClassEnrollment, Client, DietAssignment, GroupClass, Inquiry, Membership, WorkoutAssignment } from "@/types/models";
 
 /** Derives dashboard numbers from live Firestore data only — nothing is invented. */
 export function useDashboardMetrics() {
@@ -31,9 +36,12 @@ export function useDashboardMetrics() {
   const inquiries = useLive<Inquiry[]>(subscribeInquiries, [], []);
   const workouts = useLive<WorkoutAssignment[]>(subscribeWorkoutAssignments, [], []);
   const diets = useLive<DietAssignment[]>(subscribeDietAssignments, [], []);
+  const bookings = useLive<Booking[]>(subscribeBookings, [], []);
+  const classes = useLive<GroupClass[]>(subscribeGroupClasses, [], []);
+  const enrollments = useLive<ClassEnrollment[]>(subscribeClassEnrollments, [], []);
 
-  const loading = clients.loading || memberships.loading || inquiries.loading || workouts.loading || diets.loading;
-  const error = clients.error ?? memberships.error ?? inquiries.error ?? workouts.error ?? diets.error;
+  const loading = clients.loading || memberships.loading || inquiries.loading || workouts.loading || diets.loading || bookings.loading || classes.loading || enrollments.loading;
+  const error = clients.error ?? memberships.error ?? inquiries.error ?? workouts.error ?? diets.error ?? bookings.error ?? classes.error ?? enrollments.error;
 
   const result = useMemo(() => {
     const today = todayISO();
@@ -82,6 +90,9 @@ export function useDashboardMetrics() {
       { id: "renewals", label: "Upcoming Renewals", value: formatNumber(renewals), hint: "ending in 7 days", icon: RefreshCcw, tone: "info" },
       { id: "workouts", label: "Workout Plans Assigned", value: formatNumber(workouts.data.filter((item) => item.status === "active").length), hint: "currently active", icon: Dumbbell, tone: "primary" },
       { id: "diets", label: "Diet Plans Assigned", value: formatNumber(diets.data.filter((item) => item.status === "active").length), hint: "currently active", icon: Salad, tone: "success" },
+      { id: "pt-booked", label: "Booked PT Sessions", value: formatNumber(bookings.data.filter((item) => item.bookingType === "pt" && item.status === "scheduled" && item.date >= today).length), hint: "scheduled from today", icon: Dumbbell, tone: "primary" },
+      { id: "group-booked", label: "Booked Group Classes", value: formatNumber(enrollments.data.filter((item) => item.status === "enrolled").length), hint: "active enrollments", icon: UsersRound, tone: "info" },
+      { id: "today-schedule", label: "Today's Schedule", value: formatNumber(bookings.data.filter((item) => item.date === today && item.status === "scheduled").length + classes.data.filter((item) => item.date === today && item.status === "scheduled").length), hint: "bookings and classes", icon: CalendarClock, tone: "warning" },
       {
         id: "birthdays",
         label: "Birthdays Today",
@@ -142,13 +153,26 @@ export function useDashboardMetrics() {
         tone: "success" as const,
         icon: Salad,
       })),
+      ...bookings.data.slice(0, 8).map((item) => ({
+        id: `booking-${item.id}`,
+        title: `${item.clientNameSnapshot || "Group class"} booking`,
+        description: `${item.date} · ${item.startTime} · ${item.status.replace("_", "-")}`,
+        at: item.updatedAt,
+        tone: "warning" as const,
+        icon: CalendarClock,
+      })),
     ]
       .sort((a, b) => b.at.getTime() - a.at.getTime())
       .slice(0, 6)
       .map((a) => ({ ...a, time: formatDistanceToNow(a.at, { addSuffix: true }) }));
 
-    return { stats, ratios, activity };
-  }, [clients.data, memberships.data, inquiries.data, workouts.data, diets.data]);
+    const todaySchedule = [
+      ...bookings.data.filter((item) => item.date === today && item.status === "scheduled").map((item) => ({ id: `booking-${item.id}`, time: item.startTime, title: item.clientNameSnapshot || "Group class booking", detail: item.trainerNameSnapshot ? `Trainer ${item.trainerNameSnapshot}` : item.bookingType.replace("_", " ") })),
+      ...classes.data.filter((item) => item.date === today && item.status === "scheduled").map((item) => ({ id: `class-${item.id}`, time: item.startTime, title: item.name, detail: `${item.bookedCount}/${item.capacity} booked · Trainer ${item.trainerNameSnapshot}` })),
+    ].sort((a, b) => a.time.localeCompare(b.time));
+
+    return { stats, ratios, activity, todaySchedule };
+  }, [clients.data, memberships.data, inquiries.data, workouts.data, diets.data, bookings.data, classes.data, enrollments.data]);
 
   return { ...result, loading, error };
 }
