@@ -25,8 +25,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { useLive } from "@/hooks/use-live-query";
 import { DEFAULT_BILLING_SETTINGS, saveBusinessSettings, subscribeBusinessSettings } from "@/services/business-settings.service";
+import { DEFAULT_AUTOMATION_SETTINGS } from "@/lib/automation-templates";
+import { saveAutomationSettings, subscribeAutomationSettings } from "@/services/automation-settings.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import type { BusinessBillingSettings } from "@/types/models";
+import type { AutomationSettings, BusinessBillingSettings } from "@/types/models";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -69,9 +71,13 @@ function SettingsPage() {
   const [gymName, setGymName] = useState(GYM_NAME);
   const billingLive=useLive(subscribeBusinessSettings,DEFAULT_BILLING_SETTINGS,[]);
   const [billing,setBilling]=useState<BusinessBillingSettings>(DEFAULT_BILLING_SETTINGS);
+  const automationLive=useLive(subscribeAutomationSettings,DEFAULT_AUTOMATION_SETTINGS,[]);
+  const [automation,setAutomation]=useState<AutomationSettings>(DEFAULT_AUTOMATION_SETTINGS);
   useEffect(()=>setBilling(billingLive.data),[billingLive.data]);
+  useEffect(()=>setAutomation(automationLive.data),[automationLive.data]);
   const update=<K extends keyof BusinessBillingSettings>(key:K,value:BusinessBillingSettings[K])=>setBilling(v=>({...v,[key]:value}));
   const saveBilling=async()=>{try{await saveBusinessSettings(billing);toast.success("Billing settings saved")}catch(e){toast.error(firestoreErrorMessage(e))}};
+  const saveAutomation=async()=>{try{await saveAutomationSettings(automation);toast.success("Automation settings saved")}catch(e){toast.error(firestoreErrorMessage(e))}};
 
   return (
     <div className="space-y-6">
@@ -88,6 +94,7 @@ function SettingsPage() {
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
           <TabsTrigger value="connections">Connections</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
+          <TabsTrigger value="automation">Automation</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general" className="space-y-4">
@@ -150,6 +157,7 @@ function SettingsPage() {
           </FormSection>
         </TabsContent>
         <TabsContent value="billing"><FormSection title="Invoice & tax settings" description="Used on bills, PDFs, and secure public invoices." footer={<Button onClick={()=>void saveBilling()}>Save billing settings</Button>}><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-1.5"><Label htmlFor="business-name">Business name</Label><Input id="business-name" value={billing.businessName} onChange={e=>update("businessName",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="invoice-prefix">Invoice prefix</Label><Input id="invoice-prefix" value={billing.invoicePrefix} onChange={e=>update("invoicePrefix",e.target.value.toUpperCase())}/></div><div className="grid gap-1.5 sm:col-span-2"><Label htmlFor="business-address">Address</Label><Textarea id="business-address" value={billing.address} onChange={e=>update("address",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="business-phone">Phone</Label><Input id="business-phone" value={billing.phone} onChange={e=>update("phone",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="business-email">Email</Label><Input id="business-email" type="email" value={billing.email} onChange={e=>update("email",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="gstin">GSTIN</Label><Input id="gstin" value={billing.gstin} onChange={e=>update("gstin",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="currency-billing">Currency</Label><Input id="currency-billing" value="INR" disabled/></div><label className="flex items-center gap-2 text-sm font-semibold sm:col-span-2"><Checkbox checked={billing.taxEnabled} onCheckedChange={v=>update("taxEnabled",v===true)}/> Enable tax on new invoices</label>{billing.taxEnabled?<div className="grid gap-1.5"><Label htmlFor="tax-rate">Tax rate (%)</Label><Input id="tax-rate" type="number" min="0" max="100" value={billing.taxRate} onChange={e=>update("taxRate",Number(e.target.value))}/></div>:null}</div></FormSection></TabsContent>
+        <TabsContent value="automation"><FormSection title="Retention automation" description="Daily checks run in Asia/Kolkata. Messages currently use the mock provider." footer={<Button onClick={()=>void saveAutomation()}>Save automation settings</Button>}><div className="grid gap-4"><label className="flex items-center gap-2 text-sm font-semibold"><Checkbox checked={automation.automationEnabled} onCheckedChange={v=>setAutomation(x=>({...x,automationEnabled:v===true}))}/> Automation enabled</label><label className="flex items-center gap-2 text-sm font-semibold"><Checkbox checked={automation.renewalEnabled} onCheckedChange={v=>setAutomation(x=>({...x,renewalEnabled:v===true}))}/> Renewal reminders enabled</label><div className="grid gap-1.5"><Label htmlFor="renewal-days">Days before membership expiry</Label><Input id="renewal-days" type="number" min="1" max="30" value={automation.renewalDaysBefore} onChange={e=>setAutomation(x=>({...x,renewalDaysBefore:Number(e.target.value)}))}/></div><div className="grid gap-1.5"><Label htmlFor="renewal-template">Renewal message</Label><Textarea id="renewal-template" className="min-h-36" value={automation.renewalTemplate} onChange={e=>setAutomation(x=>({...x,renewalTemplate:e.target.value}))}/></div><label className="flex items-center gap-2 text-sm font-semibold"><Checkbox checked={automation.birthdayEnabled} onCheckedChange={v=>setAutomation(x=>({...x,birthdayEnabled:v===true}))}/> Birthday greetings enabled</label><div className="grid gap-1.5"><Label htmlFor="birthday-template">Birthday message</Label><Textarea id="birthday-template" className="min-h-32" value={automation.birthdayTemplate} onChange={e=>setAutomation(x=>({...x,birthdayTemplate:e.target.value}))}/></div><label className="flex items-center gap-2 text-sm font-semibold"><Checkbox checked={automation.followUpRemindersEnabled} onCheckedChange={v=>setAutomation(x=>({...x,followUpRemindersEnabled:v===true}))}/> Follow-up reminders enabled</label></div></FormSection></TabsContent>
 
         <TabsContent value="connections">
           <FormSection

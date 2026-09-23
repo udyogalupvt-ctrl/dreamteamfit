@@ -1,0 +1,5 @@
+import type { AutomationSettings } from "@/types/models";
+export const DEFAULT_RENEWAL_TEMPLATE=`Hi {{name}} 👋\n\nYour Rebuild Fitness membership expires on {{expiryDate}}.\n\nYour membership has 7 days remaining.\n\nPlease renew your membership to continue your fitness journey without interruption.\n\n— REBUILD FITNESS`;
+export const DEFAULT_BIRTHDAY_TEMPLATE=`Happy Birthday {{name}}! 🎉\n\nEveryone at Rebuild Fitness wishes you a fantastic birthday.\n\nStay strong, stay healthy and keep moving forward!\n\n— REBUILD FITNESS`;
+export const DEFAULT_AUTOMATION_SETTINGS:AutomationSettings={automationEnabled:true,renewalEnabled:true,renewalDaysBefore:7,birthdayEnabled:true,followUpRemindersEnabled:true,renewalTemplate:DEFAULT_RENEWAL_TEMPLATE,birthdayTemplate:DEFAULT_BIRTHDAY_TEMPLATE,timezone:"Asia/Kolkata"};
+export function renderTemplate(template:string,values:Record<string,string>){return template.replace(/{{\s*(\w+)\s*}}/g,(_,key:string)=>values[key]??"")}

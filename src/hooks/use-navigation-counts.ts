@@ -2,11 +2,13 @@ import { useMemo } from "react";
 import { useLive } from "@/hooks/use-live-query";
 import { todayISO } from "@/lib/format";
 import { subscribeInquiries } from "@/services/inquiries.service";
-import type { Inquiry } from "@/types/models";
+import { subscribeFollowUps } from "@/services/followups.service";
+import type { FollowUp, Inquiry } from "@/types/models";
 
 /** Live sidebar counters derived only from actionable inquiry records. */
 export function useNavigationCounts() {
   const inquiries = useLive<Inquiry[]>(subscribeInquiries, [], []);
+  const followUps = useLive<FollowUp[]>(subscribeFollowUps, [], []);
 
   return useMemo(() => {
     const actionable = inquiries.data.filter(
@@ -15,9 +17,9 @@ export function useNavigationCounts() {
     const today = todayISO();
     return {
       inquiries: actionable.length,
-      followUps: actionable.filter(
-        (inquiry) => inquiry.nextFollowUpDate && inquiry.nextFollowUpDate <= today,
+      followUps: followUps.data.filter(
+        (item) => item.status === "pending" && item.followUpDate <= today,
       ).length,
     };
-  }, [inquiries.data]);
+  }, [inquiries.data, followUps.data]);
 }

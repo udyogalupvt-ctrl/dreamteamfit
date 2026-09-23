@@ -33,6 +33,10 @@ export const COLLECTIONS = {
   expenseActivities: "expenseActivities",
   publicInvoices: "publicInvoices",
   biometricDevices: "biometricDevices",
+  renewalNotifications: "renewalNotifications",
+  birthdayNotifications: "birthdayNotifications",
+  notifications: "notifications",
+  automationActivities: "automationActivities",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

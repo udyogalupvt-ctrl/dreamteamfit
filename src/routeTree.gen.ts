@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedAttendanceRouteImport } from './routes/_authenticated/attendance'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedBiometricDevicesRouteImport } from './routes/_authenticated/biometric-devices'
+import { Route as AuthenticatedBirthdaysRouteImport } from './routes/_authenticated/birthdays'
 import { Route as AuthenticatedBookingsRouteImport } from './routes/_authenticated/bookings'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDietPlansRouteImport } from './routes/_authenticated/diet-plans'
@@ -22,6 +23,7 @@ import { Route as AuthenticatedExpensesRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedFollowUpsRouteImport } from './routes/_authenticated/follow-ups'
 import { Route as AuthenticatedGroupClassesRouteImport } from './routes/_authenticated/group-classes'
 import { Route as AuthenticatedInquiriesRouteImport } from './routes/_authenticated/inquiries'
+import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
 import { Route as AuthenticatedPackagesRouteImport } from './routes/_authenticated/packages'
 import { Route as AuthenticatedPtSessionsRouteImport } from './routes/_authenticated/pt-sessions'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
@@ -61,6 +63,11 @@ const AuthenticatedBiometricDevicesRoute =
     path: '/biometric-devices',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedBirthdaysRoute = AuthenticatedBirthdaysRouteImport.update({
+  id: '/birthdays',
+  path: '/birthdays',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedBookingsRoute = AuthenticatedBookingsRouteImport.update({
   id: '/bookings',
   path: '/bookings',
@@ -97,6 +104,12 @@ const AuthenticatedInquiriesRoute = AuthenticatedInquiriesRouteImport.update({
   path: '/inquiries',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedNotificationsRoute =
+  AuthenticatedNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPackagesRoute = AuthenticatedPackagesRouteImport.update({
   id: '/packages',
   path: '/packages',
@@ -147,6 +160,7 @@ export interface FileRoutesByFullPath {
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
+  '/birthdays': typeof AuthenticatedBirthdaysRoute
   '/bookings': typeof AuthenticatedBookingsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/diet-plans': typeof AuthenticatedDietPlansRoute
@@ -154,6 +168,7 @@ export interface FileRoutesByFullPath {
   '/follow-ups': typeof AuthenticatedFollowUpsRoute
   '/group-classes': typeof AuthenticatedGroupClassesRoute
   '/inquiries': typeof AuthenticatedInquiriesRoute
+  '/notifications': typeof AuthenticatedNotificationsRoute
   '/packages': typeof AuthenticatedPackagesRoute
   '/pt-sessions': typeof AuthenticatedPtSessionsRoute
   '/reports': typeof AuthenticatedReportsRoute
@@ -169,6 +184,7 @@ export interface FileRoutesByTo {
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
+  '/birthdays': typeof AuthenticatedBirthdaysRoute
   '/bookings': typeof AuthenticatedBookingsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/diet-plans': typeof AuthenticatedDietPlansRoute
@@ -176,6 +192,7 @@ export interface FileRoutesByTo {
   '/follow-ups': typeof AuthenticatedFollowUpsRoute
   '/group-classes': typeof AuthenticatedGroupClassesRoute
   '/inquiries': typeof AuthenticatedInquiriesRoute
+  '/notifications': typeof AuthenticatedNotificationsRoute
   '/packages': typeof AuthenticatedPackagesRoute
   '/pt-sessions': typeof AuthenticatedPtSessionsRoute
   '/reports': typeof AuthenticatedReportsRoute
@@ -193,6 +210,7 @@ export interface FileRoutesById {
   '/_authenticated/attendance': typeof AuthenticatedAttendanceRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
   '/_authenticated/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
+  '/_authenticated/birthdays': typeof AuthenticatedBirthdaysRoute
   '/_authenticated/bookings': typeof AuthenticatedBookingsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/diet-plans': typeof AuthenticatedDietPlansRoute
@@ -200,6 +218,7 @@ export interface FileRoutesById {
   '/_authenticated/follow-ups': typeof AuthenticatedFollowUpsRoute
   '/_authenticated/group-classes': typeof AuthenticatedGroupClassesRoute
   '/_authenticated/inquiries': typeof AuthenticatedInquiriesRoute
+  '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/packages': typeof AuthenticatedPackagesRoute
   '/_authenticated/pt-sessions': typeof AuthenticatedPtSessionsRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
@@ -217,6 +236,7 @@ export interface FileRouteTypes {
     | '/attendance'
     | '/billing'
     | '/biometric-devices'
+    | '/birthdays'
     | '/bookings'
     | '/dashboard'
     | '/diet-plans'
@@ -224,6 +244,7 @@ export interface FileRouteTypes {
     | '/follow-ups'
     | '/group-classes'
     | '/inquiries'
+    | '/notifications'
     | '/packages'
     | '/pt-sessions'
     | '/reports'
@@ -239,6 +260,7 @@ export interface FileRouteTypes {
     | '/attendance'
     | '/billing'
     | '/biometric-devices'
+    | '/birthdays'
     | '/bookings'
     | '/dashboard'
     | '/diet-plans'
@@ -246,6 +268,7 @@ export interface FileRouteTypes {
     | '/follow-ups'
     | '/group-classes'
     | '/inquiries'
+    | '/notifications'
     | '/packages'
     | '/pt-sessions'
     | '/reports'
@@ -262,6 +285,7 @@ export interface FileRouteTypes {
     | '/_authenticated/attendance'
     | '/_authenticated/billing'
     | '/_authenticated/biometric-devices'
+    | '/_authenticated/birthdays'
     | '/_authenticated/bookings'
     | '/_authenticated/dashboard'
     | '/_authenticated/diet-plans'
@@ -269,6 +293,7 @@ export interface FileRouteTypes {
     | '/_authenticated/follow-ups'
     | '/_authenticated/group-classes'
     | '/_authenticated/inquiries'
+    | '/_authenticated/notifications'
     | '/_authenticated/packages'
     | '/_authenticated/pt-sessions'
     | '/_authenticated/reports'
@@ -330,6 +355,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedBiometricDevicesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/birthdays': {
+      id: '/_authenticated/birthdays'
+      path: '/birthdays'
+      fullPath: '/birthdays'
+      preLoaderRoute: typeof AuthenticatedBirthdaysRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/bookings': {
       id: '/_authenticated/bookings'
       path: '/bookings'
@@ -377,6 +409,13 @@ declare module '@tanstack/react-router' {
       path: '/inquiries'
       fullPath: '/inquiries'
       preLoaderRoute: typeof AuthenticatedInquiriesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/notifications': {
+      id: '/_authenticated/notifications'
+      path: '/notifications'
+      fullPath: '/notifications'
+      preLoaderRoute: typeof AuthenticatedNotificationsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/packages': {
@@ -442,6 +481,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAttendanceRoute: typeof AuthenticatedAttendanceRoute
   AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
   AuthenticatedBiometricDevicesRoute: typeof AuthenticatedBiometricDevicesRoute
+  AuthenticatedBirthdaysRoute: typeof AuthenticatedBirthdaysRoute
   AuthenticatedBookingsRoute: typeof AuthenticatedBookingsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDietPlansRoute: typeof AuthenticatedDietPlansRoute
@@ -449,6 +489,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedFollowUpsRoute: typeof AuthenticatedFollowUpsRoute
   AuthenticatedGroupClassesRoute: typeof AuthenticatedGroupClassesRoute
   AuthenticatedInquiriesRoute: typeof AuthenticatedInquiriesRoute
+  AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedPackagesRoute: typeof AuthenticatedPackagesRoute
   AuthenticatedPtSessionsRoute: typeof AuthenticatedPtSessionsRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
@@ -462,6 +503,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAttendanceRoute: AuthenticatedAttendanceRoute,
   AuthenticatedBillingRoute: AuthenticatedBillingRoute,
   AuthenticatedBiometricDevicesRoute: AuthenticatedBiometricDevicesRoute,
+  AuthenticatedBirthdaysRoute: AuthenticatedBirthdaysRoute,
   AuthenticatedBookingsRoute: AuthenticatedBookingsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDietPlansRoute: AuthenticatedDietPlansRoute,
@@ -469,6 +511,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedFollowUpsRoute: AuthenticatedFollowUpsRoute,
   AuthenticatedGroupClassesRoute: AuthenticatedGroupClassesRoute,
   AuthenticatedInquiriesRoute: AuthenticatedInquiriesRoute,
+  AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedPackagesRoute: AuthenticatedPackagesRoute,
   AuthenticatedPtSessionsRoute: AuthenticatedPtSessionsRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,

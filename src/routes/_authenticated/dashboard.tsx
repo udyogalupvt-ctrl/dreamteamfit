@@ -40,7 +40,7 @@ const QUICK_ACTIONS = [
 
 function DashboardPage() {
   const navigate = useNavigate();
-  const { stats, ratios, activity, todaySchedule, loading, error } = useDashboardMetrics();
+  const { stats, ratios, activity, todaySchedule, retention, loading, error } = useDashboardMetrics();
 
   return (
     <div className="space-y-6">
@@ -66,6 +66,16 @@ function DashboardPage() {
                   className="w-[74vw] shrink-0 snap-start sm:w-auto"
                 />
               ))}
+        </div>
+      </section>
+
+      <section className="surface-card p-5">
+        <div className="flex items-center justify-between gap-3"><h2 className="text-section-title">Renewals & Birthdays</h2><Button variant="ghost" size="sm" onClick={() => void navigate({ to: "/notifications" })}>Automation history</Button></div>
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Button variant="outline" className="h-auto min-h-20 flex-col items-start" onClick={() => void navigate({ to: "/clients" })}><span className="text-meta">Expiring Today</span><strong className="text-xl">{retention.expiringToday}</strong></Button>
+          <Button variant="outline" className="h-auto min-h-20 flex-col items-start" onClick={() => void navigate({ to: "/clients" })}><span className="text-meta">Expiring in 7 Days</span><strong className="text-xl">{retention.expiringIn7Days}</strong></Button>
+          <Button variant="outline" className="h-auto min-h-20 flex-col items-start" onClick={() => void navigate({ to: "/clients" })}><span className="text-meta">Expired</span><strong className="text-xl">{retention.expired}</strong></Button>
+          <Button variant="outline" className="h-auto min-h-20 flex-col items-start" onClick={() => void navigate({ to: "/birthdays" })}><span className="text-meta">Birthdays Today</span><strong className="text-xl">{retention.birthdays}</strong></Button>
         </div>
       </section>
 

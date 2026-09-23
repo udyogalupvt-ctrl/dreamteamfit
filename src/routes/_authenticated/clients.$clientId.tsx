@@ -32,6 +32,7 @@ import { AddWorkoutDialog } from "@/components/clients/add-workout-dialog";
 import { AddDietDialog } from "@/components/clients/add-diet-dialog";
 import { ClientBookingsSection } from "@/components/clients/client-bookings-section";
 import { ClientAttendanceSection } from "@/components/clients/client-attendance-section";
+import { ClientFollowUpsSection } from "@/components/clients/client-followups-section";
 import { InvoiceActions } from "@/components/billing/invoice-actions";
 import { BookingFormDialog } from "@/components/scheduling/booking-form-dialog";
 import { AssignmentSection } from "@/components/clients/assignment-section";
@@ -382,11 +383,7 @@ function ClientProfilePage() {
           <ClientAttendanceSection client={c} memberships={memberships.data} />
         </TabsContent>
         <TabsContent value="followups">
-          <EmptyState
-            icon={MessageSquareHeart}
-            title="No follow-ups yet"
-            description="Scheduled calls and reminders for this client will appear here."
-          />
+          <ClientFollowUpsSection client={c} />
         </TabsContent>
         <TabsContent value="activity">
           <ActivityTimeline client={c} memberships={memberships.data} workouts={workouts.data} diets={diets.data} />
