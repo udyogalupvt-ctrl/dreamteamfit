@@ -48,6 +48,8 @@ export const COLLECTIONS = {
   manualIncome: "manualIncome",
   importBatches: "importBatches",
   leadLogs: "leadLogs",
+  biometricCommands: "biometricCommands",
+  auditLogs: "auditLogs",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

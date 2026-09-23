@@ -1,5 +1,230 @@
-import { useState } from "react";import { createFileRoute } from "@tanstack/react-router";import { Cpu,MoreHorizontal,Pencil,Plus,Power,Radio } from "lucide-react";import { toast } from "sonner";import { DeviceFormDialog } from "@/components/biometrics/device-form-dialog";import { EmptyState } from "@/components/common/empty-state";import { ErrorState } from "@/components/common/error-state";import { LoadingRows } from "@/components/common/loading-state";import { PageHeader } from "@/components/common/page-header";import { StatusPill } from "@/components/common/status-pill";import { Button } from "@/components/ui/button";import { DropdownMenu,DropdownMenuContent,DropdownMenuItem,DropdownMenuTrigger } from "@/components/ui/dropdown-menu";import { Table,TableBody,TableCell,TableHead,TableHeader,TableRow } from "@/components/ui/table";import { useLive } from "@/hooks/use-live-query";import { formatDate } from "@/lib/format";import { firestoreErrorMessage } from "@/services/firestore.service";import { setDeviceStatus,subscribeDevices,testDeviceConnection } from "@/services/biometric-devices.service";import type { BiometricDevice } from "@/types/models";
-export const Route=createFileRoute("/_authenticated/biometric-devices")({head:()=>({meta:[{title:"Biometric Devices — REBUILD FITNESS"},{name:"description",content:"Manage biometric terminals and hardware adapters."},{property:"og:title",content:"Biometric Devices — REBUILD FITNESS"},{property:"og:description",content:"Manage biometric terminals and hardware adapters."},{property:"og:type",content:"website"},{name:"twitter:card",content:"summary"}]}),component:DevicesPage});
-function DevicesPage(){const live=useLive<BiometricDevice[]>(subscribeDevices,[],[]);const [open,setOpen]=useState(false);const [editing,setEditing]=useState<BiometricDevice|null>(null);const action=async(d:BiometricDevice,kind:"test"|"toggle")=>{try{if(kind==="test"){const r=await testDeviceConnection(d);toast[r.ok?"success":"warning"](r.message)}else{await setDeviceStatus(d.id,d.status==="disabled"?"unknown":"disabled");toast.success(d.status==="disabled"?"Device enabled":"Device disabled")}}catch(e){toast.error(firestoreErrorMessage(e))}};return <div className="space-y-6"><PageHeader title="Biometric Devices" description="Device registry and adapter readiness. Real hardware is not connected until a compatible adapter is configured." breadcrumbs={[{label:"Home",to:"/dashboard"},{label:"Biometric Devices"}]} actions={<Button onClick={()=>{setEditing(null);setOpen(true)}}><Plus/>Add device</Button>}/>{live.error?<ErrorState error={live.error} title="Couldn't load devices"/>:live.loading?<LoadingRows rows={5}/>:live.data.length===0?<EmptyState icon={Cpu} title="No biometric devices" description="Add a mock device for demonstrations or register hardware details for later integration." action={<Button onClick={()=>setOpen(true)}><Plus/>Add device</Button>}/>:<><div className="hidden surface-card overflow-hidden md:block"><Table><TableHeader><TableRow><TableHead>Device</TableHead><TableHead>Manufacturer / Model</TableHead><TableHead>Location</TableHead><TableHead>Connection</TableHead><TableHead>Status</TableHead><TableHead>Last Sync</TableHead><TableHead className="w-12"/></TableRow></TableHeader><TableBody>{live.data.map(d=><TableRow key={d.id}><TableCell className="font-semibold">{d.name}</TableCell><TableCell>{d.manufacturer} · {d.model||"Model not set"}</TableCell><TableCell>{d.location||"—"}</TableCell><TableCell>{d.connectionType}{d.ipAddress?` · ${d.ipAddress}`:""}</TableCell><TableCell><DeviceStatus d={d}/></TableCell><TableCell>{d.lastSyncAt?formatDate(d.lastSyncAt):"Never"}</TableCell><TableCell><Actions d={d} edit={()=>{setEditing(d);setOpen(true)}} action={action}/></TableCell></TableRow>)}</TableBody></Table></div><div className="grid gap-3 md:hidden">{live.data.map(d=><article className="surface-card p-4" key={d.id}><div className="flex items-start justify-between gap-3"><div><p className="font-bold">{d.name}</p><p className="text-meta">{d.manufacturer} · {d.model||"Model not set"}</p></div><Actions d={d} edit={()=>{setEditing(d);setOpen(true)}} action={action}/></div><div className="mt-4 flex flex-wrap items-center gap-2"><DeviceStatus d={d}/><span className="text-meta">{d.location||"Location not set"} · {d.connectionType}</span></div><p className="text-meta mt-3">Last sync: {d.lastSyncAt?formatDate(d.lastSyncAt):"Never"}</p></article>)}</div></>}<DeviceFormDialog open={open} onOpenChange={setOpen} device={editing}/></div>}
-function DeviceStatus({d}:{d:BiometricDevice}){const tone=d.status==="online"?"success":d.status==="disabled"?"danger":d.status==="offline"?"info":"warning";return <StatusPill tone={tone}>{d.status}</StatusPill>}
-function Actions({d,edit,action}:{d:BiometricDevice;edit:()=>void;action:(d:BiometricDevice,k:"test"|"toggle")=>Promise<void>}){return <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`Actions for ${d.name}`}><MoreHorizontal/></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={edit}><Pencil/>View / Edit</DropdownMenuItem><DropdownMenuItem onSelect={()=>void action(d,"test")}><Radio/>Test Connection</DropdownMenuItem><DropdownMenuItem onSelect={()=>void action(d,"toggle")}><Power/>{d.status==="disabled"?"Enable":"Disable"}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
+import { useEffect, useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { formatDistanceToNow } from "date-fns";
+import { Copy, Fingerprint, MoreHorizontal, Pencil, Plus, Power } from "lucide-react";
+import { toast } from "sonner";
+import { DeviceFormDialog } from "@/components/biometrics/device-form-dialog";
+import { EmptyState } from "@/components/common/empty-state";
+import { ErrorState } from "@/components/common/error-state";
+import { LoadingRows } from "@/components/common/loading-state";
+import { PageHeader } from "@/components/common/page-header";
+import { StatusPill } from "@/components/common/status-pill";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useLive } from "@/hooks/use-live-query";
+import { firebaseConfig } from "@/lib/firebase";
+import { firestoreErrorMessage } from "@/services/firestore.service";
+import {
+  deviceConnection,
+  setDeviceStatus,
+  subscribeDevices,
+} from "@/services/biometric-devices.service";
+import type { BiometricDevice } from "@/types/models";
+
+export const Route = createFileRoute("/_authenticated/biometric-devices")({
+  head: () => ({
+    meta: [
+      { title: "Fingerprint Devices — REBUILD FITNESS" },
+      {
+        name: "description",
+        content: "Connect eSSL / ZKTeco fingerprint devices for thumb registration and attendance.",
+      },
+    ],
+  }),
+  component: DevicesPage,
+});
+
+/** The cloud endpoint the device talks to (Firebase function "iclock"). */
+const SERVER_HOST = `us-central1-${firebaseConfig.projectId ?? "your-project"}.cloudfunctions.net`;
+
+function useTick(ms = 15000) {
+  const [, set] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => set((n) => n + 1), ms);
+    return () => clearInterval(t);
+  }, [ms]);
+}
+
+function DevicesPage() {
+  useTick();
+  const live = useLive<BiometricDevice[]>(subscribeDevices, [], []);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<BiometricDevice | null>(null);
+  const toggle = async (d: BiometricDevice) => {
+    try {
+      await setDeviceStatus(d.id, d.status === "disabled" ? "unknown" : "disabled");
+      toast.success(d.status === "disabled" ? "Device enabled" : "Device disabled");
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    }
+  };
+  const add = () => {
+    setEditing(null);
+    setOpen(true);
+  };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Fingerprint Devices"
+        description="Connect the entrance device once. After that, thumbs are registered from the joining screen."
+        breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Fingerprint Devices" }]}
+        actions={
+          <Button onClick={add}>
+            <Plus aria-hidden /> Add device
+          </Button>
+        }
+      />
+      {live.error ? (
+        <ErrorState error={live.error} title="Couldn't load devices" />
+      ) : live.loading ? (
+        <LoadingRows rows={3} />
+      ) : live.data.length === 0 ? (
+        <EmptyState
+          icon={Fingerprint}
+          title="No device connected yet"
+          description="Add your eSSL or ZKTeco device with its serial number, then enter the cloud settings below on the device."
+          action={
+            <Button onClick={add}>
+              <Plus aria-hidden /> Add device
+            </Button>
+          }
+        />
+      ) : (
+        <ul className="grid gap-3 lg:grid-cols-2">
+          {live.data.map((d) => {
+            const c = deviceConnection(d);
+            return (
+              <li key={d.id} className="surface-card p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-bold">{d.name}</p>
+                    <p className="text-meta">
+                      {d.manufacturer}
+                      {d.model ? ` ${d.model}` : ""}
+                      {d.serialNumber ? ` · SN ${d.serialNumber}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <StatusPill
+                      tone={
+                        c.online
+                          ? "success"
+                          : d.status === "disabled"
+                            ? "danger"
+                            : d.integrationType === "adms"
+                              ? "warning"
+                              : "info"
+                      }
+                    >
+                      {c.label}
+                    </StatusPill>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${d.name}`}>
+                          <MoreHorizontal aria-hidden />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            setEditing(d);
+                            setOpen(true);
+                          }}
+                        >
+                          <Pencil aria-hidden /> Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => void toggle(d)}>
+                          <Power aria-hidden /> {d.status === "disabled" ? "Enable" : "Disable"}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+                <p className="text-meta mt-3">
+                  {d.integrationType === "adms"
+                    ? d.lastSeenAt
+                      ? `Last contact ${formatDistanceToNow(d.lastSeenAt, { addSuffix: true })}${d.lastSyncAt ? ` · punches synced ${formatDistanceToNow(d.lastSyncAt, { addSuffix: true })}` : ""}`
+                      : "Waiting for the device to connect. Enter the settings below on the device."
+                    : d.integrationType === "mock"
+                      ? "Test device — it can never activate a member."
+                      : "Not linked to the cloud. Edit it and choose Cloud (ADMS) to register thumbs."}
+                </p>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <SetupGuide />
+      <DeviceFormDialog open={open} onOpenChange={setOpen} device={editing} />
+    </div>
+  );
+}
+
+function SetupGuide() {
+  const copy = (v: string) =>
+    void navigator.clipboard.writeText(v).then(() => toast.success("Copied"));
+  const rows: [string, string][] = [
+    ["Server address", SERVER_HOST],
+    ["Server port", "443"],
+    ["HTTPS / SSL", "ON"],
+    ["Domain name", "ON (if asked)"],
+    ["Proxy server", "OFF"],
+  ];
+  return (
+    <section className="surface-card space-y-4 p-4 sm:p-5">
+      <div>
+        <h2 className="text-card-title">One-time device setup</h2>
+        <p className="text-meta">
+          On the device: Menu → Comm. → Cloud Server Setting (also called ADMS / Webserver).
+        </p>
+      </div>
+      <dl className="divide-y divide-border rounded-xl border border-border">
+        {rows.map(([k, v]) => (
+          <div
+            key={k}
+            className="flex flex-col gap-1 p-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+          >
+            <dt className="text-muted-foreground">{k}</dt>
+            <dd className="flex items-center gap-2 font-mono font-semibold">
+              <span className="break-all">{v}</span>
+              {k === "Server address" ? (
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="Copy server address"
+                  onClick={() => copy(v)}
+                >
+                  <Copy aria-hidden />
+                </Button>
+              ) : null}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <ol className="list-decimal space-y-1 pl-5 text-sm">
+        <li>
+          Connect the device to the internet (LAN cable or Wi-Fi) and set its date & time correctly.
+        </li>
+        <li>Add the device here with its serial number.</li>
+        <li>
+          Enter the settings above on the device and restart it. It shows <b>Online</b> here within
+          a minute.
+        </li>
+        <li>
+          Register thumbs from the joining screen. The device beeps and asks the member to press 3
+          times.
+        </li>
+      </ol>
+      <p className="text-meta">
+        Older devices without HTTPS can use the small relay in <code>tools/adms-relay.mjs</code> on
+        the front-desk PC. See BIOMETRIC_SETUP.md.
+      </p>
+    </section>
+  );
+}

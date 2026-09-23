@@ -49,20 +49,20 @@ export function ClientPtSection({ client }: { client: Client }) {
 }
 
 export function ClientBiometricCard({ client }: { client: Client }) {
-  const { openEnrollment } = useEnrollment();
+  const { resumeSetup } = useEnrollment();
   const allowed = client.biometricStatus === "active" && client.firstThumbRegistered && client.currentMembership?.status === "active";
   return (
     <section className="surface-card p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-card-title flex items-center gap-2"><Fingerprint className="size-4" /> Biometric</h2>
+        <h2 className="text-card-title flex items-center gap-2"><Fingerprint className="size-4" /> Entry (thumb)</h2>
         <StatusPill tone={allowed ? "success" : "danger"}>{allowed ? "Access allowed" : "Access blocked"}</StatusPill>
       </div>
       <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
-        {[["Device", client.biometricDeviceId ? "Linked" : "—"], ["Biometric ID", client.biometricUserId || "—"], ["Status", client.biometricStatus.replace("_", " ")], ["First thumb", client.firstThumbRegistered ? "Registered" : "Not registered"]].map(([k, v]) => (
+        {[["Thumb", client.firstThumbRegistered ? "Registered" : "Not registered"], ["ID on device", client.biometricUserId || "—"]].map(([k, v]) => (
           <div key={k}><dt className="text-meta">{k}</dt><dd className="font-semibold capitalize">{v}</dd></div>))}
       </dl>
-      {!client.firstThumbRegistered && client.enrollmentId ? (
-        <Button className="mt-4" onClick={() => openEnrollment({ resumeEnrollmentId: client.enrollmentId })}><Fingerprint /> Complete Biometric Registration</Button>
+      {!client.firstThumbRegistered ? (
+        <Button className="mt-4" onClick={() => resumeSetup(client)}><Fingerprint /> Register thumb</Button>
       ) : null}
     </section>
   );

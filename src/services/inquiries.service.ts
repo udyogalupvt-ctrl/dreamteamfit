@@ -1,5 +1,5 @@
 import {
-  addDoc,
+  writeBatch,
   doc,
   onSnapshot,
   orderBy,
@@ -15,7 +15,10 @@ import { col, COLLECTIONS, subscribeCollection, toDate } from "./firestore.servi
 export type InquiryInput = Pick<
   Inquiry,
   "name" | "phone" | "email" | "source" | "fitnessGoal" | "notes" | "status" | "nextFollowUpDate"
-> & Partial<Pick<Inquiry, "lastContactDate" | "expectedJoinDate" | "expectedVisitDate" | "assignedTo">>;
+> &
+  Partial<
+    Pick<Inquiry, "lastContactDate" | "expectedJoinDate" | "expectedVisitDate" | "assignedTo">
+  >;
 
 export const mapInquiry = (id: string, d: DocumentData): Inquiry => ({
   id,
@@ -63,19 +66,45 @@ export function subscribeInquiry(
   );
 }
 
+/**
+ * Saves the lead and its first follow-up call in ONE write, so a lead can never exist
+ * without its call (even if the tab is closed right after saving).
+ */
 export async function createInquiry(input: InquiryInput) {
-  const ref = await addDoc(col(COLLECTIONS.inquiries), {
+  const ref = doc(col(COLLECTIONS.inquiries));
+  const now = serverTimestamp();
+  const batch = writeBatch(db);
+  batch.set(ref, {
     ...input,
     phoneNormalized: normalizePhone(input.phone),
     convertedToClient: false,
     clientId: null,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    createdAt: now,
+    updatedAt: now,
   });
-  if (input.nextFollowUpDate) {
-    const { syncInquiryFollowUp } = await import("./followups.service");
-    await syncInquiryFollowUp(ref.id);
-  }
+  if (input.nextFollowUpDate)
+    batch.set(doc(db, COLLECTIONS.followups, `inquiry_${ref.id}`), {
+      clientId: "",
+      inquiryId: ref.id,
+      clientNameSnapshot: input.name,
+      phoneSnapshot: input.phone,
+      source: "inquiry",
+      reason: "Follow-up call",
+      notes: input.notes,
+      followUpDate: input.nextFollowUpDate,
+      followUpTime: "10:00",
+      status: "pending",
+      priority: "medium",
+      assignedTo: "",
+      lastContactDate: null,
+      nextAction: "Call the lead",
+      outcome: "",
+      automated: false,
+      parentFollowUpId: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  await batch.commit();
   return ref.id;
 }
 
@@ -83,7 +112,8 @@ export async function updateInquiry(id: string, input: Partial<InquiryInput>) {
   const patch: Record<string, unknown> = { ...input, updatedAt: serverTimestamp() };
   if (input.phone !== undefined) patch["phoneNormalized"] = normalizePhone(input.phone);
   await updateDoc(doc(db, COLLECTIONS.inquiries, id), patch);
-  if (input.nextFollowUpDate !== undefined && input.nextFollowUpDate) {
+  // Date or status changes move / close the lead's single pending call.
+  if (input.nextFollowUpDate !== undefined || input.status !== undefined) {
     const { syncInquiryFollowUp } = await import("./followups.service");
     await syncInquiryFollowUp(id);
   }

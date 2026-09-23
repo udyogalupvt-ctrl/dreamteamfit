@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AuthenticatedActivityLogRouteImport } from './routes/_authenticated/activity-log'
 import { Route as AuthenticatedAttendanceRouteImport } from './routes/_authenticated/attendance'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedBiometricDevicesRouteImport } from './routes/_authenticated/biometric-devices'
@@ -49,6 +50,12 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedActivityLogRoute =
+  AuthenticatedActivityLogRouteImport.update({
+    id: '/activity-log',
+    path: '/activity-log',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAttendanceRoute = AuthenticatedAttendanceRouteImport.update({
   id: '/attendance',
   path: '/attendance',
@@ -170,6 +177,7 @@ const AuthenticatedTrainersTrainerIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/activity-log': typeof AuthenticatedActivityLogRoute
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
@@ -196,6 +204,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/activity-log': typeof AuthenticatedActivityLogRoute
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
@@ -224,6 +233,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/login': typeof LoginRoute
+  '/_authenticated/activity-log': typeof AuthenticatedActivityLogRoute
   '/_authenticated/attendance': typeof AuthenticatedAttendanceRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
   '/_authenticated/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
@@ -252,6 +262,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/activity-log'
     | '/attendance'
     | '/billing'
     | '/biometric-devices'
@@ -278,6 +289,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/activity-log'
     | '/attendance'
     | '/billing'
     | '/biometric-devices'
@@ -305,6 +317,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/login'
+    | '/_authenticated/activity-log'
     | '/_authenticated/attendance'
     | '/_authenticated/billing'
     | '/_authenticated/biometric-devices'
@@ -358,6 +371,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/activity-log': {
+      id: '/_authenticated/activity-log'
+      path: '/activity-log'
+      fullPath: '/activity-log'
+      preLoaderRoute: typeof AuthenticatedActivityLogRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/attendance': {
       id: '/_authenticated/attendance'
@@ -517,6 +537,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedActivityLogRoute: typeof AuthenticatedActivityLogRoute
   AuthenticatedAttendanceRoute: typeof AuthenticatedAttendanceRoute
   AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
   AuthenticatedBiometricDevicesRoute: typeof AuthenticatedBiometricDevicesRoute
@@ -541,6 +562,7 @@ interface AuthenticatedRouteRouteChildren {
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedActivityLogRoute: AuthenticatedActivityLogRoute,
   AuthenticatedAttendanceRoute: AuthenticatedAttendanceRoute,
   AuthenticatedBillingRoute: AuthenticatedBillingRoute,
   AuthenticatedBiometricDevicesRoute: AuthenticatedBiometricDevicesRoute,

@@ -7,7 +7,7 @@ export interface AppUser {
   photoURL: string | null;
 }
 
-export type NavGroupLabel = "Workspace" | "Management";
+export type NavGroupLabel = "Workspace" | "More" | "Management";
 
 export interface NavItem {
   label: string;

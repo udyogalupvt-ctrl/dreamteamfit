@@ -98,6 +98,8 @@ export interface Client extends BaseDoc {
   lastWhatsappMessageAt: Date | null;
   firstThumbRegistered: boolean;
   enrollmentId: string | null;
+  /** Door lock state kept by the cloud: "removed" = taken off the device (plan ended / blocked). */
+  deviceAccess: "on" | "removed" | null;
 }
 
 export const BIOMETRIC_STATUSES = ["not_enrolled", "active", "disabled"] as const;
@@ -109,7 +111,8 @@ export const DEVICE_STATUSES = ["online", "offline", "unknown", "disabled"] as c
 export type DeviceStatus = (typeof DEVICE_STATUSES)[number];
 export const DEVICE_CONNECTIONS = ["LAN", "USB", "Cloud", "Other"] as const;
 export type DeviceConnection = (typeof DEVICE_CONNECTIONS)[number];
-export const DEVICE_INTEGRATIONS = ["adapter", "mock", "manual"] as const;
+/** adms = device pushes to our cloud endpoint (eSSL / ZKTeco "ADMS" / "Cloud server" setting). */
+export const DEVICE_INTEGRATIONS = ["adms", "adapter", "mock", "manual"] as const;
 export type DeviceIntegration = (typeof DEVICE_INTEGRATIONS)[number];
 
 export interface BiometricDevice extends BaseDoc {
@@ -125,6 +128,33 @@ export interface BiometricDevice extends BaseDoc {
   status: DeviceStatus;
   integrationType: DeviceIntegration;
   lastSyncAt: Date | null;
+  /** Last time the device contacted the cloud endpoint (ADMS devices only). */
+  lastSeenAt: Date | null;
+}
+
+export const BIOMETRIC_COMMAND_TYPES = ["user_upsert", "enroll_fp", "query_fp", "delete_user", "restore_fp"] as const;
+export type BiometricCommandType = (typeof BIOMETRIC_COMMAND_TYPES)[number];
+export const BIOMETRIC_COMMAND_STATUSES = ["pending", "sent", "done", "failed", "cancelled"] as const;
+export type BiometricCommandStatus = (typeof BIOMETRIC_COMMAND_STATUSES)[number];
+
+/** A command queued for an ADMS device. The device picks it up on its next poll. */
+export interface BiometricCommand extends BaseDoc {
+  deviceId: string;
+  serialNumber: string;
+  clientId: string;
+  enrollmentId: string | null;
+  biometricUserId: string;
+  /** Door-lock command (remove / restore on the device), not part of thumb registration. */
+  door: boolean;
+  type: BiometricCommandType;
+  command: string;
+  order: number;
+  status: BiometricCommandStatus;
+  cmdNo: number | null;
+  returnCode: number | null;
+  error: string;
+  sentAt: Date | null;
+  completedAt: Date | null;
 }
 
 export const ATTENDANCE_EVENT_TYPES = ["check_in", "check_out", "unknown"] as const;
@@ -439,6 +469,10 @@ export interface WhatsAppSettings {
   businessAccountIdHint: string;
   templateLanguage: string;
   invoiceTemplate: string;
+  /** The approved invoice template has a DOCUMENT header, so the bill PDF is attached to the message. */
+  invoiceAttachPdf: boolean;
+  /** Send the bill automatically right after a new member's payment is confirmed. */
+  autoSendInvoice: boolean;
   renewalTemplate: string;
   birthdayTemplate: string;
   followUpTemplate: string;
@@ -458,7 +492,21 @@ export interface PtAssignment extends BaseDoc, ShareSnapshot { clientId: string;
 export interface Payment extends BaseDoc { clientId: string; clientNameSnapshot: string; invoiceId: string; invoiceNumber: string; membershipId: string | null; ptAssignmentId: string | null; amount: number; method: PaymentMethod; paymentDate: string; kind: "initial" | "balance"; trainerShareAmount: number; gymAmount: number; membershipGymAmount: number; ptGymAmount: number; otherGymAmount: number; createdBy: string }
 export const ENROLLMENT_FLOW_STATUSES = ["draft", "payment_pending", "payment_completed", "biometric_pending", "active", "cancelled"] as const;
 export type EnrollmentFlowStatus = (typeof ENROLLMENT_FLOW_STATUSES)[number];
-export interface Enrollment extends BaseDoc { clientId: string; clientNameSnapshot: string; status: EnrollmentFlowStatus; membershipId: string | null; ptAssignmentId: string | null; invoiceId: string; paymentId: string | null; biometricDeviceId: string; biometricUserId: string; firstThumbRegistered: boolean; lastError: string }
+export interface Enrollment extends BaseDoc {
+  clientId: string;
+  clientNameSnapshot: string;
+  status: EnrollmentFlowStatus;
+  membershipId: string | null;
+  ptAssignmentId: string | null;
+  invoiceId: string;
+  paymentId: string | null;
+  biometricDeviceId: string;
+  biometricUserId: string;
+  firstThumbRegistered: boolean;
+  lastError: string;
+  /** When staff shared the bill on WhatsApp (manual link or API). */
+  invoiceSharedAt: Date | null;
+}
 export const PAYOUT_STATUSES = ["pending", "paid", "cancelled"] as const;
 export type PayoutStatus = (typeof PAYOUT_STATUSES)[number];
 export interface TrainerPayout extends BaseDoc { trainerId: string; trainerNameSnapshot: string; clientId: string; clientNameSnapshot: string; ptAssignmentId: string; ptPackageNameSnapshot: string; invoiceId: string; grossAmount: number; trainerShareAmount: number; gymShareAmount: number; paymentDate: string; status: PayoutStatus; paidAt: string | null }

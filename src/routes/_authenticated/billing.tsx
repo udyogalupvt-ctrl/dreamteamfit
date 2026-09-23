@@ -1,8 +1,14 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { CalendarDays, CircleDollarSign, Plus, ReceiptIndianRupee, WalletCards } from "lucide-react";
+import { format, startOfMonth } from "date-fns";
+import {
+  CalendarDays,
+  CircleDollarSign,
+  Plus,
+  ReceiptIndianRupee,
+  WalletCards,
+} from "lucide-react";
 import { z } from "zod";
-import { toast } from "sonner";
 import { CreateBillDialog } from "@/components/billing/create-bill-dialog";
 import { InvoiceActions } from "@/components/billing/invoice-actions";
 import { EmptyState } from "@/components/common/empty-state";
@@ -14,20 +20,309 @@ import { StatCard } from "@/components/common/stat-card";
 import { StatusPill } from "@/components/common/status-pill";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select,SelectContent,SelectItem,SelectTrigger,SelectValue } from "@/components/ui/select";
-import { Table,TableBody,TableCell,TableHead,TableHeader,TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useLive } from "@/hooks/use-live-query";
-import { formatDateISO,formatPrice,todayISO } from "@/lib/format";
-import { INVOICE_STATUS_META } from "@/lib/format";
-import { subscribeBusinessSettings,DEFAULT_BILLING_SETTINGS } from "@/services/business-settings.service";
+import { INVOICE_STATUS_META, formatDateISO, formatPrice, todayISO } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import {
+  DEFAULT_BILLING_SETTINGS,
+  subscribeBusinessSettings,
+} from "@/services/business-settings.service";
 import { subscribeClients } from "@/services/clients.service";
-import { generateAndUploadInvoicePdf, subscribeInvoices } from "@/services/invoices.service";
+import { buildFinanceSummary, subscribePayments } from "@/services/finance.service";
+import { subscribeInvoices } from "@/services/invoices.service";
 import { subscribePackages } from "@/services/packages.service";
-import { firestoreErrorMessage } from "@/services/firestore.service";
-import { INVOICE_PAYMENT_STATUSES,PAYMENT_METHODS,type Invoice } from "@/types/models";
+import type { Invoice, Payment } from "@/types/models";
 
-export const Route=createFileRoute("/_authenticated/billing")({validateSearch:z.object({create:z.boolean().optional(),clientId:z.string().optional()}),head:()=>({meta:[{title:"Billing & Payments — REBUILD FITNESS"},{name:"description",content:"POS billing, invoices, dues and collection tracking."}]}),component:BillingPage});
-function BillingPage(){const searchParams=Route.useSearch();const invoices=useLive<Invoice[]>(subscribeInvoices,[],[]),clients=useLive(subscribeClients,[],[]),packages=useLive(subscribePackages,[],[]),settings=useLive(subscribeBusinessSettings,DEFAULT_BILLING_SETTINGS,[]);const [open,setOpen]=useState(Boolean(searchParams.create));const [search,setSearch]=useState("");const [date,setDate]=useState("");const [status,setStatus]=useState("all");const [method,setMethod]=useState("all");const filtered=useMemo(()=>{const q=search.toLowerCase().trim();return invoices.data.filter(i=>(!date||i.invoiceDate===date)&&(status==="all"||i.paymentStatus===status)&&(method==="all"||i.paymentMethod===method)&&(!q||[i.invoiceNumber,i.clientNameSnapshot,i.clientPhoneSnapshot].some(v=>v.toLowerCase().includes(q))));},[invoices.data,search,date,status,method]);const collected=invoices.data.reduce((n,i)=>n+i.amountPaid,0),outstanding=invoices.data.filter(i=>i.paymentStatus!=="refunded").reduce((n,i)=>n+i.balanceDue,0),today=todayISO(),todayCollected=invoices.data.filter(i=>i.invoiceDate===today).reduce((n,i)=>n+i.amountPaid,0);
- const retryPdf=async(invoice:Invoice)=>{try{await generateAndUploadInvoicePdf(invoice,settings.data);toast.success("Invoice PDF generated");}catch(e){toast.error("PDF storage is unavailable",{description:firestoreErrorMessage(e)});}};
- const cards=[{id:"collected",label:"Total Revenue",value:formatPrice(collected),hint:"recorded payments",icon:CircleDollarSign,tone:"success" as const},{id:"today",label:"Today's Collection",value:formatPrice(todayCollected),hint:"payments invoiced today",icon:CalendarDays,tone:"primary" as const},{id:"outstanding",label:"Outstanding",value:formatPrice(outstanding),hint:"unpaid invoice balance",icon:WalletCards,tone:"warning" as const},{id:"invoices",label:"Invoices",value:String(invoices.data.length),hint:"permanent records",icon:ReceiptIndianRupee,tone:"info" as const}];
-  return <div className="space-y-6"><PageHeader title="Billing & Payments" description="Create bills, collect payments, and share professional invoices." breadcrumbs={[{label:"Home",to:"/dashboard"},{label:"Billing"}]} actions={<Button onClick={()=>setOpen(true)}><Plus/> Create Bill</Button>}/>{invoices.error||clients.error||packages.error||settings.error?<ErrorState error={(invoices.error||clients.error||packages.error||settings.error)!} title="Couldn't load billing data"/>:null}<div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 sm:mx-0 sm:grid sm:grid-cols-2 sm:px-0 xl:grid-cols-4">{cards.map(m=><StatCard key={m.id} metric={m} className="w-[74vw] shrink-0 sm:w-auto"/>)}</div><section className="space-y-4"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><SearchInput value={search} onValueChange={setSearch} placeholder="Invoice, client or phone…" label="Search invoices"/><Input type="date" aria-label="Filter invoice date" value={date} onChange={e=>setDate(e.target.value)}/><Select value={status} onValueChange={setStatus}><SelectTrigger aria-label="Payment status"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem>{INVOICE_PAYMENT_STATUSES.map(v=><SelectItem value={v} key={v}>{INVOICE_STATUS_META[v].label}</SelectItem>)}</SelectContent></Select><Select value={method} onValueChange={setMethod}><SelectTrigger aria-label="Payment method"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All methods</SelectItem>{PAYMENT_METHODS.map(v=><SelectItem value={v} key={v}>{v}</SelectItem>)}</SelectContent></Select></div>{invoices.loading?<LoadingRows rows={5}/>:!invoices.data.length?<EmptyState icon={ReceiptIndianRupee} title="No invoices yet" description="Create your first bill to begin recording revenue." action={<Button onClick={()=>setOpen(true)}><Plus/> Create Bill</Button>}/>:!filtered.length?<EmptyState icon={ReceiptIndianRupee} title="No matching invoices" description="Try changing your search or filters."/>:<><div className="surface-card hidden overflow-hidden md:block"><Table><TableHeader><TableRow><TableHead>Invoice</TableHead><TableHead>Client</TableHead><TableHead>Date</TableHead><TableHead className="text-right">Amount</TableHead><TableHead className="text-right">Paid</TableHead><TableHead className="text-right">Balance</TableHead><TableHead>Status</TableHead><TableHead>Method</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader><TableBody>{filtered.map(i=><TableRow key={i.id}><TableCell className="font-semibold">{i.invoiceNumber}</TableCell><TableCell>{i.clientNameSnapshot}<span className="text-meta block">{i.clientPhoneSnapshot}</span></TableCell><TableCell>{formatDateISO(i.invoiceDate)}</TableCell><TableCell className="text-right font-semibold">{formatPrice(i.total)}</TableCell><TableCell className="text-right">{formatPrice(i.amountPaid)}</TableCell><TableCell className="text-right">{formatPrice(i.balanceDue)}</TableCell><TableCell><StatusPill tone={INVOICE_STATUS_META[i.paymentStatus].tone}>{INVOICE_STATUS_META[i.paymentStatus].label}</StatusPill></TableCell><TableCell>{i.paymentMethod}</TableCell><TableCell><div className="flex items-center gap-2"><InvoiceActions invoice={i} compact/>{!i.pdfUrl?<Button size="sm" variant="ghost" onClick={()=>void retryPdf(i)}>Retry PDF</Button>:null}</div></TableCell></TableRow>)}</TableBody></Table></div><div className="grid gap-3 md:hidden">{filtered.map(i=><article className="surface-card p-4" key={i.id}><div className="flex justify-between gap-3"><div><p className="font-bold">{i.invoiceNumber}</p><p className="text-meta">{i.clientNameSnapshot} · {formatDateISO(i.invoiceDate)}</p></div><StatusPill tone={INVOICE_STATUS_META[i.paymentStatus].tone}>{INVOICE_STATUS_META[i.paymentStatus].label}</StatusPill></div><div className="my-4 grid grid-cols-3 gap-2"><div><p className="text-meta">Total</p><p className="font-bold">{formatPrice(i.total)}</p></div><div><p className="text-meta">Paid</p><p className="font-bold">{formatPrice(i.amountPaid)}</p></div><div><p className="text-meta">Balance</p><p className="font-bold">{formatPrice(i.balanceDue)}</p></div></div><InvoiceActions invoice={i}/></article>)}</div></>}</section><CreateBillDialog open={open} onOpenChange={setOpen} clients={clients.data} packages={packages.data} settings={settings.data} initialClientId={searchParams.clientId}/></div>}
+export const Route = createFileRoute("/_authenticated/billing")({
+  validateSearch: z.object({ create: z.boolean().optional(), clientId: z.string().optional() }),
+  head: () => ({
+    meta: [
+      { title: "Billing & Payments — REBUILD FITNESS" },
+      { name: "description", content: "Bills, balances due and collections." },
+    ],
+  }),
+  component: BillingPage,
+});
+
+type StatusFilter = "all" | "due" | "paid";
+
+function BillingPage() {
+  const searchParams = Route.useSearch();
+  const invoices = useLive<Invoice[]>(subscribeInvoices, [], []);
+  const payments = useLive<Payment[]>(subscribePayments, [], []);
+  const clients = useLive(subscribeClients, [], []);
+  const packages = useLive(subscribePackages, [], []);
+  const settings = useLive(subscribeBusinessSettings, DEFAULT_BILLING_SETTINGS, []);
+  const [open, setOpen] = useState(Boolean(searchParams.create));
+  const [search, setSearch] = useState("");
+  const [date, setDate] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("all");
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    return invoices.data.filter(
+      (i) =>
+        (!date || i.invoiceDate === date) &&
+        (status === "all" ||
+          (status === "due"
+            ? i.balanceDue > 0 && i.paymentStatus !== "refunded"
+            : i.balanceDue === 0)) &&
+        (!q ||
+          [i.invoiceNumber, i.clientNameSnapshot, i.clientPhoneSnapshot].some((v) =>
+            v.toLowerCase().includes(q),
+          )),
+    );
+  }, [invoices.data, search, date, status]);
+
+  const today = todayISO();
+  const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
+  const collectedToday = buildFinanceSummary(
+    payments.data,
+    invoices.data,
+    [],
+    [],
+    today,
+    today,
+  ).gross;
+  const collectedMonth = buildFinanceSummary(
+    payments.data,
+    invoices.data,
+    [],
+    [],
+    monthStart,
+    today,
+  ).gross;
+  const dueInvoices = invoices.data.filter(
+    (i) => i.paymentStatus !== "refunded" && i.balanceDue > 0,
+  );
+  const outstanding = dueInvoices.reduce((n, i) => n + i.balanceDue, 0);
+  const cards = [
+    {
+      id: "today",
+      label: "Collected today",
+      value: formatPrice(collectedToday),
+      hint: "all payments received today",
+      icon: CalendarDays,
+      tone: "success" as const,
+    },
+    {
+      id: "month",
+      label: "This month",
+      value: formatPrice(collectedMonth),
+      hint: "payments received",
+      icon: CircleDollarSign,
+      tone: "primary" as const,
+    },
+    {
+      id: "due",
+      label: "Balance due",
+      value: formatPrice(outstanding),
+      hint: `${dueInvoices.length} bill${dueInvoices.length === 1 ? "" : "s"} not fully paid`,
+      icon: WalletCards,
+      tone: "warning" as const,
+    },
+  ];
+  const error =
+    invoices.error || payments.error || clients.error || packages.error || settings.error;
+
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Billing & Payments"
+        description="Every bill, what's been paid and what's still due."
+        breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Billing" }]}
+        actions={
+          <Button onClick={() => setOpen(true)}>
+            <Plus aria-hidden /> New bill
+          </Button>
+        }
+      />
+      {error ? <ErrorState error={error} title="Couldn't load billing data" /> : null}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        {cards.map((m, i) => (
+          <StatCard key={m.id} metric={m} className={cn(i === 2 && "col-span-2 lg:col-span-1")} />
+        ))}
+      </div>
+
+      <section className="space-y-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <SearchInput
+            value={search}
+            onValueChange={setSearch}
+            placeholder="Bill no., name or phone…"
+            label="Search bills"
+            containerClassName="md:max-w-sm"
+          />
+          <div className="flex items-center gap-2">
+            <div
+              className="no-scrollbar flex gap-1.5 overflow-x-auto"
+              role="tablist"
+              aria-label="Payment status"
+            >
+              {(
+                [
+                  ["all", "All"],
+                  ["due", "Balance due"],
+                  ["paid", "Paid"],
+                ] as const
+              ).map(([v, l]) => (
+                <button
+                  key={v}
+                  role="tab"
+                  aria-selected={status === v}
+                  onClick={() => setStatus(v)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-3 py-1.5 text-sm font-semibold",
+                    status === v
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border hover:bg-accent",
+                  )}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+            <Input
+              type="date"
+              aria-label="Filter by bill date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-40 shrink-0"
+            />
+          </div>
+        </div>
+
+        {invoices.loading ? (
+          <LoadingRows rows={5} />
+        ) : !invoices.data.length ? (
+          <EmptyState
+            icon={ReceiptIndianRupee}
+            title="No bills yet"
+            description="Bills are created automatically when a member joins or renews."
+          />
+        ) : !filtered.length ? (
+          <EmptyState
+            icon={ReceiptIndianRupee}
+            title="No matching bills"
+            description="Try another search or filter."
+          />
+        ) : (
+          <>
+            <div className="surface-card hidden overflow-x-auto md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Bill</TableHead>
+                    <TableHead>Member</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Paid</TableHead>
+                    <TableHead className="text-right">Balance</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((i) => (
+                    <TableRow key={i.id}>
+                      <TableCell>
+                        <p className="font-semibold">{i.invoiceNumber}</p>
+                        <p className="text-meta">
+                          {formatDateISO(i.invoiceDate)} · {i.paymentMethod}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <p className="max-w-48 truncate">{i.clientNameSnapshot}</p>
+                        <p className="text-meta">{i.clientPhoneSnapshot}</p>
+                      </TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums">
+                        {formatPrice(i.total)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatPrice(i.amountPaid)}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          "text-right tabular-nums",
+                          i.balanceDue > 0 && "font-bold text-destructive",
+                        )}
+                      >
+                        {formatPrice(i.balanceDue)}
+                      </TableCell>
+                      <TableCell>
+                        <StatusPill tone={INVOICE_STATUS_META[i.paymentStatus].tone}>
+                          {INVOICE_STATUS_META[i.paymentStatus].label}
+                        </StatusPill>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end">
+                          <InvoiceActions invoice={i} compact />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <ul className="grid gap-3 md:hidden">
+              {filtered.map((i) => (
+                <li className="surface-card space-y-3 p-4" key={i.id}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-bold">{i.clientNameSnapshot}</p>
+                      <p className="text-meta">
+                        {i.invoiceNumber} · {formatDateISO(i.invoiceDate)}
+                      </p>
+                    </div>
+                    <StatusPill tone={INVOICE_STATUS_META[i.paymentStatus].tone}>
+                      {INVOICE_STATUS_META[i.paymentStatus].label}
+                    </StatusPill>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div>
+                      <p className="text-meta">Total</p>
+                      <p className="font-bold tabular-nums">{formatPrice(i.total)}</p>
+                    </div>
+                    <div>
+                      <p className="text-meta">Paid</p>
+                      <p className="font-bold tabular-nums">{formatPrice(i.amountPaid)}</p>
+                    </div>
+                    <div>
+                      <p className="text-meta">Balance</p>
+                      <p
+                        className={cn(
+                          "font-bold tabular-nums",
+                          i.balanceDue > 0 && "text-destructive",
+                        )}
+                      >
+                        {formatPrice(i.balanceDue)}
+                      </p>
+                    </div>
+                  </div>
+                  <InvoiceActions invoice={i} />
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+      <CreateBillDialog
+        open={open}
+        onOpenChange={setOpen}
+        clients={clients.data}
+        packages={packages.data}
+        settings={settings.data}
+        initialClientId={searchParams.clientId}
+      />
+    </div>
+  );
+}

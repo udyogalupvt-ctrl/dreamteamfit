@@ -14,20 +14,36 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { INQUIRY_STATUS_META, SOURCE_LABELS } from "@/lib/format";
+import {
+  INQUIRY_STATUS_META,
+  SOURCE_LABELS,
+  addDaysISO,
+  normalizePhone,
+  todayISO,
+} from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { createInquiry, updateInquiry, type InquiryInput } from "@/services/inquiries.service";
+import { findClientsByPhone } from "@/services/clients.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { INQUIRY_STATUSES, LEAD_SOURCES, type Inquiry } from "@/types/models";
 
 const schema = z.object({
-  name: z.string().trim().min(2, "Enter the full name").max(80, "Name is too long"),
+  name: z.string().trim().min(2, "Enter the name").max(80, "Name is too long"),
   phone: phoneSchema,
   email: z.string().trim().max(120).email("Enter a valid email").or(z.literal("")),
   fitnessGoal: z.string().trim().max(120),
   notes: z.string().trim().max(2000),
 });
 
-const EMPTY: InquiryInput = {
+const GOALS = ["Weight loss", "Muscle gain", "General fitness", "Strength", "PT enquiry"];
+const CALL_WHEN = [
+  { label: "Today", days: 0 },
+  { label: "Tomorrow", days: 1 },
+  { label: "In 3 days", days: 3 },
+  { label: "Next week", days: 7 },
+];
+
+const emptyInquiry = (): InquiryInput => ({
   name: "",
   phone: "",
   email: "",
@@ -35,8 +51,8 @@ const EMPTY: InquiryInput = {
   fitnessGoal: "",
   notes: "",
   status: "new",
-  nextFollowUpDate: null,
-};
+  nextFollowUpDate: addDaysISO(todayISO(), 1),
+});
 
 export function InquiryFormDialog({
   open,
@@ -47,18 +63,28 @@ export function InquiryFormDialog({
   onOpenChange: (open: boolean) => void;
   inquiry?: Inquiry | null;
 }) {
-  const [form, setForm] = useState<InquiryInput>(EMPTY);
+  const [form, setForm] = useState<InquiryInput>(emptyInquiry);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [memberHint, setMemberHint] = useState("");
 
   useEffect(() => {
     if (!open) return;
-    setForm(inquiry ? { ...EMPTY, ...inquiry } : EMPTY);
+    setForm(inquiry ? { ...emptyInquiry(), ...inquiry } : emptyInquiry());
     setErrors({});
+    setMemberHint("");
   }, [open, inquiry]);
 
   const set = <K extends keyof InquiryInput>(k: K, v: InquiryInput[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  const checkPhone = async () => {
+    if (inquiry || normalizePhone(form.phone).length < 10) return;
+    const found = await findClientsByPhone(form.phone).catch(() => []);
+    setMemberHint(
+      found[0] ? `${found[0].fullName} is already a member (${found[0].clientCode}).` : "",
+    );
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -80,7 +106,11 @@ export function InquiryFormDialog({
       };
       if (inquiry) await updateInquiry(inquiry.id, payload);
       else await createInquiry(payload);
-      toast.success(inquiry ? "Inquiry updated" : "Inquiry created", { description: payload.name });
+      toast.success(inquiry ? "Inquiry updated" : "Inquiry saved", {
+        description: payload.nextFollowUpDate
+          ? `Follow-up call on ${payload.nextFollowUpDate}`
+          : payload.name,
+      });
       onOpenChange(false);
     } catch (err) {
       toast.error(firestoreErrorMessage(err));
@@ -89,46 +119,67 @@ export function InquiryFormDialog({
     }
   };
 
-  const statuses = INQUIRY_STATUSES.filter((s) => s !== "converted" || inquiry?.status === "converted");
+  const statuses = INQUIRY_STATUSES.filter(
+    (s) => s !== "converted" || inquiry?.status === "converted",
+  );
 
   return (
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
       title={inquiry ? "Edit inquiry" : "New inquiry"}
-      description="Capture a lead so your team can follow up and convert."
+      {...(inquiry
+        ? {}
+        : {
+            description:
+              "Someone visited or called? Save them here and we'll remind you to call back.",
+          })}
       footer={
         <>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="submit" form="inquiry-form" disabled={saving}>
+          <Button type="submit" size="lg" form="inquiry-form" disabled={saving}>
             {saving ? <Loader2 className="animate-spin" aria-hidden /> : null}
-            {inquiry ? "Save changes" : "Create inquiry"}
+            {inquiry ? "Save changes" : "Save inquiry"}
           </Button>
         </>
       }
     >
       <form id="inquiry-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2" noValidate>
-        <Field label="Full name" htmlFor="i-name" error={errors["name"]} required>
-          <Input id="i-name" value={form.name} onChange={(e) => set("name", e.target.value)} aria-invalid={!!errors["name"]} />
+        <Field label="Name" htmlFor="i-name" error={errors["name"]} required>
+          <Input
+            id="i-name"
+            autoComplete="off"
+            value={form.name}
+            onChange={(e) => set("name", e.target.value)}
+            aria-invalid={!!errors["name"]}
+          />
         </Field>
-        <Field label="Phone" htmlFor="i-phone" error={errors["phone"]} required>
+        <Field
+          label="Mobile"
+          htmlFor="i-phone"
+          error={errors["phone"]}
+          hint={memberHint || undefined}
+          required
+        >
           <Input
             id="i-phone"
             type="tel"
             inputMode="tel"
+            autoComplete="off"
             value={form.phone}
             onChange={(e) => set("phone", e.target.value)}
+            onBlur={() => void checkPhone()}
             placeholder="98765 43210"
             aria-invalid={!!errors["phone"]}
           />
         </Field>
-        <Field label="Email" htmlFor="i-email" error={errors["email"]}>
-          <Input id="i-email" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
-        </Field>
-        <Field label="Source" htmlFor="i-source">
-          <Select value={form.source} onValueChange={(v) => set("source", v as InquiryInput["source"])}>
+        <Field label="Came through" htmlFor="i-source">
+          <Select
+            value={form.source}
+            onValueChange={(v) => set("source", v as InquiryInput["source"])}
+          >
             <SelectTrigger id="i-source" className="h-10 w-full">
               <SelectValue />
             </SelectTrigger>
@@ -141,33 +192,62 @@ export function InquiryFormDialog({
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Fitness goal" htmlFor="i-goal" error={errors["fitnessGoal"]}>
-          <Input
-            id="i-goal"
-            value={form.fitnessGoal}
-            onChange={(e) => set("fitnessGoal", e.target.value)}
-            placeholder="Weight loss, strength…"
-          />
-        </Field>
-        <Field label="Status" htmlFor="i-status">
-          <Select
-            value={form.status}
-            onValueChange={(v) => set("status", v as InquiryInput["status"])}
-            disabled={inquiry?.status === "converted"}
-          >
-            <SelectTrigger id="i-status" className="h-10 w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {statuses.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {INQUIRY_STATUS_META[s].label}
-                </SelectItem>
+        {inquiry ? (
+          <Field label="Status" htmlFor="i-status">
+            <Select
+              value={form.status}
+              onValueChange={(v) => set("status", v as InquiryInput["status"])}
+              disabled={inquiry.status === "converted"}
+            >
+              <SelectTrigger id="i-status" className="h-10 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {statuses.map((s) => (
+                  <SelectItem key={s} value={s}>
+                    {INQUIRY_STATUS_META[s].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        ) : (
+          <Field label="Looking for" htmlFor="i-goal" error={errors["fitnessGoal"]}>
+            <Input
+              id="i-goal"
+              list="i-goals"
+              value={form.fitnessGoal}
+              onChange={(e) => set("fitnessGoal", e.target.value)}
+              placeholder="Weight loss, PT…"
+            />
+            <datalist id="i-goals">
+              {GOALS.map((g) => (
+                <option key={g} value={g} />
               ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Next follow-up" htmlFor="i-follow" className="sm:col-span-2">
+            </datalist>
+          </Field>
+        )}
+        <Field label="Call them back" htmlFor="i-follow" className="sm:col-span-2">
+          <div className="flex flex-wrap gap-1.5">
+            {CALL_WHEN.map((c) => {
+              const d = addDaysISO(todayISO(), c.days);
+              return (
+                <button
+                  key={c.label}
+                  type="button"
+                  onClick={() => set("nextFollowUpDate", d)}
+                  className={cn(
+                    "rounded-lg border px-3 py-1.5 text-xs font-semibold",
+                    form.nextFollowUpDate === d
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border hover:bg-accent",
+                  )}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
           <Input
             id="i-follow"
             type="date"
@@ -175,8 +255,23 @@ export function InquiryFormDialog({
             onChange={(e) => set("nextFollowUpDate", e.target.value || null)}
           />
         </Field>
+        {inquiry ? (
+          <Field label="Looking for" htmlFor="i-goal" error={errors["fitnessGoal"]}>
+            <Input
+              id="i-goal"
+              value={form.fitnessGoal}
+              onChange={(e) => set("fitnessGoal", e.target.value)}
+            />
+          </Field>
+        ) : null}
         <Field label="Notes" htmlFor="i-notes" className="sm:col-span-2" error={errors["notes"]}>
-          <Textarea id="i-notes" rows={4} value={form.notes} onChange={(e) => set("notes", e.target.value)} />
+          <Textarea
+            id="i-notes"
+            rows={2}
+            value={form.notes}
+            onChange={(e) => set("notes", e.target.value)}
+            placeholder="Budget, timing, questions they asked…"
+          />
         </Field>
       </form>
     </FormDialog>

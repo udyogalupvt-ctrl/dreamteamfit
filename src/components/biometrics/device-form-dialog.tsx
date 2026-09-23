@@ -1,3 +1,190 @@
-import { useEffect,useState } from "react";import { Loader2 } from "lucide-react";import { toast } from "sonner";import { Field,FormDialog } from "@/components/common/form-dialog";import { Button } from "@/components/ui/button";import { Input } from "@/components/ui/input";import { Select,SelectContent,SelectItem,SelectTrigger,SelectValue } from "@/components/ui/select";import { deviceSchema } from "@/lib/biometric-validation";import { saveDevice,type DeviceInput } from "@/services/biometric-devices.service";import { firestoreErrorMessage } from "@/services/firestore.service";import type { BiometricDevice } from "@/types/models";
-const EMPTY:DeviceInput={name:"",manufacturer:"Other",model:"",serialNumber:"",deviceType:"Biometric terminal",location:"",connectionType:"LAN",ipAddress:"",port:null,status:"unknown",integrationType:"manual"};
-export function DeviceFormDialog({open,onOpenChange,device}:{open:boolean;onOpenChange:(v:boolean)=>void;device?:BiometricDevice|null}){const [form,setForm]=useState<DeviceInput>(EMPTY);const [saving,setSaving]=useState(false);const [error,setError]=useState("");useEffect(()=>{if(open){setForm(device?{name:device.name,manufacturer:device.manufacturer,model:device.model,serialNumber:device.serialNumber,deviceType:device.deviceType,location:device.location,connectionType:device.connectionType,ipAddress:device.ipAddress,port:device.port,status:device.status,integrationType:device.integrationType}:EMPTY);setError("")}},[open,device]);const set=<K extends keyof DeviceInput>(k:K,v:DeviceInput[K])=>setForm(f=>({...f,[k]:v}));const submit=async(e:React.FormEvent)=>{e.preventDefault();const parsed=deviceSchema.safeParse(form);if(!parsed.success){setError(parsed.error.issues[0]?.message??"Check the device details");return}setSaving(true);try{await saveDevice(parsed.data,device?.id);toast.success(device?"Device updated":"Device added");onOpenChange(false)}catch(err){setError(firestoreErrorMessage(err))}finally{setSaving(false)}};return <FormDialog open={open} onOpenChange={onOpenChange} title={device?"Edit biometric device":"Add biometric device"} description="Connection details are optional until the exact hardware is configured." className="sm:max-w-2xl" footer={<><Button variant="outline" onClick={()=>onOpenChange(false)}>Cancel</Button><Button type="submit" form="device-form" disabled={saving}>{saving?<Loader2 className="animate-spin"/>:null}Save device</Button></>}><form id="device-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2"><Field label="Device name" htmlFor="d-name" required><Input id="d-name" value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Main Entrance"/></Field><Field label="Location" htmlFor="d-location"><Input id="d-location" value={form.location} onChange={e=>set("location",e.target.value)}/></Field><Field label="Manufacturer" htmlFor="d-maker"><Select value={form.manufacturer} onValueChange={v=>set("manufacturer",v as DeviceInput["manufacturer"])}><SelectTrigger id="d-maker"><SelectValue/></SelectTrigger><SelectContent>{["eSSL","ZKTeco","Other"].map(v=><SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field><Field label="Model" htmlFor="d-model"><Input id="d-model" value={form.model} onChange={e=>set("model",e.target.value)} placeholder="Optional"/></Field><Field label="Serial number" htmlFor="d-serial"><Input id="d-serial" value={form.serialNumber} onChange={e=>set("serialNumber",e.target.value)}/></Field><Field label="Connection" htmlFor="d-connection"><Select value={form.connectionType} onValueChange={v=>set("connectionType",v as DeviceInput["connectionType"])}><SelectTrigger id="d-connection"><SelectValue/></SelectTrigger><SelectContent>{["LAN","USB","Cloud","Other"].map(v=><SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field><Field label="IP address" htmlFor="d-ip"><Input id="d-ip" value={form.ipAddress} onChange={e=>set("ipAddress",e.target.value)} placeholder="Optional"/></Field><Field label="Port" htmlFor="d-port"><Input id="d-port" type="number" value={form.port??""} onChange={e=>set("port",e.target.value?Number(e.target.value):null)} placeholder="Optional"/></Field><Field label="Integration" htmlFor="d-integration"><Select value={form.integrationType} onValueChange={v=>set("integrationType",v as DeviceInput["integrationType"])}><SelectTrigger id="d-integration"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="mock">Mock simulator</SelectItem><SelectItem value="adapter">Hardware adapter</SelectItem><SelectItem value="manual">Manual only</SelectItem></SelectContent></Select></Field><Field label="Status" htmlFor="d-status"><Select value={form.status} onValueChange={v=>set("status",v as DeviceInput["status"])}><SelectTrigger id="d-status"><SelectValue/></SelectTrigger><SelectContent>{["online","offline","unknown","disabled"].map(v=><SelectItem key={v} value={v}>{v[0]?.toUpperCase()+v.slice(1)}</SelectItem>)}</SelectContent></Select></Field>{error?<p role="alert" className="text-sm font-medium text-destructive sm:col-span-2">{error}</p>:null}</form></FormDialog>}
+import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { Field, FormDialog } from "@/components/common/form-dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { deviceSchema } from "@/lib/biometric-validation";
+import { saveDevice, type DeviceInput } from "@/services/biometric-devices.service";
+import { firestoreErrorMessage } from "@/services/firestore.service";
+import type { BiometricDevice } from "@/types/models";
+
+const EMPTY: DeviceInput = {
+  name: "Main entrance",
+  manufacturer: "eSSL",
+  model: "",
+  serialNumber: "",
+  deviceType: "Biometric terminal",
+  location: "",
+  connectionType: "Cloud",
+  ipAddress: "",
+  port: null,
+  status: "unknown",
+  integrationType: "adms",
+};
+
+export function DeviceFormDialog({
+  open,
+  onOpenChange,
+  device,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  device?: BiometricDevice | null;
+}) {
+  const [form, setForm] = useState<DeviceInput>(EMPTY);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    setForm(
+      device
+        ? {
+            name: device.name,
+            manufacturer: device.manufacturer,
+            model: device.model,
+            serialNumber: device.serialNumber,
+            deviceType: device.deviceType,
+            location: device.location,
+            connectionType: device.connectionType,
+            ipAddress: device.ipAddress,
+            port: device.port,
+            status: device.status === "disabled" ? "disabled" : "unknown",
+            integrationType: device.integrationType,
+          }
+        : EMPTY,
+    );
+    setError("");
+  }, [open, device]);
+  const set = <K extends keyof DeviceInput>(k: K, v: DeviceInput[K]) =>
+    setForm((f) => ({ ...f, [k]: v }));
+  const cloud = form.integrationType === "adms";
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsed = deviceSchema.safeParse(form);
+    if (!parsed.success)
+      return setError(parsed.error.issues[0]?.message ?? "Check the device details");
+    if (cloud && parsed.data.serialNumber.trim().length < 5)
+      return setError("Enter the device serial number (Menu → System info → Device info).");
+    setSaving(true);
+    try {
+      await saveDevice(parsed.data, device?.id);
+      toast.success(device ? "Device updated" : "Device added", {
+        description: cloud ? "Now enter the cloud server settings on the device." : undefined,
+      });
+      onOpenChange(false);
+    } catch (err) {
+      setError(firestoreErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={device ? "Edit device" : "Add fingerprint device"}
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button type="submit" form="device-form" disabled={saving}>
+            {saving ? <Loader2 className="animate-spin" aria-hidden /> : null}Save device
+          </Button>
+        </>
+      }
+    >
+      <form id="device-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+        <Field label="How is it connected?" htmlFor="d-integration" className="sm:col-span-2">
+          <Select
+            value={form.integrationType}
+            onValueChange={(v) => set("integrationType", v as DeviceInput["integrationType"])}
+          >
+            <SelectTrigger id="d-integration" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="adms">Cloud (eSSL / ZKTeco ADMS) — recommended</SelectItem>
+              <SelectItem value="manual">Not connected (attendance entered by hand)</SelectItem>
+              <SelectItem value="mock">
+                Test device (practice only, never activates members)
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Name" htmlFor="d-name" required>
+          <Input
+            id="d-name"
+            value={form.name}
+            onChange={(e) => set("name", e.target.value)}
+            placeholder="Main entrance"
+          />
+        </Field>
+        <Field label="Brand" htmlFor="d-maker">
+          <Select
+            value={form.manufacturer}
+            onValueChange={(v) => set("manufacturer", v as DeviceInput["manufacturer"])}
+          >
+            <SelectTrigger id="d-maker" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(["eSSL", "ZKTeco", "Other"] as const).map((v) => (
+                <SelectItem key={v} value={v}>
+                  {v}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        {cloud ? (
+          <Field
+            label="Serial number"
+            htmlFor="d-serial"
+            required
+            hint="On the device: Menu → System info → Device info"
+            className="sm:col-span-2"
+          >
+            <Input
+              id="d-serial"
+              value={form.serialNumber}
+              autoCapitalize="characters"
+              onChange={(e) => set("serialNumber", e.target.value.toUpperCase())}
+              placeholder="e.g. CQZ7234560123"
+            />
+          </Field>
+        ) : null}
+        <Field label="Model (optional)" htmlFor="d-model">
+          <Input
+            id="d-model"
+            value={form.model}
+            onChange={(e) => set("model", e.target.value)}
+            placeholder="e.g. X990, K30 Pro"
+          />
+        </Field>
+        <Field label="Location (optional)" htmlFor="d-location">
+          <Input
+            id="d-location"
+            value={form.location}
+            onChange={(e) => set("location", e.target.value)}
+          />
+        </Field>
+        {error ? (
+          <p role="alert" className="text-sm font-medium text-destructive sm:col-span-2">
+            {error}
+          </p>
+        ) : null}
+      </form>
+    </FormDialog>
+  );
+}

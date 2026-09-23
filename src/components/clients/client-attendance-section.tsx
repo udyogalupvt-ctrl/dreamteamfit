@@ -1,3 +1,136 @@
-import { useMemo,useState } from "react";import { format } from "date-fns";import { CalendarCheck,Fingerprint,Plus,ShieldCheck } from "lucide-react";import { BiometricSetupDialog } from "@/components/biometrics/biometric-setup-dialog";import { EmptyState } from "@/components/common/empty-state";import { ErrorState } from "@/components/common/error-state";import { Shimmer } from "@/components/common/loading-state";import { StatusPill } from "@/components/common/status-pill";import { Button } from "@/components/ui/button";import { useLive } from "@/hooks/use-live-query";import { ACCESS_REASON_LABELS,EVENT_LABELS } from "@/lib/attendance-utils";import { decideMemberAccess } from "@/services/access-decision.service";import { subscribeClientAttendance } from "@/services/attendance.service";import { subscribeDevices } from "@/services/biometric-devices.service";import type { AttendanceEvent,BiometricDevice,Client,Membership } from "@/types/models";
-export function ClientAttendanceSection({client,memberships}:{client:Client;memberships:Membership[]}){const events=useLive<AttendanceEvent[]>((ok,fail)=>subscribeClientAttendance(client.id,ok,fail),[],[client.id]);const devices=useLive<BiometricDevice[]>(subscribeDevices,[],[]);const [setup,setSetup]=useState(false);const device=devices.data.find(d=>d.id===client.biometricDeviceId);const decision=useMemo(()=>decideMemberAccess(client,memberships,Boolean(device)),[client,memberships,device]);const visits=events.data.filter(e=>e.eventType==="check_in"&&e.accessDecision==="allowed");return <div className="space-y-4"><section className="surface-card p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-eyebrow">Biometric Access</p><h2 className="text-section-title mt-1">{client.biometricUserId?`ID ${client.biometricUserId}`:"Not enrolled"}</h2><p className="text-meta mt-1">{device?.name??"No device assigned"}</p></div><Button onClick={()=>setSetup(true)}><Fingerprint/>{client.biometricUserId?"Edit Biometric ID":"Assign Biometric ID"}</Button></div><dl className="mt-5 grid gap-3 sm:grid-cols-4"><Tile label="Status"><StatusPill tone={client.biometricStatus==="active"?"success":client.biometricStatus==="disabled"?"danger":"warning"}>{client.biometricStatus.replace("_"," ")}</StatusPill></Tile><Tile label="Membership"><span className="font-semibold">{decision.membershipId?`Active until ${client.currentMembership?.endDate??"—"}`:ACCESS_REASON_LABELS[decision.reason]}</span></Tile><Tile label="Access"><StatusPill tone={decision.allowed?"success":"danger"}>{decision.allowed?"Allowed":client.biometricStatus==="disabled"?"Disabled":decision.reason==="MEMBERSHIP_EXPIRED"?"Expired":"Blocked"}</StatusPill></Tile><Tile label="Software toggle"><Button size="sm" variant={client.biometricStatus==="active"?"default":"outline"} onClick={()=>setSetup(true)}>{client.biometricStatus==="active"?"ON":"OFF"}</Button></Tile></dl><p className="text-meta mt-4">Fingerprint enrollment remains on the physical device; no fingerprint data is stored here.</p></section>{events.loading?<Shimmer className="h-36 rounded-xl"/>:events.error?<ErrorState error={events.error} title="Couldn't load attendance"/>:<section className="surface-card p-5"><div className="grid gap-3 sm:grid-cols-2"><Tile label="Last Visit"><span className="text-lg font-bold">{visits[0]?format(visits[0].timestamp,"dd MMM, hh:mm a"):"—"}</span></Tile><Tile label="Total Visits"><span className="text-lg font-bold">{visits.length}</span></Tile></div><h3 className="text-section-title mt-6">Recent Attendance</h3>{events.data.length===0?<EmptyState icon={CalendarCheck} title="No attendance records yet" description="Scans and manual attendance for this client will appear here."/>:<div className="mt-3 divide-y divide-border">{events.data.slice(0,20).map(e=><article className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center" key={e.id}><span className="grid size-9 place-items-center rounded-lg bg-primary/15 text-primary-foreground"><ShieldCheck className="size-4"/></span><div className="min-w-0 flex-1"><p className="font-semibold">{format(e.timestamp,"dd MMM, hh:mm a")}</p><p className="text-meta">{e.deviceNameSnapshot} · {EVENT_LABELS[e.eventType]} · {e.source}</p></div><StatusPill tone={e.accessDecision==="allowed"?"success":"danger"}>{e.accessDecision}</StatusPill></article>)}</div>}</section>}<BiometricSetupDialog open={setup} onOpenChange={setSetup} client={client} devices={devices.data}/></div>}
-function Tile({label,children}:{label:string;children:React.ReactNode}){return <div className="rounded-lg border border-border bg-muted/40 p-3"><dt className="text-meta">{label}</dt><dd className="mt-1">{children}</dd></div>}
+import { useMemo } from "react";
+import { format } from "date-fns";
+import { CalendarCheck, Fingerprint, ShieldCheck, ShieldX } from "lucide-react";
+import { toast } from "sonner";
+import { useEnrollment } from "@/components/enrollment/enrollment-context";
+import { EmptyState } from "@/components/common/empty-state";
+import { ErrorState } from "@/components/common/error-state";
+import { Shimmer } from "@/components/common/loading-state";
+import { StatusPill } from "@/components/common/status-pill";
+import { Button } from "@/components/ui/button";
+import { useLive } from "@/hooks/use-live-query";
+import { ACCESS_REASON_LABELS, EVENT_LABELS } from "@/lib/attendance-utils";
+import { decideMemberAccess } from "@/services/access-decision.service";
+import { subscribeClientAttendance } from "@/services/attendance.service";
+import { updateClient } from "@/services/clients.service";
+import { firestoreErrorMessage } from "@/services/firestore.service";
+import type { AttendanceEvent, Client, Membership } from "@/types/models";
+
+export function ClientAttendanceSection({
+  client,
+  memberships,
+}: {
+  client: Client;
+  memberships: Membership[];
+}) {
+  const events = useLive<AttendanceEvent[]>(
+    (ok, fail) => subscribeClientAttendance(client.id, ok, fail),
+    [],
+    [client.id],
+  );
+  const { resumeSetup } = useEnrollment();
+  const decision = useMemo(
+    () => decideMemberAccess(client, memberships, true),
+    [client, memberships],
+  );
+  const visits = events.data.filter(
+    (e) => e.eventType === "check_in" && e.accessDecision === "allowed",
+  );
+  const blocked = client.biometricStatus === "disabled";
+
+  const toggleEntry = async () => {
+    try {
+      await updateClient(client.id, { biometricStatus: blocked ? "active" : "disabled" });
+      toast.success(blocked ? "Entry allowed again" : "Entry blocked for this member");
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <section className="surface-card p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            {decision.allowed ? (
+              <ShieldCheck className="size-8 text-success" aria-hidden />
+            ) : (
+              <ShieldX className="size-8 text-destructive" aria-hidden />
+            )}
+            <div>
+              <p className="text-card-title">
+                {decision.allowed ? "Entry allowed" : "Entry blocked"}
+              </p>
+              <p className="text-meta">
+                {!client.firstThumbRegistered
+                  ? "Thumb not registered yet"
+                  : blocked
+                    ? "Blocked by staff"
+                    : ACCESS_REASON_LABELS[decision.reason]}
+                {client.biometricUserId ? ` · ID ${client.biometricUserId} on device` : ""}
+                {client.deviceAccess === "removed" ? " · removed from the door device" : ""}
+              </p>
+            </div>
+          </div>
+          {!client.firstThumbRegistered ? (
+            <Button onClick={() => resumeSetup(client)}>
+              <Fingerprint aria-hidden /> Register thumb
+            </Button>
+          ) : (
+            <Button variant={blocked ? "default" : "outline"} onClick={() => void toggleEntry()}>
+              {blocked ? "Allow entry" : "Block entry"}
+            </Button>
+          )}
+        </div>
+      </section>
+
+      {events.loading ? (
+        <Shimmer className="h-36 rounded-xl" />
+      ) : events.error ? (
+        <ErrorState error={events.error} title="Couldn't load visits" />
+      ) : (
+        <section className="surface-card p-4 sm:p-5">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl bg-muted/50 p-3">
+              <p className="text-meta">Last visit</p>
+              <p className="font-bold">
+                {visits[0] ? format(visits[0].timestamp, "dd MMM, hh:mm a") : "—"}
+              </p>
+            </div>
+            <div className="rounded-xl bg-muted/50 p-3">
+              <p className="text-meta">Total visits</p>
+              <p className="font-bold">{visits.length}</p>
+            </div>
+          </div>
+          <h3 className="text-card-title mt-5">Recent visits</h3>
+          {events.data.length === 0 ? (
+            <EmptyState
+              icon={CalendarCheck}
+              title="No visits yet"
+              description="Thumb scans at the entrance appear here automatically."
+            />
+          ) : (
+            <ul className="mt-2 divide-y divide-border">
+              {events.data.slice(0, 20).map((e) => (
+                <li className="flex items-center justify-between gap-3 py-3" key={e.id}>
+                  <div className="min-w-0">
+                    <p className="font-semibold">{format(e.timestamp, "dd MMM, hh:mm a")}</p>
+                    <p className="text-meta">
+                      {EVENT_LABELS[e.eventType]} ·{" "}
+                      {e.source === "manual" ? "entered by staff" : e.deviceNameSnapshot}
+                    </p>
+                  </div>
+                  <StatusPill tone={e.accessDecision === "allowed" ? "success" : "danger"}>
+                    {e.accessDecision === "allowed"
+                      ? "allowed"
+                      : ACCESS_REASON_LABELS[e.accessReason]}
+                  </StatusPill>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}

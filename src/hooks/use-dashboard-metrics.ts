@@ -30,11 +30,32 @@ import { subscribeClassEnrollments } from "@/services/class-enrollments.service"
 import { subscribeExpenseActivities, subscribeExpenses } from "@/services/expenses.service";
 import { subscribeInvoices } from "@/services/invoices.service";
 import type { ActivityItem, StatMetric } from "@/types";
-import type { AttendanceEvent, AutomationActivity, Booking, ClassEnrollment, Client, DietAssignment, Expense, ExpenseActivity, FollowUp, GroupClass, Inquiry, Invoice, Membership, WorkoutAssignment } from "@/types/models";
+import type {
+  AttendanceEvent,
+  AutomationActivity,
+  Booking,
+  ClassEnrollment,
+  Client,
+  DietAssignment,
+  Expense,
+  ExpenseActivity,
+  FollowUp,
+  GroupClass,
+  Inquiry,
+  Invoice,
+  Membership,
+  WorkoutAssignment,
+} from "@/types/models";
 import { subscribeAttendance } from "@/services/attendance.service";
 import { subscribeFollowUps } from "@/services/followups.service";
 import { subscribeAutomationActivities } from "@/services/notifications.service";
 import { attendanceSummary } from "@/lib/attendance-utils";
+import {
+  buildFinanceSummary,
+  subscribeManualIncome,
+  subscribePayments,
+} from "@/services/finance.service";
+import type { ManualIncome, Payment } from "@/types/models";
 
 /** Derives dashboard numbers from live Firestore data only — nothing is invented. */
 export function useDashboardMetrics() {
@@ -52,22 +73,86 @@ export function useDashboardMetrics() {
   const attendance = useLive<AttendanceEvent[]>(subscribeAttendance, [], []);
   const followUps = useLive<FollowUp[]>(subscribeFollowUps, [], []);
   const automationActivities = useLive<AutomationActivity[]>(subscribeAutomationActivities, [], []);
+  const payments = useLive<Payment[]>(subscribePayments, [], []);
+  const manualIncome = useLive<ManualIncome[]>(subscribeManualIncome, [], []);
 
-  const loading = clients.loading || memberships.loading || inquiries.loading || workouts.loading || diets.loading || bookings.loading || classes.loading || enrollments.loading || expenses.loading || expenseActivities.loading || invoices.loading || attendance.loading || followUps.loading || automationActivities.loading;
-  const error = clients.error ?? memberships.error ?? inquiries.error ?? workouts.error ?? diets.error ?? bookings.error ?? classes.error ?? enrollments.error ?? expenses.error ?? expenseActivities.error ?? invoices.error ?? attendance.error ?? followUps.error ?? automationActivities.error;
+  const loading =
+    payments.loading ||
+    clients.loading ||
+    memberships.loading ||
+    inquiries.loading ||
+    workouts.loading ||
+    diets.loading ||
+    bookings.loading ||
+    classes.loading ||
+    enrollments.loading ||
+    expenses.loading ||
+    expenseActivities.loading ||
+    invoices.loading ||
+    attendance.loading ||
+    followUps.loading ||
+    automationActivities.loading;
+  const error =
+    payments.error ??
+    manualIncome.error ??
+    clients.error ??
+    memberships.error ??
+    inquiries.error ??
+    workouts.error ??
+    diets.error ??
+    bookings.error ??
+    classes.error ??
+    enrollments.error ??
+    expenses.error ??
+    expenseActivities.error ??
+    invoices.error ??
+    attendance.error ??
+    followUps.error ??
+    automationActivities.error;
 
   const result = useMemo(() => {
     const today = todayISO();
     const in7 = format(addDays(new Date(), 7), "yyyy-MM-dd");
     const monthStart = startOfMonth(new Date());
     const monthStartISO = format(monthStart, "yyyy-MM-dd");
-    const todayExpenses = expenses.data.filter((item) => item.date === today).reduce((sum, item) => sum + item.amount, 0);
-    const monthExpenses = expenses.data.filter((item) => item.date >= monthStartISO && item.date <= today).reduce((sum, item) => sum + item.amount, 0);
-    const totalCollected = invoices.data.reduce((sum,item)=>sum+item.amountPaid,0);
-    const todayCollected = invoices.data.filter(item=>item.invoiceDate===today).reduce((sum,item)=>sum+item.amountPaid,0);
-    const monthCollected = invoices.data.filter(item=>item.invoiceDate>=monthStartISO&&item.invoiceDate<=today).reduce((sum,item)=>sum+item.amountPaid,0);
-    const outstanding = invoices.data.filter(item=>item.paymentStatus!=="refunded").reduce((sum,item)=>sum+item.balanceDue,0);
-    const attendanceToday=attendance.data.filter(item=>item.attendanceDate===today);const attendanceTotals=attendanceSummary(attendanceToday);
+    const todayExpenses = expenses.data
+      .filter((item) => item.date === today)
+      .reduce((sum, item) => sum + item.amount, 0);
+    const monthExpenses = expenses.data
+      .filter((item) => item.date >= monthStartISO && item.date <= today)
+      .reduce((sum, item) => sum + item.amount, 0);
+    // Money comes from payment records (by payment date), so a balance paid today counts today.
+    const expenseRows = expenses.data.map((e) => ({ amount: e.amount, date: e.date }));
+    const allTime = buildFinanceSummary(
+      payments.data,
+      invoices.data,
+      manualIncome.data,
+      expenseRows,
+    );
+    const todayMoney = buildFinanceSummary(
+      payments.data,
+      invoices.data,
+      manualIncome.data,
+      expenseRows,
+      today,
+      today,
+    );
+    const monthMoney = buildFinanceSummary(
+      payments.data,
+      invoices.data,
+      manualIncome.data,
+      expenseRows,
+      monthStartISO,
+      today,
+    );
+    const totalCollected = allTime.gross;
+    const todayCollected = todayMoney.gross;
+    const monthCollected = monthMoney.gross;
+    const outstanding = invoices.data
+      .filter((item) => item.paymentStatus !== "refunded")
+      .reduce((sum, item) => sum + item.balanceDue, 0);
+    const attendanceToday = attendance.data.filter((item) => item.attendanceDate === today);
+    const attendanceTotals = attendanceSummary(attendanceToday);
 
     const byClient = new Map<string, Membership[]>();
     memberships.data.forEach((m) => {
@@ -89,7 +174,10 @@ export function useDashboardMetrics() {
         if (current.m.endDate <= in7) renewals += 1;
         if (current.m.endDate === today) expiringToday += 1;
         if (current.m.endDate === in7) expiringIn7Days += 1;
-      } else if (!statuses.some((x) => x.s === "pending") && statuses.some((x) => x.s === "expired")) {
+      } else if (
+        !statuses.some((x) => x.s === "pending") &&
+        statuses.some((x) => x.s === "expired")
+      ) {
         expired += 1;
       }
     });
@@ -97,45 +185,189 @@ export function useDashboardMetrics() {
     const newClients = clients.data.filter((c) => c.createdAt >= monthStart).length;
     const withDob = clients.data.filter((c) => c.dateOfBirth);
     const birthdays = withDob.filter((c) => c.dateOfBirth!.slice(5) === today.slice(5)).length;
-    const followUpsDue = followUps.data.filter((item) => item.status === "pending" && item.followUpDate <= today).length;
+    const followUpsDue = followUps.data.filter(
+      (item) => item.status === "pending" && item.followUpDate <= today,
+    ).length;
+
+    const visitsToday = attendanceTotals.visits;
+    const primary: StatMetric[] = [
+      {
+        id: "today-collection",
+        label: "Collected today",
+        value: formatPrice(todayCollected),
+        hint: "all payments received today",
+        icon: BadgeIndianRupee,
+        tone: "success",
+      },
+      {
+        id: "month-collection",
+        label: "This month",
+        value: formatPrice(monthCollected),
+        hint: `gym income ${formatPrice(monthMoney.gymIncome)}`,
+        icon: BadgeIndianRupee,
+        tone: "primary",
+      },
+      {
+        id: "active",
+        label: "Active members",
+        value: formatNumber(active),
+        hint: `${formatNumber(newClients)} joined this month`,
+        icon: UserRoundCheck,
+        tone: "info",
+      },
+      {
+        id: "attendance",
+        label: "Visits today",
+        value: formatNumber(visitsToday),
+        hint: `${attendanceTotals.present} inside now · ${attendanceTotals.blocked} blocked`,
+        icon: CalendarCheck,
+        tone: "violet",
+      },
+    ];
 
     const stats: StatMetric[] = [
-      { id: "new-clients", label: "New Clients", value: formatNumber(newClients), hint: "this month", icon: UserPlus, tone: "primary" },
-      { id: "today-collection", label: "Today's Collection", value: formatPrice(todayCollected), hint: "recorded payments today", icon: BadgeIndianRupee, tone: "success" },
-      { id: "month-collection", label: "This Month's Collection", value: formatPrice(monthCollected), hint: "recorded payments this month", icon: BadgeIndianRupee, tone: "success" },
-      { id: "collection", label: "Total Revenue", value: formatPrice(totalCollected), hint: "all recorded payments", icon: BadgeIndianRupee, tone: "success" },
-      { id: "outstanding", label: "Outstanding Amount", value: formatPrice(outstanding), hint: "unpaid invoice balance", icon: CreditCard, tone: "warning" },
-      { id: "active", label: "Active Members", value: formatNumber(active), hint: "with a running membership", icon: UserRoundCheck, tone: "info" },
-      { id: "expired", label: "Expired Members", value: formatNumber(expired), hint: "no active plan", icon: UserRoundX, tone: "danger" },
-      { id: "attendance", label: "Today's Visits", value: formatNumber(attendanceTotals.visits), hint: `${attendanceTotals.present} present · ${attendanceTotals.blocked} blocked`, icon: CalendarCheck, tone: "violet" },
-      { id: "follow-ups", label: "Follow-ups", value: formatNumber(followUpsDue), hint: "pending and due", icon: MessageSquareHeart, tone: "warning" },
-      { id: "renewals", label: "Upcoming Renewals", value: formatNumber(renewals), hint: "ending in 7 days", icon: RefreshCcw, tone: "info" },
-      { id: "workouts", label: "Workout Plans Assigned", value: formatNumber(workouts.data.filter((item) => item.status === "active").length), hint: "currently active", icon: Dumbbell, tone: "primary" },
-      { id: "diets", label: "Diet Plans Assigned", value: formatNumber(diets.data.filter((item) => item.status === "active").length), hint: "currently active", icon: Salad, tone: "success" },
-      { id: "pt-today", label: "Today's PT Sessions", value: formatNumber(bookings.data.filter((item) => item.bookingType === "pt" && item.status === "scheduled" && item.date === today).length), hint: "scheduled today", icon: Dumbbell, tone: "primary" },
-      { id: "pt-upcoming", label: "Upcoming PT Sessions", value: formatNumber(bookings.data.filter((item) => item.bookingType === "pt" && item.status === "scheduled" && item.date > today).length), hint: "after today", icon: Dumbbell, tone: "info" },
-      { id: "pt-completed", label: "Completed PT Sessions", value: formatNumber(bookings.data.filter((item) => item.bookingType === "pt" && item.status === "completed").length), hint: "delivered sessions", icon: Dumbbell, tone: "success" },
-      { id: "group-booked", label: "Booked Group Classes", value: formatNumber(enrollments.data.filter((item) => item.status === "enrolled").length), hint: "active enrollments", icon: UsersRound, tone: "info" },
-      { id: "today-schedule", label: "Today's Schedule", value: formatNumber(bookings.data.filter((item) => item.date === today && item.status === "scheduled").length + classes.data.filter((item) => item.date === today && item.status === "scheduled").length), hint: "bookings and classes", icon: CalendarClock, tone: "warning" },
-      { id: "today-expenses", label: "Today's Expenses", value: formatPrice(todayExpenses), hint: "from expense records", icon: ReceiptIndianRupee, tone: "danger" },
-      { id: "month-expenses", label: "Monthly Expenses", value: formatPrice(monthExpenses), hint: "current month", icon: ReceiptIndianRupee, tone: "warning" },
-      { id: "profit-loss", label: "Profit/Loss", value: formatPrice(totalCollected-expenses.data.reduce((sum,item)=>sum+item.amount,0)), hint: "collected revenue minus expenses", icon: BadgeIndianRupee, tone: totalCollected-expenses.data.reduce((sum,item)=>sum+item.amount,0)>=0?"success":"danger" },
+      {
+        id: "profit-loss",
+        label: "Profit this month",
+        value: formatPrice(monthMoney.net),
+        hint: "gym income − expenses (trainer share excluded)",
+        icon: BadgeIndianRupee,
+        tone: monthMoney.net >= 0 ? "success" : "danger",
+      },
+      {
+        id: "month-expenses",
+        label: "Expenses this month",
+        value: formatPrice(monthExpenses),
+        hint: `${formatPrice(todayExpenses)} today`,
+        icon: ReceiptIndianRupee,
+        tone: "warning",
+      },
+      {
+        id: "trainer-payable",
+        label: "Trainer share this month",
+        value: formatPrice(monthMoney.trainerPayable),
+        hint: "owed to trainers from PT",
+        icon: Dumbbell,
+        tone: "info",
+      },
+      {
+        id: "outstanding",
+        label: "Balance due",
+        value: formatPrice(outstanding),
+        hint: "unpaid on bills",
+        icon: CreditCard,
+        tone: "warning",
+      },
+      {
+        id: "collection",
+        label: "Total collected",
+        value: formatPrice(totalCollected),
+        hint: "all time",
+        icon: BadgeIndianRupee,
+        tone: "success",
+      },
+      {
+        id: "new-clients",
+        label: "New members",
+        value: formatNumber(newClients),
+        hint: "this month",
+        icon: UserPlus,
+        tone: "primary",
+      },
+      {
+        id: "expired",
+        label: "Expired members",
+        value: formatNumber(expired),
+        hint: "no running plan",
+        icon: UserRoundX,
+        tone: "danger",
+      },
+      {
+        id: "renewals",
+        label: "Ending in 7 days",
+        value: formatNumber(renewals),
+        hint: "renewals coming up",
+        icon: RefreshCcw,
+        tone: "info",
+      },
+      {
+        id: "follow-ups",
+        label: "Calls due",
+        value: formatNumber(followUpsDue),
+        hint: "follow-ups due today or overdue",
+        icon: MessageSquareHeart,
+        tone: "warning",
+      },
+      {
+        id: "pt-today",
+        label: "PT sessions today",
+        value: formatNumber(
+          bookings.data.filter(
+            (item) =>
+              item.bookingType === "pt" && item.status === "scheduled" && item.date === today,
+          ).length,
+        ),
+        hint: `${formatNumber(bookings.data.filter((item) => item.bookingType === "pt" && item.status === "scheduled" && item.date > today).length)} upcoming`,
+        icon: Dumbbell,
+        tone: "primary",
+      },
+      {
+        id: "group-booked",
+        label: "Class bookings",
+        value: formatNumber(enrollments.data.filter((item) => item.status === "enrolled").length),
+        hint: "active enrollments",
+        icon: UsersRound,
+        tone: "info",
+      },
+      {
+        id: "today-schedule",
+        label: "Today's schedule",
+        value: formatNumber(
+          bookings.data.filter((item) => item.date === today && item.status === "scheduled")
+            .length +
+            classes.data.filter((item) => item.date === today && item.status === "scheduled")
+              .length,
+        ),
+        hint: "bookings and classes",
+        icon: CalendarClock,
+        tone: "warning",
+      },
       {
         id: "birthdays",
-        label: "Birthdays Today",
+        label: "Birthdays today",
         value: formatNumber(birthdays),
-        hint: birthdays ? "clients" : "No birthdays today",
+        hint: birthdays ? "send wishes" : "none today",
         icon: Cake,
         tone: "violet",
+      },
+      {
+        id: "plans",
+        label: "Workout / diet plans",
+        value: `${formatNumber(workouts.data.filter((item) => item.status === "active").length)} / ${formatNumber(diets.data.filter((item) => item.status === "active").length)}`,
+        hint: "currently assigned",
+        icon: Salad,
+        tone: "success",
       },
     ];
 
     const totalInquiries = inquiries.data.length;
     const converted = inquiries.data.filter((i) => i.convertedToClient).length;
     const ratios = [
-      { label: "Inquiry conversion", pct: totalInquiries ? Math.round((converted / totalInquiries) * 100) : null, tone: "bg-success" },
-      { label: "Active member ratio", pct: clients.data.length ? Math.round((active / clients.data.length) * 100) : null, tone: "bg-info" },
-      { label: "Renewals due (of active)", pct: active ? Math.round((renewals / active) * 100) : null, tone: "bg-warning" },
+      {
+        label: "Inquiry conversion",
+        pct: totalInquiries ? Math.round((converted / totalInquiries) * 100) : null,
+        tone: "bg-success",
+      },
+      {
+        label: "Active member ratio",
+        pct: clients.data.length ? Math.round((active / clients.data.length) * 100) : null,
+        tone: "bg-info",
+      },
+      {
+        label: "Renewals due (of active)",
+        pct: active ? Math.round((renewals / active) * 100) : null,
+        tone: "bg-warning",
+      },
     ];
 
     const clientName = new Map(clients.data.map((c) => [c.id, c.fullName]));
@@ -190,26 +422,89 @@ export function useDashboardMetrics() {
       })),
       ...expenseActivities.data.slice(0, 8).map((item) => ({
         id: `expense-${item.id}`,
-        title: item.action === "created" ? "Expense added" : item.action === "updated" ? "Expense updated" : "Expense removed",
+        title:
+          item.action === "created"
+            ? "Expense added"
+            : item.action === "updated"
+              ? "Expense updated"
+              : "Expense removed",
         description: `${item.expenseTitleSnapshot} · ${item.createdBy}`,
         at: item.createdAt,
-        tone: item.action === "deleted" ? "danger" as const : "warning" as const,
+        tone: item.action === "deleted" ? ("danger" as const) : ("warning" as const),
         icon: ReceiptIndianRupee,
       })),
-      ...invoices.data.slice(0,8).map(item=>({id:`invoice-${item.id}`,title:`${item.invoiceNumber} generated`,description:`${item.clientNameSnapshot} · ${formatPrice(item.amountPaid)} collected`,at:item.createdAt,tone:"success" as const,icon:BadgeIndianRupee})),
-      ...automationActivities.data.slice(0,8).map(item=>({id:`automation-${item.id}`,title:item.description,description:item.clientNameSnapshot,at:item.createdAt,tone:item.type==="automation_failed"?"danger" as const:"warning" as const,icon:MessageSquareHeart})),
+      ...invoices.data
+        .slice(0, 8)
+        .map((item) => ({
+          id: `invoice-${item.id}`,
+          title: `${item.invoiceNumber} generated`,
+          description: `${item.clientNameSnapshot} · ${formatPrice(item.amountPaid)} collected`,
+          at: item.createdAt,
+          tone: "success" as const,
+          icon: BadgeIndianRupee,
+        })),
+      ...automationActivities.data
+        .slice(0, 8)
+        .map((item) => ({
+          id: `automation-${item.id}`,
+          title: item.description,
+          description: item.clientNameSnapshot,
+          at: item.createdAt,
+          tone: item.type === "automation_failed" ? ("danger" as const) : ("warning" as const),
+          icon: MessageSquareHeart,
+        })),
     ]
       .sort((a, b) => b.at.getTime() - a.at.getTime())
       .slice(0, 6)
       .map((a) => ({ ...a, time: formatDistanceToNow(a.at, { addSuffix: true }) }));
 
     const todaySchedule = [
-      ...bookings.data.filter((item) => item.date === today && item.status === "scheduled").map((item) => ({ id: `booking-${item.id}`, time: item.startTime, title: item.clientNameSnapshot || "Group class booking", detail: item.trainerNameSnapshot ? `Trainer ${item.trainerNameSnapshot}` : item.bookingType.replace("_", " ") })),
-      ...classes.data.filter((item) => item.date === today && item.status === "scheduled").map((item) => ({ id: `class-${item.id}`, time: item.startTime, title: item.name, detail: `${item.bookedCount}/${item.capacity} booked · Trainer ${item.trainerNameSnapshot}` })),
+      ...bookings.data
+        .filter((item) => item.date === today && item.status === "scheduled")
+        .map((item) => ({
+          id: `booking-${item.id}`,
+          time: item.startTime,
+          title: item.clientNameSnapshot || "Group class booking",
+          detail: item.trainerNameSnapshot
+            ? `Trainer ${item.trainerNameSnapshot}`
+            : item.bookingType.replace("_", " "),
+        })),
+      ...classes.data
+        .filter((item) => item.date === today && item.status === "scheduled")
+        .map((item) => ({
+          id: `class-${item.id}`,
+          time: item.startTime,
+          title: item.name,
+          detail: `${item.bookedCount}/${item.capacity} booked · Trainer ${item.trainerNameSnapshot}`,
+        })),
     ].sort((a, b) => a.time.localeCompare(b.time));
 
-    return { stats, ratios, activity, todaySchedule, retention: { expiringToday, expiringIn7Days, expired, birthdays } };
-  }, [clients.data, memberships.data, inquiries.data, workouts.data, diets.data, bookings.data, classes.data, enrollments.data, expenses.data, expenseActivities.data, invoices.data, attendance.data, followUps.data, automationActivities.data]);
+    return {
+      primary,
+      stats,
+      ratios,
+      activity,
+      todaySchedule,
+      retention: { expiringToday, expiringIn7Days, expired, birthdays },
+    };
+  }, [
+    payments.data,
+    manualIncome.data,
+    clients.data,
+    memberships.data,
+    inquiries.data,
+    workouts.data,
+    diets.data,
+    bookings.data,
+    classes.data,
+    enrollments.data,
+    expenses.data,
+    expenseActivities.data,
+    invoices.data,
+    attendance.data,
+    followUps.data,
+    automationActivities.data,
+  ]);
 
   return { ...result, loading, error };
 }

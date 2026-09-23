@@ -3,7 +3,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Camera,
+  ChevronDown,
   CreditCard,
+  Fingerprint,
   History,
   Mail,
   MapPin,
@@ -15,6 +17,8 @@ import {
   UserRoundX,
   Wallet,
   XCircle,
+  MoreHorizontal,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/page-header";
@@ -27,7 +31,13 @@ import { FormDialog } from "@/components/common/form-dialog";
 import { ImageUpload } from "@/components/common/image-upload";
 import { ClientAvatar } from "@/components/clients/client-avatar";
 import { ClientFormDialog } from "@/components/clients/client-form-dialog";
-import { ClientBiometricCard, ClientPaymentsList, ClientPtSection } from "@/components/clients/client-pt-section";
+import { ClientActivity } from "@/components/clients/client-activity";
+import { DeleteMemberDialog } from "@/components/clients/delete-member-dialog";
+import {
+  ClientBiometricCard,
+  ClientPaymentsList,
+  ClientPtSection,
+} from "@/components/clients/client-pt-section";
 import { useEnrollment } from "@/components/enrollment/enrollment-context";
 import { AddWorkoutDialog } from "@/components/clients/add-workout-dialog";
 import { AddDietDialog } from "@/components/clients/add-diet-dialog";
@@ -39,6 +49,13 @@ import { BookingFormDialog } from "@/components/scheduling/booking-form-dialog";
 import { AssignmentSection } from "@/components/clients/assignment-section";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { isSetupPending } from "@/services/enrollment.service";
 import { useLive } from "@/hooks/use-live-query";
 import {
   MEMBERSHIP_STATUS_META,
@@ -53,14 +70,29 @@ import { toneIcon } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 import { subscribeClient, updateClient } from "@/services/clients.service";
 import { cancelMembership, subscribeClientMemberships } from "@/services/memberships.service";
-import { subscribeClientWorkoutAssignments, updateWorkoutAssignmentStatus } from "@/services/workout-assignments.service";
-import { subscribeClientDietAssignments, updateDietAssignmentStatus } from "@/services/diet-assignments.service";
+import {
+  subscribeClientWorkoutAssignments,
+  updateWorkoutAssignmentStatus,
+} from "@/services/workout-assignments.service";
+import {
+  subscribeClientDietAssignments,
+  updateDietAssignmentStatus,
+} from "@/services/diet-assignments.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { subscribeClientBookings } from "@/services/bookings.service";
 import { subscribeClientEnrollments } from "@/services/class-enrollments.service";
 import { subscribeGroupClasses } from "@/services/group-classes.service";
 import { subscribeClientInvoices } from "@/services/invoices.service";
-import type { Booking, ClassEnrollment, Client, DietAssignment, GroupClass, Invoice, Membership, WorkoutAssignment } from "@/types/models";
+import type {
+  Booking,
+  ClassEnrollment,
+  Client,
+  DietAssignment,
+  GroupClass,
+  Invoice,
+  Membership,
+  WorkoutAssignment,
+} from "@/types/models";
 import type { StatTone } from "@/types";
 import { CLOUDINARY_CLIENT_FOLDER } from "@/constants/navigation";
 
@@ -78,11 +110,9 @@ export const Route = createFileRoute("/_authenticated/clients/$clientId")({
 
 function ClientProfilePage() {
   const { clientId } = Route.useParams();
-  const client = useLive<Client | null>(
-    (ok, fail) => subscribeClient(clientId, ok, fail),
-    null,
-    [clientId],
-  );
+  const client = useLive<Client | null>((ok, fail) => subscribeClient(clientId, ok, fail), null, [
+    clientId,
+  ]);
   const memberships = useLive<Membership[]>(
     (ok, fail) => subscribeClientMemberships(clientId, ok, fail),
     [],
@@ -98,13 +128,27 @@ function ClientProfilePage() {
     [],
     [clientId],
   );
-  const bookings = useLive<Booking[]>((ok, fail) => subscribeClientBookings(clientId, ok, fail), [], [clientId]);
-  const enrollments = useLive<ClassEnrollment[]>((ok, fail) => subscribeClientEnrollments(clientId, ok, fail), [], [clientId]);
+  const bookings = useLive<Booking[]>(
+    (ok, fail) => subscribeClientBookings(clientId, ok, fail),
+    [],
+    [clientId],
+  );
+  const enrollments = useLive<ClassEnrollment[]>(
+    (ok, fail) => subscribeClientEnrollments(clientId, ok, fail),
+    [],
+    [clientId],
+  );
   const groupClasses = useLive<GroupClass[]>(subscribeGroupClasses, [], []);
-  const invoices = useLive<Invoice[]>((ok,fail)=>subscribeClientInvoices(clientId,ok,fail),[],[clientId]);
+  const invoices = useLive<Invoice[]>(
+    (ok, fail) => subscribeClientInvoices(clientId, ok, fail),
+    [],
+    [clientId],
+  );
   const [editOpen, setEditOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
-  const { openEnrollment } = useEnrollment();
+  const { openEnrollment, resumeSetup } = useEnrollment();
+  const [tab, setTab] = useState("overview");
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [addWorkoutOpen, setAddWorkoutOpen] = useState(false);
   const [addDietOpen, setAddDietOpen] = useState(false);
   const [addBookingOpen, setAddBookingOpen] = useState(false);
@@ -142,9 +186,11 @@ function ClientProfilePage() {
     );
 
   const c = client.data;
-  const withStatus = memberships.data.map((m) => ({ ...m, effective: effectiveMembershipStatus(m) }));
-  const current =
-    withStatus.find((m) => m.effective === "active") ?? null;
+  const withStatus = memberships.data.map((m) => ({
+    ...m,
+    effective: effectiveMembershipStatus(m),
+  }));
+  const current = withStatus.find((m) => m.effective === "active") ?? null;
   const upcoming = withStatus.filter((m) => m.effective === "pending");
 
   const confirmCancel = async () => {
@@ -171,15 +217,57 @@ function ClientProfilePage() {
                 <ArrowLeft aria-hidden /> All clients
               </Link>
             </Button>
-            <Button variant="outline" onClick={() => setEditOpen(true)}>
+            <Button
+              variant="outline"
+              onClick={() => (isSetupPending(c) ? resumeSetup(c) : setEditOpen(true))}
+            >
               <Pencil aria-hidden /> Edit
             </Button>
-            <Button onClick={() => openEnrollment({ existingClient: c })}>
-              <Plus aria-hidden /> Add membership
-            </Button>
+            {isSetupPending(c) ? null : (
+              <Button onClick={() => openEnrollment({ existingClient: c })}>
+                <Plus aria-hidden /> Renew / add package
+              </Button>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="More actions">
+                  <MoreHorizontal aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setEditOpen(true)}>
+                  <Pencil aria-hidden /> Edit details only
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => setDeleteOpen(true)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 aria-hidden /> Delete member
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         }
       />
+
+      {isSetupPending(c) ? (
+        <section
+          role="alert"
+          className="flex flex-col gap-3 rounded-2xl border border-warning/50 bg-warning/10 p-4 sm:flex-row sm:items-center"
+        >
+          <Fingerprint className="size-8 shrink-0 text-warning" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="font-bold">Joining not finished — thumb not registered</p>
+            <p className="text-sm text-muted-foreground">
+              Payment is saved, but the membership starts and entry opens only after the first thumb
+              is registered on the device.
+            </p>
+          </div>
+          <Button size="lg" onClick={() => resumeSetup(c)}>
+            <Fingerprint aria-hidden /> Resume setup
+          </Button>
+        </section>
+      ) : null}
 
       {/* Profile hero */}
       <section className="surface-card flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
@@ -199,17 +287,30 @@ function ClientProfilePage() {
             <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs font-semibold tabular-nums">
               {c.clientCode}
             </span>
-            <StatusPill tone={c.status === "active" ? "success" : "warning"}>
-              {c.status === "active" ? "Active client" : "Inactive client"}
-            </StatusPill>
+            {isSetupPending(c) ? (
+              <StatusPill tone="warning">Thumb pending</StatusPill>
+            ) : c.biometricStatus === "disabled" ? (
+              <StatusPill tone="danger">Entry blocked</StatusPill>
+            ) : current ? (
+              <StatusPill tone="success">Active member</StatusPill>
+            ) : (
+              <StatusPill tone="info">No active plan</StatusPill>
+            )}
           </div>
           <div className="mt-3 flex flex-col gap-1.5 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:gap-x-5">
-            <a href={`tel:${c.phone}`} className="flex items-center gap-1.5 tabular-nums hover:text-foreground">
+            <a
+              href={`tel:${c.phone}`}
+              className="flex items-center gap-1.5 tabular-nums hover:text-foreground"
+            >
               <Phone className="size-4" aria-hidden /> {c.phone}
             </a>
             {c.email ? (
-              <a href={`mailto:${c.email}`} className="flex min-w-0 items-center gap-1.5 hover:text-foreground">
-                <Mail className="size-4 shrink-0" aria-hidden /> <span className="truncate">{c.email}</span>
+              <a
+                href={`mailto:${c.email}`}
+                className="flex min-w-0 items-center gap-1.5 hover:text-foreground"
+              >
+                <Mail className="size-4 shrink-0" aria-hidden />{" "}
+                <span className="truncate">{c.email}</span>
               </a>
             ) : null}
             <span>Joined {formatDate(c.createdAt)}</span>
@@ -223,25 +324,43 @@ function ClientProfilePage() {
               <p className="text-meta">Ends {formatDateISO(current.endDate)}</p>
             </>
           ) : (
-            <p className="mt-1 text-sm text-muted-foreground">None active</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {withStatus.some((m) => m.effective === "biometric_pending")
+                ? "Starts after thumb registration"
+                : "None active"}
+            </p>
           )}
         </div>
       </section>
 
-      <Tabs defaultValue="overview" className="gap-4">
-        <div className="no-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+      <Tabs value={tab} onValueChange={setTab} className="gap-4">
+        <div className="no-scrollbar -mx-4 flex items-center gap-1 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <TabsList className="w-max">
             <TabsTrigger value="overview">Profile</TabsTrigger>
-            <TabsTrigger value="membership">Membership</TabsTrigger>
-            <TabsTrigger value="pt">PT</TabsTrigger>
-            <TabsTrigger value="workout">Workout</TabsTrigger>
-            <TabsTrigger value="diet">Diet</TabsTrigger>
-            <TabsTrigger value="bookings">Bookings</TabsTrigger>
-            <TabsTrigger value="billing">Billing</TabsTrigger>
-            <TabsTrigger value="attendance">Attendance</TabsTrigger>
-            <TabsTrigger value="followups">Follow-ups</TabsTrigger>
+            <TabsTrigger value="membership">Plan</TabsTrigger>
+            <TabsTrigger value="billing">Payments</TabsTrigger>
+            <TabsTrigger value="attendance">Visits</TabsTrigger>
+            <TabsTrigger value="followups">Calls</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
           </TabsList>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant={MORE_TABS.some(([v]) => v === tab) ? "secondary" : "ghost"}
+                size="sm"
+                className="shrink-0"
+              >
+                {MORE_TABS.find(([v]) => v === tab)?.[1] ?? "More"} <ChevronDown aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {MORE_TABS.map(([v, label]) => (
+                <DropdownMenuItem key={v} onSelect={() => setTab(v)}>
+                  {label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <TabsContent value="overview" className="grid gap-4 lg:grid-cols-2">
@@ -254,7 +373,9 @@ function ClientProfilePage() {
               <Detail label="Date of birth" value={formatDateISO(c.dateOfBirth)} />
               <Detail
                 label="Gender"
-                value={c.gender === "unspecified" ? "—" : c.gender[0]!.toUpperCase() + c.gender.slice(1)}
+                value={
+                  c.gender === "unspecified" ? "—" : c.gender[0]!.toUpperCase() + c.gender.slice(1)
+                }
               />
               <Detail label="Source" value={SOURCE_LABELS[c.source]} />
               <Detail
@@ -283,8 +404,16 @@ function ClientProfilePage() {
               <Detail icon={Phone} label="Phone" value={c.phone} />
               <Detail icon={Mail} label="Email" value={c.email || "—"} />
               <Detail icon={MapPin} label="Address" value={c.address || "—"} />
-              <Detail icon={ShieldAlert} label="Emergency contact" value={c.emergencyContact || "—"} />
-              <Detail icon={MessageSquareHeart} label="WhatsApp" value={c.whatsappOptIn ? `Opted in · ${c.whatsappPhone || c.phone}` : "Opted out"} />
+              <Detail
+                icon={ShieldAlert}
+                label="Emergency contact"
+                value={c.emergencyContact || "—"}
+              />
+              <Detail
+                icon={MessageSquareHeart}
+                label="WhatsApp"
+                value={c.whatsappOptIn ? `Opted in · ${c.whatsappPhone || c.phone}` : "Opted out"}
+              />
             </dl>
           </section>
         </TabsContent>
@@ -296,10 +425,13 @@ function ClientProfilePage() {
             loading={workouts.loading}
             error={workouts.error}
             onAdd={() => setAddWorkoutOpen(true)}
-            onClose={(item) => void updateWorkoutAssignmentStatus(item.id, "cancelled").then(
-              () => toast.success("Workout plan cancelled", { description: item.planNameSnapshot }),
-              (error) => toast.error(firestoreErrorMessage(error)),
-            )}
+            onClose={(item) =>
+              void updateWorkoutAssignmentStatus(item.id, "cancelled").then(
+                () =>
+                  toast.success("Workout plan cancelled", { description: item.planNameSnapshot }),
+                (error) => toast.error(firestoreErrorMessage(error)),
+              )
+            }
           />
         </TabsContent>
 
@@ -310,15 +442,24 @@ function ClientProfilePage() {
             loading={diets.loading}
             error={diets.error}
             onAdd={() => setAddDietOpen(true)}
-            onClose={(item) => void updateDietAssignmentStatus(item.id, "cancelled").then(
-              () => toast.success("Diet plan cancelled", { description: item.planNameSnapshot }),
-              (error) => toast.error(firestoreErrorMessage(error)),
-            )}
+            onClose={(item) =>
+              void updateDietAssignmentStatus(item.id, "cancelled").then(
+                () => toast.success("Diet plan cancelled", { description: item.planNameSnapshot }),
+                (error) => toast.error(firestoreErrorMessage(error)),
+              )
+            }
           />
         </TabsContent>
 
         <TabsContent value="bookings">
-          <ClientBookingsSection bookings={bookings.data} enrollments={enrollments.data} classes={groupClasses.data} loading={bookings.loading || enrollments.loading || groupClasses.loading} error={bookings.error ?? enrollments.error ?? groupClasses.error} onAdd={() => setAddBookingOpen(true)} />
+          <ClientBookingsSection
+            bookings={bookings.data}
+            enrollments={enrollments.data}
+            classes={groupClasses.data}
+            loading={bookings.loading || enrollments.loading || groupClasses.loading}
+            error={bookings.error ?? enrollments.error ?? groupClasses.error}
+            onAdd={() => setAddBookingOpen(true)}
+          />
         </TabsContent>
 
         <TabsContent value="membership" className="space-y-4">
@@ -339,25 +480,35 @@ function ClientProfilePage() {
             />
           ) : (
             <>
-              {current ? <MembershipHero m={current} onCancel={() => setCancelling(current)} /> : null}
+              {current ? (
+                <MembershipHero m={current} onCancel={() => setCancelling(current)} />
+              ) : null}
               {upcoming.length ? (
                 <p className="text-sm text-muted-foreground">
                   {upcoming.length} upcoming membership{upcoming.length > 1 ? "s" : ""} scheduled.
                 </p>
               ) : null}
               <section className="surface-card overflow-hidden">
-                <h2 className="text-section-title border-b border-border p-5">Membership history</h2>
+                <h2 className="text-section-title border-b border-border p-5">
+                  Membership history
+                </h2>
                 <ul className="divide-y divide-border">
                   {withStatus.map((m) => (
-                    <li key={m.id} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
+                    <li
+                      key={m.id}
+                      className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:gap-4 sm:px-5"
+                    >
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold">{m.packageNameSnapshot}</p>
                         <p className="text-meta">
-                          {formatDateISO(m.startDate)} → {formatDateISO(m.endDate)} · {m.durationDaysSnapshot} days
+                          {formatDateISO(m.startDate)} → {formatDateISO(m.endDate)} ·{" "}
+                          {m.durationDaysSnapshot} days
                         </p>
                       </div>
                       <div className="flex items-center justify-between gap-3 sm:justify-end">
-                        <span className="font-semibold tabular-nums">{formatPrice(m.priceSnapshot)}</span>
+                        <span className="font-semibold tabular-nums">
+                          {formatPrice(m.priceSnapshot)}
+                        </span>
                         <StatusPill tone={MEMBERSHIP_STATUS_META[m.effective].tone}>
                           {MEMBERSHIP_STATUS_META[m.effective].label}
                         </StatusPill>
@@ -380,9 +531,64 @@ function ClientProfilePage() {
           )}
         </TabsContent>
 
-        <TabsContent value="pt"><ClientPtSection client={c} /></TabsContent>
+        <TabsContent value="pt">
+          <ClientPtSection client={c} />
+        </TabsContent>
         <TabsContent value="billing" className="space-y-4">
-          {invoices.loading?<Shimmer className="h-40 rounded-2xl"/>:invoices.error?<ErrorState error={invoices.error} title="Couldn't load invoices"/>:invoices.data.length===0?<EmptyState icon={Wallet} title="No billing records yet" description="Create a bill for this client to begin their invoice history." action={<Button asChild><Link to="/billing" search={{create:true,clientId:c.id}}><Plus/> Create bill</Link></Button>}/>:<section className="space-y-4"><div className="grid gap-3 sm:grid-cols-3">{[["Total Invoices",String(invoices.data.length)],["Total Paid",formatPrice(invoices.data.reduce((n,i)=>n+i.amountPaid,0))],["Outstanding",formatPrice(invoices.data.reduce((n,i)=>n+i.balanceDue,0))]].map(([label,value])=><div className="surface-card p-4" key={label}><p className="text-meta">{label}</p><p className="mt-1 text-xl font-extrabold">{value}</p></div>)}</div><div className="surface-card divide-y divide-border">{invoices.data.map(i=><article className="p-4 sm:p-5" key={i.id}><div className="flex flex-col gap-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-bold">{i.invoiceNumber}</p><StatusPill tone={INVOICE_STATUS_META[i.paymentStatus].tone}>{INVOICE_STATUS_META[i.paymentStatus].label}</StatusPill></div><p className="text-meta">{formatDateISO(i.invoiceDate)} · Total {formatPrice(i.total)} · Paid {formatPrice(i.amountPaid)} · Balance {formatPrice(i.balanceDue)}</p></div><InvoiceActions invoice={i}/></div></article>)}</div></section>}
+          {invoices.loading ? (
+            <Shimmer className="h-40 rounded-2xl" />
+          ) : invoices.error ? (
+            <ErrorState error={invoices.error} title="Couldn't load invoices" />
+          ) : invoices.data.length === 0 ? (
+            <EmptyState
+              icon={Wallet}
+              title="No billing records yet"
+              description="Create a bill for this client to begin their invoice history."
+              action={
+                <Button asChild>
+                  <Link to="/billing" search={{ create: true, clientId: c.id }}>
+                    <Plus /> Create bill
+                  </Link>
+                </Button>
+              }
+            />
+          ) : (
+            <section className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                {[
+                  ["Total Invoices", String(invoices.data.length)],
+                  ["Total Paid", formatPrice(invoices.data.reduce((n, i) => n + i.amountPaid, 0))],
+                  ["Outstanding", formatPrice(invoices.data.reduce((n, i) => n + i.balanceDue, 0))],
+                ].map(([label, value]) => (
+                  <div className="surface-card p-4" key={label}>
+                    <p className="text-meta">{label}</p>
+                    <p className="mt-1 text-xl font-extrabold">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="surface-card divide-y divide-border">
+                {invoices.data.map((i) => (
+                  <article className="p-4 sm:p-5" key={i.id}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-bold">{i.invoiceNumber}</p>
+                          <StatusPill tone={INVOICE_STATUS_META[i.paymentStatus].tone}>
+                            {INVOICE_STATUS_META[i.paymentStatus].label}
+                          </StatusPill>
+                        </div>
+                        <p className="text-meta">
+                          {formatDateISO(i.invoiceDate)} · Total {formatPrice(i.total)} · Paid{" "}
+                          {formatPrice(i.amountPaid)} · Balance {formatPrice(i.balanceDue)}
+                        </p>
+                      </div>
+                      <InvoiceActions invoice={i} />
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
           <ClientPaymentsList clientId={c.id} />
         </TabsContent>
         <TabsContent value="attendance">
@@ -392,11 +598,12 @@ function ClientProfilePage() {
           <ClientFollowUpsSection client={c} />
         </TabsContent>
         <TabsContent value="activity">
-          <ActivityTimeline client={c} memberships={memberships.data} workouts={workouts.data} diets={diets.data} />
+          <ClientActivity client={c} memberships={memberships.data} invoices={invoices.data} />
         </TabsContent>
       </Tabs>
 
       <ClientFormDialog open={editOpen} onOpenChange={setEditOpen} client={c} />
+      <DeleteMemberDialog client={c} open={deleteOpen} onOpenChange={setDeleteOpen} />
       <AddWorkoutDialog open={addWorkoutOpen} onOpenChange={setAddWorkoutOpen} clientId={c.id} />
       <AddDietDialog open={addDietOpen} onOpenChange={setAddDietOpen} clientId={c.id} />
       <BookingFormDialog open={addBookingOpen} onOpenChange={setAddBookingOpen} initialClient={c} />
@@ -415,11 +622,20 @@ function ClientProfilePage() {
   );
 }
 
+const MORE_TABS = [
+  ["pt", "Personal training"],
+  ["workout", "Workout plan"],
+  ["diet", "Diet plan"],
+  ["bookings", "Bookings"],
+] as const;
+
 function MembershipHero({ m, onCancel }: { m: Membership; onCancel: () => void }) {
   const total = Math.max(1, m.durationDaysSnapshot);
   const daysLeft = Math.max(
     0,
-    Math.ceil((new Date(`${m.endDate}T00:00:00`).getTime() - new Date().setHours(0, 0, 0, 0)) / 86_400_000),
+    Math.ceil(
+      (new Date(`${m.endDate}T00:00:00`).getTime() - new Date().setHours(0, 0, 0, 0)) / 86_400_000,
+    ),
   );
   const pct = Math.min(100, Math.round(((total - daysLeft) / total) * 100));
   return (
@@ -443,61 +659,13 @@ function MembershipHero({ m, onCancel }: { m: Membership; onCancel: () => void }
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm">
-          Paid snapshot <span className="font-semibold tabular-nums">{formatPrice(m.priceSnapshot)}</span>
+          Paid snapshot{" "}
+          <span className="font-semibold tabular-nums">{formatPrice(m.priceSnapshot)}</span>
         </p>
         <Button variant="ghost" size="sm" onClick={onCancel}>
           <XCircle aria-hidden /> Cancel
         </Button>
       </div>
-    </section>
-  );
-}
-
-function ActivityTimeline({ client, memberships, workouts, diets }: { client: Client; memberships: Membership[]; workouts: WorkoutAssignment[]; diets: DietAssignment[] }) {
-  const items: { id: string; title: string; when: Date; tone: StatTone; icon: typeof History }[] = [
-    { id: "created", title: client.inquiryId ? "Converted from inquiry" : "Client profile created", when: client.createdAt, tone: "primary" as StatTone, icon: History },
-    ...memberships.map((m) => ({
-      id: m.id,
-      title: `Membership added · ${m.packageNameSnapshot} (${formatDateISO(m.startDate)} → ${formatDateISO(m.endDate)})`,
-      when: m.createdAt,
-      tone: "success" as StatTone,
-      icon: CreditCard,
-    })),
-    ...workouts.map((item) => ({
-      id: `workout-${item.id}`,
-      title: `Workout assigned · ${item.planNameSnapshot}`,
-      when: item.createdAt,
-      tone: "primary" as StatTone,
-      icon: History,
-    })),
-    ...diets.map((item) => ({
-      id: `diet-${item.id}`,
-      title: `Diet assigned · ${item.planNameSnapshot}`,
-      when: item.createdAt,
-      tone: "success" as StatTone,
-      icon: History,
-    })),
-  ].sort((a, b) => b.when.getTime() - a.when.getTime());
-
-  return (
-    <section className="surface-card p-5">
-      <h2 className="text-section-title">Activity</h2>
-      <ul className="mt-3 divide-y divide-border">
-        {items.map((it) => {
-          const Icon = it.icon;
-          return (
-            <li key={it.id} className="flex items-start gap-3 py-3">
-              <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg ring-1 ring-inset", toneIcon[it.tone])}>
-                <Icon className="size-4" aria-hidden />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold">{it.title}</p>
-                <p className="text-meta">{formatDate(it.when)}</p>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
     </section>
   );
 }

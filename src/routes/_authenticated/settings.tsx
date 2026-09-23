@@ -1,206 +1,490 @@
-import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { CheckCircle2, CircleAlert, MessageCircle } from "lucide-react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+  CheckCircle2,
+  CircleAlert,
+  ExternalLink,
+  Fingerprint,
+  Loader2,
+  MessageCircle,
+} from "lucide-react";
 import { toast } from "sonner";
+import { z } from "zod";
 import { DataImportWizard } from "@/components/settings/data-import-wizard";
 import { DataExportPanel } from "@/components/settings/data-export-panel";
 import { PageHeader } from "@/components/common/page-header";
 import { FormSection } from "@/components/common/form-section";
+import { Field } from "@/components/common/form-dialog";
 import { ImageUpload } from "@/components/common/image-upload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ThemeToggle } from "@/components/layout/theme-toggle";
-import { CLOUDINARY_BRAND_FOLDER, GYM_NAME } from "@/constants/navigation";
-import { CLOUDINARY_CLOUD_NAME } from "@/lib/cloudinary";
-import { useAuth } from "@/hooks/use-auth";
-import { cn } from "@/lib/utils";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { CLOUDINARY_BRAND_FOLDER } from "@/constants/navigation";
 import { useLive } from "@/hooks/use-live-query";
-import { DEFAULT_BILLING_SETTINGS, saveBusinessSettings, subscribeBusinessSettings } from "@/services/business-settings.service";
+import { cn } from "@/lib/utils";
 import { DEFAULT_AUTOMATION_SETTINGS } from "@/lib/automation-templates";
-import { saveAutomationSettings, subscribeAutomationSettings } from "@/services/automation-settings.service";
+import {
+  DEFAULT_BILLING_SETTINGS,
+  saveBusinessSettings,
+  subscribeBusinessSettings,
+} from "@/services/business-settings.service";
+import {
+  saveAutomationSettings,
+  subscribeAutomationSettings,
+} from "@/services/automation-settings.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import type { AutomationSettings, BusinessBillingSettings, WhatsAppSettings } from "@/types/models";
-import { DEFAULT_WHATSAPP_SETTINGS,saveWhatsAppSettings,subscribeWhatsAppSettings } from "@/services/whatsapp-settings.service";
+import {
+  DEFAULT_WHATSAPP_SETTINGS,
+  saveWhatsAppSettings,
+  subscribeWhatsAppSettings,
+} from "@/services/whatsapp-settings.service";
 import { testWhatsAppConnection } from "@/services/whatsapp.service";
+import type { AutomationSettings, BusinessBillingSettings, WhatsAppSettings } from "@/types/models";
+
+const TABS = ["gym", "whatsapp", "reminders", "data", "appearance"] as const;
+type Tab = (typeof TABS)[number];
 
 export const Route = createFileRoute("/_authenticated/settings")({
+  validateSearch: z.object({ tab: z.enum(TABS).optional() }),
   head: () => ({
     meta: [
       { title: "Settings — REBUILD FITNESS" },
-      { name: "description", content: "Gym profile, appearance and platform connections." },
-      { property: "og:title", content: "Settings — REBUILD FITNESS" },
-      { property: "og:description", content: "Gym profile, appearance and platform connections." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
+      { name: "description", content: "Gym details on bills, WhatsApp, reminders and data." },
     ],
   }),
   component: SettingsPage,
 });
 
-function StatusRow({ label, ok, detail }: { label: string; ok: boolean; detail: string }) {
-  return (
-    <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/40 p-3">
-      {ok ? (
-        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
-      ) : (
-        <CircleAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
-      )}
-      <div className="min-w-0">
-        <p className="text-sm font-semibold">{label}</p>
-        <p className="text-meta break-words">{detail}</p>
-      </div>
-      <span
-        className={cn(
-          "ml-auto shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold",
-          ok ? "bg-success/15 text-success" : "bg-warning/20 text-warning",
-        )}
-      >
-        {ok ? "Connected" : "Action needed"}
-      </span>
-    </div>
-  );
-}
-
 function SettingsPage() {
-  const { configured: isFirebaseConfigured } = useAuth();
-  const [gymName, setGymName] = useState(GYM_NAME);
-  const billingLive=useLive(subscribeBusinessSettings,DEFAULT_BILLING_SETTINGS,[]);
-  const [billing,setBilling]=useState<BusinessBillingSettings>(DEFAULT_BILLING_SETTINGS);
-  const automationLive=useLive(subscribeAutomationSettings,DEFAULT_AUTOMATION_SETTINGS,[]);
-  const [automation,setAutomation]=useState<AutomationSettings>(DEFAULT_AUTOMATION_SETTINGS);
-  const whatsappLive=useLive(subscribeWhatsAppSettings,DEFAULT_WHATSAPP_SETTINGS,[]);
-  const [whatsapp,setWhatsapp]=useState<WhatsAppSettings>(DEFAULT_WHATSAPP_SETTINGS);
-  const [testingWhatsapp,setTestingWhatsapp]=useState(false);
-  useEffect(()=>setBilling(billingLive.data),[billingLive.data]);
-  useEffect(()=>setAutomation(automationLive.data),[automationLive.data]);
-  useEffect(()=>setWhatsapp(whatsappLive.data),[whatsappLive.data]);
-  const update=<K extends keyof BusinessBillingSettings>(key:K,value:BusinessBillingSettings[K])=>setBilling(v=>({...v,[key]:value}));
-  const saveBilling=async()=>{try{await saveBusinessSettings(billing);toast.success("Billing settings saved")}catch(e){toast.error(firestoreErrorMessage(e))}};
-  const saveAutomation=async()=>{try{await saveAutomationSettings(automation);toast.success("Automation settings saved")}catch(e){toast.error(firestoreErrorMessage(e))}};
-  const saveWhatsapp=async()=>{try{await saveWhatsAppSettings(whatsapp);toast.success("WhatsApp settings saved")}catch(e){toast.error(firestoreErrorMessage(e))}};
-  const testWhatsapp=async()=>{setTestingWhatsapp(true);try{const result=await testWhatsAppConnection();result.configured?toast.success(result.detail):toast.warning(result.detail)}catch(e){toast.error(firestoreErrorMessage(e))}finally{setTestingWhatsapp(false)}};
-
+  const { tab = "gym" } = Route.useSearch();
+  const navigate = useNavigate({ from: "/settings" });
   return (
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        description="Gym identity, appearance and platform connections."
+        description="Gym details, WhatsApp, reminders and data."
         breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Settings" }]}
-        actions={<Button onClick={() => toast.success("Preferences saved")}>Save changes</Button>}
       />
-
-      <Tabs defaultValue="general" className="space-y-4">
-        <TabsList className="w-full justify-start overflow-x-auto sm:w-auto">
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="appearance">Appearance</TabsTrigger>
-          <TabsTrigger value="connections">Connections</TabsTrigger>
-          <TabsTrigger value="billing">Billing</TabsTrigger>
-          <TabsTrigger value="automation">Automation</TabsTrigger>
-          <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
-          <TabsTrigger value="data">Data Import & Export</TabsTrigger>
-        </TabsList>
-
+      <Tabs
+        value={tab}
+        onValueChange={(v) => void navigate({ search: { tab: v as Tab }, replace: true })}
+        className="space-y-4"
+      >
+        <div className="no-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <TabsList className="w-max">
+            <TabsTrigger value="gym">Gym & bills</TabsTrigger>
+            <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+            <TabsTrigger value="reminders">Reminders</TabsTrigger>
+            <TabsTrigger value="data">Import / export</TabsTrigger>
+            <TabsTrigger value="appearance">Appearance</TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="gym">
+          <GymSettings />
+        </TabsContent>
+        <TabsContent value="whatsapp">
+          <WhatsAppSettingsPanel />
+        </TabsContent>
+        <TabsContent value="reminders">
+          <ReminderSettings />
+        </TabsContent>
         <TabsContent value="data" className="space-y-4">
           <DataImportWizard />
           <DataExportPanel />
         </TabsContent>
-
-        <TabsContent value="general" className="space-y-4">
-          <FormSection
-            title="Gym profile"
-            description="Shown across invoices, receipts and member communication."
-            footer={
-              <Button variant="outline" onClick={() => toast.success("Profile saved")}>
-                Save profile
-              </Button>
-            }
-          >
-            <div className="grid gap-1.5">
-              <Label htmlFor="gym-name">Gym name</Label>
-              <Input
-                id="gym-name"
-                value={gymName}
-                onChange={(event) => setGymName(event.target.value)}
-              />
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="contact">Contact number</Label>
-                <Input id="contact" type="tel" placeholder="+91 98765 43210" />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="currency">Currency</Label>
-                <Select defaultValue="inr">
-                  <SelectTrigger id="currency">
-                    <SelectValue placeholder="Select currency" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="inr">INR — Indian Rupee</SelectItem>
-                    <SelectItem value="usd">USD — US Dollar</SelectItem>
-                    <SelectItem value="aed">AED — UAE Dirham</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </FormSection>
-
-          <FormSection
-            title="Gym logo"
-            description="Uploads go to Cloudinary and are reused for member photos later."
-          >
-            <ImageUpload label="Logo" folder={CLOUDINARY_BRAND_FOLDER} />
-          </FormSection>
-        </TabsContent>
-
         <TabsContent value="appearance">
           <FormSection
             title="Theme"
-            description="Choose light, dark or follow your device. Saved on this device."
+            description="Light, dark, or follow the device. Saved on this device."
           >
             <ThemeToggle />
-            <p className="text-sm text-muted-foreground">
-              Dark mode uses deep graphite surfaces with energetic accents for long front-desk
-              shifts.
-            </p>
           </FormSection>
         </TabsContent>
-        <TabsContent value="billing"><FormSection title="Invoice & tax settings" description="Used on bills, PDFs, and secure public invoices." footer={<Button onClick={()=>void saveBilling()}>Save billing settings</Button>}><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-1.5"><Label htmlFor="business-name">Business name</Label><Input id="business-name" value={billing.businessName} onChange={e=>update("businessName",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="invoice-prefix">Invoice prefix</Label><Input id="invoice-prefix" value={billing.invoicePrefix} onChange={e=>update("invoicePrefix",e.target.value.toUpperCase())}/></div><div className="grid gap-1.5 sm:col-span-2"><Label htmlFor="business-address">Address</Label><Textarea id="business-address" value={billing.address} onChange={e=>update("address",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="business-phone">Phone</Label><Input id="business-phone" value={billing.phone} onChange={e=>update("phone",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="business-email">Email</Label><Input id="business-email" type="email" value={billing.email} onChange={e=>update("email",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="gstin">GSTIN</Label><Input id="gstin" value={billing.gstin} onChange={e=>update("gstin",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="currency-billing">Currency</Label><Input id="currency-billing" value="INR" disabled/></div><label className="flex items-center gap-2 text-sm font-semibold sm:col-span-2"><Checkbox checked={billing.taxEnabled} onCheckedChange={v=>update("taxEnabled",v===true)}/> Enable tax on new invoices</label>{billing.taxEnabled?<div className="grid gap-1.5"><Label htmlFor="tax-rate">Tax rate (%)</Label><Input id="tax-rate" type="number" min="0" max="100" value={billing.taxRate} onChange={e=>update("taxRate",Number(e.target.value))}/></div>:null}</div></FormSection></TabsContent>
-        <TabsContent value="automation"><FormSection title="Retention automation" description="Daily checks run in Asia/Kolkata. Messages currently use the mock provider." footer={<Button onClick={()=>void saveAutomation()}>Save automation settings</Button>}><div className="grid gap-4"><label className="flex items-center gap-2 text-sm font-semibold"><Checkbox checked={automation.automationEnabled} onCheckedChange={v=>setAutomation(x=>({...x,automationEnabled:v===true}))}/> Automation enabled</label><label className="flex items-center gap-2 text-sm font-semibold"><Checkbox checked={automation.renewalEnabled} onCheckedChange={v=>setAutomation(x=>({...x,renewalEnabled:v===true}))}/> Renewal reminders enabled</label><div className="grid gap-1.5"><Label htmlFor="renewal-days">Days before membership expiry</Label><Input id="renewal-days" type="number" min="1" max="30" value={automation.renewalDaysBefore} onChange={e=>setAutomation(x=>({...x,renewalDaysBefore:Number(e.target.value)}))}/></div><div className="grid gap-1.5"><Label htmlFor="renewal-template">Renewal message</Label><Textarea id="renewal-template" className="min-h-36" value={automation.renewalTemplate} onChange={e=>setAutomation(x=>({...x,renewalTemplate:e.target.value}))}/></div><label className="flex items-center gap-2 text-sm font-semibold"><Checkbox checked={automation.birthdayEnabled} onCheckedChange={v=>setAutomation(x=>({...x,birthdayEnabled:v===true}))}/> Birthday greetings enabled</label><div className="grid gap-1.5"><Label htmlFor="birthday-template">Birthday message</Label><Textarea id="birthday-template" className="min-h-32" value={automation.birthdayTemplate} onChange={e=>setAutomation(x=>({...x,birthdayTemplate:e.target.value}))}/></div><label className="flex items-center gap-2 text-sm font-semibold"><Checkbox checked={automation.followUpRemindersEnabled} onCheckedChange={v=>setAutomation(x=>({...x,followUpRemindersEnabled:v===true}))}/> Follow-up reminders enabled</label></div></FormSection></TabsContent>
-
-        <TabsContent value="connections">
-          <FormSection
-            title="Platform connections"
-            description="Backend services powering the workspace."
-          >
-            <StatusRow
-              label="Firebase Authentication & Firestore"
-              ok={isFirebaseConfigured}
-              detail={
-                isFirebaseConfigured
-                  ? "Project leadsmanage-1f7cd is initialized."
-                  : "Missing VITE_FIREBASE_API_KEY — add the Firebase web API key to enable sign-in."
-              }
-            />
-            <StatusRow
-              label="Cloudinary uploads"
-              ok
-              detail={`Cloud ${CLOUDINARY_CLOUD_NAME} · unsigned preset levelupingup`}
-            />
-          </FormSection>
-        </TabsContent>
-        <TabsContent value="whatsapp"><FormSection title="WhatsApp Cloud API" description="Mock mode records safe test deliveries. Live mode uses credentials stored only in Firebase Functions." footer={<div className="flex flex-wrap gap-2"><Button variant="outline" disabled={testingWhatsapp||whatsapp.mode!=="whatsapp"} onClick={()=>void testWhatsapp()}><MessageCircle/>{testingWhatsapp?"Testing…":"Test connection"}</Button><Button onClick={()=>void saveWhatsapp()}>Save WhatsApp settings</Button></div>}><div className="grid gap-4 sm:grid-cols-2"><div className="sm:col-span-2"><StatusRow label="WhatsApp delivery" ok={whatsapp.mode==="mock"} detail={whatsapp.mode==="mock"?"Mock mode is active. No message leaves the app.":"Live mode selected. Use Test connection to verify server credentials."}/></div><div className="grid gap-1.5"><Label htmlFor="wa-mode">Provider mode</Label><Select value={whatsapp.mode} onValueChange={value=>setWhatsapp(x=>({...x,mode:value as WhatsAppSettings["mode"],enabled:true}))}><SelectTrigger id="wa-mode"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="mock">Mock</SelectItem><SelectItem value="whatsapp">WhatsApp Cloud API</SelectItem></SelectContent></Select></div><div className="grid gap-1.5"><Label htmlFor="wa-country">Default country code</Label><Input id="wa-country" value={whatsapp.defaultCountryCode} onChange={e=>setWhatsapp(x=>({...x,defaultCountryCode:e.target.value.replace(/\D/g,"")}))}/></div><div className="grid gap-1.5"><Label htmlFor="wa-language">Template language</Label><Input id="wa-language" value={whatsapp.templateLanguage} onChange={e=>setWhatsapp(x=>({...x,templateLanguage:e.target.value}))}/></div><div className="grid gap-1.5"><Label htmlFor="wa-version">Graph API version</Label><Input id="wa-version" value={whatsapp.graphApiVersion} onChange={e=>setWhatsapp(x=>({...x,graphApiVersion:e.target.value}))}/></div>{[["invoiceTemplate","Invoice template"],["renewalTemplate","Renewal template"],["birthdayTemplate","Birthday template"],["followUpTemplate","Follow-up template"]].map(([key,label])=><div className="grid gap-1.5" key={key}><Label htmlFor={`wa-${key}`}>{label}</Label><Input id={`wa-${key}`} value={String(whatsapp[key as keyof WhatsAppSettings])} onChange={e=>setWhatsapp(x=>({...x,[String(key)]:e.target.value}))}/></div>)}</div><p className="text-meta">Access tokens, app secrets and webhook verification tokens are never stored or displayed here.</p></FormSection></TabsContent>
       </Tabs>
+      <Link
+        to="/biometric-devices"
+        className="surface-card flex items-center gap-3 p-4 transition-colors hover:bg-accent"
+      >
+        <Fingerprint className="size-5" aria-hidden />
+        <span className="flex-1 text-sm">
+          <b>Fingerprint device</b> setup lives in Fingerprint Devices.
+        </span>
+        <ExternalLink className="size-4 text-muted-foreground" aria-hidden />
+      </Link>
     </div>
+  );
+}
+
+function GymSettings() {
+  const live = useLive(subscribeBusinessSettings, DEFAULT_BILLING_SETTINGS, []);
+  const [f, setF] = useState<BusinessBillingSettings>(DEFAULT_BILLING_SETTINGS);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => setF(live.data), [live.data]);
+  const set = <K extends keyof BusinessBillingSettings>(k: K, v: BusinessBillingSettings[K]) =>
+    setF((x) => ({ ...x, [k]: v }));
+  const save = async () => {
+    setSaving(true);
+    try {
+      await saveBusinessSettings(f);
+      toast.success("Gym details saved", { description: "New bills will use them." });
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <FormSection
+      title="Gym details on bills"
+      description="Printed on every bill and PDF, and used in WhatsApp messages."
+      footer={
+        <Button disabled={saving} onClick={() => void save()}>
+          {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Save gym details
+        </Button>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Gym name" htmlFor="g-name">
+          <Input
+            id="g-name"
+            value={f.businessName}
+            onChange={(e) => set("businessName", e.target.value)}
+          />
+        </Field>
+        <Field label="Phone" htmlFor="g-phone">
+          <Input
+            id="g-phone"
+            type="tel"
+            value={f.phone}
+            onChange={(e) => set("phone", e.target.value)}
+          />
+        </Field>
+        <Field label="Address" htmlFor="g-addr" className="sm:col-span-2">
+          <Textarea
+            id="g-addr"
+            rows={2}
+            value={f.address}
+            onChange={(e) => set("address", e.target.value)}
+          />
+        </Field>
+        <Field label="Email" htmlFor="g-email">
+          <Input
+            id="g-email"
+            type="email"
+            value={f.email}
+            onChange={(e) => set("email", e.target.value)}
+          />
+        </Field>
+        <Field label="GSTIN (optional)" htmlFor="g-gst">
+          <Input
+            id="g-gst"
+            value={f.gstin}
+            onChange={(e) => set("gstin", e.target.value.toUpperCase())}
+          />
+        </Field>
+        <Field label="Bill number prefix" htmlFor="g-prefix" hint="e.g. INV → INV-2026-000123">
+          <Input
+            id="g-prefix"
+            value={f.invoicePrefix}
+            onChange={(e) => set("invoicePrefix", e.target.value.toUpperCase())}
+          />
+        </Field>
+        <div className="grid gap-1.5">
+          <span className="text-label">GST / tax on bills</span>
+          <div className="flex items-center gap-3">
+            <Switch
+              checked={f.taxEnabled}
+              onCheckedChange={(v) => set("taxEnabled", v)}
+              aria-label="Charge tax on bills"
+            />
+            {f.taxEnabled ? (
+              <Input
+                aria-label="Tax rate percent"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                max="100"
+                className="w-24"
+                value={f.taxRate}
+                onChange={(e) => set("taxRate", Number(e.target.value))}
+              />
+            ) : (
+              <span className="text-meta">Off</span>
+            )}
+            {f.taxEnabled ? <span className="text-meta">%</span> : null}
+          </div>
+        </div>
+        <ImageUpload
+          key={live.data.logoUrl || "no-logo"}
+          className="sm:col-span-2"
+          label="Logo on bills"
+          folder={CLOUDINARY_BRAND_FOLDER}
+          value={
+            f.logoUrl ? { url: f.logoUrl, publicId: "", width: 0, height: 0, format: "" } : null
+          }
+          onChange={(img) => set("logoUrl", img?.url ?? "")}
+          hint="PNG works best on the PDF. Press Save after uploading."
+        />
+      </div>
+    </FormSection>
+  );
+}
+
+function WhatsAppSettingsPanel() {
+  const live = useLive(subscribeWhatsAppSettings, DEFAULT_WHATSAPP_SETTINGS, []);
+  const [f, setF] = useState<WhatsAppSettings>(DEFAULT_WHATSAPP_SETTINGS);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  useEffect(() => setF(live.data), [live.data]);
+  const set = <K extends keyof WhatsAppSettings>(k: K, v: WhatsAppSettings[K]) =>
+    setF((x) => ({ ...x, [k]: v }));
+  const api = f.mode === "whatsapp";
+  const save = async () => {
+    setSaving(true);
+    try {
+      await saveWhatsAppSettings({ ...f, enabled: api });
+      toast.success("WhatsApp settings saved");
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+  const test = async () => {
+    setTesting(true);
+    try {
+      const r = await testWhatsAppConnection();
+      if (r.configured) toast.success(r.detail);
+      else toast.warning(r.detail);
+    } catch (e) {
+      toast.error("The WhatsApp server function is not deployed yet", {
+        description: firestoreErrorMessage(e),
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+  return (
+    <div className="space-y-4">
+      <div
+        className={cn(
+          "flex items-start gap-3 rounded-2xl border p-4",
+          api ? "border-success/40 bg-success/10" : "border-border bg-muted/40",
+        )}
+      >
+        {api ? (
+          <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden />
+        ) : (
+          <MessageCircle className="mt-0.5 size-5 shrink-0 text-[#25D366]" aria-hidden />
+        )}
+        <div className="text-sm">
+          <p className="font-semibold">
+            {api ? "Automatic sending is on" : "Manual sharing (works now)"}
+          </p>
+          <p className="text-muted-foreground">
+            {api
+              ? "After payment, the bill PDF is sent from your WhatsApp Business number automatically."
+              : "After payment, staff tap “Share bill on WhatsApp”. WhatsApp opens on the member's chat with the bill link typed — just press Send. Turn on the API below to send automatically."}
+          </p>
+        </div>
+      </div>
+      <FormSection
+        title="WhatsApp Cloud API"
+        description="Needs a Meta WhatsApp Business account and approved message templates (see WHATSAPP_SETUP.md)."
+        footer={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" disabled={testing || !api} onClick={() => void test()}>
+              {testing ? (
+                <Loader2 className="animate-spin" aria-hidden />
+              ) : (
+                <MessageCircle aria-hidden />
+              )}{" "}
+              Test connection
+            </Button>
+            <Button disabled={saving} onClick={() => void save()}>
+              {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Save
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-4">
+          <ToggleRow
+            label="Send through WhatsApp Cloud API"
+            hint="Off = staff share manually from their phone."
+            checked={api}
+            onChange={(v) => set("mode", v ? "whatsapp" : "mock")}
+          />
+          {api ? (
+            <>
+              <ToggleRow
+                label="Send the bill automatically after payment"
+                hint="Only to members who agreed to WhatsApp messages."
+                checked={f.autoSendInvoice}
+                onChange={(v) => set("autoSendInvoice", v)}
+              />
+              <ToggleRow
+                label="Attach the bill PDF"
+                hint="Your approved bill template must have a Document header."
+                checked={f.invoiceAttachPdf}
+                onChange={(v) => set("invoiceAttachPdf", v)}
+              />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  label="Bill template name"
+                  htmlFor="wa-inv"
+                  hint="{{1}} name, {{2}} gym, {{3}} bill no., {{4}} paid, {{5}} balance, {{6}} link"
+                >
+                  <Input
+                    id="wa-inv"
+                    value={f.invoiceTemplate}
+                    onChange={(e) => set("invoiceTemplate", e.target.value.trim())}
+                  />
+                </Field>
+                <Field label="Template language" htmlFor="wa-lang" hint="e.g. en, en_US">
+                  <Input
+                    id="wa-lang"
+                    value={f.templateLanguage}
+                    onChange={(e) => set("templateLanguage", e.target.value.trim())}
+                  />
+                </Field>
+                <Field label="Renewal reminder template" htmlFor="wa-ren">
+                  <Input
+                    id="wa-ren"
+                    value={f.renewalTemplate}
+                    onChange={(e) => set("renewalTemplate", e.target.value.trim())}
+                  />
+                </Field>
+                <Field label="Birthday template" htmlFor="wa-bday">
+                  <Input
+                    id="wa-bday"
+                    value={f.birthdayTemplate}
+                    onChange={(e) => set("birthdayTemplate", e.target.value.trim())}
+                  />
+                </Field>
+              </div>
+            </>
+          ) : null}
+          <Field label="Country code for 10-digit numbers" htmlFor="wa-cc" className="sm:max-w-xs">
+            <Input
+              id="wa-cc"
+              inputMode="numeric"
+              value={f.defaultCountryCode}
+              onChange={(e) => set("defaultCountryCode", e.target.value.replace(/\D/g, ""))}
+            />
+          </Field>
+          <p className="text-meta flex items-center gap-1.5">
+            <CircleAlert className="size-3.5" aria-hidden /> The access token is kept only on the
+            server (Firebase Functions secrets), never here.
+          </p>
+        </div>
+      </FormSection>
+    </div>
+  );
+}
+
+function ReminderSettings() {
+  const live = useLive(subscribeAutomationSettings, DEFAULT_AUTOMATION_SETTINGS, []);
+  const [f, setF] = useState<AutomationSettings>(DEFAULT_AUTOMATION_SETTINGS);
+  useEffect(() => setF(live.data), [live.data]);
+  const set = <K extends keyof AutomationSettings>(k: K, v: AutomationSettings[K]) =>
+    setF((x) => ({ ...x, [k]: v }));
+  const save = async () => {
+    try {
+      await saveAutomationSettings(f);
+      toast.success("Reminder settings saved");
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    }
+  };
+  return (
+    <FormSection
+      title="Automatic reminders"
+      description="Checked every morning (India time)."
+      footer={<Button onClick={() => void save()}>Save reminders</Button>}
+    >
+      <div className="grid gap-4">
+        <ToggleRow
+          label="Renewal reminders"
+          hint="Message members before their plan ends."
+          checked={f.automationEnabled && f.renewalEnabled}
+          onChange={(v) =>
+            setF((x) => ({ ...x, automationEnabled: v || x.birthdayEnabled, renewalEnabled: v }))
+          }
+        />
+        {f.renewalEnabled ? (
+          <>
+            <Field label="Days before the plan ends" htmlFor="r-days" className="sm:max-w-xs">
+              <Input
+                id="r-days"
+                type="number"
+                min="1"
+                max="30"
+                value={f.renewalDaysBefore}
+                onChange={(e) => set("renewalDaysBefore", Number(e.target.value))}
+              />
+            </Field>
+            <Field
+              label="Renewal message"
+              htmlFor="r-tpl"
+              hint="{{name}} and {{expiryDate}} are filled in automatically."
+            >
+              <Textarea
+                id="r-tpl"
+                className="min-h-32"
+                value={f.renewalTemplate}
+                onChange={(e) => set("renewalTemplate", e.target.value)}
+              />
+            </Field>
+          </>
+        ) : null}
+        <ToggleRow
+          label="Birthday wishes"
+          hint="Message members on their birthday."
+          checked={f.automationEnabled && f.birthdayEnabled}
+          onChange={(v) =>
+            setF((x) => ({ ...x, automationEnabled: v || x.renewalEnabled, birthdayEnabled: v }))
+          }
+        />
+        {f.birthdayEnabled ? (
+          <Field
+            label="Birthday message"
+            htmlFor="b-tpl"
+            hint="{{name}} is filled in automatically."
+          >
+            <Textarea
+              id="b-tpl"
+              className="min-h-28"
+              value={f.birthdayTemplate}
+              onChange={(e) => set("birthdayTemplate", e.target.value)}
+            />
+          </Field>
+        ) : null}
+      </div>
+    </FormSection>
+  );
+}
+
+function ToggleRow({
+  label,
+  hint,
+  checked,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-4 rounded-xl border border-border p-3">
+      <span>
+        <span className="block text-sm font-semibold">{label}</span>
+        <span className="text-meta">{hint}</span>
+      </span>
+      <Switch checked={checked} onCheckedChange={onChange} aria-label={label} />
+    </label>
   );
 }

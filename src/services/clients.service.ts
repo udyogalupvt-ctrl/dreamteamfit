@@ -60,6 +60,7 @@ export const mapClient = (id: string, d: DocumentData): Client => ({
   lastWhatsappMessageAt: d["lastWhatsappMessageAt"] ? toDate(d["lastWhatsappMessageAt"]) : null,
   firstThumbRegistered: Boolean(d["firstThumbRegistered"]),
   enrollmentId: d["enrollmentId"] ?? null,
+  deviceAccess: d["deviceAccess"] === "removed" ? "removed" : d["deviceAccess"] === "on" ? "on" : null,
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });

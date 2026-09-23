@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { format, subDays } from "date-fns";
 import {
@@ -21,6 +21,7 @@ import { Field } from "@/components/common/form-dialog";
 import { InquiryFormDialog } from "@/components/inquiries/inquiry-form-dialog";
 import { useEnrollment } from "@/components/enrollment/enrollment-context";
 import { RecordFollowUpDialog, LeadTimeline } from "@/components/leads/record-followup-dialog";
+import { leadFollowUpId } from "@/services/lead-logs.service";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,21 +67,24 @@ import { subscribeInquiries, updateInquiry } from "@/services/inquiries.service"
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { INQUIRY_STATUSES, LEAD_SOURCES, type Inquiry, type InquiryStatus } from "@/types/models";
 
-
-
 const DATE_FILTERS = {
   all: "Any time",
-  today: "Today",
+  today: "Added today",
   "7d": "Last 7 days",
   "30d": "Last 30 days",
-  due: "Follow-up due",
 } as const;
 type DateFilter = keyof typeof DATE_FILTERS;
 
-export function LeadsView() {
+export function LeadsView({
+  autoCreate = false,
+  onAutoCreateHandled,
+}: {
+  autoCreate?: boolean;
+  onAutoCreateHandled?: () => void;
+}) {
   const { data, loading, error } = useLive<Inquiry[]>(subscribeInquiries, [], []);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<"all" | "due" | InquiryStatus>("all");
+  const [status, setStatus] = useState<"all" | "due" | "open" | InquiryStatus>("open");
   const [source, setSource] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [formOpen, setFormOpen] = useState(false);
@@ -88,12 +92,25 @@ export function LeadsView() {
   const [viewingId, setViewingId] = useState<string | null>(null);
   const { openEnrollment } = useEnrollment();
   const [recording, setRecording] = useState<Inquiry | null>(null);
-  const setConverting = (i: Inquiry) => openEnrollment({
-    inquiryId: i.id,
-    prefill: { fullName: i.name, phone: i.phone, email: i.email, source: i.source, notes: [i.fitnessGoal && `Goal: ${i.fitnessGoal}`, i.notes].filter(Boolean).join("\n") },
-  });
+  const setConverting = (i: Inquiry) =>
+    openEnrollment({
+      inquiryId: i.id,
+      prefill: {
+        fullName: i.name,
+        phone: i.phone,
+        email: i.email,
+        source: i.source,
+        notes: [i.fitnessGoal && `Goal: ${i.fitnessGoal}`, i.notes].filter(Boolean).join("\n"),
+      },
+    });
 
   const viewing = data.find((i) => i.id === viewingId) ?? null;
+  useEffect(() => {
+    if (!autoCreate) return;
+    setEditing(null);
+    setFormOpen(true);
+    onAutoCreateHandled?.();
+  }, [autoCreate, onAutoCreateHandled]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -108,15 +125,19 @@ export function LeadsView() {
             ? subDays(new Date(), 30)
             : null;
     return data.filter((i) => {
-      if (status === "due") { if (!i.nextFollowUpDate || i.nextFollowUpDate > today || i.status === "converted" || i.status === "lost") return false; }
-      else if (status !== "all" && i.status !== status) return false;
+      if (status === "due") {
+        if (
+          !i.nextFollowUpDate ||
+          i.nextFollowUpDate > today ||
+          i.status === "converted" ||
+          i.status === "lost"
+        )
+          return false;
+      } else if (status === "open") {
+        if (i.status === "converted" || i.status === "lost") return false;
+      } else if (status !== "all" && i.status !== status) return false;
       if (source !== "all" && i.source !== source) return false;
       if (since && i.createdAt < since) return false;
-      if (
-        dateFilter === "due" &&
-        (!i.nextFollowUpDate || i.nextFollowUpDate > today || i.status === "converted" || i.status === "lost")
-      )
-        return false;
       if (!q) return true;
       return (
         i.name.toLowerCase().includes(q) ||
@@ -170,10 +191,53 @@ export function LeadsView() {
 
   return (
     <div className="space-y-6">
-      <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0" role="tablist" aria-label="Lead views">
-        {([["all","All Leads"],["new","New"],["contacted","Contacted"],["interested","Interested"],["due","Follow-up Due"],["expected_to_join","Expected to Join"],["converted","Converted"],["lost","Lost"]] as const).map(([v,l]) => {
-          const n = v === "all" ? data.length : v === "due" ? data.filter((i) => i.nextFollowUpDate && i.nextFollowUpDate <= todayISO() && i.status !== "converted" && i.status !== "lost").length : data.filter((i) => i.status === v).length;
-          return <button key={v} role="tab" aria-selected={status === v} onClick={() => setStatus(v)} className={cn("shrink-0 rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors", status === v ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-accent")}>{l} <span className="tabular-nums opacity-70">{n}</span></button>;
+      <div
+        className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0"
+        role="tablist"
+        aria-label="Lead views"
+      >
+        {(
+          [
+            ["open", "Open"],
+            ["due", "Call today"],
+            ["expected_to_join", "Expected to join"],
+            ["interested", "Interested"],
+            ["new", "New"],
+            ["converted", "Joined"],
+            ["lost", "Lost"],
+            ["all", "All"],
+          ] as const
+        ).map(([v, l]) => {
+          const n =
+            v === "all"
+              ? data.length
+              : v === "open"
+                ? data.filter((i) => i.status !== "converted" && i.status !== "lost").length
+                : v === "due"
+                  ? data.filter(
+                      (i) =>
+                        i.nextFollowUpDate &&
+                        i.nextFollowUpDate <= todayISO() &&
+                        i.status !== "converted" &&
+                        i.status !== "lost",
+                    ).length
+                  : data.filter((i) => i.status === v).length;
+          return (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={status === v}
+              onClick={() => setStatus(v)}
+              className={cn(
+                "shrink-0 rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors",
+                status === v
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border hover:bg-accent",
+              )}
+            >
+              {l} <span className="tabular-nums opacity-70">{n}</span>
+            </button>
+          );
         })}
       </div>
 
@@ -185,7 +249,9 @@ export function LeadsView() {
           label="Search inquiries"
           containerClassName="sm:col-span-2 lg:col-span-1"
         />
-        <Button onClick={openCreate} className="h-10"><Plus aria-hidden /> New inquiry</Button>
+        <Button onClick={openCreate} className="h-10 max-sm:order-first">
+          <Plus aria-hidden /> New inquiry
+        </Button>
         <Select value={source} onValueChange={setSource}>
           <SelectTrigger className="h-10 w-full" aria-label="Filter by source">
             <SelectValue />
@@ -229,7 +295,11 @@ export function LeadsView() {
           }
         />
       ) : filtered.length === 0 ? (
-        <EmptyState icon={UserPlus} title="No matching inquiries" description="Try adjusting your search or filters." />
+        <EmptyState
+          icon={UserPlus}
+          title="No matching inquiries"
+          description="Try adjusting your search or filters."
+        />
       ) : (
         <>
           {/* Desktop table */}
@@ -253,23 +323,42 @@ export function LeadsView() {
               </TableHeader>
               <TableBody>
                 {filtered.map((i) => (
-                  <TableRow key={i.id} className="cursor-pointer" onClick={() => setViewingId(i.id)}>
+                  <TableRow
+                    key={i.id}
+                    className="cursor-pointer"
+                    onClick={() => setViewingId(i.id)}
+                  >
                     <TableCell className="max-w-48 truncate font-semibold">{i.name}</TableCell>
                     <TableCell className="whitespace-nowrap tabular-nums">{i.phone}</TableCell>
                     <TableCell className="whitespace-nowrap">{SOURCE_LABELS[i.source]}</TableCell>
-                    <TableCell className="hidden max-w-40 truncate xl:table-cell">{i.fitnessGoal || "—"}</TableCell>
+                    <TableCell className="hidden max-w-40 truncate xl:table-cell">
+                      {i.fitnessGoal || "—"}
+                    </TableCell>
                     <TableCell>
                       <StatusPill tone={INQUIRY_STATUS_META[i.status].tone}>
                         {INQUIRY_STATUS_META[i.status].label}
                       </StatusPill>
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">{formatDateISO(i.lastContactDate)}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {formatDateISO(i.lastContactDate)}
+                    </TableCell>
                     <TableCell className="whitespace-nowrap">
                       <FollowUpDate inquiry={i} />
                     </TableCell>
-                    <TableCell className="hidden whitespace-nowrap lg:table-cell">{formatDateISO(i.expectedJoinDate)}</TableCell>
+                    <TableCell className="hidden whitespace-nowrap lg:table-cell">
+                      {formatDateISO(i.expectedJoinDate)}
+                    </TableCell>
 
-                    <TableCell onClick={(e) => e.stopPropagation()}>{rowActions(i)}</TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        {!i.convertedToClient && i.status !== "lost" ? (
+                          <Button size="sm" variant="outline" onClick={() => setRecording(i)}>
+                            <Phone aria-hidden /> Record call
+                          </Button>
+                        ) : null}
+                        {rowActions(i)}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -281,7 +370,11 @@ export function LeadsView() {
             {filtered.map((i) => (
               <li key={i.id} className="surface-card p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <button type="button" onClick={() => setViewingId(i.id)} className="min-w-0 text-left">
+                  <button
+                    type="button"
+                    onClick={() => setViewingId(i.id)}
+                    className="min-w-0 text-left"
+                  >
                     <p className="truncate font-semibold">{i.name}</p>
                     <p className="text-meta mt-0.5 tabular-nums">
                       {i.phone} · {SOURCE_LABELS[i.source]}
@@ -298,9 +391,14 @@ export function LeadsView() {
                   </span>
                 </div>
                 {!i.convertedToClient ? (
-                  <Button variant="outline" className="mt-3 h-11 w-full" onClick={() => setConverting(i)}>
-                    <UserPlus aria-hidden /> Convert to member
-                  </Button>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <Button className="h-11" onClick={() => setRecording(i)}>
+                      <Phone aria-hidden /> Record call
+                    </Button>
+                    <Button variant="outline" className="h-11" onClick={() => setConverting(i)}>
+                      <UserPlus aria-hidden /> Join now
+                    </Button>
+                  </div>
                 ) : null}
               </li>
             ))}
@@ -318,7 +416,21 @@ export function LeadsView() {
         onRecord={(i) => setRecording(i)}
       />
 
-      <RecordFollowUpDialog target={recording ? { inquiryId: recording.id, clientId: recording.clientId ?? "", name: recording.name, phone: recording.phone, currentFollowUpId: `inquiry_${recording.id}` } : null} onClose={() => setRecording(null)} />
+      <RecordFollowUpDialog
+        target={
+          recording
+            ? {
+                inquiryId: recording.id,
+                clientId: recording.clientId ?? "",
+                name: recording.name,
+                phone: recording.phone,
+                currentFollowUpId: leadFollowUpId(recording.id),
+              }
+            : null
+        }
+        onClose={() => setRecording(null)}
+        onConvert={() => recording && setConverting(recording)}
+      />
     </div>
   );
 }
@@ -326,7 +438,9 @@ export function LeadsView() {
 function FollowUpDate({ inquiry }: { inquiry: Inquiry }) {
   if (!inquiry.nextFollowUpDate) return <span className="text-muted-foreground">—</span>;
   const overdue =
-    inquiry.nextFollowUpDate < todayISO() && inquiry.status !== "converted" && inquiry.status !== "lost";
+    inquiry.nextFollowUpDate < todayISO() &&
+    inquiry.status !== "converted" &&
+    inquiry.status !== "lost";
   return (
     <span className={overdue ? "font-semibold text-destructive" : undefined}>
       {formatDateISO(inquiry.nextFollowUpDate)}
@@ -404,14 +518,19 @@ function InquiryDetailSheet({
                   value={inquiry.status}
                   disabled={saving || inquiry.status === "converted"}
                   onValueChange={(v) =>
-                    void patch({ status: v as InquiryStatus }, `Status set to ${INQUIRY_STATUS_META[v as InquiryStatus].label}`)
+                    void patch(
+                      { status: v as InquiryStatus },
+                      `Status set to ${INQUIRY_STATUS_META[v as InquiryStatus].label}`,
+                    )
                   }
                 >
                   <SelectTrigger id="d-status" className="h-10 w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {INQUIRY_STATUSES.filter((s) => s !== "converted" || inquiry.status === "converted").map((s) => (
+                    {INQUIRY_STATUSES.filter(
+                      (s) => s !== "converted" || inquiry.status === "converted",
+                    ).map((s) => (
                       <SelectItem key={s} value={s}>
                         {INQUIRY_STATUS_META[s].label}
                       </SelectItem>
@@ -426,7 +545,10 @@ function InquiryDetailSheet({
                   disabled={saving}
                   value={inquiry.nextFollowUpDate ?? ""}
                   onChange={(e) =>
-                    void patch({ nextFollowUpDate: e.target.value || null }, "Follow-up date updated")
+                    void patch(
+                      { nextFollowUpDate: e.target.value || null },
+                      "Follow-up date updated",
+                    )
                   }
                 />
               </Field>
@@ -440,7 +562,12 @@ function InquiryDetailSheet({
             </div>
 
             <div className="space-y-3 px-4">
-              <div className="flex items-center justify-between"><h3 className="text-card-title">Follow-up timeline</h3><Button size="sm" onClick={() => onRecord(inquiry)}><Phone aria-hidden /> Record follow-up</Button></div>
+              <div className="flex items-center justify-between">
+                <h3 className="text-card-title">Follow-up timeline</h3>
+                <Button size="sm" onClick={() => onRecord(inquiry)}>
+                  <Phone aria-hidden /> Record follow-up
+                </Button>
+              </div>
               <LeadTimeline field="inquiryId" id={inquiry.id} />
             </div>
 
@@ -464,7 +591,12 @@ function InquiryDetailSheet({
                 maxLength={1000}
                 onChange={(e) => setNote(e.target.value)}
               />
-              <Button variant="outline" size="sm" disabled={!note.trim() || saving} onClick={() => void addNote()}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!note.trim() || saving}
+                onClick={() => void addNote()}
+              >
                 Add note
               </Button>
             </div>
