@@ -15,7 +15,8 @@ service cloud.firestore {
         'workoutPlans', 'workoutAssignments', 'dietPlans', 'dietAssignments',
         'bookings', 'groupClasses', 'classEnrollments',
         'expenses', 'expenseActivities', 'biometricDevices',
-        'renewalNotifications', 'birthdayNotifications', 'notifications', 'automationActivities'
+        'renewalNotifications', 'birthdayNotifications', 'notifications', 'automationActivities',
+        'whatsappMessages', 'whatsappWebhookEvents'
       ];
     }
 

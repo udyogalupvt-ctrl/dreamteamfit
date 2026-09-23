@@ -25,6 +25,7 @@ import {
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { GENDERS, LEAD_SOURCES, type Client } from "@/types/models";
 import { CLOUDINARY_CLIENT_FOLDER } from "@/constants/navigation";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export const phoneSchema = z
   .string()
@@ -344,6 +345,7 @@ export function ClientFormDialog({
               onChange={(e) => set("notes", e.target.value)}
             />
           </Field>
+          {client ? <div className="sm:col-span-2 rounded-xl border border-border bg-muted/40 p-4"><label className="flex items-start gap-3 text-sm"><Checkbox checked={client.whatsappOptIn} onCheckedChange={async value=>{try{await updateClient(client.id,{whatsappOptIn:value===true,whatsappPhone:client.whatsappPhone||form.phone,whatsappStatus:value===true?"ready":"opted_out"});toast.success(value===true?"WhatsApp consent recorded":"WhatsApp consent withdrawn")}catch(error){toast.error(firestoreErrorMessage(error))}}}/><span><strong className="block">WhatsApp opt-in</strong><span className="text-muted-foreground">Only send approved messages after the client has explicitly consented.</span></span></label></div>:null}
         </div>
       </form>
     </FormDialog>

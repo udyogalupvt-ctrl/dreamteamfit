@@ -83,6 +83,10 @@ export interface Client extends BaseDoc {
   biometricUserId: string;
   biometricDeviceId: string;
   biometricStatus: BiometricStatus;
+  whatsappOptIn: boolean;
+  whatsappPhone: string;
+  whatsappStatus: "opted_out" | "ready" | "invalid";
+  lastWhatsappMessageAt: Date | null;
 }
 
 export const BIOMETRIC_STATUSES = ["not_enrolled", "active", "disabled"] as const;
@@ -375,3 +379,41 @@ export type NotificationStatus = "scheduled" | AutomationStatus;
 export interface Notification extends BaseDoc { type:NotificationType; referenceId:string; clientId:string; clientNameSnapshot:string; phoneSnapshot:string; message:string; status:NotificationStatus; provider:CommunicationProviderName; scheduledFor:string; sentAt:Date|null; error:string; }
 export interface AutomationActivity extends BaseDoc { type:"followup_created"|"followup_completed"|"renewal_queued"|"birthday_queued"|"automation_failed"; referenceId:string; clientId:string; clientNameSnapshot:string; description:string; }
 export interface AutomationSettings { automationEnabled:boolean; renewalEnabled:boolean; renewalDaysBefore:number; birthdayEnabled:boolean; followUpRemindersEnabled:boolean; renewalTemplate:string; birthdayTemplate:string; timezone:string; }
+
+export const WHATSAPP_MESSAGE_TYPES = ["invoice", "renewal", "birthday", "follow_up", "test"] as const;
+export type WhatsAppMessageType = (typeof WHATSAPP_MESSAGE_TYPES)[number];
+export const WHATSAPP_MESSAGE_STATUSES = ["queued", "sent", "delivered", "read", "failed"] as const;
+export type WhatsAppMessageStatus = (typeof WHATSAPP_MESSAGE_STATUSES)[number];
+export interface WhatsAppMessage extends BaseDoc {
+  clientId: string;
+  clientNameSnapshot: string;
+  phoneSnapshot: string;
+  normalizedPhone: string;
+  type: WhatsAppMessageType;
+  referenceId: string;
+  provider: CommunicationProviderName;
+  templateName: string;
+  templateLanguage: string;
+  messagePreview: string;
+  status: WhatsAppMessageStatus;
+  providerMessageId: string;
+  sentAt: Date | null;
+  deliveredAt: Date | null;
+  readAt: Date | null;
+  failedAt: Date | null;
+  errorCode: string;
+  errorMessage: string;
+}
+export interface WhatsAppSettings {
+  enabled: boolean;
+  mode: CommunicationProviderName;
+  defaultCountryCode: string;
+  graphApiVersion: string;
+  phoneNumberIdHint: string;
+  businessAccountIdHint: string;
+  templateLanguage: string;
+  invoiceTemplate: string;
+  renewalTemplate: string;
+  birthdayTemplate: string;
+  followUpTemplate: string;
+}
