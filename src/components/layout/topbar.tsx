@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, Dumbbell, Package, Salad, UserPlus, Users } from "lucide-react";
+import { Bell, CalendarPlus, Dumbbell, Package, Salad, UserPlus, Users, UsersRound } from "lucide-react";
 import { GlobalSearch } from "@/components/layout/global-search";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -39,6 +39,8 @@ export function Topbar() {
               <DropdownMenuItem onSelect={() => navigate({ to: "/packages" })}><Package aria-hidden /> Package</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => navigate({ to: "/workout-plans", search: { create: true } })}><Dumbbell aria-hidden /> Workout plan</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => navigate({ to: "/diet-plans", search: { create: true } })}><Salad aria-hidden /> Diet plan</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate({ to: "/bookings", search: { create: true } })}><CalendarPlus aria-hidden /> Booking</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate({ to: "/group-classes" })}><UsersRound aria-hidden /> Group class</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
