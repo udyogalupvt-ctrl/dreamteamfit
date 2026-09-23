@@ -220,3 +220,78 @@ export interface ExpenseActivity {
   createdBy: string;
   createdAt: Date;
 }
+
+export const INVOICE_PAYMENT_STATUSES = ["paid", "partial", "pending", "refunded"] as const;
+export type InvoicePaymentStatus = (typeof INVOICE_PAYMENT_STATUSES)[number];
+export const PAYMENT_METHODS = ["Cash", "UPI", "Card", "Bank Transfer", "Other"] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export interface InvoiceItem {
+  name: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  packageId: string | null;
+}
+
+export interface Invoice extends BaseDoc {
+  invoiceNumber: string;
+  clientId: string;
+  clientNameSnapshot: string;
+  clientPhoneSnapshot: string;
+  clientEmailSnapshot: string;
+  membershipId: string | null;
+  packageId: string | null;
+  items: InvoiceItem[];
+  subtotal: number;
+  discount: number;
+  tax: number;
+  total: number;
+  amountPaid: number;
+  balanceDue: number;
+  paymentStatus: InvoicePaymentStatus;
+  paymentMethod: PaymentMethod;
+  invoiceDate: string;
+  dueDate: string;
+  notes: string;
+  pdfUrl: string;
+  publicToken: string;
+  createdBy: string;
+  createdByUid: string;
+}
+
+export interface PublicInvoice {
+  publicToken: string;
+  invoiceNumber: string;
+  clientName: string;
+  clientPhone: string;
+  clientEmail: string;
+  items: InvoiceItem[];
+  subtotal: number;
+  discount: number;
+  tax: number;
+  total: number;
+  amountPaid: number;
+  balanceDue: number;
+  paymentStatus: InvoicePaymentStatus;
+  paymentMethod: PaymentMethod;
+  invoiceDate: string;
+  dueDate: string;
+  pdfUrl: string;
+  business: BusinessBillingSettings;
+  updatedAt: Date;
+}
+
+export interface BusinessBillingSettings {
+  businessName: string;
+  logoUrl: string;
+  address: string;
+  phone: string;
+  email: string;
+  gstin: string;
+  taxEnabled: boolean;
+  taxRate: number;
+  invoicePrefix: string;
+  currency: string;
+}

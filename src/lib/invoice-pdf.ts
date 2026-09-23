@@ -1,0 +1,24 @@
+import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from "pdf-lib";
+import brandLogo from "@/assets/rebuild-fitness-logo.png.asset.json";
+import type { BusinessBillingSettings, Invoice, PublicInvoice } from "@/types/models";
+
+type PrintableInvoice = Invoice | PublicInvoice;
+const A4:[number,number]=[595.28,841.89], M=44, YELLOW=rgb(0.96,0.82,0.02), CHARCOAL=rgb(0.09,0.09,0.08), GRAY=rgb(0.4,0.4,0.38), LINE=rgb(0.87,0.87,0.84);
+const money=(n:number)=>`INR ${new Intl.NumberFormat("en-IN",{maximumFractionDigits:2}).format(n)}`;
+const clean=(value:string)=>value.replace(/[^\x20-\x7E]/g," ");
+function wrap(text:string,font:PDFFont,size:number,width:number){const words=clean(text).split(/\s+/);const lines:string[]=[];let line="";for(const word of words){const next=line?`${line} ${word}`:word;if(font.widthOfTextAtSize(next,size)<=width)line=next;else{if(line)lines.push(line);line=word;}}if(line)lines.push(line);return lines.length?lines:[""];}
+
+export async function generateInvoicePdf(invoice:PrintableInvoice,business:BusinessBillingSettings){
+ const pdf=await PDFDocument.create(),normal=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);let page:PDFPage=pdf.addPage(A4),y=0;
+ const addPage=()=>{page=pdf.addPage(A4);y=A4[1]-M;page.drawRectangle({x:0,y:A4[1]-18,width:A4[0],height:18,color:YELLOW});return page};
+ const text=(value:string,x:number,yy:number,size=9,font=normal,color=CHARCOAL)=>page.drawText(clean(value),{x,y:yy,size,font,color});
+ const footer=()=>{page.drawLine({start:{x:M,y:42},end:{x:A4[0]-M,y:42},thickness:1,color:LINE});text("Thank you for choosing REBUILD FITNESS.",M,27,8,bold);const contact=[business.phone,business.email].filter(Boolean).join(" | ");if(contact)text(contact,A4[0]-M-bold.widthOfTextAtSize(contact,8),27,8,bold)};
+ page.drawRectangle({x:0,y:A4[1]-18,width:A4[0],height:18,color:YELLOW});y=A4[1]-M;try{const logoBytes=await fetch(business.logoUrl||brandLogo.url).then(r=>r.arrayBuffer());const logo=await pdf.embedPng(logoBytes);page.drawImage(logo,{x:M,y:y-3,width:34,height:34});text(business.businessName||"REBUILD FITNESS",M+44,y+4,22,bold);}catch{text(business.businessName||"REBUILD FITNESS",M,y,22,bold);}text("INVOICE",A4[0]-M-bold.widthOfTextAtSize("INVOICE",22),y,22,bold);y-=24;
+ for(const line of wrap([business.address,business.phone,business.email,business.gstin?`GSTIN: ${business.gstin}`:""].filter(Boolean).join(" | "),normal,8,330)){text(line,M,y,8,normal,GRAY);y-=11}
+ y-=16;text(`Invoice Number: ${invoice.invoiceNumber}`,M,y,10,bold);text(`Invoice Date: ${invoice.invoiceDate}`,350,y,9);y-=16;text(`Due Date: ${invoice.dueDate}`,350,y,9);y-=28;
+ page.drawRectangle({x:M,y:y-52,width:A4[0]-2*M,height:62,color:rgb(.97,.97,.95)});text("BILL TO",M+12,y-14,8,bold,GRAY);text("clientName" in invoice?invoice.clientName:invoice.clientNameSnapshot,M+12,y-31,12,bold);const phone="clientPhone" in invoice?invoice.clientPhone:invoice.clientPhoneSnapshot;const email="clientEmail" in invoice?invoice.clientEmail:invoice.clientEmailSnapshot;text([phone,email].filter(Boolean).join(" | "),M+12,y-46,8,normal,GRAY);y-=82;
+ const header=()=>{page.drawRectangle({x:M,y:y-22,width:A4[0]-2*M,height:26,color:CHARCOAL});text("ITEM",M+8,y-14,8,bold,rgb(1,1,1));text("QTY",355,y-14,8,bold,rgb(1,1,1));text("RATE",407,y-14,8,bold,rgb(1,1,1));text("AMOUNT",489,y-14,8,bold,rgb(1,1,1));y-=30};header();
+ for(const item of invoice.items){const lines=wrap(item.description?`${item.name} - ${item.description}`:item.name,normal,9,290);const h=Math.max(28,lines.length*12+12);if(y-h<120){footer();addPage();header();}lines.forEach((line,i)=>text(line,M+8,y-12-i*12,9,i===0?bold:normal));text(String(item.quantity),360,y-12,9);text(money(item.unitPrice),407,y-12,9);text(money(item.total),489,y-12,9);page.drawLine({start:{x:M,y:y-h},end:{x:A4[0]-M,y:y-h},thickness:.6,color:LINE});y-=h;}
+ if(y<230){footer();addPage();}y-=18;const sx=350,rx=A4[0]-M;const summary:[[string,number],...Array<[string,number]>]=[["Subtotal",invoice.subtotal],["Discount",-invoice.discount]];if(invoice.tax>0)summary.push([business.gstin?`Tax (${business.taxRate}%)`:`Tax (${business.taxRate}%)`,invoice.tax]);summary.push(["Total",invoice.total],["Amount Paid",invoice.amountPaid],["Balance Due",invoice.balanceDue]);for(const [label,value] of summary){text(label,sx,y,9,label==="Total"||label==="Balance Due"?bold:normal);const v=money(value);text(v,rx-(label==="Total"||label==="Balance Due"?bold:normal).widthOfTextAtSize(v,9),y,9,label==="Total"||label==="Balance Due"?bold:normal);y-=17}y-=12;text(`Payment: ${invoice.paymentMethod} | ${invoice.paymentStatus.toUpperCase()}`,sx,y,9,bold);pdf.getPages().forEach(p=>{page=p;footer()});
+ return pdf.save();
+}

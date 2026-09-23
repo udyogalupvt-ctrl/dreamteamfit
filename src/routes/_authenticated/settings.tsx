@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CheckCircle2, CircleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/page-header";
@@ -21,6 +21,12 @@ import { CLOUDINARY_BRAND_FOLDER, GYM_NAME } from "@/constants/navigation";
 import { CLOUDINARY_CLOUD_NAME } from "@/lib/cloudinary";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { useLive } from "@/hooks/use-live-query";
+import { DEFAULT_BILLING_SETTINGS, saveBusinessSettings, subscribeBusinessSettings } from "@/services/business-settings.service";
+import { firestoreErrorMessage } from "@/services/firestore.service";
+import type { BusinessBillingSettings } from "@/types/models";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -61,6 +67,11 @@ function StatusRow({ label, ok, detail }: { label: string; ok: boolean; detail: 
 function SettingsPage() {
   const { configured: isFirebaseConfigured } = useAuth();
   const [gymName, setGymName] = useState(GYM_NAME);
+  const billingLive=useLive(subscribeBusinessSettings,DEFAULT_BILLING_SETTINGS,[]);
+  const [billing,setBilling]=useState<BusinessBillingSettings>(DEFAULT_BILLING_SETTINGS);
+  useEffect(()=>setBilling(billingLive.data),[billingLive.data]);
+  const update=<K extends keyof BusinessBillingSettings>(key:K,value:BusinessBillingSettings[K])=>setBilling(v=>({...v,[key]:value}));
+  const saveBilling=async()=>{try{await saveBusinessSettings(billing);toast.success("Billing settings saved")}catch(e){toast.error(firestoreErrorMessage(e))}};
 
   return (
     <div className="space-y-6">
@@ -76,6 +87,7 @@ function SettingsPage() {
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
           <TabsTrigger value="connections">Connections</TabsTrigger>
+          <TabsTrigger value="billing">Billing</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general" className="space-y-4">
@@ -137,6 +149,7 @@ function SettingsPage() {
             </p>
           </FormSection>
         </TabsContent>
+        <TabsContent value="billing"><FormSection title="Invoice & tax settings" description="Used on bills, PDFs, and secure public invoices." footer={<Button onClick={()=>void saveBilling()}>Save billing settings</Button>}><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-1.5"><Label htmlFor="business-name">Business name</Label><Input id="business-name" value={billing.businessName} onChange={e=>update("businessName",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="invoice-prefix">Invoice prefix</Label><Input id="invoice-prefix" value={billing.invoicePrefix} onChange={e=>update("invoicePrefix",e.target.value.toUpperCase())}/></div><div className="grid gap-1.5 sm:col-span-2"><Label htmlFor="business-address">Address</Label><Textarea id="business-address" value={billing.address} onChange={e=>update("address",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="business-phone">Phone</Label><Input id="business-phone" value={billing.phone} onChange={e=>update("phone",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="business-email">Email</Label><Input id="business-email" type="email" value={billing.email} onChange={e=>update("email",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="gstin">GSTIN</Label><Input id="gstin" value={billing.gstin} onChange={e=>update("gstin",e.target.value)}/></div><div className="grid gap-1.5"><Label htmlFor="currency-billing">Currency</Label><Input id="currency-billing" value="INR" disabled/></div><label className="flex items-center gap-2 text-sm font-semibold sm:col-span-2"><Checkbox checked={billing.taxEnabled} onCheckedChange={v=>update("taxEnabled",v===true)}/> Enable tax on new invoices</label>{billing.taxEnabled?<div className="grid gap-1.5"><Label htmlFor="tax-rate">Tax rate (%)</Label><Input id="tax-rate" type="number" min="0" max="100" value={billing.taxRate} onChange={e=>update("taxRate",Number(e.target.value))}/></div>:null}</div></FormSection></TabsContent>
 
         <TabsContent value="connections">
           <FormSection
