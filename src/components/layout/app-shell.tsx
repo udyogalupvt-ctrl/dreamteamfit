@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { DesktopSidebar } from "@/components/layout/sidebar";
 import { MobileBottomNav } from "@/components/layout/mobile-nav";
 import { Topbar } from "@/components/layout/topbar";
+import { EnrollmentProvider } from "@/components/enrollment/enrollment-context";
 
 const COLLAPSE_KEY = "rebuild-fitness-sidebar-collapsed";
 
@@ -20,6 +21,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
+    <EnrollmentProvider>
     <div className="flex min-h-dvh bg-background">
       <DesktopSidebar collapsed={collapsed} onToggle={toggle} />
       <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
@@ -33,5 +35,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
       <MobileBottomNav />
     </div>
+    </EnrollmentProvider>
   );
 }
