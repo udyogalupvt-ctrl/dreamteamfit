@@ -11,7 +11,7 @@ import {
   updateDoc,
   type QueryConstraint,
 } from "firebase/firestore";
-import { getDb } from "@/lib/firebase/client";
+import { db } from "@/lib/firebase";
 
 /**
  * Thin, typed Firestore access layer.
@@ -32,12 +32,12 @@ export const COLLECTIONS = {
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];
 
 export async function listDocs<T>(name: CollectionName, ...constraints: QueryConstraint[]) {
-  const snapshot = await getDocs(query(collection(getDb(), name), ...constraints));
+  const snapshot = await getDocs(query(collection(db, name), ...constraints));
   return snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as T) }));
 }
 
 export async function getDocById<T>(name: CollectionName, id: string) {
-  const snapshot = await getDoc(doc(getDb(), name, id));
+  const snapshot = await getDoc(doc(db, name, id));
   return snapshot.exists() ? ({ id: snapshot.id, ...(snapshot.data() as T) }) : null;
 }
 
@@ -45,7 +45,7 @@ export async function createDoc<T extends Record<string, unknown>>(
   name: CollectionName,
   data: T,
 ) {
-  const ref = await addDoc(collection(getDb(), name), {
+  const ref = await addDoc(collection(db, name), {
     ...data,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -59,7 +59,7 @@ export async function upsertDoc<T extends Record<string, unknown>>(
   data: T,
 ) {
   await setDoc(
-    doc(getDb(), name, id),
+    doc(db, name, id),
     { ...data, updatedAt: serverTimestamp() },
     { merge: true },
   );
@@ -70,9 +70,9 @@ export async function updateDocById(
   id: string,
   data: Record<string, unknown>,
 ) {
-  await updateDoc(doc(getDb(), name, id), { ...data, updatedAt: serverTimestamp() });
+  await updateDoc(doc(db, name, id), { ...data, updatedAt: serverTimestamp() });
 }
 
 export async function removeDoc(name: CollectionName, id: string) {
-  await deleteDoc(doc(getDb(), name, id));
+  await deleteDoc(doc(db, name, id));
 }

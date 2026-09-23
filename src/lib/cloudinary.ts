@@ -81,3 +81,9 @@ export function uploadImage(file: File, options: UploadOptions = {}): Promise<Up
 export function cloudinaryUrl(publicId: string, transform = "f_auto,q_auto,w_400,h_400,c_fill") {
   return `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${transform}/${publicId}`;
 }
+
+/** Convenience helper: uploads an image and resolves with its secure URL. */
+export async function uploadImageUrl(file: File, options: UploadOptions = {}): Promise<string> {
+  const result = await uploadImage(file, options);
+  return result.url;
+}
