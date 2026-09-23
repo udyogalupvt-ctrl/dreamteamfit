@@ -19,7 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { GYM_NAME } from "@/constants/navigation";
 import { CLOUDINARY_CLOUD_NAME } from "@/lib/cloudinary";
-import { isFirebaseConfigured } from "@/lib/firebase/client";
+import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/settings")({

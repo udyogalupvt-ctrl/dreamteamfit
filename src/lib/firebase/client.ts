@@ -1,14 +1,14 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
+import { getFirebasePublicConfig } from "./config.functions";
 
 /**
- * Centralized Firebase initialization.
- * Nothing else in the app should call initializeApp / getAuth / getFirestore.
- * Values come from environment variables with the project defaults as fallback.
+ * Centralized Firebase initialization — the only place initializeApp is called.
+ * Static values live here; the API key + measurement ID come from project secrets
+ * (or VITE_ env overrides) and are loaded once via initFirebase().
  */
-const firebaseConfig = {
-  apiKey: import.meta.env["VITE_FIREBASE_API_KEY"] as string | undefined,
+const baseConfig = {
   authDomain:
     (import.meta.env["VITE_FIREBASE_AUTH_DOMAIN"] as string | undefined) ??
     "leadsmanage-1f7cd.firebaseapp.com",
@@ -23,22 +23,39 @@ const firebaseConfig = {
   appId:
     (import.meta.env["VITE_FIREBASE_APP_ID"] as string | undefined) ??
     "1:1019581568447:web:ee97dfa623591f017d3d0a",
-  measurementId: import.meta.env["VITE_FIREBASE_MEASUREMENT_ID"] as string | undefined,
 };
 
-export const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
-
 let app: FirebaseApp | null = null;
+let initPromise: Promise<boolean> | null = null;
+export let isFirebaseConfigured = false;
+
+/** Initializes Firebase exactly once. Resolves true when ready. */
+export function initFirebase(): Promise<boolean> {
+  if (!initPromise) {
+    initPromise = (async () => {
+      let apiKey = import.meta.env["VITE_FIREBASE_API_KEY"] as string | undefined;
+      let measurementId = import.meta.env["VITE_FIREBASE_MEASUREMENT_ID"] as string | undefined;
+      if (!apiKey) {
+        const remote = await getFirebasePublicConfig();
+        apiKey = remote.apiKey ?? undefined;
+        measurementId = measurementId ?? remote.measurementId ?? undefined;
+      }
+      if (!apiKey) return false;
+      const config = { ...baseConfig, apiKey, ...(measurementId ? { measurementId } : {}) };
+      app = getApps().length ? getApp() : initializeApp(config);
+      isFirebaseConfigured = true;
+      return true;
+    })().catch((err) => {
+      console.error("Firebase init failed", err);
+      initPromise = null;
+      return false;
+    });
+  }
+  return initPromise;
+}
 
 export function getFirebaseApp(): FirebaseApp {
-  if (!isFirebaseConfigured) {
-    throw new Error(
-      "Firebase is not configured. Set VITE_FIREBASE_API_KEY in the project environment.",
-    );
-  }
-  if (!app) {
-    app = getApps().length ? getApp() : initializeApp(firebaseConfig as Record<string, string>);
-  }
+  if (!app) throw new Error("Firebase is not initialized. Call initFirebase() first.");
   return app;
 }
 
