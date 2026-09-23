@@ -1,0 +1,7 @@
+import { Copy, Download, ExternalLink, Printer } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { getInvoicePublicUrl } from "@/lib/invoice-utils";
+import type { Invoice } from "@/types/models";
+
+export function InvoiceActions({invoice,compact=false}:{invoice:Invoice;compact?:boolean}){const copy=async()=>{await navigator.clipboard.writeText(getInvoicePublicUrl(invoice));toast.success("Invoice link copied")};const open=()=>window.open(getInvoicePublicUrl(invoice),"_blank","noopener,noreferrer");return <div className="flex flex-wrap gap-2"><Button size={compact?"icon-sm":"sm"} variant="outline" aria-label="View public invoice" onClick={open}><ExternalLink/>{compact?null:"View"}</Button><Button size={compact?"icon-sm":"sm"} variant="outline" aria-label="Download PDF" disabled={!invoice.pdfUrl} asChild={Boolean(invoice.pdfUrl)}>{invoice.pdfUrl?<a href={invoice.pdfUrl} target="_blank" rel="noreferrer"><Download/>{compact?null:"PDF"}</a>:<><Download/>{compact?null:"PDF"}</>}</Button><Button size={compact?"icon-sm":"sm"} variant="outline" aria-label="Copy public link" onClick={()=>void copy()}><Copy/>{compact?null:"Copy link"}</Button><Button size={compact?"icon-sm":"sm"} variant="outline" aria-label="Print invoice" onClick={open}><Printer/>{compact?null:"Print"}</Button></div>}
