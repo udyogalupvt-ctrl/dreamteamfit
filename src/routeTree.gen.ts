@@ -33,6 +33,7 @@ import { Route as AuthenticatedWorkoutPlansRouteImport } from './routes/_authent
 import { Route as InvoiceTokenRouteImport } from './routes/invoice.$token'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
+import { Route as AuthenticatedTrainersTrainerIdRouteImport } from './routes/_authenticated/trainers.$trainerId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -159,6 +160,12 @@ const AuthenticatedClientsClientIdRoute =
     path: '/clients/$clientId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedTrainersTrainerIdRoute =
+  AuthenticatedTrainersTrainerIdRouteImport.update({
+    id: '/trainers/$trainerId',
+    path: '/trainers/$trainerId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -183,6 +190,7 @@ export interface FileRoutesByFullPath {
   '/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/invoice/$token': typeof InvoiceTokenRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/trainers/$trainerId': typeof AuthenticatedTrainersTrainerIdRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -208,6 +216,7 @@ export interface FileRoutesByTo {
   '/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/invoice/$token': typeof InvoiceTokenRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/trainers/$trainerId': typeof AuthenticatedTrainersTrainerIdRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
 }
 export interface FileRoutesById {
@@ -235,6 +244,7 @@ export interface FileRoutesById {
   '/_authenticated/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/invoice/$token': typeof InvoiceTokenRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/_authenticated/trainers/$trainerId': typeof AuthenticatedTrainersTrainerIdRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
 }
 export interface FileRouteTypes {
@@ -262,6 +272,7 @@ export interface FileRouteTypes {
     | '/workout-plans'
     | '/invoice/$token'
     | '/clients/$clientId'
+    | '/trainers/$trainerId'
     | '/clients/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -287,6 +298,7 @@ export interface FileRouteTypes {
     | '/workout-plans'
     | '/invoice/$token'
     | '/clients/$clientId'
+    | '/trainers/$trainerId'
     | '/clients'
   id:
     | '__root__'
@@ -313,6 +325,7 @@ export interface FileRouteTypes {
     | '/_authenticated/workout-plans'
     | '/invoice/$token'
     | '/_authenticated/clients/$clientId'
+    | '/_authenticated/trainers/$trainerId'
     | '/_authenticated/clients/'
   fileRoutesById: FileRoutesById
 }
@@ -493,6 +506,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsClientIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/trainers/$trainerId': {
+      id: '/_authenticated/trainers/$trainerId'
+      path: '/trainers/$trainerId'
+      fullPath: '/trainers/$trainerId'
+      preLoaderRoute: typeof AuthenticatedTrainersTrainerIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -516,6 +536,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedWorkoutPlansRoute: typeof AuthenticatedWorkoutPlansRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
+  AuthenticatedTrainersTrainerIdRoute: typeof AuthenticatedTrainersTrainerIdRoute
   AuthenticatedClientsIndexRoute: typeof AuthenticatedClientsIndexRoute
 }
 
@@ -539,6 +560,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedWorkoutPlansRoute: AuthenticatedWorkoutPlansRoute,
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
+  AuthenticatedTrainersTrainerIdRoute: AuthenticatedTrainersTrainerIdRoute,
   AuthenticatedClientsIndexRoute: AuthenticatedClientsIndexRoute,
 }
 

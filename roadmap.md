@@ -24,5 +24,5 @@
 - [x] Packages: Gym / PT packages / Trainers tabs
 - [x] Client profile: PT tab, biometric card, payments list; old unpaid membership path removed
 - [x] Expenses: Income / Expenses / Trainer Payouts
-- [ ] Data Import & Migration (CSV/XLSX wizard) + exports
-- [ ] Link PT session bookings to trainers/PT assignments
+- [x] Data Import & Migration (CSV/XLSX wizard) + exports
+- [x] Link PT session bookings to trainers/PT assignments

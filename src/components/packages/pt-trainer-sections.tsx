@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Dumbbell, Pencil, Plus, Power, UserRound } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "@tanstack/react-router";
 import { PageHeader } from "@/components/common/page-header";
 import { SearchInput } from "@/components/common/search-input";
 import { EmptyState } from "@/components/common/empty-state";
@@ -97,7 +98,7 @@ export function TrainersSection() {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {rows.map((t) => { const ex = calculateShare(5000, t.defaultShareType, t.defaultTrainerShare); return (
             <article key={t.id} className="surface-card p-5">
-              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="text-card-title truncate">{t.name}</h3><p className="text-meta">{t.specialization || "Trainer"} · {t.phone}</p></div><StatusPill tone={t.status === "active" ? "success" : "warning"}>{t.status}</StatusPill></div>
+              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><Link to="/trainers/$trainerId" params={{ trainerId: t.id }} className="text-card-title block truncate hover:underline">{t.name}</Link><p className="text-meta">{t.specialization || "Trainer"} · {t.phone}</p></div><StatusPill tone={t.status === "active" ? "success" : "warning"}>{t.status}</StatusPill></div>
               <p className="mt-3 text-sm">Share: <b>{t.defaultShareType === "percentage" ? `${t.defaultTrainerShare}%` : formatPrice(t.defaultTrainerShare)}</b></p>
               <p className="text-meta">On ₹5,000 PT: trainer {formatPrice(ex.trainerShareAmount)} · gym {formatPrice(ex.gymShareAmount)}</p>
               <div className="mt-3 flex gap-2"><Button size="sm" variant="outline" onClick={() => setEditing(t)}><Pencil /> Edit</Button><Button size="sm" variant="outline" onClick={() => toggle(t)}><Power /> {t.status === "active" ? "Deactivate" : "Activate"}</Button></div>

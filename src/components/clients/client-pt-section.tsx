@@ -6,16 +6,24 @@ import { useEnrollment } from "@/components/enrollment/enrollment-context";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatPrice } from "@/lib/format";
 import { subscribeClientPtAssignments } from "@/services/pt.service";
+import { subscribeClientBookings } from "@/services/bookings.service";
+import { PtSessionDialog } from "@/components/scheduling/pt-session-dialog";
+import { BOOKING_STATUS_META, formatTime } from "@/lib/format";
+import { useState } from "react";
 import { subscribeClientPayments } from "@/services/finance.service";
-import type { Client, Payment, PtAssignment } from "@/types/models";
+import type { Booking, Client, Payment, PtAssignment } from "@/types/models";
 
 export function ClientPtSection({ client }: { client: Client }) {
   const pts = useLive((ok, fail) => subscribeClientPtAssignments(client.id, ok, fail), [] as PtAssignment[], [client.id]);
   const { openEnrollment } = useEnrollment();
+  const [booking, setBooking] = useState(false);
+  const sessions = useLive((ok, fail) => subscribeClientBookings(client.id, ok, fail), [] as Booking[], [client.id]);
+  const pt = sessions.data.filter((b) => b.bookingType === "pt").reverse();
   if (!pts.loading && !pts.data.length)
     return <EmptyState icon={Dumbbell} title="No personal training" description="Add PT through a new membership checkout." action={<Button onClick={() => openEnrollment({ existingClient: client })}>Add package / PT</Button>} />;
   return (
     <div className="grid gap-3">
+      <div className="flex justify-end"><Button size="sm" onClick={() => setBooking(true)}><Dumbbell /> Book PT session</Button></div>
       {pts.data.map((p) => (
         <article key={p.id} className="surface-card p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-bold">{p.ptPackageNameSnapshot}</p><StatusPill tone={p.status === "active" ? "success" : p.status === "pending" ? "warning" : "info"}>{p.status === "pending" ? "Pending biometric" : p.status}</StatusPill></div>
@@ -25,6 +33,17 @@ export function ClientPtSection({ client }: { client: Client }) {
           </dl>
         </article>
       ))}
+      <section className="surface-card overflow-hidden">
+        <h3 className="text-card-title border-b border-border p-4">PT session history</h3>
+        {!pt.length ? <p className="p-4 text-sm text-muted-foreground">No PT sessions yet.</p> : (
+          <ul className="divide-y divide-border">{pt.map((b) => (
+            <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 p-4 text-sm">
+              <span><b>{formatDateISO(b.date)}</b> · {formatTime(b.startTime)} – {formatTime(b.endTime)} · {b.trainerNameSnapshot}{b.trainerOverride ? ` (assigned ${b.assignedTrainerNameSnapshot})` : ""}</span>
+              <StatusPill tone={BOOKING_STATUS_META[b.status].tone}>{BOOKING_STATUS_META[b.status].label}</StatusPill>
+            </li>))}</ul>
+        )}
+      </section>
+      <PtSessionDialog open={booking} onOpenChange={setBooking} initialClient={client} />
     </div>
   );
 }

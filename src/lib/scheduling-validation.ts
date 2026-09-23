@@ -20,9 +20,17 @@ export const bookingSchema = z.object({
   endTime: time,
   status: z.enum(BOOKING_STATUSES),
   notes: text("Notes", 1000),
+  ptAssignmentId: z.string().max(128).default(""),
+  ptPackageId: z.string().max(128).default(""),
+  ptPackageNameSnapshot: text("PT package", 120).default(""),
+  assignedTrainerId: z.string().max(128).default(""),
+  assignedTrainerNameSnapshot: text("Assigned trainer", 120).default(""),
+  trainerOverride: z.boolean().default(false),
+  dateOverride: z.boolean().default(false),
 }).superRefine((value, ctx) => {
   if (value.endTime <= value.startTime) ctx.addIssue({ code: "custom", path: ["endTime"], message: "End time must be after start time" });
   if (value.bookingType !== "group_class" && !value.clientId) ctx.addIssue({ code: "custom", path: ["clientId"], message: "Client is required" });
+  if (value.bookingType === "pt" && !value.ptAssignmentId) ctx.addIssue({ code: "custom", path: ["clientId"], message: "No active PT package for this client." });
   if (value.bookingType === "pt" && !value.trainerId) ctx.addIssue({ code: "custom", path: ["trainerNameSnapshot"], message: "Trainer is required" });
   if (value.bookingType === "group_class" && !value.groupClassId) ctx.addIssue({ code: "custom", path: ["groupClassId"], message: "Group class is required" });
 });
