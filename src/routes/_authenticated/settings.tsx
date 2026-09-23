@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { CheckCircle2, CircleAlert, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
+import { DataImportWizard } from "@/components/settings/data-import-wizard";
+import { DataExportPanel } from "@/components/settings/data-export-panel";
 import { PageHeader } from "@/components/common/page-header";
 import { FormSection } from "@/components/common/form-section";
 import { ImageUpload } from "@/components/common/image-upload";
@@ -106,7 +108,13 @@ function SettingsPage() {
           <TabsTrigger value="billing">Billing</TabsTrigger>
           <TabsTrigger value="automation">Automation</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+          <TabsTrigger value="data">Data Import & Export</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="data" className="space-y-4">
+          <DataImportWizard />
+          <DataExportPanel />
+        </TabsContent>
 
         <TabsContent value="general" className="space-y-4">
           <FormSection
