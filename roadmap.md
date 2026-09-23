@@ -7,4 +7,4 @@
 - [x] Build birthday and notification/automation pages
 - [x] Add automation settings and discreet signed-in demo triggers
 - [x] Connect real dashboard metrics, renewal/birthday lists, badges, activity, search, and navigation
-- [ ] Verify follow-up state changes, duplicate prevention, mock delivery, themes, and responsive layouts
+- [x] Verify follow-up state changes, duplicate prevention, mock delivery, themes, and responsive layouts

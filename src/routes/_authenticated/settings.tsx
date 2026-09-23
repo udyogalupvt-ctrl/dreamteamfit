@@ -37,6 +37,8 @@ export const Route = createFileRoute("/_authenticated/settings")({
       { name: "description", content: "Gym profile, appearance and platform connections." },
       { property: "og:title", content: "Settings — REBUILD FITNESS" },
       { property: "og:description", content: "Gym profile, appearance and platform connections." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: SettingsPage,
