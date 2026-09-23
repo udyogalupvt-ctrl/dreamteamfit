@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from "pdf-lib";
+import brandLogo from "@/assets/rebuild-fitness-logo.png.asset.json";
 import type { BusinessBillingSettings, Invoice, PublicInvoice } from "@/types/models";
 
 type PrintableInvoice = Invoice | PublicInvoice;
@@ -8,11 +9,11 @@ const clean=(value:string)=>value.replace(/[^\x20-\x7E]/g," ");
 function wrap(text:string,font:PDFFont,size:number,width:number){const words=clean(text).split(/\s+/);const lines:string[]=[];let line="";for(const word of words){const next=line?`${line} ${word}`:word;if(font.widthOfTextAtSize(next,size)<=width)line=next;else{if(line)lines.push(line);line=word;}}if(line)lines.push(line);return lines.length?lines:[""];}
 
 export async function generateInvoicePdf(invoice:PrintableInvoice,business:BusinessBillingSettings){
- const pdf=await PDFDocument.create(),normal=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);let page:PDFPage,y=0;
+ const pdf=await PDFDocument.create(),normal=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);let page:PDFPage=pdf.addPage(A4),y=0;
  const addPage=()=>{page=pdf.addPage(A4);y=A4[1]-M;page.drawRectangle({x:0,y:A4[1]-18,width:A4[0],height:18,color:YELLOW});return page};
  const text=(value:string,x:number,yy:number,size=9,font=normal,color=CHARCOAL)=>page.drawText(clean(value),{x,y:yy,size,font,color});
  const footer=()=>{page.drawLine({start:{x:M,y:42},end:{x:A4[0]-M,y:42},thickness:1,color:LINE});text("Thank you for choosing REBUILD FITNESS.",M,27,8,bold);const contact=[business.phone,business.email].filter(Boolean).join(" | ");if(contact)text(contact,A4[0]-M-bold.widthOfTextAtSize(contact,8),27,8,bold)};
- addPage();text(business.businessName||"REBUILD FITNESS",M,y,22,bold);text("INVOICE",A4[0]-M-bold.widthOfTextAtSize("INVOICE",22),y,22,bold);y-=24;
+ addPage();try{const logoBytes=await fetch(business.logoUrl||brandLogo.url).then(r=>r.arrayBuffer());const logo=await pdf.embedPng(logoBytes);page.drawImage(logo,{x:M,y:y-3,width:34,height:34});text(business.businessName||"REBUILD FITNESS",M+44,y+4,22,bold);}catch{text(business.businessName||"REBUILD FITNESS",M,y,22,bold);}text("INVOICE",A4[0]-M-bold.widthOfTextAtSize("INVOICE",22),y,22,bold);y-=24;
  for(const line of wrap([business.address,business.phone,business.email,business.gstin?`GSTIN: ${business.gstin}`:""].filter(Boolean).join(" | "),normal,8,330)){text(line,M,y,8,normal,GRAY);y-=11}
  y-=16;text(`Invoice Number: ${invoice.invoiceNumber}`,M,y,10,bold);text(`Invoice Date: ${invoice.invoiceDate}`,350,y,9);y-=16;text(`Due Date: ${invoice.dueDate}`,350,y,9);y-=28;
  page.drawRectangle({x:M,y:y-52,width:A4[0]-2*M,height:62,color:rgb(.97,.97,.95)});text("BILL TO",M+12,y-14,8,bold,GRAY);text("clientName" in invoice?invoice.clientName:invoice.clientNameSnapshot,M+12,y-31,12,bold);const phone="clientPhone" in invoice?invoice.clientPhone:invoice.clientPhoneSnapshot;const email="clientEmail" in invoice?invoice.clientEmail:invoice.clientEmailSnapshot;text([phone,email].filter(Boolean).join(" | "),M+12,y-46,8,normal,GRAY);y-=82;
