@@ -29,6 +29,9 @@ import { ImageUpload } from "@/components/common/image-upload";
 import { ClientAvatar } from "@/components/clients/client-avatar";
 import { ClientFormDialog } from "@/components/clients/client-form-dialog";
 import { AddMembershipDialog } from "@/components/clients/add-membership-dialog";
+import { AddWorkoutDialog } from "@/components/clients/add-workout-dialog";
+import { AddDietDialog } from "@/components/clients/add-diet-dialog";
+import { AssignmentSection } from "@/components/clients/assignment-section";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLive } from "@/hooks/use-live-query";
@@ -44,8 +47,10 @@ import { toneIcon } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 import { subscribeClient, updateClient } from "@/services/clients.service";
 import { cancelMembership, subscribeClientMemberships } from "@/services/memberships.service";
+import { subscribeClientWorkoutAssignments, updateWorkoutAssignmentStatus } from "@/services/workout-assignments.service";
+import { subscribeClientDietAssignments, updateDietAssignmentStatus } from "@/services/diet-assignments.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import type { Client, Membership } from "@/types/models";
+import type { Client, DietAssignment, Membership, WorkoutAssignment } from "@/types/models";
 import type { StatTone } from "@/types";
 import { CLOUDINARY_CLIENT_FOLDER } from "@/constants/navigation";
 
@@ -73,9 +78,21 @@ function ClientProfilePage() {
     [],
     [clientId],
   );
+  const workouts = useLive<WorkoutAssignment[]>(
+    (ok, fail) => subscribeClientWorkoutAssignments(clientId, ok, fail),
+    [],
+    [clientId],
+  );
+  const diets = useLive<DietAssignment[]>(
+    (ok, fail) => subscribeClientDietAssignments(clientId, ok, fail),
+    [],
+    [clientId],
+  );
   const [editOpen, setEditOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [addWorkoutOpen, setAddWorkoutOpen] = useState(false);
+  const [addDietOpen, setAddDietOpen] = useState(false);
   const [cancelling, setCancelling] = useState<Membership | null>(null);
 
   const crumbs = [
@@ -201,6 +218,8 @@ function ClientProfilePage() {
           <TabsList className="w-max">
             <TabsTrigger value="overview">Profile</TabsTrigger>
             <TabsTrigger value="membership">Membership</TabsTrigger>
+            <TabsTrigger value="workout">Workout</TabsTrigger>
+            <TabsTrigger value="diet">Diet</TabsTrigger>
             <TabsTrigger value="billing">Billing</TabsTrigger>
             <TabsTrigger value="attendance">Attendance</TabsTrigger>
             <TabsTrigger value="followups">Follow-ups</TabsTrigger>
@@ -249,6 +268,34 @@ function ClientProfilePage() {
               <Detail icon={ShieldAlert} label="Emergency contact" value={c.emergencyContact || "—"} />
             </dl>
           </section>
+        </TabsContent>
+
+        <TabsContent value="workout">
+          <AssignmentSection
+            kind="workout"
+            items={workouts.data}
+            loading={workouts.loading}
+            error={workouts.error}
+            onAdd={() => setAddWorkoutOpen(true)}
+            onClose={(item) => void updateWorkoutAssignmentStatus(item.id, "cancelled").then(
+              () => toast.success("Workout plan cancelled", { description: item.planNameSnapshot }),
+              (error) => toast.error(firestoreErrorMessage(error)),
+            )}
+          />
+        </TabsContent>
+
+        <TabsContent value="diet">
+          <AssignmentSection
+            kind="diet"
+            items={diets.data}
+            loading={diets.loading}
+            error={diets.error}
+            onAdd={() => setAddDietOpen(true)}
+            onClose={(item) => void updateDietAssignmentStatus(item.id, "cancelled").then(
+              () => toast.success("Diet plan cancelled", { description: item.planNameSnapshot }),
+              (error) => toast.error(firestoreErrorMessage(error)),
+            )}
+          />
         </TabsContent>
 
         <TabsContent value="membership" className="space-y-4">
@@ -332,7 +379,7 @@ function ClientProfilePage() {
           />
         </TabsContent>
         <TabsContent value="activity">
-          <ActivityTimeline client={c} memberships={memberships.data} />
+          <ActivityTimeline client={c} memberships={memberships.data} workouts={workouts.data} diets={diets.data} />
         </TabsContent>
       </Tabs>
 
@@ -343,6 +390,8 @@ function ClientProfilePage() {
         clientId={c.id}
         activeMembership={current}
       />
+      <AddWorkoutDialog open={addWorkoutOpen} onOpenChange={setAddWorkoutOpen} clientId={c.id} />
+      <AddDietDialog open={addDietOpen} onOpenChange={setAddDietOpen} clientId={c.id} />
       <PhotoDialog open={photoOpen} onOpenChange={setPhotoOpen} client={c} />
       <ConfirmDialog
         open={!!cancelling}
@@ -396,7 +445,7 @@ function MembershipHero({ m, onCancel }: { m: Membership; onCancel: () => void }
   );
 }
 
-function ActivityTimeline({ client, memberships }: { client: Client; memberships: Membership[] }) {
+function ActivityTimeline({ client, memberships, workouts, diets }: { client: Client; memberships: Membership[]; workouts: WorkoutAssignment[]; diets: DietAssignment[] }) {
   const items: { id: string; title: string; when: Date; tone: StatTone; icon: typeof History }[] = [
     { id: "created", title: client.inquiryId ? "Converted from inquiry" : "Client profile created", when: client.createdAt, tone: "primary" as StatTone, icon: History },
     ...memberships.map((m) => ({
@@ -405,6 +454,20 @@ function ActivityTimeline({ client, memberships }: { client: Client; memberships
       when: m.createdAt,
       tone: "success" as StatTone,
       icon: CreditCard,
+    })),
+    ...workouts.map((item) => ({
+      id: `workout-${item.id}`,
+      title: `Workout assigned · ${item.planNameSnapshot}`,
+      when: item.createdAt,
+      tone: "primary" as StatTone,
+      icon: History,
+    })),
+    ...diets.map((item) => ({
+      id: `diet-${item.id}`,
+      title: `Diet assigned · ${item.planNameSnapshot}`,
+      when: item.createdAt,
+      tone: "success" as StatTone,
+      icon: History,
     })),
   ].sort((a, b) => b.when.getTime() - a.when.getTime());
 
