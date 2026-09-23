@@ -1,10 +1,12 @@
 import { useMemo } from "react";
 import { addDays, format, formatDistanceToNow, startOfMonth } from "date-fns";
 import {
+  Apple,
   BadgeIndianRupee,
   Cake,
   CalendarCheck,
-  CreditCard, Apple, Dumbbell,
+  CreditCard,
+  Dumbbell,
   MessageSquareHeart,
   RefreshCcw,
   UserPlus,
@@ -74,9 +76,9 @@ export function useDashboardMetrics() {
       { id: "attendance", label: "Today's Attendance", value: "—", hint: "No attendance data yet", icon: CalendarCheck, tone: "violet" },
       { id: "follow-ups", label: "Follow-ups", value: formatNumber(followUpsDue), hint: "inquiries due today", icon: MessageSquareHeart, tone: "warning" },
       { id: "renewals", label: "Upcoming Renewals", value: formatNumber(renewals), hint: "ending in 7 days", icon: RefreshCcw, tone: "info" },
-      {
       { id: "workouts", label: "Active Workouts", value: "—", hint: "Coming soon", icon: Dumbbell, tone: "primary" },
       { id: "diets", label: "Diet Plans", value: "—", hint: "Coming soon", icon: Apple, tone: "success" },
+      {
         id: "birthdays",
         label: "Birthdays Today",
         value: withDob.length ? formatNumber(birthdays) : "—",
@@ -118,7 +120,7 @@ export function useDashboardMetrics() {
         description: `Ends ${m.endDate}`,
         at: m.createdAt,
         tone: "success" as const,
-        icon: CreditCard, Apple, Dumbbell,
+        icon: CreditCard,
       })),
     ]
       .sort((a, b) => b.at.getTime() - a.at.getTime())
