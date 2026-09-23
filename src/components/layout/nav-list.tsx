@@ -30,7 +30,7 @@ export function NavList({ collapsed = false, onNavigate }: NavListProps) {
               const childActive = item.children?.some((c) => pathname === c.to || pathname.startsWith(`${c.to}/`)) ?? false;
               const active = item.children ? childActive : pathname === item.to || pathname.startsWith(`${item.to}/`);
               const Icon = item.icon;
-              const badge = item.to === "/leads" ? (counts.inquiries + counts.followUps) || undefined : undefined;
+              const badge = item.to === "/leads" ? counts.followUps || undefined : undefined;
               if (item.children && !collapsed) {
                 const open = openGroups[item.label] ?? childActive;
                 return (
