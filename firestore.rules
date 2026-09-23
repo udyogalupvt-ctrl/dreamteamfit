@@ -16,7 +16,8 @@ service cloud.firestore {
         'bookings', 'groupClasses', 'classEnrollments',
         'expenses', 'expenseActivities', 'biometricDevices',
         'renewalNotifications', 'birthdayNotifications', 'notifications', 'automationActivities',
-        'whatsappMessages'
+        'whatsappMessages', 'ptPackages', 'trainers', 'ptAssignments', 'payments',
+        'enrollments', 'trainerPayouts', 'manualIncome', 'importBatches', 'leadLogs'
       ];
     }
 

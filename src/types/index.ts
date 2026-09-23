@@ -15,6 +15,7 @@ export interface NavItem {
   icon: LucideIcon;
   group: NavGroupLabel;
   badge?: number;
+  children?: { label: string; to: string }[];
 }
 
 export type ThemeMode = "light" | "dark" | "system";

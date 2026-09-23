@@ -34,7 +34,7 @@ export function Topbar() {
               <Button size="sm" className="hidden sm:inline-flex">Quick add</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => navigate({ to: "/inquiries" })}><UserPlus aria-hidden /> Inquiry</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate({ to: "/leads" })}><UserPlus aria-hidden /> Inquiry</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => navigate({ to: "/clients" })}><Users aria-hidden /> Client</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => navigate({ to: "/packages" })}><Package aria-hidden /> Package</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => navigate({ to: "/workout-plans", search: { create: true } })}><Dumbbell aria-hidden /> Workout plan</DropdownMenuItem>
@@ -44,7 +44,7 @@ export function Topbar() {
                <DropdownMenuItem onSelect={() => navigate({ to: "/expenses", search: { create: true } })}><ReceiptIndianRupee aria-hidden /> Expense</DropdownMenuItem>
                <DropdownMenuItem onSelect={() => navigate({ to: "/billing", search: { create: true } })}><CreditCard aria-hidden /> Bill</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => navigate({ to: "/attendance" })}><CalendarCheck aria-hidden /> Attendance</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => navigate({ to: "/follow-ups" })}><MessageSquareHeart aria-hidden /> Follow-up</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => navigate({ to: "/leads", search: { tab: "followups" } })}><MessageSquareHeart aria-hidden /> Follow-up</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 

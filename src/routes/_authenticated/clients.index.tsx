@@ -125,7 +125,7 @@ function ClientsPage() {
                 <Plus aria-hidden /> New client
               </Button>
               <Button variant="outline" asChild>
-                <Link to="/inquiries">View inquiries</Link>
+                <Link to="/leads">View inquiries</Link>
               </Button>
             </div>
           }

@@ -258,7 +258,7 @@ function ClientProfilePage() {
                 label="Origin"
                 value={
                   c.inquiryId ? (
-                    <Link to="/inquiries" className="font-semibold underline underline-offset-2">
+                    <Link to="/leads" className="font-semibold underline underline-offset-2">
                       Converted inquiry
                     </Link>
                   ) : (

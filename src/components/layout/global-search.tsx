@@ -74,7 +74,7 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
     followUps: q ? followUps.data.filter(item=>item.clientNameSnapshot.toLowerCase().includes(q)||item.reason.toLowerCase().includes(q)||(phone.length>=3&&normalizePhone(item.phoneSnapshot).includes(phone))).slice(0,5):[],
   }), [clients.data, inquiries.data, packages.data, workoutPlans.data, dietPlans.data, bookings.data, classes.data, expenses.data, invoices.data, attendance.data, devices.data, followUps.data, phone, q]);
 
-  const go = (to: "/clients/$clientId" | "/inquiries" | "/packages" | "/workout-plans" | "/diet-plans" | "/bookings" | "/group-classes" | "/expenses" | "/billing" | "/attendance" | "/biometric-devices" | "/follow-ups", clientId?: string) => {
+  const go = (to: "/clients/$clientId" | "/leads" | "/packages" | "/workout-plans" | "/diet-plans" | "/bookings" | "/group-classes" | "/expenses" | "/billing" | "/attendance" | "/biometric-devices", clientId?: string) => {
     setOpen(false);
     setQuery("");
     if (to === "/clients/$clientId" && clientId) {
@@ -113,7 +113,7 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
           {results.inquiries.length ? (
             <CommandGroup heading="Inquiries">
               {results.inquiries.map((item) => (
-                <CommandItem key={item.id} value={`inquiry ${item.name} ${item.phone}`} onSelect={() => go("/inquiries")}>
+                <CommandItem key={item.id} value={`inquiry ${item.name} ${item.phone}`} onSelect={() => go("/leads")}>
                   <UserPlus aria-hidden /><span className="min-w-0 truncate">{item.name}</span><span className="ml-auto text-xs text-muted-foreground">{item.phone}</span>
                 </CommandItem>
               ))}
@@ -136,7 +136,7 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
           {results.expenses.length ? <CommandGroup heading="Expenses">{results.expenses.map(item=><CommandItem key={item.id} value={`expense ${item.title} ${item.category}`} onSelect={()=>go("/expenses")}><ReceiptIndianRupee aria-hidden/><span className="min-w-0 truncate">{item.title}</span><span className="ml-auto text-xs text-muted-foreground">{item.category}</span></CommandItem>)}</CommandGroup>:null}
           {results.attendance.length ? <CommandGroup heading="Attendance">{results.attendance.map(item=><CommandItem key={item.id} value={`attendance ${item.clientNameSnapshot} ${item.biometricUserId}`} onSelect={()=>go("/attendance")}><CalendarCheck aria-hidden/><span className="min-w-0 truncate">{item.clientNameSnapshot}</span><span className="ml-auto text-xs text-muted-foreground">{item.attendanceDate}</span></CommandItem>)}</CommandGroup>:null}
           {results.devices.length ? <CommandGroup heading="Biometric Devices">{results.devices.map(item=><CommandItem key={item.id} value={`device ${item.name} ${item.location}`} onSelect={()=>go("/biometric-devices")}><Cpu aria-hidden/><span className="min-w-0 truncate">{item.name}</span><span className="ml-auto text-xs text-muted-foreground">{item.status}</span></CommandItem>)}</CommandGroup>:null}
-          {results.followUps.length ? <CommandGroup heading="Follow-ups">{results.followUps.map(item=><CommandItem key={item.id} value={`follow-up ${item.clientNameSnapshot} ${item.reason}`} onSelect={()=>go("/follow-ups")}><MessageSquareHeart aria-hidden/><span className="min-w-0 truncate">{item.clientNameSnapshot} · {item.reason}</span><span className="ml-auto text-xs text-muted-foreground">{item.followUpDate}</span></CommandItem>)}</CommandGroup>:null}
+          {results.followUps.length ? <CommandGroup heading="Follow-ups">{results.followUps.map(item=><CommandItem key={item.id} value={`follow-up ${item.clientNameSnapshot} ${item.reason}`} onSelect={()=>go("/leads")}><MessageSquareHeart aria-hidden/><span className="min-w-0 truncate">{item.clientNameSnapshot} · {item.reason}</span><span className="ml-auto text-xs text-muted-foreground">{item.followUpDate}</span></CommandItem>)}</CommandGroup>:null}
         </CommandList>
       </CommandDialog>
     </>

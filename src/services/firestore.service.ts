@@ -39,6 +39,15 @@ export const COLLECTIONS = {
   automationActivities: "automationActivities",
   whatsappMessages: "whatsappMessages",
   whatsappWebhookEvents: "whatsappWebhookEvents",
+  ptPackages: "ptPackages",
+  trainers: "trainers",
+  ptAssignments: "ptAssignments",
+  payments: "payments",
+  enrollments: "enrollments",
+  trainerPayouts: "trainerPayouts",
+  manualIncome: "manualIncome",
+  importBatches: "importBatches",
+  leadLogs: "leadLogs",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

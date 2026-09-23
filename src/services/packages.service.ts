@@ -17,12 +17,13 @@ import { col, COLLECTIONS, subscribeCollection, toDate } from "./firestore.servi
 
 export type PackageInput = Pick<
   GymPackage,
-  "name" | "description" | "durationDays" | "price" | "isActive"
+  "name" | "category" | "description" | "durationDays" | "price" | "isActive"
 >;
 
-const mapPackage = (id: string, d: DocumentData): GymPackage => ({
+export const mapPackage = (id: string, d: DocumentData): GymPackage => ({
   id,
   name: d["name"] ?? "",
+  category: d["category"] ?? "Custom",
   description: d["description"] ?? "",
   durationDays: Number(d["durationDays"] ?? 0),
   price: Number(d["price"] ?? 0),
