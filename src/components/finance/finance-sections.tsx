@@ -41,14 +41,14 @@ export function IncomeSection() {
         <Button className="ml-auto" onClick={() => setOpen(true)}><Plus /> Other income</Button>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Gross collected" value={formatPrice(s.gross)} />
-        <StatCard label="Membership income" value={formatPrice(s.membershipIncome)} />
-        <StatCard label="PT gross" value={formatPrice(s.ptGross)} />
-        <StatCard label="PT gym share" value={formatPrice(s.ptGymIncome)} />
-        <StatCard label="Trainer payable (excluded)" value={formatPrice(s.trainerPayable)} />
-        <StatCard label="Other income" value={formatPrice(s.otherIncome + s.manualIncome)} />
-        <StatCard label="Expenses" value={formatPrice(s.expenses)} />
-        <StatCard label="Net profit" value={formatPrice(s.net)} />
+        <StatCard metric={{ id: "Gross collected", label: "Gross collected", value: formatPrice(s.gross), icon: Wallet, tone: "primary" }} />
+        <StatCard metric={{ id: "Membership income", label: "Membership income", value: formatPrice(s.membershipIncome), icon: Wallet, tone: "primary" }} />
+        <StatCard metric={{ id: "PT gross", label: "PT gross", value: formatPrice(s.ptGross), icon: Wallet, tone: "primary" }} />
+        <StatCard metric={{ id: "PT gym share", label: "PT gym share", value: formatPrice(s.ptGymIncome), icon: Wallet, tone: "primary" }} />
+        <StatCard metric={{ id: "Trainer payable (excluded)", label: "Trainer payable (excluded)", value: formatPrice(s.trainerPayable), icon: Wallet, tone: "primary" }} />
+        <StatCard metric={{ id: "Other income", label: "Other income", value: formatPrice(s.otherIncome + s.manualIncome), icon: Wallet, tone: "primary" }} />
+        <StatCard metric={{ id: "Expenses", label: "Expenses", value: formatPrice(s.expenses), icon: Wallet, tone: "primary" }} />
+        <StatCard metric={{ id: "Net profit", label: "Net profit", value: formatPrice(s.net), icon: Wallet, tone: "primary" }} />
       </div>
       <p className="text-meta">Gym income = membership + PT gym share + other income. Trainer shares are not counted as gym income.</p>
       <FormDialog open={open} onOpenChange={setOpen} title="Record other income" footer={<><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={() => void save()}>Save</Button></>}>
@@ -77,7 +77,7 @@ export function PayoutsSection() {
       <div className="flex flex-wrap items-end gap-3">
         <Select value={trainer} onValueChange={setTrainer}><SelectTrigger className="w-56" aria-label="Trainer"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All trainers</SelectItem>{trainers.map(([id, n]) => <SelectItem key={id} value={id}>{n}</SelectItem>)}</SelectContent></Select>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2"><StatCard label="Pending payouts" value={formatPrice(pending)} /><StatCard label="Paid payouts" value={formatPrice(paid)} /></div>
+      <div className="grid gap-3 sm:grid-cols-2"><StatCard metric={{ id: "Pending payouts", label: "Pending payouts", value: formatPrice(pending), icon: Wallet, tone: "primary" }} /><StatCard metric={{ id: "Paid payouts", label: "Paid payouts", value: formatPrice(paid), icon: Wallet, tone: "primary" }} /></div>
       {!rows.length ? <EmptyState icon={Wallet} title="No trainer payouts" description="Payouts appear automatically when PT is sold." /> : (
         <ul className="surface-card divide-y divide-border">
           {rows.map((p) => (
