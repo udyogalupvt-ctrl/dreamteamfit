@@ -12,7 +12,8 @@ service cloud.firestore {
       allow read, write: if isStaff() && collection in [
         'packages', 'inquiries', 'clients', 'memberships',
         'followups', 'invoices', 'attendance', 'settings',
-        'workoutPlans', 'workoutAssignments', 'dietPlans', 'dietAssignments'
+        'workoutPlans', 'workoutAssignments', 'dietPlans', 'dietAssignments',
+        'bookings', 'groupClasses', 'classEnrollments'
       ];
     }
 
