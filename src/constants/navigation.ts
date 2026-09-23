@@ -1,7 +1,9 @@
 import {
+  Salad,
   BarChart3,
   CalendarCheck,
   CreditCard,
+  Dumbbell,
   LayoutDashboard,
   MessageSquareHeart,
   Package,
@@ -26,6 +28,8 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Attendance", to: "/attendance", icon: CalendarCheck, group: "Workspace" },
   { label: "Follow-ups", to: "/follow-ups", icon: MessageSquareHeart, group: "Workspace" },
   { label: "Reports", to: "/reports", icon: BarChart3, group: "Workspace" },
+  { label: "Workout Plans", to: "/workout-plans", icon: Dumbbell, group: "Workspace" },
+  { label: "Diet Plans", to: "/diet-plans", icon: Salad, group: "Workspace" },
   { label: "Settings", to: "/settings", icon: Settings, group: "Management" },
 ];
 

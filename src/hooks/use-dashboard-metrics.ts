@@ -5,8 +5,10 @@ import {
   Cake,
   CalendarCheck,
   CreditCard,
+  Dumbbell,
   MessageSquareHeart,
   RefreshCcw,
+  Salad,
   UserPlus,
   UserRoundCheck,
   UserRoundX,
@@ -17,17 +19,21 @@ import { effectiveMembershipStatus, formatNumber, todayISO } from "@/lib/format"
 import { subscribeClients } from "@/services/clients.service";
 import { subscribeInquiries } from "@/services/inquiries.service";
 import { subscribeMemberships } from "@/services/memberships.service";
+import { subscribeWorkoutAssignments } from "@/services/workout-assignments.service";
+import { subscribeDietAssignments } from "@/services/diet-assignments.service";
 import type { ActivityItem, StatMetric } from "@/types";
-import type { Client, Inquiry, Membership } from "@/types/models";
+import type { Client, DietAssignment, Inquiry, Membership, WorkoutAssignment } from "@/types/models";
 
 /** Derives dashboard numbers from live Firestore data only — nothing is invented. */
 export function useDashboardMetrics() {
   const clients = useLive<Client[]>(subscribeClients, [], []);
   const memberships = useLive<Membership[]>(subscribeMemberships, [], []);
   const inquiries = useLive<Inquiry[]>(subscribeInquiries, [], []);
+  const workouts = useLive<WorkoutAssignment[]>(subscribeWorkoutAssignments, [], []);
+  const diets = useLive<DietAssignment[]>(subscribeDietAssignments, [], []);
 
-  const loading = clients.loading || memberships.loading || inquiries.loading;
-  const error = clients.error ?? memberships.error ?? inquiries.error;
+  const loading = clients.loading || memberships.loading || inquiries.loading || workouts.loading || diets.loading;
+  const error = clients.error ?? memberships.error ?? inquiries.error ?? workouts.error ?? diets.error;
 
   const result = useMemo(() => {
     const today = todayISO();
@@ -74,6 +80,8 @@ export function useDashboardMetrics() {
       { id: "attendance", label: "Today's Attendance", value: "—", hint: "No attendance data yet", icon: CalendarCheck, tone: "violet" },
       { id: "follow-ups", label: "Follow-ups", value: formatNumber(followUpsDue), hint: "inquiries due today", icon: MessageSquareHeart, tone: "warning" },
       { id: "renewals", label: "Upcoming Renewals", value: formatNumber(renewals), hint: "ending in 7 days", icon: RefreshCcw, tone: "info" },
+      { id: "workouts", label: "Workout Plans Assigned", value: formatNumber(workouts.data.filter((item) => item.status === "active").length), hint: "currently active", icon: Dumbbell, tone: "primary" },
+      { id: "diets", label: "Diet Plans Assigned", value: formatNumber(diets.data.filter((item) => item.status === "active").length), hint: "currently active", icon: Salad, tone: "success" },
       {
         id: "birthdays",
         label: "Birthdays Today",
@@ -118,13 +126,29 @@ export function useDashboardMetrics() {
         tone: "success" as const,
         icon: CreditCard,
       })),
+      ...workouts.data.slice(0, 8).map((item) => ({
+        id: `w-${item.id}`,
+        title: `${clientName.get(item.clientId) ?? "Client"} received ${item.planNameSnapshot}`,
+        description: `Workout · ${item.goalSnapshot}`,
+        at: item.createdAt,
+        tone: "primary" as const,
+        icon: Dumbbell,
+      })),
+      ...diets.data.slice(0, 8).map((item) => ({
+        id: `d-${item.id}`,
+        title: `${clientName.get(item.clientId) ?? "Client"} received ${item.planNameSnapshot}`,
+        description: `Diet · ${item.goalSnapshot}`,
+        at: item.createdAt,
+        tone: "success" as const,
+        icon: Salad,
+      })),
     ]
       .sort((a, b) => b.at.getTime() - a.at.getTime())
       .slice(0, 6)
       .map((a) => ({ ...a, time: formatDistanceToNow(a.at, { addSuffix: true }) }));
 
     return { stats, ratios, activity };
-  }, [clients.data, memberships.data, inquiries.data]);
+  }, [clients.data, memberships.data, inquiries.data, workouts.data, diets.data]);
 
   return { ...result, loading, error };
 }

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { UserPlus, Users } from "lucide-react";
+import { Dumbbell, Salad, UserPlus, Users } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { StatCard, StatCardSkeleton } from "@/components/common/stat-card";
 import { ErrorState } from "@/components/common/error-state";
@@ -30,6 +30,8 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 const QUICK_ACTIONS = [
   { label: "Create Inquiry", icon: UserPlus, variant: "default" as const, to: "/inquiries" as const },
   { label: "Create Client", icon: Users, variant: "outline" as const, to: "/clients" as const },
+  { label: "Add Workout Plan", icon: Dumbbell, variant: "outline" as const, to: "/workout-plans" as const, search: { create: true } },
+  { label: "Add Diet Plan", icon: Salad, variant: "outline" as const, to: "/diet-plans" as const, search: { create: true } },
 ];
 
 function DashboardPage() {
@@ -77,7 +79,10 @@ function DashboardPage() {
                 variant={variant}
                 size="lg"
                 className="h-14 min-w-0 justify-start gap-3"
-                onClick={() => void navigate({ to: rest.to })}
+                onClick={() => {
+                  if ("search" in rest) void navigate({ to: rest.to, search: rest.search });
+                  else void navigate({ to: rest.to });
+                }}
               >
                 <Icon aria-hidden />
                 {label}

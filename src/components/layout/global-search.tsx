@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Package, Search, UserPlus, Users } from "lucide-react";
+import { Dumbbell, Package, Salad, Search, UserPlus, Users } from "lucide-react";
 import {
   CommandDialog,
   CommandEmpty,
@@ -14,7 +14,9 @@ import { normalizePhone } from "@/lib/format";
 import { subscribeClients } from "@/services/clients.service";
 import { subscribeInquiries } from "@/services/inquiries.service";
 import { subscribePackages } from "@/services/packages.service";
-import type { Client, GymPackage, Inquiry } from "@/types/models";
+import { subscribeWorkoutPlans } from "@/services/workout-plans.service";
+import { subscribeDietPlans } from "@/services/diet-plans.service";
+import type { Client, DietPlan, GymPackage, Inquiry, WorkoutPlan } from "@/types/models";
 
 export function GlobalSearch({ compact = false }: { compact?: boolean }) {
   const navigate = useNavigate();
@@ -23,6 +25,8 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
   const clients = useLive<Client[]>(subscribeClients, [], []);
   const inquiries = useLive<Inquiry[]>(subscribeInquiries, [], []);
   const packages = useLive<GymPackage[]>(subscribePackages, [], []);
+  const workoutPlans = useLive<WorkoutPlan[]>(subscribeWorkoutPlans, [], []);
+  const dietPlans = useLive<DietPlan[]>(subscribeDietPlans, [], []);
   const q = query.trim().toLowerCase();
   const phone = normalizePhone(query);
 
@@ -45,14 +49,16 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
           item.name.toLowerCase().includes(q) || item.description.toLowerCase().includes(q),
         ).slice(0, 5)
       : [],
-  }), [clients.data, inquiries.data, packages.data, phone, q]);
+    workoutPlans: q ? workoutPlans.data.filter((item) => item.name.toLowerCase().includes(q) || item.goal.toLowerCase().includes(q)).slice(0, 5) : [],
+    dietPlans: q ? dietPlans.data.filter((item) => item.name.toLowerCase().includes(q) || item.goal.toLowerCase().includes(q)).slice(0, 5) : [],
+  }), [clients.data, inquiries.data, packages.data, workoutPlans.data, dietPlans.data, phone, q]);
 
-  const go = (to: "/clients/$clientId" | "/inquiries" | "/packages", clientId?: string) => {
+  const go = (to: "/clients/$clientId" | "/inquiries" | "/packages" | "/workout-plans" | "/diet-plans", clientId?: string) => {
     setOpen(false);
     setQuery("");
     if (to === "/clients/$clientId" && clientId) {
       void navigate({ to, params: { clientId } });
-    } else if (to === "/inquiries" || to === "/packages") {
+    } else {
       void navigate({ to });
     }
   };
@@ -101,6 +107,8 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
               ))}
             </CommandGroup>
           ) : null}
+          {results.workoutPlans.length ? <CommandGroup heading="Workout Plans">{results.workoutPlans.map(item=><CommandItem key={item.id} value={`workout ${item.name} ${item.goal}`} onSelect={()=>go("/workout-plans")}><Dumbbell aria-hidden/><span className="min-w-0 truncate">{item.name}</span><span className="ml-auto text-xs text-muted-foreground">{item.goal}</span></CommandItem>)}</CommandGroup>:null}
+          {results.dietPlans.length ? <CommandGroup heading="Diet Plans">{results.dietPlans.map(item=><CommandItem key={item.id} value={`diet ${item.name} ${item.goal}`} onSelect={()=>go("/diet-plans")}><Salad aria-hidden/><span className="min-w-0 truncate">{item.name}</span><span className="ml-auto text-xs text-muted-foreground">{item.goal}</span></CommandItem>)}</CommandGroup>:null}
         </CommandList>
       </CommandDialog>
     </>

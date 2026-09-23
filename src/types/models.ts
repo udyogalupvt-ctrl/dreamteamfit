@@ -95,3 +95,54 @@ export interface Membership extends BaseDoc {
   endDate: string;
   status: MembershipStatus;
 }
+
+export const WORKOUT_GOALS = ["Weight Loss", "Muscle Gain", "Strength", "Fat Loss", "General Fitness", "Endurance", "Custom"] as const;
+export type WorkoutGoal = (typeof WORKOUT_GOALS)[number];
+export const DIET_GOALS = ["Weight Loss", "Muscle Gain", "Fat Loss", "Maintenance", "General Fitness", "Custom"] as const;
+export type DietGoal = (typeof DIET_GOALS)[number];
+export const ASSIGNMENT_STATUSES = ["active", "completed", "cancelled"] as const;
+export type AssignmentStatus = (typeof ASSIGNMENT_STATUSES)[number];
+
+export interface WorkoutPlan extends BaseDoc {
+  name: string;
+  goal: WorkoutGoal;
+  description: string;
+  durationWeeks: number;
+  daysPerWeek: number;
+  isActive: boolean;
+}
+
+export interface DietPlan extends BaseDoc {
+  name: string;
+  goal: DietGoal;
+  description: string;
+  dailyCalories: number;
+  mealStructure: string;
+  notes: string;
+  isActive: boolean;
+}
+
+export interface WorkoutAssignment extends BaseDoc {
+  clientId: string;
+  workoutPlanId: string;
+  planNameSnapshot: string;
+  goalSnapshot: WorkoutGoal;
+  assignedDate: string;
+  startDate: string;
+  endDate: string;
+  status: AssignmentStatus;
+  notes: string;
+}
+
+export interface DietAssignment extends BaseDoc {
+  clientId: string;
+  dietPlanId: string;
+  planNameSnapshot: string;
+  goalSnapshot: DietGoal;
+  dailyCaloriesSnapshot: number;
+  assignedDate: string;
+  startDate: string;
+  endDate: string;
+  status: AssignmentStatus;
+  notes: string;
+}
