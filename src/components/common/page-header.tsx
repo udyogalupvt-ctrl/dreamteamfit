@@ -44,14 +44,14 @@ export function PageHeader({
         </nav>
       ) : null}
 
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 sm:flex sm:flex-wrap sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
         <div className="min-w-0">
           <h1 className="text-page-title truncate">{title}</h1>
           {description ? (
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{description}</p>
           ) : null}
         </div>
-        {actions ? <div className="flex shrink-0 flex-wrap gap-2">{actions}</div> : null}
+        {actions ? <div className="flex flex-wrap gap-2 sm:shrink-0">{actions}</div> : null}
       </div>
     </header>
   );
