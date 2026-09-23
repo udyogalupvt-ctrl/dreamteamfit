@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CalendarClock, CalendarPlus, Dumbbell, ReceiptIndianRupee, Salad, UserPlus, Users } from "lucide-react";
+import { CalendarClock, CalendarPlus, CreditCard, Dumbbell, ReceiptIndianRupee, Salad, UserPlus, Users } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { StatCard, StatCardSkeleton } from "@/components/common/stat-card";
 import { ErrorState } from "@/components/common/error-state";

@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, CalendarPlus, Dumbbell, Package, ReceiptIndianRupee, Salad, UserPlus, Users, UsersRound } from "lucide-react";
+import { Bell, CalendarPlus, CreditCard, Dumbbell, Package, ReceiptIndianRupee, Salad, UserPlus, Users, UsersRound } from "lucide-react";
 import { GlobalSearch } from "@/components/layout/global-search";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
