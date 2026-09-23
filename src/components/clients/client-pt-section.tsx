@@ -7,10 +7,10 @@ import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatPrice } from "@/lib/format";
 import { subscribeClientPtAssignments } from "@/services/pt.service";
 import { subscribeClientPayments } from "@/services/finance.service";
-import type { Client } from "@/types/models";
+import type { Client, Payment, PtAssignment } from "@/types/models";
 
 export function ClientPtSection({ client }: { client: Client }) {
-  const pts = useLive((ok, fail) => subscribeClientPtAssignments(client.id, ok, fail), [], [client.id]);
+  const pts = useLive((ok, fail) => subscribeClientPtAssignments(client.id, ok, fail), [] as PtAssignment[], [client.id]);
   const { openEnrollment } = useEnrollment();
   if (!pts.loading && !pts.data.length)
     return <EmptyState icon={Dumbbell} title="No personal training" description="Add PT through a new membership checkout." action={<Button onClick={() => openEnrollment({ existingClient: client })}>Add package / PT</Button>} />;
@@ -50,7 +50,7 @@ export function ClientBiometricCard({ client }: { client: Client }) {
 }
 
 export function ClientPaymentsList({ clientId }: { clientId: string }) {
-  const pays = useLive((ok, fail) => subscribeClientPayments(clientId, ok, fail), [], [clientId]);
+  const pays = useLive((ok, fail) => subscribeClientPayments(clientId, ok, fail), [] as Payment[], [clientId]);
   if (!pays.data.length) return null;
   return (
     <section className="surface-card overflow-hidden">
