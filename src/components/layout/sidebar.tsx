@@ -27,7 +27,7 @@ export function DesktopSidebar({ collapsed, onToggle }: SidebarProps) {
         )}
       >
         <Link to="/dashboard" className="flex min-w-0 items-center gap-3 rounded-lg">
-          <BrandMark className={collapsed ? "size-12" : "size-12"} />
+          <BrandMark className="size-12" />
           {!collapsed ? (
             <span className="min-w-0">
               <span className="font-display block truncate text-sm font-extrabold tracking-tight">

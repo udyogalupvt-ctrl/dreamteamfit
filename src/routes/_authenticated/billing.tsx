@@ -5,9 +5,9 @@ import { ModulePlaceholder } from "@/components/common/module-placeholder";
 export const Route = createFileRoute("/_authenticated/billing")({
   head: () => ({
     meta: [
-      { title: "Billing & Payments — FORGE" },
+      { title: "Billing & Payments — REBUILD FITNESS" },
       { name: "description", content: "POS billing, invoices, dues and collection tracking." },
-      { property: "og:title", content: "Billing & Payments — FORGE" },
+      { property: "og:title", content: "Billing & Payments — REBUILD FITNESS" },
       {
         property: "og:description",
         content: "POS billing, invoices, dues and collection tracking.",

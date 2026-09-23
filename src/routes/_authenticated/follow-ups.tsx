@@ -5,9 +5,9 @@ import { ModulePlaceholder } from "@/components/common/module-placeholder";
 export const Route = createFileRoute("/_authenticated/follow-ups")({
   head: () => ({
     meta: [
-      { title: "Follow-ups — FORGE" },
+      { title: "Follow-ups — REBUILD FITNESS" },
       { name: "description", content: "Renewal reminders, win-backs and staff task pipelines." },
-      { property: "og:title", content: "Follow-ups — FORGE" },
+      { property: "og:title", content: "Follow-ups — REBUILD FITNESS" },
       {
         property: "og:description",
         content: "Renewal reminders, win-backs and staff task pipelines.",

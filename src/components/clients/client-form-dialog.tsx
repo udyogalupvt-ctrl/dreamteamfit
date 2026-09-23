@@ -24,6 +24,7 @@ import {
 } from "@/services/clients.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { GENDERS, LEAD_SOURCES, type Client } from "@/types/models";
+import { CLOUDINARY_CLIENT_FOLDER } from "@/constants/navigation";
 
 export const phoneSchema = z
   .string()
@@ -229,7 +230,7 @@ export function ClientFormDialog({
         {!inquiryId ? (
           <ImageUpload
             label="Profile photo"
-            folder="forge/clients"
+            folder={CLOUDINARY_CLIENT_FOLDER}
             value={
               form.profilePhotoUrl
                 ? { url: form.profilePhotoUrl, publicId: "", width: 0, height: 0, format: "" }

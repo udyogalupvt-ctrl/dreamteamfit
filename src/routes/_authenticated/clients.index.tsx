@@ -33,9 +33,9 @@ import type { Client } from "@/types/models";
 export const Route = createFileRoute("/_authenticated/clients/")({
   head: () => ({
     meta: [
-      { title: "Clients — FORGE" },
+      { title: "Clients — REBUILD FITNESS" },
       { name: "description", content: "Member profiles, memberships and history in one place." },
-      { property: "og:title", content: "Clients — FORGE" },
+      { property: "og:title", content: "Clients — REBUILD FITNESS" },
       { property: "og:description", content: "Member profiles, memberships and history in one place." },
     ],
   }),
@@ -118,7 +118,7 @@ function ClientsPage() {
         <EmptyState
           icon={Users}
           title="No clients yet"
-          description="Add a client directly, or convert an inquiry once they decide to join."
+          description="Create your first client to start managing memberships."
           action={
             <div className="flex flex-wrap justify-center gap-2">
               <Button onClick={() => setFormOpen(true)}>

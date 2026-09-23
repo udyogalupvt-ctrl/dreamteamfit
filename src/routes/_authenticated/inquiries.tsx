@@ -68,9 +68,9 @@ import { INQUIRY_STATUSES, LEAD_SOURCES, type Inquiry, type InquiryStatus } from
 export const Route = createFileRoute("/_authenticated/inquiries")({
   head: () => ({
     meta: [
-      { title: "Inquiries — FORGE" },
+      { title: "Inquiries — REBUILD FITNESS" },
       { name: "description", content: "Capture leads, track follow-ups and convert inquiries into clients." },
-      { property: "og:title", content: "Inquiries — FORGE" },
+      { property: "og:title", content: "Inquiries — REBUILD FITNESS" },
       { property: "og:description", content: "Capture leads, track follow-ups and convert inquiries into clients." },
     ],
   }),
@@ -237,7 +237,7 @@ function InquiriesPage() {
         <EmptyState
           icon={UserPlus}
           title="No inquiries yet"
-          description="Log your first walk-in or online lead to start the conversion pipeline."
+          description="Capture your first gym inquiry."
           action={
             <Button onClick={openCreate}>
               <Plus aria-hidden /> New inquiry

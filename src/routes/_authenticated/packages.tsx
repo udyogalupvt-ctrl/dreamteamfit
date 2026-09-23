@@ -35,9 +35,9 @@ import type { GymPackage } from "@/types/models";
 export const Route = createFileRoute("/_authenticated/packages")({
   head: () => ({
     meta: [
-      { title: "Packages — FORGE" },
+      { title: "Packages — REBUILD FITNESS" },
       { name: "description", content: "Create and manage membership packages and pricing." },
-      { property: "og:title", content: "Packages — FORGE" },
+      { property: "og:title", content: "Packages — REBUILD FITNESS" },
       { property: "og:description", content: "Create and manage membership packages and pricing." },
     ],
   }),
@@ -133,7 +133,7 @@ function PackagesPage() {
         <EmptyState
           icon={Package}
           title="No packages yet"
-          description="Create your first membership package — for example Monthly, 30 days, ₹999."
+          description="Create a membership package to get started."
           action={
             <Button onClick={openCreate}>
               <Plus aria-hidden /> Create package

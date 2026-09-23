@@ -5,9 +5,9 @@ import { ModulePlaceholder } from "@/components/common/module-placeholder";
 export const Route = createFileRoute("/_authenticated/attendance")({
   head: () => ({
     meta: [
-      { title: "Attendance — FORGE" },
+      { title: "Attendance — REBUILD FITNESS" },
       { name: "description", content: "Check-ins, batch tracking and biometric sync." },
-      { property: "og:title", content: "Attendance — FORGE" },
+      { property: "og:title", content: "Attendance — REBUILD FITNESS" },
       { property: "og:description", content: "Check-ins, batch tracking and biometric sync." },
     ],
   }),
