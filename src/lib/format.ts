@@ -1,5 +1,5 @@
 import { addDays, format, parseISO } from "date-fns";
-import type { AssignmentStatus, BookingStatus, EnrollmentStatus, GroupClassStatus, InquiryStatus, LeadSource, MembershipStatus } from "@/types/models";
+import type { AssignmentStatus, BookingStatus, EnrollmentStatus, GroupClassStatus, InquiryStatus, InvoicePaymentStatus, LeadSource, MembershipStatus } from "@/types/models";
 import type { StatTone } from "@/types";
 
 /** Digits only, last 10 digits (strips +91 / leading 0) for reliable comparison. */
@@ -97,6 +97,13 @@ export const ENROLLMENT_STATUS_META: Record<EnrollmentStatus, { label: string; t
   attended: { label: "Attended", tone: "success" },
   cancelled: { label: "Cancelled", tone: "warning" },
   no_show: { label: "No-show", tone: "danger" },
+};
+
+export const INVOICE_STATUS_META: Record<InvoicePaymentStatus, { label: string; tone: StatTone }> = {
+  paid: { label: "Paid", tone: "success" },
+  partial: { label: "Partial", tone: "warning" },
+  pending: { label: "Pending", tone: "danger" },
+  refunded: { label: "Refunded", tone: "violet" },
 };
 
 export function formatTime(value: string): string {

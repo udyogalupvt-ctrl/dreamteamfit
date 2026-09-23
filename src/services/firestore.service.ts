@@ -31,6 +31,7 @@ export const COLLECTIONS = {
   classEnrollments: "classEnrollments",
   expenses: "expenses",
   expenseActivities: "expenseActivities",
+  publicInvoices: "publicInvoices",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];
