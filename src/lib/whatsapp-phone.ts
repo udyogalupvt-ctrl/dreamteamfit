@@ -6,7 +6,9 @@ export function normalizeWhatsAppPhone(input: string, defaultCountryCode = "91")
   const hasPlus = trimmed.startsWith("+");
   let digits = trimmed.replace(/\D/g, "");
   if (!digits) return { ok: false, error: "Enter a valid WhatsApp number." };
-  if (!hasPlus && digits.length === 10) digits = `${defaultCountryCode.replace(/\D/g, "")}${digits}`;
+  // Guard against a phone number saved as the country code: fall back to India.
+  const cc = defaultCountryCode.replace(/\D/g, "");
+  if (!hasPlus && digits.length === 10) digits = `${/^\d{1,3}$/.test(cc) ? cc : "91"}${digits}`;
   if (digits.startsWith("00")) digits = digits.slice(2);
   if (digits.length < 10 || digits.length > 15) return { ok: false, error: "Use a valid international WhatsApp number." };
   return { ok: true, value: digits };

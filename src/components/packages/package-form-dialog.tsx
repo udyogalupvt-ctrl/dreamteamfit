@@ -45,7 +45,7 @@ interface Props {
 export function PackageFormDialog({ open, onOpenChange, pkg }: Props) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [duration, setDuration] = useState<string>("30");
+  const [duration, setDuration] = useState<string>("");
   const [price, setPrice] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [category, setCategory] = useState<PackageCategory>("Strength + Cardio");
@@ -56,7 +56,8 @@ export function PackageFormDialog({ open, onOpenChange, pkg }: Props) {
     if (!open) return;
     setName(pkg?.name ?? "");
     setDescription(pkg?.description ?? "");
-    setDuration(String(pkg?.durationDays ?? 30));
+    // New packages start with no duration, so "Yearly" can't be saved as 30 days by accident.
+    setDuration(pkg ? String(pkg.durationDays) : "");
     setPrice(pkg ? String(pkg.price) : "");
     setIsActive(pkg?.isActive ?? true);
     setCategory(pkg?.category ?? "Strength + Cardio");
@@ -138,8 +139,8 @@ export function PackageFormDialog({ open, onOpenChange, pkg }: Props) {
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Duration" htmlFor="pkg-duration" error={errors.durationDays} required>
             <Select value={duration} onValueChange={setDuration}>
-              <SelectTrigger id="pkg-duration" className="h-10 w-full">
-                <SelectValue />
+              <SelectTrigger id="pkg-duration" className="h-10 w-full" aria-invalid={!!errors.durationDays}>
+                <SelectValue placeholder="Choose duration" />
               </SelectTrigger>
               <SelectContent>
                 {DURATION_OPTIONS.map((d) => (

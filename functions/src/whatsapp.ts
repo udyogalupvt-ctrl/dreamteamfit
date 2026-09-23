@@ -29,7 +29,8 @@ export const whatsappAccessToken = accessToken;
 export function whatsappNumber(phone: string, countryCode = "91") {
   let digits = String(phone ?? "").replace(/\D/g, "");
   if (digits.startsWith("00")) digits = digits.slice(2);
-  if (digits.length === 10) digits = `${countryCode.replace(/\D/g, "")}${digits}`;
+  const cc = countryCode.replace(/\D/g, "");
+  if (digits.length === 10) digits = `${/^\d{1,3}$/.test(cc) ? cc : "91"}${digits}`;
   return digits.length >= 10 && digits.length <= 15 ? digits : "";
 }
 

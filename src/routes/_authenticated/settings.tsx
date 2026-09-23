@@ -243,6 +243,11 @@ function WhatsAppSettingsPanel() {
     setF((x) => ({ ...x, [k]: v }));
   const api = f.mode === "whatsapp";
   const save = async () => {
+    // A phone number typed here would be glued in front of every member's number.
+    if (!/^\d{1,3}$/.test(f.defaultCountryCode)) {
+      toast.error("Country code must be 1 to 3 digits, for example 91 for India");
+      return;
+    }
     setSaving(true);
     try {
       await saveWhatsAppSettings({ ...f, enabled: api });
@@ -369,12 +374,18 @@ function WhatsAppSettingsPanel() {
               </div>
             </>
           ) : null}
-          <Field label="Country code for 10-digit numbers" htmlFor="wa-cc" className="sm:max-w-xs">
+          <Field
+            label="Country code for 10-digit numbers"
+            htmlFor="wa-cc"
+            className="sm:max-w-xs"
+            hint="Only the code, not a phone number. India is 91."
+          >
             <Input
               id="wa-cc"
               inputMode="numeric"
+              maxLength={3}
               value={f.defaultCountryCode}
-              onChange={(e) => set("defaultCountryCode", e.target.value.replace(/\D/g, ""))}
+              onChange={(e) => set("defaultCountryCode", e.target.value.replace(/\D/g, "").slice(0, 3))}
             />
           </Field>
           <p className="text-meta flex items-center gap-1.5">
