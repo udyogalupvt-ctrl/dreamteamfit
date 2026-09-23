@@ -68,10 +68,10 @@ export function useDashboardMetrics() {
 
     const stats: StatMetric[] = [
       { id: "new-clients", label: "New Clients", value: formatNumber(newClients), hint: "this month", icon: UserPlus, tone: "primary" },
-      { id: "collection", label: "Total Collection", value: "—", hint: "available with billing", icon: BadgeIndianRupee, tone: "success" },
+      { id: "collection", label: "Total Collection", value: "—", hint: "Not available yet", icon: BadgeIndianRupee, tone: "success" },
       { id: "active", label: "Active Members", value: formatNumber(active), hint: "with a running membership", icon: UserRoundCheck, tone: "info" },
       { id: "expired", label: "Expired Members", value: formatNumber(expired), hint: "no active plan", icon: UserRoundX, tone: "danger" },
-      { id: "attendance", label: "Today's Attendance", value: "—", hint: "available with attendance", icon: CalendarCheck, tone: "violet" },
+      { id: "attendance", label: "Today's Attendance", value: "—", hint: "No attendance data yet", icon: CalendarCheck, tone: "violet" },
       { id: "follow-ups", label: "Follow-ups", value: formatNumber(followUpsDue), hint: "inquiries due today", icon: MessageSquareHeart, tone: "warning" },
       { id: "renewals", label: "Upcoming Renewals", value: formatNumber(renewals), hint: "ending in 7 days", icon: RefreshCcw, tone: "info" },
       {

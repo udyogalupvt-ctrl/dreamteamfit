@@ -249,7 +249,7 @@ function InquiriesPage() {
       ) : (
         <>
           {/* Desktop table */}
-          <div className="surface-card hidden overflow-hidden md:block">
+          <div className="surface-card hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow>

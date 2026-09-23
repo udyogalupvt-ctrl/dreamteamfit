@@ -24,13 +24,13 @@ export function ModulePlaceholder({
         title={title}
         description={description}
         breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: title }]}
-        actions={<Badge variant="secondary">Foundation stage</Badge>}
+        actions={<Badge variant="secondary">Not available yet</Badge>}
       />
 
       <EmptyState
         icon={icon}
-        title={`${title} module is wired and waiting`}
-        description="The navigation, layout, theming and data layer are ready. Business logic lands in the next build stage."
+        title={`${title} is not available yet`}
+        description="This area will become available when its data module is enabled."
       />
 
       <section className="surface-card p-5">

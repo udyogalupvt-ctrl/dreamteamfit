@@ -134,7 +134,7 @@ function ClientsPage() {
         <EmptyState icon={Users} title="No matching clients" description="Try another name, phone or client ID." />
       ) : (
         <>
-          <div className="surface-card hidden overflow-hidden md:block">
+          <div className="surface-card hidden overflow-x-auto md:block">
             <Table>
               <TableHeader>
                 <TableRow>
