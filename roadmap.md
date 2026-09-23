@@ -5,4 +5,4 @@
 - [x] Replace Reports placeholder with real expense, membership, inquiry, booking, workout, and diet reporting
 - [x] Add real expense dashboard metrics and expense audit activity without fabricating revenue or profit
 - [x] Connect navigation and quick actions while preserving existing modules
-- [ ] Verify CRUD, totals, filters, reports, persistence, responsive layouts, and both themes
+- [x] Verify CRUD, totals, filters, reports, persistence, responsive layouts, and both themes
