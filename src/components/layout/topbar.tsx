@@ -42,6 +42,7 @@ export function Topbar() {
               <DropdownMenuItem onSelect={() => navigate({ to: "/bookings", search: { create: true } })}><CalendarPlus aria-hidden /> Booking</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => navigate({ to: "/group-classes" })}><UsersRound aria-hidden /> Group class</DropdownMenuItem>
                <DropdownMenuItem onSelect={() => navigate({ to: "/expenses", search: { create: true } })}><ReceiptIndianRupee aria-hidden /> Expense</DropdownMenuItem>
+               <DropdownMenuItem onSelect={() => navigate({ to: "/billing", search: { create: true } })}><CreditCard aria-hidden /> Bill</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
