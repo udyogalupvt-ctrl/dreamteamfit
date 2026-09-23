@@ -53,9 +53,9 @@ export function StatCard({ metric, className }: { metric: StatMetric; className?
   );
 }
 
-export function StatCardSkeleton() {
+export function StatCardSkeleton({ className }: { className?: string }) {
   return (
-    <div className="surface-card p-5">
+    <div className={cn("surface-card p-5", className)}>
       <div className="flex items-start justify-between">
         <div className="h-3 w-24 animate-pulse rounded bg-muted" />
         <div className="size-9 animate-pulse rounded-lg bg-muted" />

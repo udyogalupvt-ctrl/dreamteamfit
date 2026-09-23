@@ -64,11 +64,11 @@ export function Field({
 }: {
   label: string;
   htmlFor: string;
-  error?: string;
-  hint?: string;
-  required?: boolean;
+  error?: string | undefined;
+  hint?: string | undefined;
+  required?: boolean | undefined;
   children: ReactNode;
-  className?: string;
+  className?: string | undefined;
 }) {
   return (
     <div className={cn("grid gap-1.5", className)}>
