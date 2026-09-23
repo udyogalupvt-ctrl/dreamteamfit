@@ -79,7 +79,10 @@ function DashboardPage() {
                 variant={variant}
                 size="lg"
                 className="h-14 min-w-0 justify-start gap-3"
-                onClick={() => void navigate({ to: rest.to, search: "search" in rest ? rest.search : undefined })}
+                onClick={() => {
+                  if ("search" in rest) void navigate({ to: rest.to, search: rest.search });
+                  else void navigate({ to: rest.to });
+                }}
               >
                 <Icon aria-hidden />
                 {label}
