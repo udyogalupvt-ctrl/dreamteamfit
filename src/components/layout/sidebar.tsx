@@ -4,7 +4,7 @@ import { BrandMark } from "@/components/layout/brand-mark";
 import { NavList } from "@/components/layout/nav-list";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { UserMenu } from "@/components/layout/user-menu";
-import { APP_NAME, GYM_NAME } from "@/constants/navigation";
+import { APP_NAME, APP_TAGLINE } from "@/constants/navigation";
 import { cn } from "@/lib/utils";
 
 interface SidebarProps {
@@ -27,13 +27,13 @@ export function DesktopSidebar({ collapsed, onToggle }: SidebarProps) {
         )}
       >
         <Link to="/dashboard" className="flex min-w-0 items-center gap-3 rounded-lg">
-          <BrandMark />
+          <BrandMark className={collapsed ? "size-12" : "size-12"} />
           {!collapsed ? (
             <span className="min-w-0">
               <span className="font-display block truncate text-sm font-extrabold tracking-tight">
                 {APP_NAME}
               </span>
-              <span className="block truncate text-xs text-muted-foreground">{GYM_NAME}</span>
+              <span className="block truncate text-xs text-muted-foreground">{APP_TAGLINE}</span>
             </span>
           ) : null}
         </Link>

@@ -92,7 +92,7 @@ export function UserMenu({ compact = false }: { compact?: boolean }) {
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title="Log out of FORGE?"
+        title="Log out of REBUILD FITNESS?"
         description="You will need to sign in again to access the gym workspace."
         confirmLabel="Log out"
         destructive

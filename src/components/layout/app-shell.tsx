@@ -3,7 +3,7 @@ import { DesktopSidebar } from "@/components/layout/sidebar";
 import { MobileBottomNav } from "@/components/layout/mobile-nav";
 import { Topbar } from "@/components/layout/topbar";
 
-const COLLAPSE_KEY = "forge-sidebar-collapsed";
+const COLLAPSE_KEY = "rebuild-fitness-sidebar-collapsed";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
