@@ -14,4 +14,4 @@
 - [x] Add secure provider, authenticated sends, webhook and delivery tracking
 - [x] Connect invoice, renewal, birthday and follow-up workflows
 - [x] Add settings and message history UI
-- [ ] Verify mock flows, duplicate protection and responsive states
+- [x] Verify mock flows, duplicate protection and responsive states
