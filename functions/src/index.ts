@@ -4,7 +4,6 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { sendTemplateMessage, whatsappAccessToken, whatsappNumber } from "./whatsapp.js";
 export { sendWhatsAppMessage, testWhatsAppConnection, whatsappWebhook } from "./whatsapp.js";
 export { auditTrail } from "./audit.js";
-export { invoicePdf } from "./invoice-pdf.js";
 export {
   dailyDoorAccessSync,
   doorAccessOnClient,

@@ -12,7 +12,6 @@ export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   businessAccountIdHint: "",
   templateLanguage: "en",
   invoiceTemplate: "gym_bill",
-  invoiceAttachPdf: true,
   autoSendInvoice: true,
   renewalTemplate: "gym_renewal_reminder",
   birthdayTemplate: "gym_birthday_wish",

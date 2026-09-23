@@ -1241,12 +1241,12 @@ function ShareStep({
               <Send className="size-4" aria-hidden />
             )}
             {autoSend.kind === "sending"
-              ? "Sending bill PDF on WhatsApp…"
+              ? "Sending the bill on WhatsApp…"
               : autoSend.kind === "sent"
-                ? `Bill PDF sent to ${invoice.clientPhoneSnapshot} on WhatsApp`
+                ? `Bill sent to ${invoice.clientPhoneSnapshot} on WhatsApp`
                 : autoSend.kind === "failed"
                   ? autoSend.message
-                  : "Send the bill PDF automatically through WhatsApp"}
+                  : "Send the bill automatically through WhatsApp"}
           </span>
           {autoSend.kind !== "sending" && autoSend.kind !== "sent" ? (
             <Button size="sm" onClick={() => void sendApi()}>

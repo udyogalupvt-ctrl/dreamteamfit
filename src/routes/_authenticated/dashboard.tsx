@@ -282,7 +282,7 @@ function IntegrationsCard() {
           <span className="block text-sm font-semibold">WhatsApp bills</span>
           <span className="text-meta">
             {waLive
-              ? "Bill PDF is sent automatically"
+              ? "Bills are sent automatically"
               : "Staff share with one tap · connect API for auto-send"}
           </span>
         </span>

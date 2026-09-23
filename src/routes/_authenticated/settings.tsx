@@ -286,7 +286,7 @@ function WhatsAppSettingsPanel() {
           </p>
           <p className="text-muted-foreground">
             {api
-              ? "After payment, the bill PDF is sent from your WhatsApp Business number automatically."
+              ? "After payment, the bill is sent from your WhatsApp Business number with a View bill button."
               : "After payment, staff tap “Share bill on WhatsApp”. WhatsApp opens on the member's chat with the bill link typed — just press Send. Turn on the API below to send automatically."}
           </p>
         </div>
@@ -325,17 +325,12 @@ function WhatsAppSettingsPanel() {
                 checked={f.autoSendInvoice}
                 onChange={(v) => set("autoSendInvoice", v)}
               />
-              <ToggleRow
-                label="Attach the bill PDF"
-                hint="Your approved bill template must have a Document header."
-                checked={f.invoiceAttachPdf}
-                onChange={(v) => set("invoiceAttachPdf", v)}
-              />
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field
                   label="Bill template name"
                   htmlFor="wa-inv"
-                  hint="{{1}} name, {{2}} gym, {{3}} bill no., {{4}} paid, {{5}} balance, {{6}} link"
+                  hint="Body {{1}} name, {{2}} gym, {{3}} bill no., {{4}} paid, {{5}} balance · URL button …/invoice/{{1}}"
                 >
                   <Input
                     id="wa-inv"

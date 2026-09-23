@@ -268,6 +268,6 @@ export async function createInvoice(
     });
   });
   const snap = await getDoc(invoiceRef);
-  // The PDF is built on demand (browser download / invoicePdf function), never uploaded.
+  // No file is uploaded: the bill page builds the PDF when the member taps Download.
   return mapInvoice(invoiceRef.id, snap.data() ?? {});
 }

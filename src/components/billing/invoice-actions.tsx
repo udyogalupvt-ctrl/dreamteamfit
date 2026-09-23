@@ -67,7 +67,7 @@ export function InvoiceActions({
     setBusy(true);
     try {
       const r = await sendInvoiceWhatsApp(invoice, wa.data, business.data);
-      toast.success(r.duplicate ? "Already sent to this member" : "Bill PDF sent on WhatsApp");
+      toast.success(r.duplicate ? "Already sent to this member" : "Bill sent on WhatsApp");
     } catch (e) {
       toast.error(firestoreErrorMessage(e));
     } finally {
@@ -136,7 +136,7 @@ export function InvoiceActions({
           </DropdownMenuItem>
           {isWhatsAppApiLive(wa.data) ? (
             <DropdownMenuItem onSelect={() => void sendApi()}>
-              <Send aria-hidden /> Send PDF via WhatsApp API
+              <Send aria-hidden /> Send bill via WhatsApp API
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuItem onSelect={() => window.open(url, "_blank", "noopener,noreferrer")}>

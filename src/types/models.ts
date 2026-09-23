@@ -469,8 +469,6 @@ export interface WhatsAppSettings {
   businessAccountIdHint: string;
   templateLanguage: string;
   invoiceTemplate: string;
-  /** The approved invoice template has a DOCUMENT header, so the bill PDF is attached to the message. */
-  invoiceAttachPdf: boolean;
   /** Send the bill automatically right after a new member's payment is confirmed. */
   autoSendInvoice: boolean;
   renewalTemplate: string;

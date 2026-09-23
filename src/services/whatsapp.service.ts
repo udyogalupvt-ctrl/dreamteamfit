@@ -9,8 +9,6 @@ import {
 } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { app, db } from "@/lib/firebase";
-import { getInvoicePublicUrl } from "@/lib/invoice-utils";
-import { invoicePdfUrl } from "@/lib/invoice-download";
 import { invoiceShareMessage } from "@/lib/invoice-share";
 import { normalizeWhatsAppPhone } from "@/lib/whatsapp-phone";
 import type {
@@ -31,8 +29,8 @@ type SendInput = {
   templateName: string;
   templateLanguage?: string;
   parameters?: string[];
-  /** Attached as the template's DOCUMENT header (e.g. the bill PDF). */
-  headerDocument?: { link: string; filename: string } | null;
+  /** Fills the {{1}} at the end of the template's URL button (the bill's secret code). */
+  buttonUrlParam?: string;
   messagePreview: string;
   provider: CommunicationProviderName;
 };
@@ -139,7 +137,7 @@ export async function sendWhatsAppMessage(input: SendInput) {
     await call({
       messageId: id,
       parameters: input.parameters ?? [],
-      headerDocument: input.headerDocument ?? null,
+      buttonUrlParam: input.buttonUrlParam ?? "",
     });
     return { duplicate: false, messageId: id };
   } catch (error) {
@@ -155,8 +153,9 @@ export async function sendWhatsAppMessage(input: SendInput) {
 }
 
 /**
- * Sends a bill through the WhatsApp Cloud API with the PDF attached (when the approved
- * template has a document header). Generates the PDF first if it is missing.
+ * Sends the bill through the WhatsApp Cloud API ("gym_bill" template). The template's
+ * "View bill" button opens the bill page, where the member can view, download or print it.
+ * Each payment state is sent once, so after collecting a balance the updated bill can go again.
  */
 export async function sendInvoiceWhatsApp(
   invoice: Invoice,
@@ -165,7 +164,6 @@ export async function sendInvoiceWhatsApp(
 ) {
   if (wa.mode !== "whatsapp")
     throw new Error("WhatsApp API is not connected. Use Share on WhatsApp instead.");
-  const pdfUrl = invoice.pdfUrl || invoicePdfUrl(invoice.publicToken);
   const result = await sendWhatsAppMessage({
     client: {
       id: invoice.clientId,
@@ -175,21 +173,18 @@ export async function sendInvoiceWhatsApp(
       whatsappOptIn: true,
     },
     type: "invoice",
-    referenceId: invoice.id,
+    referenceId: `${invoice.id}_${invoice.amountPaid}`,
     templateName: wa.invoiceTemplate,
     templateLanguage: wa.templateLanguage,
-    // Order must match the approved "gym_bill" template: name, gym, bill no., paid, balance, link.
+    // Order must match the approved "gym_bill" template: name, gym, bill no., paid, balance.
     parameters: [
       invoice.clientNameSnapshot,
       business.businessName || "our gym",
       invoice.invoiceNumber,
       invoice.amountPaid.toLocaleString("en-IN"),
       invoice.balanceDue.toLocaleString("en-IN"),
-      getInvoicePublicUrl(invoice),
     ],
-    headerDocument: wa.invoiceAttachPdf
-      ? { link: pdfUrl, filename: `${invoice.invoiceNumber}.pdf` }
-      : null,
+    buttonUrlParam: invoice.publicToken,
     messagePreview: invoiceShareMessage(invoice, business.businessName),
     provider: wa.mode,
   });

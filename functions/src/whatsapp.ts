@@ -126,26 +126,18 @@ export const sendWhatsAppMessage = onCall({ secrets: [accessToken] }, async (req
   const parameters = Array.isArray(req.data?.parameters)
     ? req.data.parameters.map((x: unknown) => ({ type: "text", text: String(x) }))
     : [];
-  // Bill PDF sent as the template's DOCUMENT header, so the member gets the file itself in WhatsApp.
-  const headerDocument = req.data?.headerDocument as { link?: unknown; filename?: unknown } | null;
-  const documentLink = String(headerDocument?.link ?? "");
-  if (headerDocument && !/^https:\/\//.test(documentLink))
-    throw new HttpsError(
-      "invalid-argument",
-      "The bill PDF is not ready yet. Try again in a moment.",
-    );
+  // The template's URL button is "https://<app>/invoice/{{1}}"; we fill in the bill's secret code,
+  // so the member opens the bill page (view, download PDF, print).
+  const buttonUrlParam = String(req.data?.buttonUrlParam ?? "");
   const components: Record<string, unknown>[] = [];
-  if (headerDocument)
-    components.push({
-      type: "header",
-      parameters: [
-        {
-          type: "document",
-          document: { link: documentLink, filename: String(headerDocument.filename || "bill.pdf") },
-        },
-      ],
-    });
   if (parameters.length) components.push({ type: "body", parameters });
+  if (buttonUrlParam)
+    components.push({
+      type: "button",
+      sub_type: "url",
+      index: "0",
+      parameters: [{ type: "text", text: buttonUrlParam }],
+    });
   const payload = {
     messaging_product: "whatsapp",
     to: String(data.normalizedPhone),
