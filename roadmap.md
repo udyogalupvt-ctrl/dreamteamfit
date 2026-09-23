@@ -1,7 +1,8 @@
-# Rebuild Fitness polish
-- [x] Apply official logo and brand identity everywhere
-- [x] Update black/yellow semantic theme tokens
-- [x] Replace fake badges, notifications, and unsupported dashboard values
-- [x] Connect global search to clients, inquiries, and packages
-- [x] Complete responsive fixes across screens and dialogs
-- [x] Verify auth, routes, themes, real data, and target viewports
+# Workout and Diet Plans
+- [ ] Add typed Firestore models, services, validation, and authenticated rules
+- [ ] Build Workout Plans page with CRUD, filters, details, and safe deletion
+- [ ] Build Diet Plans page with CRUD, filters, details, and safe deletion
+- [ ] Add client workout assignment, current plan, and history
+- [ ] Add client diet assignment, current plan, and history
+- [ ] Add navigation, working quick actions, metadata, and real dashboard metrics
+- [ ] Verify persistence, responsive layouts, themes, and existing flows
