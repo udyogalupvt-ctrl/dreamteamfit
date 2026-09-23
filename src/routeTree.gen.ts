@@ -15,12 +15,14 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedAttendanceRouteImport } from './routes/_authenticated/attendance'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedDietPlansRouteImport } from './routes/_authenticated/diet-plans'
 import { Route as AuthenticatedDietsRouteImport } from './routes/_authenticated/diets'
 import { Route as AuthenticatedFollowUpsRouteImport } from './routes/_authenticated/follow-ups'
 import { Route as AuthenticatedInquiriesRouteImport } from './routes/_authenticated/inquiries'
 import { Route as AuthenticatedPackagesRouteImport } from './routes/_authenticated/packages'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedWorkoutPlansRouteImport } from './routes/_authenticated/workout-plans'
 import { Route as AuthenticatedWorkoutsRouteImport } from './routes/_authenticated/workouts'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
@@ -54,6 +56,11 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedDietPlansRoute = AuthenticatedDietPlansRouteImport.update({
+  id: '/diet-plans',
+  path: '/diet-plans',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedDietsRoute = AuthenticatedDietsRouteImport.update({
   id: '/diets',
   path: '/diets',
@@ -84,6 +91,12 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedWorkoutPlansRoute =
+  AuthenticatedWorkoutPlansRouteImport.update({
+    id: '/workout-plans',
+    path: '/workout-plans',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedWorkoutsRoute = AuthenticatedWorkoutsRouteImport.update({
   id: '/workouts',
   path: '/workouts',
@@ -108,12 +121,14 @@ export interface FileRoutesByFullPath {
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/diet-plans': typeof AuthenticatedDietPlansRoute
   '/diets': typeof AuthenticatedDietsRoute
   '/follow-ups': typeof AuthenticatedFollowUpsRoute
   '/inquiries': typeof AuthenticatedInquiriesRoute
   '/packages': typeof AuthenticatedPackagesRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/workouts': typeof AuthenticatedWorkoutsRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
@@ -124,12 +139,14 @@ export interface FileRoutesByTo {
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/diet-plans': typeof AuthenticatedDietPlansRoute
   '/diets': typeof AuthenticatedDietsRoute
   '/follow-ups': typeof AuthenticatedFollowUpsRoute
   '/inquiries': typeof AuthenticatedInquiriesRoute
   '/packages': typeof AuthenticatedPackagesRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/workouts': typeof AuthenticatedWorkoutsRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
@@ -142,12 +159,14 @@ export interface FileRoutesById {
   '/_authenticated/attendance': typeof AuthenticatedAttendanceRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/diet-plans': typeof AuthenticatedDietPlansRoute
   '/_authenticated/diets': typeof AuthenticatedDietsRoute
   '/_authenticated/follow-ups': typeof AuthenticatedFollowUpsRoute
   '/_authenticated/inquiries': typeof AuthenticatedInquiriesRoute
   '/_authenticated/packages': typeof AuthenticatedPackagesRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/_authenticated/workouts': typeof AuthenticatedWorkoutsRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
@@ -160,12 +179,14 @@ export interface FileRouteTypes {
     | '/attendance'
     | '/billing'
     | '/dashboard'
+    | '/diet-plans'
     | '/diets'
     | '/follow-ups'
     | '/inquiries'
     | '/packages'
     | '/reports'
     | '/settings'
+    | '/workout-plans'
     | '/workouts'
     | '/clients/$clientId'
     | '/clients/'
@@ -176,12 +197,14 @@ export interface FileRouteTypes {
     | '/attendance'
     | '/billing'
     | '/dashboard'
+    | '/diet-plans'
     | '/diets'
     | '/follow-ups'
     | '/inquiries'
     | '/packages'
     | '/reports'
     | '/settings'
+    | '/workout-plans'
     | '/workouts'
     | '/clients/$clientId'
     | '/clients'
@@ -193,12 +216,14 @@ export interface FileRouteTypes {
     | '/_authenticated/attendance'
     | '/_authenticated/billing'
     | '/_authenticated/dashboard'
+    | '/_authenticated/diet-plans'
     | '/_authenticated/diets'
     | '/_authenticated/follow-ups'
     | '/_authenticated/inquiries'
     | '/_authenticated/packages'
     | '/_authenticated/reports'
     | '/_authenticated/settings'
+    | '/_authenticated/workout-plans'
     | '/_authenticated/workouts'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/clients/'
@@ -254,6 +279,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/diet-plans': {
+      id: '/_authenticated/diet-plans'
+      path: '/diet-plans'
+      fullPath: '/diet-plans'
+      preLoaderRoute: typeof AuthenticatedDietPlansRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/diets': {
       id: '/_authenticated/diets'
       path: '/diets'
@@ -296,6 +328,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/workout-plans': {
+      id: '/_authenticated/workout-plans'
+      path: '/workout-plans'
+      fullPath: '/workout-plans'
+      preLoaderRoute: typeof AuthenticatedWorkoutPlansRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/workouts': {
       id: '/_authenticated/workouts'
       path: '/workouts'
@@ -324,12 +363,14 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAttendanceRoute: typeof AuthenticatedAttendanceRoute
   AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedDietPlansRoute: typeof AuthenticatedDietPlansRoute
   AuthenticatedDietsRoute: typeof AuthenticatedDietsRoute
   AuthenticatedFollowUpsRoute: typeof AuthenticatedFollowUpsRoute
   AuthenticatedInquiriesRoute: typeof AuthenticatedInquiriesRoute
   AuthenticatedPackagesRoute: typeof AuthenticatedPackagesRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedWorkoutPlansRoute: typeof AuthenticatedWorkoutPlansRoute
   AuthenticatedWorkoutsRoute: typeof AuthenticatedWorkoutsRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
   AuthenticatedClientsIndexRoute: typeof AuthenticatedClientsIndexRoute
@@ -339,12 +380,14 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAttendanceRoute: AuthenticatedAttendanceRoute,
   AuthenticatedBillingRoute: AuthenticatedBillingRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedDietPlansRoute: AuthenticatedDietPlansRoute,
   AuthenticatedDietsRoute: AuthenticatedDietsRoute,
   AuthenticatedFollowUpsRoute: AuthenticatedFollowUpsRoute,
   AuthenticatedInquiriesRoute: AuthenticatedInquiriesRoute,
   AuthenticatedPackagesRoute: AuthenticatedPackagesRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedWorkoutPlansRoute: AuthenticatedWorkoutPlansRoute,
   AuthenticatedWorkoutsRoute: AuthenticatedWorkoutsRoute,
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
   AuthenticatedClientsIndexRoute: AuthenticatedClientsIndexRoute,
