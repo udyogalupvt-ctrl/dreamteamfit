@@ -87,8 +87,8 @@ function ClientsPage() {
         description="Every member, their current plan and when it ends."
         breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Clients" }]}
         actions={
-          <Button onClick={() => setFormOpen(true)}>
-            <Plus aria-hidden /> New client
+          <Button onClick={() => openEnrollment()}>
+            <Plus aria-hidden /> New member
           </Button>
         }
       />
@@ -121,8 +121,8 @@ function ClientsPage() {
           description="Create your first client to start managing memberships."
           action={
             <div className="flex flex-wrap justify-center gap-2">
-              <Button onClick={() => setFormOpen(true)}>
-                <Plus aria-hidden /> New client
+              <Button onClick={() => openEnrollment()}>
+                <Plus aria-hidden /> New member
               </Button>
               <Button variant="outline" asChild>
                 <Link to="/leads">View inquiries</Link>
