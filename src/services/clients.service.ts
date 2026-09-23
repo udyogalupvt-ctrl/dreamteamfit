@@ -30,6 +30,7 @@ export type ClientInput = Pick<
   | "notes"
   | "status"
 >;
+export type ClientUpdateInput = Partial<ClientInput & Pick<Client, "biometricUserId" | "biometricDeviceId" | "biometricStatus">>;
 
 const COUNTER_REF = () => doc(db, COLLECTIONS.settings, "counters");
 
@@ -50,6 +51,9 @@ export const mapClient = (id: string, d: DocumentData): Client => ({
   status: d["status"] ?? "active",
   inquiryId: d["inquiryId"] ?? null,
   currentMembership: d["currentMembership"] ?? null,
+  biometricUserId: d["biometricUserId"] ?? "",
+  biometricDeviceId: d["biometricDeviceId"] ?? "",
+  biometricStatus: d["biometricStatus"] ?? "not_enrolled",
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -118,6 +122,9 @@ export async function createClient(input: ClientInput, inquiryId: string | null 
       clientCode,
       inquiryId,
       currentMembership: null,
+      biometricUserId: "",
+      biometricDeviceId: "",
+      biometricStatus: "not_enrolled",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -133,7 +140,7 @@ export async function createClient(input: ClientInput, inquiryId: string | null 
   return ref.id;
 }
 
-export async function updateClient(id: string, input: Partial<ClientInput>) {
+export async function updateClient(id: string, input: ClientUpdateInput) {
   const patch: Record<string, unknown> = { ...input, updatedAt: serverTimestamp() };
   if (input.phone !== undefined) patch["phoneNormalized"] = normalizePhone(input.phone);
   await updateDoc(doc(db, COLLECTIONS.clients, id), patch);

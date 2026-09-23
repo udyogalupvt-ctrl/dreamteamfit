@@ -30,7 +30,9 @@ import { subscribeClassEnrollments } from "@/services/class-enrollments.service"
 import { subscribeExpenseActivities, subscribeExpenses } from "@/services/expenses.service";
 import { subscribeInvoices } from "@/services/invoices.service";
 import type { ActivityItem, StatMetric } from "@/types";
-import type { Booking, ClassEnrollment, Client, DietAssignment, Expense, ExpenseActivity, GroupClass, Inquiry, Invoice, Membership, WorkoutAssignment } from "@/types/models";
+import type { AttendanceEvent, Booking, ClassEnrollment, Client, DietAssignment, Expense, ExpenseActivity, GroupClass, Inquiry, Invoice, Membership, WorkoutAssignment } from "@/types/models";
+import { subscribeAttendance } from "@/services/attendance.service";
+import { attendanceSummary } from "@/lib/attendance-utils";
 
 /** Derives dashboard numbers from live Firestore data only — nothing is invented. */
 export function useDashboardMetrics() {
@@ -45,9 +47,10 @@ export function useDashboardMetrics() {
   const expenses = useLive<Expense[]>(subscribeExpenses, [], []);
   const expenseActivities = useLive<ExpenseActivity[]>(subscribeExpenseActivities, [], []);
   const invoices = useLive<Invoice[]>(subscribeInvoices, [], []);
+  const attendance = useLive<AttendanceEvent[]>(subscribeAttendance, [], []);
 
-  const loading = clients.loading || memberships.loading || inquiries.loading || workouts.loading || diets.loading || bookings.loading || classes.loading || enrollments.loading || expenses.loading || expenseActivities.loading || invoices.loading;
-  const error = clients.error ?? memberships.error ?? inquiries.error ?? workouts.error ?? diets.error ?? bookings.error ?? classes.error ?? enrollments.error ?? expenses.error ?? expenseActivities.error ?? invoices.error;
+  const loading = clients.loading || memberships.loading || inquiries.loading || workouts.loading || diets.loading || bookings.loading || classes.loading || enrollments.loading || expenses.loading || expenseActivities.loading || invoices.loading || attendance.loading;
+  const error = clients.error ?? memberships.error ?? inquiries.error ?? workouts.error ?? diets.error ?? bookings.error ?? classes.error ?? enrollments.error ?? expenses.error ?? expenseActivities.error ?? invoices.error ?? attendance.error;
 
   const result = useMemo(() => {
     const today = todayISO();
@@ -60,6 +63,7 @@ export function useDashboardMetrics() {
     const todayCollected = invoices.data.filter(item=>item.invoiceDate===today).reduce((sum,item)=>sum+item.amountPaid,0);
     const monthCollected = invoices.data.filter(item=>item.invoiceDate>=monthStartISO&&item.invoiceDate<=today).reduce((sum,item)=>sum+item.amountPaid,0);
     const outstanding = invoices.data.filter(item=>item.paymentStatus!=="refunded").reduce((sum,item)=>sum+item.balanceDue,0);
+    const attendanceToday=attendance.data.filter(item=>item.attendanceDate===today);const attendanceTotals=attendanceSummary(attendanceToday);
 
     const byClient = new Map<string, Membership[]>();
     memberships.data.forEach((m) => {
@@ -101,7 +105,7 @@ export function useDashboardMetrics() {
       { id: "outstanding", label: "Outstanding Amount", value: formatPrice(outstanding), hint: "unpaid invoice balance", icon: CreditCard, tone: "warning" },
       { id: "active", label: "Active Members", value: formatNumber(active), hint: "with a running membership", icon: UserRoundCheck, tone: "info" },
       { id: "expired", label: "Expired Members", value: formatNumber(expired), hint: "no active plan", icon: UserRoundX, tone: "danger" },
-      { id: "attendance", label: "Today's Attendance", value: "—", hint: "No attendance data yet", icon: CalendarCheck, tone: "violet" },
+      { id: "attendance", label: "Today's Visits", value: formatNumber(attendanceTotals.visits), hint: `${attendanceTotals.present} present · ${attendanceTotals.blocked} blocked`, icon: CalendarCheck, tone: "violet" },
       { id: "follow-ups", label: "Follow-ups", value: formatNumber(followUpsDue), hint: "inquiries due today", icon: MessageSquareHeart, tone: "warning" },
       { id: "renewals", label: "Upcoming Renewals", value: formatNumber(renewals), hint: "ending in 7 days", icon: RefreshCcw, tone: "info" },
       { id: "workouts", label: "Workout Plans Assigned", value: formatNumber(workouts.data.filter((item) => item.status === "active").length), hint: "currently active", icon: Dumbbell, tone: "primary" },
@@ -200,7 +204,7 @@ export function useDashboardMetrics() {
     ].sort((a, b) => a.time.localeCompare(b.time));
 
     return { stats, ratios, activity, todaySchedule };
-  }, [clients.data, memberships.data, inquiries.data, workouts.data, diets.data, bookings.data, classes.data, enrollments.data, expenses.data, expenseActivities.data, invoices.data]);
+  }, [clients.data, memberships.data, inquiries.data, workouts.data, diets.data, bookings.data, classes.data, enrollments.data, expenses.data, expenseActivities.data, invoices.data, attendance.data]);
 
   return { ...result, loading, error };
 }

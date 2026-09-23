@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedAttendanceRouteImport } from './routes/_authenticated/attendance'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
+import { Route as AuthenticatedBiometricDevicesRouteImport } from './routes/_authenticated/biometric-devices'
 import { Route as AuthenticatedBookingsRouteImport } from './routes/_authenticated/bookings'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDietPlansRouteImport } from './routes/_authenticated/diet-plans'
@@ -54,6 +55,12 @@ const AuthenticatedBillingRoute = AuthenticatedBillingRouteImport.update({
   path: '/billing',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedBiometricDevicesRoute =
+  AuthenticatedBiometricDevicesRouteImport.update({
+    id: '/biometric-devices',
+    path: '/biometric-devices',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedBookingsRoute = AuthenticatedBookingsRouteImport.update({
   id: '/bookings',
   path: '/bookings',
@@ -139,6 +146,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/billing': typeof AuthenticatedBillingRoute
+  '/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
   '/bookings': typeof AuthenticatedBookingsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/diet-plans': typeof AuthenticatedDietPlansRoute
@@ -160,6 +168,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/billing': typeof AuthenticatedBillingRoute
+  '/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
   '/bookings': typeof AuthenticatedBookingsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/diet-plans': typeof AuthenticatedDietPlansRoute
@@ -183,6 +192,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authenticated/attendance': typeof AuthenticatedAttendanceRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
+  '/_authenticated/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
   '/_authenticated/bookings': typeof AuthenticatedBookingsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/diet-plans': typeof AuthenticatedDietPlansRoute
@@ -206,6 +216,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/attendance'
     | '/billing'
+    | '/biometric-devices'
     | '/bookings'
     | '/dashboard'
     | '/diet-plans'
@@ -227,6 +238,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/attendance'
     | '/billing'
+    | '/biometric-devices'
     | '/bookings'
     | '/dashboard'
     | '/diet-plans'
@@ -249,6 +261,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_authenticated/attendance'
     | '/_authenticated/billing'
+    | '/_authenticated/biometric-devices'
     | '/_authenticated/bookings'
     | '/_authenticated/dashboard'
     | '/_authenticated/diet-plans'
@@ -308,6 +321,13 @@ declare module '@tanstack/react-router' {
       path: '/billing'
       fullPath: '/billing'
       preLoaderRoute: typeof AuthenticatedBillingRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/biometric-devices': {
+      id: '/_authenticated/biometric-devices'
+      path: '/biometric-devices'
+      fullPath: '/biometric-devices'
+      preLoaderRoute: typeof AuthenticatedBiometricDevicesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/bookings': {
@@ -421,6 +441,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAttendanceRoute: typeof AuthenticatedAttendanceRoute
   AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
+  AuthenticatedBiometricDevicesRoute: typeof AuthenticatedBiometricDevicesRoute
   AuthenticatedBookingsRoute: typeof AuthenticatedBookingsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDietPlansRoute: typeof AuthenticatedDietPlansRoute
@@ -440,6 +461,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAttendanceRoute: AuthenticatedAttendanceRoute,
   AuthenticatedBillingRoute: AuthenticatedBillingRoute,
+  AuthenticatedBiometricDevicesRoute: AuthenticatedBiometricDevicesRoute,
   AuthenticatedBookingsRoute: AuthenticatedBookingsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDietPlansRoute: AuthenticatedDietPlansRoute,

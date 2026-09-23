@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, CalendarPlus, CreditCard, Dumbbell, Package, ReceiptIndianRupee, Salad, UserPlus, Users, UsersRound } from "lucide-react";
+import { Bell, CalendarCheck, CalendarPlus, CreditCard, Dumbbell, Package, ReceiptIndianRupee, Salad, UserPlus, Users, UsersRound } from "lucide-react";
 import { GlobalSearch } from "@/components/layout/global-search";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -43,6 +43,7 @@ export function Topbar() {
               <DropdownMenuItem onSelect={() => navigate({ to: "/group-classes" })}><UsersRound aria-hidden /> Group class</DropdownMenuItem>
                <DropdownMenuItem onSelect={() => navigate({ to: "/expenses", search: { create: true } })}><ReceiptIndianRupee aria-hidden /> Expense</DropdownMenuItem>
                <DropdownMenuItem onSelect={() => navigate({ to: "/billing", search: { create: true } })}><CreditCard aria-hidden /> Bill</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => navigate({ to: "/attendance" })}><CalendarCheck aria-hidden /> Attendance</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 

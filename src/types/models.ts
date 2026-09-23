@@ -80,6 +80,66 @@ export interface Client extends BaseDoc {
   status: ClientStatus;
   inquiryId: string | null;
   currentMembership: MembershipSummary | null;
+  biometricUserId: string;
+  biometricDeviceId: string;
+  biometricStatus: BiometricStatus;
+}
+
+export const BIOMETRIC_STATUSES = ["not_enrolled", "active", "disabled"] as const;
+export type BiometricStatus = (typeof BIOMETRIC_STATUSES)[number];
+
+export const DEVICE_MANUFACTURERS = ["eSSL", "ZKTeco", "Other"] as const;
+export type DeviceManufacturer = (typeof DEVICE_MANUFACTURERS)[number];
+export const DEVICE_STATUSES = ["online", "offline", "unknown", "disabled"] as const;
+export type DeviceStatus = (typeof DEVICE_STATUSES)[number];
+export const DEVICE_CONNECTIONS = ["LAN", "USB", "Cloud", "Other"] as const;
+export type DeviceConnection = (typeof DEVICE_CONNECTIONS)[number];
+export const DEVICE_INTEGRATIONS = ["adapter", "mock", "manual"] as const;
+export type DeviceIntegration = (typeof DEVICE_INTEGRATIONS)[number];
+
+export interface BiometricDevice extends BaseDoc {
+  name: string;
+  manufacturer: DeviceManufacturer;
+  model: string;
+  serialNumber: string;
+  deviceType: string;
+  location: string;
+  connectionType: DeviceConnection;
+  ipAddress: string;
+  port: number | null;
+  status: DeviceStatus;
+  integrationType: DeviceIntegration;
+  lastSyncAt: Date | null;
+}
+
+export const ATTENDANCE_EVENT_TYPES = ["check_in", "check_out", "unknown"] as const;
+export type AttendanceEventType = (typeof ATTENDANCE_EVENT_TYPES)[number];
+export const ATTENDANCE_SOURCES = ["biometric", "manual"] as const;
+export type AttendanceSource = (typeof ATTENDANCE_SOURCES)[number];
+export const ACCESS_REASONS = ["ACTIVE_MEMBERSHIP", "MEMBERSHIP_EXPIRED", "NO_ACTIVE_MEMBERSHIP", "BIOMETRIC_DISABLED", "MEMBER_NOT_FOUND", "DEVICE_NOT_REGISTERED"] as const;
+export type AccessReason = (typeof ACCESS_REASONS)[number];
+
+export interface AttendanceEvent extends BaseDoc {
+  clientId: string;
+  clientNameSnapshot: string;
+  biometricUserId: string;
+  deviceId: string;
+  deviceNameSnapshot: string;
+  eventType: AttendanceEventType;
+  attendanceDate: string;
+  timestamp: Date;
+  source: AttendanceSource;
+  accessDecision: "allowed" | "blocked";
+  accessReason: AccessReason;
+  rawEventReference: string;
+  notes: string;
+}
+
+export interface AccessDecision {
+  allowed: boolean;
+  reason: AccessReason;
+  clientId: string | null;
+  membershipId: string | null;
 }
 
 export const MEMBERSHIP_STATUSES = ["active", "expired", "cancelled", "pending"] as const;

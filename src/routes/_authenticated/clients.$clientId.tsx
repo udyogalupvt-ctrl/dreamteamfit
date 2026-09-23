@@ -2,7 +2,6 @@ import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
-  CalendarCheck,
   Camera,
   CreditCard,
   History,
@@ -32,6 +31,7 @@ import { AddMembershipDialog } from "@/components/clients/add-membership-dialog"
 import { AddWorkoutDialog } from "@/components/clients/add-workout-dialog";
 import { AddDietDialog } from "@/components/clients/add-diet-dialog";
 import { ClientBookingsSection } from "@/components/clients/client-bookings-section";
+import { ClientAttendanceSection } from "@/components/clients/client-attendance-section";
 import { InvoiceActions } from "@/components/billing/invoice-actions";
 import { BookingFormDialog } from "@/components/scheduling/booking-form-dialog";
 import { AssignmentSection } from "@/components/clients/assignment-section";
@@ -379,11 +379,7 @@ function ClientProfilePage() {
           {invoices.loading?<Shimmer className="h-40 rounded-2xl"/>:invoices.error?<ErrorState error={invoices.error} title="Couldn't load invoices"/>:invoices.data.length===0?<EmptyState icon={Wallet} title="No billing records yet" description="Create a bill for this client to begin their invoice history." action={<Button asChild><Link to="/billing" search={{create:true,clientId:c.id}}><Plus/> Create bill</Link></Button>}/>:<section className="space-y-4"><div className="grid gap-3 sm:grid-cols-3">{[["Total Invoices",String(invoices.data.length)],["Total Paid",formatPrice(invoices.data.reduce((n,i)=>n+i.amountPaid,0))],["Outstanding",formatPrice(invoices.data.reduce((n,i)=>n+i.balanceDue,0))]].map(([label,value])=><div className="surface-card p-4" key={label}><p className="text-meta">{label}</p><p className="mt-1 text-xl font-extrabold">{value}</p></div>)}</div><div className="surface-card divide-y divide-border">{invoices.data.map(i=><article className="p-4 sm:p-5" key={i.id}><div className="flex flex-col gap-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-bold">{i.invoiceNumber}</p><StatusPill tone={INVOICE_STATUS_META[i.paymentStatus].tone}>{INVOICE_STATUS_META[i.paymentStatus].label}</StatusPill></div><p className="text-meta">{formatDateISO(i.invoiceDate)} · Total {formatPrice(i.total)} · Paid {formatPrice(i.amountPaid)} · Balance {formatPrice(i.balanceDue)}</p></div><InvoiceActions invoice={i}/></div></article>)}</div></section>}
         </TabsContent>
         <TabsContent value="attendance">
-          <EmptyState
-            icon={CalendarCheck}
-            title="No attendance records yet"
-            description="Check-ins will appear here once attendance tracking is connected."
-          />
+          <ClientAttendanceSection client={c} memberships={memberships.data} />
         </TabsContent>
         <TabsContent value="followups">
           <EmptyState

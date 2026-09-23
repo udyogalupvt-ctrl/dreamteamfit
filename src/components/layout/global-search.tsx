@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { CalendarClock, Dumbbell, Package, ReceiptIndianRupee, Salad, Search, UserPlus, Users, UsersRound } from "lucide-react";
+import { CalendarCheck, CalendarClock, Cpu, Dumbbell, Package, ReceiptIndianRupee, Salad, Search, UserPlus, Users, UsersRound } from "lucide-react";
 import {
   CommandDialog,
   CommandEmpty,
@@ -20,7 +20,9 @@ import { subscribeBookings } from "@/services/bookings.service";
 import { subscribeGroupClasses } from "@/services/group-classes.service";
 import { subscribeExpenses } from "@/services/expenses.service";
 import { subscribeInvoices } from "@/services/invoices.service";
-import type { Booking, Client, DietPlan, Expense, GroupClass, Invoice, GymPackage, Inquiry, WorkoutPlan } from "@/types/models";
+import { subscribeAttendance } from "@/services/attendance.service";
+import { subscribeDevices } from "@/services/biometric-devices.service";
+import type { AttendanceEvent, BiometricDevice, Booking, Client, DietPlan, Expense, GroupClass, Invoice, GymPackage, Inquiry, WorkoutPlan } from "@/types/models";
 
 export function GlobalSearch({ compact = false }: { compact?: boolean }) {
   const navigate = useNavigate();
@@ -35,6 +37,8 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
   const classes = useLive<GroupClass[]>(subscribeGroupClasses, [], []);
   const expenses = useLive<Expense[]>(subscribeExpenses, [], []);
   const invoices = useLive<Invoice[]>(subscribeInvoices, [], []);
+  const attendance = useLive<AttendanceEvent[]>(subscribeAttendance, [], []);
+  const devices = useLive<BiometricDevice[]>(subscribeDevices, [], []);
   const q = query.trim().toLowerCase();
   const phone = normalizePhone(query);
 
@@ -63,9 +67,11 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
     classes: q ? classes.data.filter((item) => item.name.toLowerCase().includes(q) || item.trainerNameSnapshot.toLowerCase().includes(q)).slice(0, 5) : [],
     invoices: q ? invoices.data.filter((item) => item.invoiceNumber.toLowerCase().includes(q) || item.clientNameSnapshot.toLowerCase().includes(q) || item.clientPhoneSnapshot.includes(phone)).slice(0, 5) : [],
     expenses: q ? expenses.data.filter((item) => item.title.toLowerCase().includes(q) || item.category.toLowerCase().includes(q) || item.notes.toLowerCase().includes(q)).slice(0, 5) : [],
-  }), [clients.data, inquiries.data, packages.data, workoutPlans.data, dietPlans.data, bookings.data, classes.data, expenses.data, invoices.data, phone, q]);
+    attendance: q ? attendance.data.filter(item=>item.clientNameSnapshot.toLowerCase().includes(q)||item.biometricUserId.toLowerCase().includes(q)).slice(0,5):[],
+    devices: q ? devices.data.filter(item=>item.name.toLowerCase().includes(q)||item.location.toLowerCase().includes(q)||item.manufacturer.toLowerCase().includes(q)).slice(0,5):[],
+  }), [clients.data, inquiries.data, packages.data, workoutPlans.data, dietPlans.data, bookings.data, classes.data, expenses.data, invoices.data, attendance.data, devices.data, phone, q]);
 
-  const go = (to: "/clients/$clientId" | "/inquiries" | "/packages" | "/workout-plans" | "/diet-plans" | "/bookings" | "/group-classes" | "/expenses" | "/billing", clientId?: string) => {
+  const go = (to: "/clients/$clientId" | "/inquiries" | "/packages" | "/workout-plans" | "/diet-plans" | "/bookings" | "/group-classes" | "/expenses" | "/billing" | "/attendance" | "/biometric-devices", clientId?: string) => {
     setOpen(false);
     setQuery("");
     if (to === "/clients/$clientId" && clientId) {
@@ -125,6 +131,8 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
           {results.classes.length ? <CommandGroup heading="Group Classes">{results.classes.map(item=><CommandItem key={item.id} value={`class ${item.name} ${item.trainerNameSnapshot}`} onSelect={()=>go("/group-classes")}><UsersRound aria-hidden/><span className="min-w-0 truncate">{item.name}</span><span className="ml-auto text-xs text-muted-foreground">{item.date}</span></CommandItem>)}</CommandGroup>:null}
           {results.invoices.length ? <CommandGroup heading="Invoices">{results.invoices.map(item=><CommandItem key={item.id} value={`invoice ${item.invoiceNumber} ${item.clientNameSnapshot}`} onSelect={()=>go("/billing")}><ReceiptIndianRupee aria-hidden/><span className="min-w-0 truncate">{item.invoiceNumber} · {item.clientNameSnapshot}</span><span className="ml-auto text-xs text-muted-foreground">{item.paymentStatus}</span></CommandItem>)}</CommandGroup>:null}
           {results.expenses.length ? <CommandGroup heading="Expenses">{results.expenses.map(item=><CommandItem key={item.id} value={`expense ${item.title} ${item.category}`} onSelect={()=>go("/expenses")}><ReceiptIndianRupee aria-hidden/><span className="min-w-0 truncate">{item.title}</span><span className="ml-auto text-xs text-muted-foreground">{item.category}</span></CommandItem>)}</CommandGroup>:null}
+          {results.attendance.length ? <CommandGroup heading="Attendance">{results.attendance.map(item=><CommandItem key={item.id} value={`attendance ${item.clientNameSnapshot} ${item.biometricUserId}`} onSelect={()=>go("/attendance")}><CalendarCheck aria-hidden/><span className="min-w-0 truncate">{item.clientNameSnapshot}</span><span className="ml-auto text-xs text-muted-foreground">{item.attendanceDate}</span></CommandItem>)}</CommandGroup>:null}
+          {results.devices.length ? <CommandGroup heading="Biometric Devices">{results.devices.map(item=><CommandItem key={item.id} value={`device ${item.name} ${item.location}`} onSelect={()=>go("/biometric-devices")}><Cpu aria-hidden/><span className="min-w-0 truncate">{item.name}</span><span className="ml-auto text-xs text-muted-foreground">{item.status}</span></CommandItem>)}</CommandGroup>:null}
         </CommandList>
       </CommandDialog>
     </>
