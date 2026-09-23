@@ -50,6 +50,9 @@ export const mapClient = (id: string, d: DocumentData): Client => ({
   status: d["status"] ?? "active",
   inquiryId: d["inquiryId"] ?? null,
   currentMembership: d["currentMembership"] ?? null,
+  biometricUserId: d["biometricUserId"] ?? "",
+  biometricDeviceId: d["biometricDeviceId"] ?? "",
+  biometricStatus: d["biometricStatus"] ?? "not_enrolled",
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -118,6 +121,9 @@ export async function createClient(input: ClientInput, inquiryId: string | null 
       clientCode,
       inquiryId,
       currentMembership: null,
+      biometricUserId: "",
+      biometricDeviceId: "",
+      biometricStatus: "not_enrolled",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });

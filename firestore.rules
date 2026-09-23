@@ -14,7 +14,7 @@ service cloud.firestore {
         'followups', 'invoices', 'attendance', 'settings',
         'workoutPlans', 'workoutAssignments', 'dietPlans', 'dietAssignments',
         'bookings', 'groupClasses', 'classEnrollments',
-        'expenses', 'expenseActivities'
+        'expenses', 'expenseActivities', 'biometricDevices'
       ];
     }
 
