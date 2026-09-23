@@ -1,0 +1,5 @@
+import { z } from "zod";
+import { ATTENDANCE_EVENT_TYPES, BIOMETRIC_STATUSES, DEVICE_CONNECTIONS, DEVICE_INTEGRATIONS, DEVICE_MANUFACTURERS, DEVICE_STATUSES } from "@/types/models";
+export const biometricAssignmentSchema=z.object({biometricUserId:z.string().trim().min(1,"Biometric User ID is required").max(64),biometricDeviceId:z.string().min(1,"Select a device"),biometricStatus:z.enum(BIOMETRIC_STATUSES)});
+export const deviceSchema=z.object({name:z.string().trim().min(2).max(80),manufacturer:z.enum(DEVICE_MANUFACTURERS),model:z.string().trim().max(80),serialNumber:z.string().trim().max(100),deviceType:z.string().trim().max(80),location:z.string().trim().max(120),connectionType:z.enum(DEVICE_CONNECTIONS),ipAddress:z.string().trim().max(80),port:z.number().int().min(1).max(65535).nullable(),status:z.enum(DEVICE_STATUSES),integrationType:z.enum(DEVICE_INTEGRATIONS)});
+export const manualAttendanceSchema=z.object({clientId:z.string().min(1),date:z.string().min(1),time:z.string().min(1),eventType:z.enum(ATTENDANCE_EVENT_TYPES).refine(v=>v!=="unknown"),notes:z.string().max(500)});
