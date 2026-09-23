@@ -1,0 +1,136 @@
+import {
+  BadgeIndianRupee,
+  Cake,
+  CalendarCheck,
+  CreditCard,
+  MessageSquareHeart,
+  RefreshCcw,
+  UserPlus,
+  UserRoundCheck,
+  UserRoundX,
+  Users,
+} from "lucide-react";
+import type { ActivityItem, StatMetric } from "@/types";
+
+/** Mocked data for the foundation stage. Replaced by Firestore queries in later stages. */
+export const DASHBOARD_STATS: StatMetric[] = [
+  {
+    id: "new-clients",
+    label: "New Clients",
+    value: "34",
+    delta: { value: "12.4%", direction: "up" },
+    hint: "this month",
+    icon: UserPlus,
+    tone: "primary",
+  },
+  {
+    id: "collection",
+    label: "Total Collection",
+    value: "₹8,42,500",
+    delta: { value: "8.1%", direction: "up" },
+    hint: "vs last month",
+    icon: BadgeIndianRupee,
+    tone: "success",
+  },
+  {
+    id: "active",
+    label: "Active Members",
+    value: "1,284",
+    delta: { value: "2.3%", direction: "up" },
+    hint: "across 3 branches",
+    icon: UserRoundCheck,
+    tone: "info",
+  },
+  {
+    id: "expired",
+    label: "Expired Members",
+    value: "96",
+    delta: { value: "4.6%", direction: "down" },
+    hint: "needs win-back",
+    icon: UserRoundX,
+    tone: "danger",
+  },
+  {
+    id: "attendance",
+    label: "Today's Attendance",
+    value: "412",
+    delta: { value: "5.2%", direction: "up" },
+    hint: "peak 6–8 PM",
+    icon: CalendarCheck,
+    tone: "violet",
+  },
+  {
+    id: "follow-ups",
+    label: "Follow-ups",
+    value: "27",
+    delta: { value: "0%", direction: "flat" },
+    hint: "12 due today",
+    icon: MessageSquareHeart,
+    tone: "warning",
+  },
+  {
+    id: "renewals",
+    label: "Upcoming Renewals",
+    value: "58",
+    hint: "next 7 days",
+    icon: RefreshCcw,
+    tone: "info",
+  },
+  {
+    id: "birthdays",
+    label: "Birthdays Today",
+    value: "7",
+    hint: "send wishes",
+    icon: Cake,
+    tone: "violet",
+  },
+];
+
+export const RECENT_ACTIVITY: ActivityItem[] = [
+  {
+    id: "a1",
+    title: "Rahul Mehta renewed Gold Annual",
+    description: "₹24,000 collected via UPI · Receipt #INV-2291",
+    time: "6 min ago",
+    tone: "success",
+    icon: CreditCard,
+  },
+  {
+    id: "a2",
+    title: "New inquiry from Priya Sharma",
+    description: "Walk-in · Interested in personal training",
+    time: "24 min ago",
+    tone: "primary",
+    icon: UserPlus,
+  },
+  {
+    id: "a3",
+    title: "Follow-up scheduled for Aman Verma",
+    description: "Call back tomorrow at 11:00 AM",
+    time: "1 hr ago",
+    tone: "warning",
+    icon: MessageSquareHeart,
+  },
+  {
+    id: "a4",
+    title: "42 members checked in",
+    description: "Evening batch · Andheri branch",
+    time: "2 hrs ago",
+    tone: "violet",
+    icon: CalendarCheck,
+  },
+  {
+    id: "a5",
+    title: "Membership expired for 5 clients",
+    description: "Auto-added to win-back list",
+    time: "Today, 08:00 AM",
+    tone: "danger",
+    icon: Users,
+  },
+];
+
+export const NOTIFICATIONS = [
+  { id: "n1", title: "12 follow-ups due today", description: "Assigned to you and 2 others" },
+  { id: "n2", title: "58 renewals this week", description: "Send reminders before Friday" },
+  { id: "n3", title: "Payment failed for 3 invoices", description: "Retry from Billing" },
+];
