@@ -1,9 +1,10 @@
-# Attendance & Biometric Integration
-- [x] Add biometric, device, attendance models and validation
-- [x] Add access decisions, adapters, mock access controller, and idempotent sync
-- [x] Add Firestore attendance/device/client biometric services and security rules
-- [x] Build Attendance workspace, simulator, manual attendance, and filters
-- [x] Build Biometric Devices management page
-- [x] Integrate client profile biometric access and attendance history
-- [x] Connect dashboard, reports, navigation, quick actions, and search
-- [ ] Verify access cases, duplicates, persistence, responsive layouts, and themes
+# Follow-ups & Retention Automation
+- [ ] Add typed Firestore models, validation, collections, rules, and deterministic IDs
+- [ ] Build Follow-up CRM, workflow, history, inquiry association, and client profile integration
+- [ ] Build communication provider abstraction and centralized message templates
+- [ ] Build idempotent renewal and birthday automation services
+- [ ] Add isolated daily Firebase scheduled function for Asia/Kolkata
+- [ ] Build birthday and notification/automation pages
+- [ ] Add automation settings and discreet signed-in demo triggers
+- [ ] Connect real dashboard metrics, renewal/birthday lists, badges, activity, search, and navigation
+- [ ] Verify follow-up state changes, duplicate prevention, mock delivery, themes, and responsive layouts
