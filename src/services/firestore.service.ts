@@ -1,78 +1,73 @@
 import {
-  addDoc,
   collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
+  onSnapshot,
   query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
+  Timestamp,
+  type DocumentData,
+  type Query,
   type QueryConstraint,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 /**
- * Thin, typed Firestore access layer.
- * Feature modules build on these helpers instead of importing Firestore directly.
+ * Shared Firestore helpers. Feature services (packages, inquiries, clients,
+ * memberships) build on these instead of scattering Firestore calls in UI code.
  */
 export const COLLECTIONS = {
-  gyms: "gyms",
-  staff: "staff",
+  packages: "packages",
   inquiries: "inquiries",
   clients: "clients",
-  packages: "packages",
+  memberships: "memberships",
+  followups: "followups",
   invoices: "invoices",
   attendance: "attendance",
-  followUps: "followUps",
   settings: "settings",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];
 
-export async function listDocs<T>(name: CollectionName, ...constraints: QueryConstraint[]) {
-  const snapshot = await getDocs(query(collection(db, name), ...constraints));
-  return snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as T) }));
+export const col = (name: CollectionName) => collection(db, name);
+
+/** Converts Firestore Timestamps (or pending server timestamps) into Dates. */
+export function toDate(value: unknown): Date {
+  if (value instanceof Timestamp) return value.toDate();
+  if (value instanceof Date) return value;
+  return new Date();
 }
 
-export async function getDocById<T>(name: CollectionName, id: string) {
-  const snapshot = await getDoc(doc(db, name, id));
-  return snapshot.exists() ? ({ id: snapshot.id, ...(snapshot.data() as T) }) : null;
-}
+export type Mapper<T> = (id: string, data: DocumentData) => T;
 
-export async function createDoc<T extends Record<string, unknown>>(
-  name: CollectionName,
-  data: T,
+/** Real-time listener for a query; returns the unsubscribe function. */
+export function subscribeQuery<T>(
+  q: Query,
+  map: Mapper<T>,
+  onData: (items: T[]) => void,
+  onError: (error: Error) => void,
 ) {
-  const ref = await addDoc(collection(db, name), {
-    ...data,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return ref.id;
-}
-
-export async function upsertDoc<T extends Record<string, unknown>>(
-  name: CollectionName,
-  id: string,
-  data: T,
-) {
-  await setDoc(
-    doc(db, name, id),
-    { ...data, updatedAt: serverTimestamp() },
-    { merge: true },
+  return onSnapshot(
+    q,
+    (snap) => onData(snap.docs.map((d) => map(d.id, d.data()))),
+    (err) => onError(err),
   );
 }
 
-export async function updateDocById(
+export function subscribeCollection<T>(
   name: CollectionName,
-  id: string,
-  data: Record<string, unknown>,
+  map: Mapper<T>,
+  onData: (items: T[]) => void,
+  onError: (error: Error) => void,
+  ...constraints: QueryConstraint[]
 ) {
-  await updateDoc(doc(db, name, id), { ...data, updatedAt: serverTimestamp() });
+  return subscribeQuery(query(col(name), ...constraints), map, onData, onError);
 }
 
-export async function removeDoc(name: CollectionName, id: string) {
-  await deleteDoc(doc(db, name, id));
+/** Human-friendly message for Firestore errors. */
+export function firestoreErrorMessage(error: unknown): string {
+  const code = (error as { code?: string })?.code ?? "";
+  if (code === "permission-denied")
+    return "You don't have permission to access this data. Check the database security rules.";
+  if (code === "unavailable") return "Can't reach the database. Check your connection.";
+  if (code === "failed-precondition")
+    return "The database isn't ready yet. Make sure Firestore is enabled for this project.";
+  return (error as Error)?.message || "Something went wrong. Please try again.";
 }
