@@ -10,7 +10,7 @@ import { useLive } from "@/hooks/use-live-query";
 import { formatDate, formatDateISO } from "@/lib/format";
 import { recordLeadFollowUp, subscribeLeadLogs } from "@/services/lead-logs.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import { CUSTOMER_RESPONSES, FOLLOWUP_PRIORITIES, NEXT_ACTIONS, type FollowUpPriority } from "@/types/models";
+import { CUSTOMER_RESPONSES, FOLLOWUP_PRIORITIES, NEXT_ACTIONS, type FollowUpPriority, type LeadLog } from "@/types/models";
 
 interface Target { inquiryId: string | null; clientId: string; name: string; phone: string; currentFollowUpId?: string | null }
 

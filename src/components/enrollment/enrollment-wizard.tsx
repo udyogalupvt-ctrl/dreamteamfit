@@ -28,7 +28,7 @@ import { subscribeInvoices } from "@/services/invoices.service";
 import { invoiceShareMessage, manualWhatsAppUrl } from "@/components/billing/invoice-actions";
 import { sendWhatsAppMessage } from "@/services/whatsapp.service";
 import { DEFAULT_WHATSAPP_SETTINGS, subscribeWhatsAppSettings } from "@/services/whatsapp-settings.service";
-import { GENDERS, LEAD_SOURCES, PAYMENT_METHODS, type Invoice, type PaymentMethod, type ShareType } from "@/types/models";
+import { GENDERS, LEAD_SOURCES, PAYMENT_METHODS, type Enrollment, type Invoice, type PaymentMethod, type ShareType } from "@/types/models";
 import type { EnrollmentOpenOptions } from "./enrollment-context";
 
 const STEPS = ["Client", "Package", "PT", "Payment", "Invoice", "Biometric", "Complete"] as const;
