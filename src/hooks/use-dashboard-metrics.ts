@@ -28,8 +28,9 @@ import { subscribeBookings } from "@/services/bookings.service";
 import { subscribeGroupClasses } from "@/services/group-classes.service";
 import { subscribeClassEnrollments } from "@/services/class-enrollments.service";
 import { subscribeExpenseActivities, subscribeExpenses } from "@/services/expenses.service";
+import { subscribeInvoices } from "@/services/invoices.service";
 import type { ActivityItem, StatMetric } from "@/types";
-import type { Booking, ClassEnrollment, Client, DietAssignment, Expense, ExpenseActivity, GroupClass, Inquiry, Membership, WorkoutAssignment } from "@/types/models";
+import type { Booking, ClassEnrollment, Client, DietAssignment, Expense, ExpenseActivity, GroupClass, Inquiry, Invoice, Membership, WorkoutAssignment } from "@/types/models";
 
 /** Derives dashboard numbers from live Firestore data only — nothing is invented. */
 export function useDashboardMetrics() {
@@ -43,9 +44,10 @@ export function useDashboardMetrics() {
   const enrollments = useLive<ClassEnrollment[]>(subscribeClassEnrollments, [], []);
   const expenses = useLive<Expense[]>(subscribeExpenses, [], []);
   const expenseActivities = useLive<ExpenseActivity[]>(subscribeExpenseActivities, [], []);
+  const invoices = useLive<Invoice[]>(subscribeInvoices, [], []);
 
-  const loading = clients.loading || memberships.loading || inquiries.loading || workouts.loading || diets.loading || bookings.loading || classes.loading || enrollments.loading || expenses.loading || expenseActivities.loading;
-  const error = clients.error ?? memberships.error ?? inquiries.error ?? workouts.error ?? diets.error ?? bookings.error ?? classes.error ?? enrollments.error ?? expenses.error ?? expenseActivities.error;
+  const loading = clients.loading || memberships.loading || inquiries.loading || workouts.loading || diets.loading || bookings.loading || classes.loading || enrollments.loading || expenses.loading || expenseActivities.loading || invoices.loading;
+  const error = clients.error ?? memberships.error ?? inquiries.error ?? workouts.error ?? diets.error ?? bookings.error ?? classes.error ?? enrollments.error ?? expenses.error ?? expenseActivities.error ?? invoices.error;
 
   const result = useMemo(() => {
     const today = todayISO();
@@ -54,6 +56,10 @@ export function useDashboardMetrics() {
     const monthStartISO = format(monthStart, "yyyy-MM-dd");
     const todayExpenses = expenses.data.filter((item) => item.date === today).reduce((sum, item) => sum + item.amount, 0);
     const monthExpenses = expenses.data.filter((item) => item.date >= monthStartISO && item.date <= today).reduce((sum, item) => sum + item.amount, 0);
+    const totalCollected = invoices.data.reduce((sum,item)=>sum+item.amountPaid,0);
+    const todayCollected = invoices.data.filter(item=>item.invoiceDate===today).reduce((sum,item)=>sum+item.amountPaid,0);
+    const monthCollected = invoices.data.filter(item=>item.invoiceDate>=monthStartISO&&item.invoiceDate<=today).reduce((sum,item)=>sum+item.amountPaid,0);
+    const outstanding = invoices.data.filter(item=>item.paymentStatus!=="refunded").reduce((sum,item)=>sum+item.balanceDue,0);
 
     const byClient = new Map<string, Membership[]>();
     memberships.data.forEach((m) => {
@@ -89,7 +95,10 @@ export function useDashboardMetrics() {
 
     const stats: StatMetric[] = [
       { id: "new-clients", label: "New Clients", value: formatNumber(newClients), hint: "this month", icon: UserPlus, tone: "primary" },
-      { id: "collection", label: "Total Collection", value: "—", hint: "Not available yet", icon: BadgeIndianRupee, tone: "success" },
+      { id: "today-collection", label: "Today's Collection", value: formatPrice(todayCollected), hint: "recorded payments today", icon: BadgeIndianRupee, tone: "success" },
+      { id: "month-collection", label: "This Month's Collection", value: formatPrice(monthCollected), hint: "recorded payments this month", icon: BadgeIndianRupee, tone: "success" },
+      { id: "collection", label: "Total Revenue", value: formatPrice(totalCollected), hint: "all recorded payments", icon: BadgeIndianRupee, tone: "success" },
+      { id: "outstanding", label: "Outstanding Amount", value: formatPrice(outstanding), hint: "unpaid invoice balance", icon: CreditCard, tone: "warning" },
       { id: "active", label: "Active Members", value: formatNumber(active), hint: "with a running membership", icon: UserRoundCheck, tone: "info" },
       { id: "expired", label: "Expired Members", value: formatNumber(expired), hint: "no active plan", icon: UserRoundX, tone: "danger" },
       { id: "attendance", label: "Today's Attendance", value: "—", hint: "No attendance data yet", icon: CalendarCheck, tone: "violet" },
@@ -102,7 +111,7 @@ export function useDashboardMetrics() {
       { id: "today-schedule", label: "Today's Schedule", value: formatNumber(bookings.data.filter((item) => item.date === today && item.status === "scheduled").length + classes.data.filter((item) => item.date === today && item.status === "scheduled").length), hint: "bookings and classes", icon: CalendarClock, tone: "warning" },
       { id: "today-expenses", label: "Today's Expenses", value: formatPrice(todayExpenses), hint: "from expense records", icon: ReceiptIndianRupee, tone: "danger" },
       { id: "month-expenses", label: "Monthly Expenses", value: formatPrice(monthExpenses), hint: "current month", icon: ReceiptIndianRupee, tone: "warning" },
-      { id: "profit-loss", label: "Profit/Loss", value: "—", hint: "Available after Billing", icon: BadgeIndianRupee, tone: "info" },
+      { id: "profit-loss", label: "Profit/Loss", value: formatPrice(totalCollected-expenses.data.reduce((sum,item)=>sum+item.amount,0)), hint: "collected revenue minus expenses", icon: BadgeIndianRupee, tone: totalCollected-expenses.data.reduce((sum,item)=>sum+item.amount,0)>=0?"success":"danger" },
       {
         id: "birthdays",
         label: "Birthdays Today",
@@ -179,6 +188,7 @@ export function useDashboardMetrics() {
         tone: item.action === "deleted" ? "danger" as const : "warning" as const,
         icon: ReceiptIndianRupee,
       })),
+      ...invoices.data.slice(0,8).map(item=>({id:`invoice-${item.id}`,title:`${item.invoiceNumber} generated`,description:`${item.clientNameSnapshot} · ${formatPrice(item.amountPaid)} collected`,at:item.createdAt,tone:"success" as const,icon:BadgeIndianRupee})),
     ]
       .sort((a, b) => b.at.getTime() - a.at.getTime())
       .slice(0, 6)
@@ -190,7 +200,7 @@ export function useDashboardMetrics() {
     ].sort((a, b) => a.time.localeCompare(b.time));
 
     return { stats, ratios, activity, todaySchedule };
-  }, [clients.data, memberships.data, inquiries.data, workouts.data, diets.data, bookings.data, classes.data, enrollments.data, expenses.data, expenseActivities.data]);
+  }, [clients.data, memberships.data, inquiries.data, workouts.data, diets.data, bookings.data, classes.data, enrollments.data, expenses.data, expenseActivities.data, invoices.data]);
 
   return { ...result, loading, error };
 }
