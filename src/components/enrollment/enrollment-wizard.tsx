@@ -28,7 +28,7 @@ import { subscribeInvoices } from "@/services/invoices.service";
 import { invoiceShareMessage, manualWhatsAppUrl } from "@/components/billing/invoice-actions";
 import { sendWhatsAppMessage } from "@/services/whatsapp.service";
 import { DEFAULT_WHATSAPP_SETTINGS, subscribeWhatsAppSettings } from "@/services/whatsapp-settings.service";
-import { GENDERS, LEAD_SOURCES, PAYMENT_METHODS, type Invoice, type PaymentMethod, type ShareType } from "@/types/models";
+import { GENDERS, LEAD_SOURCES, PAYMENT_METHODS, type Enrollment, type Invoice, type PaymentMethod, type ShareType } from "@/types/models";
 import type { EnrollmentOpenOptions } from "./enrollment-context";
 
 const STEPS = ["Client", "Package", "PT", "Payment", "Invoice", "Biometric", "Complete"] as const;
@@ -58,7 +58,7 @@ export function EnrollmentWizard({ options, onClose }: { options: EnrollmentOpen
   const ptPackages = useLive(subscribePtPackages, [], []);
   const trainers = useLive(subscribeTrainers, [], []);
   const settings = useLive(subscribeBusinessSettings, DEFAULT_BILLING_SETTINGS, []);
-  const enrollment = useLive(enrollmentId ? (ok, fail) => subscribeEnrollment(enrollmentId, ok, fail) : null, null, [enrollmentId]);
+  const enrollment = useLive(enrollmentId ? (ok, fail) => subscribeEnrollment(enrollmentId, ok, fail) : null, null as Enrollment | null, [enrollmentId]);
   const invoices = useLive(subscribeInvoices, [], []);
   const invoice: Invoice | null = invoices.data.find((i) => i.id === (invoiceId ?? enrollment.data?.invoiceId)) ?? null;
 

@@ -15,3 +15,14 @@
 - [x] Connect invoice, renewal, birthday and follow-up workflows
 - [x] Add settings and message history UI
 - [x] Verify mock flows, duplicate protection and responsive states
+
+# Real-world workflow update
+- [x] Data foundation (PT packages, trainers, payments, enrollments, payouts, lead logs)
+- [x] One-flow New Member enrollment (client → package → PT → payment → invoice → biometric)
+- [x] Balance-only payment collection; biometric gate (no fake success)
+- [x] Leads & Follow-ups merged; Sessions & Classes grouped nav; quick actions
+- [x] Packages: Gym / PT packages / Trainers tabs
+- [x] Client profile: PT tab, biometric card, payments list; old unpaid membership path removed
+- [x] Expenses: Income / Expenses / Trainer Payouts
+- [ ] Data Import & Migration (CSV/XLSX wizard) + exports
+- [ ] Link PT session bookings to trainers/PT assignments

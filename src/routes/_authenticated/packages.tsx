@@ -10,6 +10,7 @@ import { LoadingRows } from "@/components/common/loading-state";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { StatusPill } from "@/components/common/status-pill";
 import { PackageFormDialog } from "@/components/packages/package-form-dialog";
+import { PtPackagesSection, TrainersSection } from "@/components/packages/pt-trainer-sections";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -47,6 +48,18 @@ export const Route = createFileRoute("/_authenticated/packages")({
 type StatusFilter = "all" | "active" | "inactive";
 
 function PackagesPage() {
+  const [section, setSection] = useState<"gym" | "pt" | "trainers">("gym");
+  return (
+    <div className="space-y-5">
+      <Tabs value={section} onValueChange={(v) => setSection(v as typeof section)}>
+        <TabsList><TabsTrigger value="gym">Gym packages</TabsTrigger><TabsTrigger value="pt">PT packages</TabsTrigger><TabsTrigger value="trainers">Trainers</TabsTrigger></TabsList>
+      </Tabs>
+      {section === "gym" ? <GymPackagesSection /> : section === "pt" ? <PtPackagesSection /> : <TrainersSection />}
+    </div>
+  );
+}
+
+function GymPackagesSection() {
   const { data, loading, error } = useLive<GymPackage[]>(subscribePackages, [], []);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -99,7 +112,7 @@ function PackagesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Packages"
-        description="Membership plans your staff can assign to clients."
+        description="Gym memberships, PT packages and trainers — prices set by the admin."
         breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Packages" }]}
         actions={
           <Button onClick={openCreate}>
@@ -161,7 +174,7 @@ function PackagesPage() {
                 >
                   <h2 className="text-card-title truncate">{p.name}</h2>
                   <p className="text-meta mt-0.5">
-                    {p.durationDays} days · {formatDuration(p.durationDays)}
+                    {p.category} · {p.durationDays} days · {formatDuration(p.durationDays)}
                   </p>
                 </button>
                 <PackageActions

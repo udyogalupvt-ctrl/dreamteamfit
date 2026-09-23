@@ -27,7 +27,8 @@ import { FormDialog } from "@/components/common/form-dialog";
 import { ImageUpload } from "@/components/common/image-upload";
 import { ClientAvatar } from "@/components/clients/client-avatar";
 import { ClientFormDialog } from "@/components/clients/client-form-dialog";
-import { AddMembershipDialog } from "@/components/clients/add-membership-dialog";
+import { ClientBiometricCard, ClientPaymentsList, ClientPtSection } from "@/components/clients/client-pt-section";
+import { useEnrollment } from "@/components/enrollment/enrollment-context";
 import { AddWorkoutDialog } from "@/components/clients/add-workout-dialog";
 import { AddDietDialog } from "@/components/clients/add-diet-dialog";
 import { ClientBookingsSection } from "@/components/clients/client-bookings-section";
@@ -103,7 +104,7 @@ function ClientProfilePage() {
   const invoices = useLive<Invoice[]>((ok,fail)=>subscribeClientInvoices(clientId,ok,fail),[],[clientId]);
   const [editOpen, setEditOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
+  const { openEnrollment } = useEnrollment();
   const [addWorkoutOpen, setAddWorkoutOpen] = useState(false);
   const [addDietOpen, setAddDietOpen] = useState(false);
   const [addBookingOpen, setAddBookingOpen] = useState(false);
@@ -173,7 +174,7 @@ function ClientProfilePage() {
             <Button variant="outline" onClick={() => setEditOpen(true)}>
               <Pencil aria-hidden /> Edit
             </Button>
-            <Button onClick={() => setAddOpen(true)}>
+            <Button onClick={() => openEnrollment({ existingClient: c })}>
               <Plus aria-hidden /> Add membership
             </Button>
           </>
@@ -232,6 +233,7 @@ function ClientProfilePage() {
           <TabsList className="w-max">
             <TabsTrigger value="overview">Profile</TabsTrigger>
             <TabsTrigger value="membership">Membership</TabsTrigger>
+            <TabsTrigger value="pt">PT</TabsTrigger>
             <TabsTrigger value="workout">Workout</TabsTrigger>
             <TabsTrigger value="diet">Diet</TabsTrigger>
             <TabsTrigger value="bookings">Bookings</TabsTrigger>
@@ -243,6 +245,7 @@ function ClientProfilePage() {
         </div>
 
         <TabsContent value="overview" className="grid gap-4 lg:grid-cols-2">
+          <ClientBiometricCard client={c} />
           <section className="surface-card p-5">
             <h2 className="text-section-title">Profile</h2>
             <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
@@ -329,7 +332,7 @@ function ClientProfilePage() {
               title="No membership records yet"
               description="Assign a package to start this client's first membership."
               action={
-                <Button onClick={() => setAddOpen(true)}>
+                <Button onClick={() => openEnrollment({ existingClient: c })}>
                   <Plus aria-hidden /> Add membership
                 </Button>
               }
@@ -377,8 +380,10 @@ function ClientProfilePage() {
           )}
         </TabsContent>
 
-        <TabsContent value="billing">
+        <TabsContent value="pt"><ClientPtSection client={c} /></TabsContent>
+        <TabsContent value="billing" className="space-y-4">
           {invoices.loading?<Shimmer className="h-40 rounded-2xl"/>:invoices.error?<ErrorState error={invoices.error} title="Couldn't load invoices"/>:invoices.data.length===0?<EmptyState icon={Wallet} title="No billing records yet" description="Create a bill for this client to begin their invoice history." action={<Button asChild><Link to="/billing" search={{create:true,clientId:c.id}}><Plus/> Create bill</Link></Button>}/>:<section className="space-y-4"><div className="grid gap-3 sm:grid-cols-3">{[["Total Invoices",String(invoices.data.length)],["Total Paid",formatPrice(invoices.data.reduce((n,i)=>n+i.amountPaid,0))],["Outstanding",formatPrice(invoices.data.reduce((n,i)=>n+i.balanceDue,0))]].map(([label,value])=><div className="surface-card p-4" key={label}><p className="text-meta">{label}</p><p className="mt-1 text-xl font-extrabold">{value}</p></div>)}</div><div className="surface-card divide-y divide-border">{invoices.data.map(i=><article className="p-4 sm:p-5" key={i.id}><div className="flex flex-col gap-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-bold">{i.invoiceNumber}</p><StatusPill tone={INVOICE_STATUS_META[i.paymentStatus].tone}>{INVOICE_STATUS_META[i.paymentStatus].label}</StatusPill></div><p className="text-meta">{formatDateISO(i.invoiceDate)} · Total {formatPrice(i.total)} · Paid {formatPrice(i.amountPaid)} · Balance {formatPrice(i.balanceDue)}</p></div><InvoiceActions invoice={i}/></div></article>)}</div></section>}
+          <ClientPaymentsList clientId={c.id} />
         </TabsContent>
         <TabsContent value="attendance">
           <ClientAttendanceSection client={c} memberships={memberships.data} />
@@ -392,12 +397,6 @@ function ClientProfilePage() {
       </Tabs>
 
       <ClientFormDialog open={editOpen} onOpenChange={setEditOpen} client={c} />
-      <AddMembershipDialog
-        open={addOpen}
-        onOpenChange={setAddOpen}
-        clientId={c.id}
-        activeMembership={current}
-      />
       <AddWorkoutDialog open={addWorkoutOpen} onOpenChange={setAddWorkoutOpen} clientId={c.id} />
       <AddDietDialog open={addDietOpen} onOpenChange={setAddDietOpen} clientId={c.id} />
       <BookingFormDialog open={addBookingOpen} onOpenChange={setAddBookingOpen} initialClient={c} />

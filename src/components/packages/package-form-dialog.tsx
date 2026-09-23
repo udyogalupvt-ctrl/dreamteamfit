@@ -17,7 +17,7 @@ import {
 import { DURATION_OPTIONS, formatDuration } from "@/lib/format";
 import { createPackage, updatePackage } from "@/services/packages.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import type { GymPackage } from "@/types/models";
+import { PACKAGE_CATEGORIES, type GymPackage, type PackageCategory } from "@/types/models";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Enter a package name").max(60, "Keep it under 60 characters"),
@@ -31,6 +31,7 @@ const schema = z.object({
     .min(0, "Price can't be negative")
     .max(10_000_000, "Price is too high"),
   isActive: z.boolean(),
+  category: z.enum(PACKAGE_CATEGORIES),
 });
 
 type Errors = Partial<Record<keyof z.infer<typeof schema>, string>>;
@@ -47,6 +48,7 @@ export function PackageFormDialog({ open, onOpenChange, pkg }: Props) {
   const [duration, setDuration] = useState<string>("30");
   const [price, setPrice] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [category, setCategory] = useState<PackageCategory>("Strength + Cardio");
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
 
@@ -57,6 +59,7 @@ export function PackageFormDialog({ open, onOpenChange, pkg }: Props) {
     setDuration(String(pkg?.durationDays ?? 30));
     setPrice(pkg ? String(pkg.price) : "");
     setIsActive(pkg?.isActive ?? true);
+    setCategory(pkg?.category ?? "Strength + Cardio");
     setErrors({});
   }, [open, pkg]);
 
@@ -68,6 +71,7 @@ export function PackageFormDialog({ open, onOpenChange, pkg }: Props) {
       durationDays: Number(duration),
       price: price.trim() === "" ? Number.NaN : Number(price),
       isActive,
+      category,
     });
     if (!parsed.success) {
       const next: Errors = {};
@@ -115,6 +119,12 @@ export function PackageFormDialog({ open, onOpenChange, pkg }: Props) {
             placeholder="e.g. Monthly"
             aria-invalid={!!errors.name}
           />
+        </Field>
+        <Field label="Category / training type" htmlFor="pkg-cat">
+          <Select value={category} onValueChange={(v) => setCategory(v as PackageCategory)}>
+            <SelectTrigger id="pkg-cat" className="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>{PACKAGE_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+          </Select>
         </Field>
         <Field label="Description" htmlFor="pkg-desc" error={errors.description}>
           <Textarea
