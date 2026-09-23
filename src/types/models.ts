@@ -193,3 +193,30 @@ export interface ClassEnrollment {
   enrolledAt: Date;
   status: EnrollmentStatus;
 }
+
+export const EXPENSE_CATEGORIES = ["Rent", "Electricity", "Equipment", "Staff Salary", "Maintenance", "Marketing", "Cleaning", "Supplies", "Other"] as const;
+export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+export const EXPENSE_PAYMENT_METHODS = ["Cash", "UPI", "Card", "Bank Transfer", "Other"] as const;
+export type ExpensePaymentMethod = (typeof EXPENSE_PAYMENT_METHODS)[number];
+
+export interface Expense extends BaseDoc {
+  title: string;
+  category: ExpenseCategory;
+  amount: number;
+  paymentMethod: ExpensePaymentMethod;
+  date: string;
+  description: string;
+  notes: string;
+  createdBy: string;
+  createdByUid: string;
+}
+
+export type ExpenseActivityAction = "created" | "updated" | "deleted";
+export interface ExpenseActivity {
+  id: string;
+  expenseId: string;
+  expenseTitleSnapshot: string;
+  action: ExpenseActivityAction;
+  createdBy: string;
+  createdAt: Date;
+}

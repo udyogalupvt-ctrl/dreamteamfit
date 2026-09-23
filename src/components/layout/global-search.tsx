@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { CalendarClock, Dumbbell, Package, Salad, Search, UserPlus, Users, UsersRound } from "lucide-react";
+import { CalendarClock, Dumbbell, Package, ReceiptIndianRupee, Salad, Search, UserPlus, Users, UsersRound } from "lucide-react";
 import {
   CommandDialog,
   CommandEmpty,
@@ -18,7 +18,8 @@ import { subscribeWorkoutPlans } from "@/services/workout-plans.service";
 import { subscribeDietPlans } from "@/services/diet-plans.service";
 import { subscribeBookings } from "@/services/bookings.service";
 import { subscribeGroupClasses } from "@/services/group-classes.service";
-import type { Booking, Client, DietPlan, GroupClass, GymPackage, Inquiry, WorkoutPlan } from "@/types/models";
+import { subscribeExpenses } from "@/services/expenses.service";
+import type { Booking, Client, DietPlan, Expense, GroupClass, GymPackage, Inquiry, WorkoutPlan } from "@/types/models";
 
 export function GlobalSearch({ compact = false }: { compact?: boolean }) {
   const navigate = useNavigate();
@@ -31,6 +32,7 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
   const dietPlans = useLive<DietPlan[]>(subscribeDietPlans, [], []);
   const bookings = useLive<Booking[]>(subscribeBookings, [], []);
   const classes = useLive<GroupClass[]>(subscribeGroupClasses, [], []);
+  const expenses = useLive<Expense[]>(subscribeExpenses, [], []);
   const q = query.trim().toLowerCase();
   const phone = normalizePhone(query);
 
@@ -57,9 +59,10 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
     dietPlans: q ? dietPlans.data.filter((item) => item.name.toLowerCase().includes(q) || item.goal.toLowerCase().includes(q)).slice(0, 5) : [],
     bookings: q ? bookings.data.filter((item) => item.clientNameSnapshot.toLowerCase().includes(q) || item.trainerNameSnapshot.toLowerCase().includes(q)).slice(0, 5) : [],
     classes: q ? classes.data.filter((item) => item.name.toLowerCase().includes(q) || item.trainerNameSnapshot.toLowerCase().includes(q)).slice(0, 5) : [],
-  }), [clients.data, inquiries.data, packages.data, workoutPlans.data, dietPlans.data, bookings.data, classes.data, phone, q]);
+    expenses: q ? expenses.data.filter((item) => item.title.toLowerCase().includes(q) || item.category.toLowerCase().includes(q) || item.notes.toLowerCase().includes(q)).slice(0, 5) : [],
+  }), [clients.data, inquiries.data, packages.data, workoutPlans.data, dietPlans.data, bookings.data, classes.data, expenses.data, phone, q]);
 
-  const go = (to: "/clients/$clientId" | "/inquiries" | "/packages" | "/workout-plans" | "/diet-plans" | "/bookings" | "/group-classes", clientId?: string) => {
+  const go = (to: "/clients/$clientId" | "/inquiries" | "/packages" | "/workout-plans" | "/diet-plans" | "/bookings" | "/group-classes" | "/expenses", clientId?: string) => {
     setOpen(false);
     setQuery("");
     if (to === "/clients/$clientId" && clientId) {
@@ -117,6 +120,7 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
           {results.dietPlans.length ? <CommandGroup heading="Diet Plans">{results.dietPlans.map(item=><CommandItem key={item.id} value={`diet ${item.name} ${item.goal}`} onSelect={()=>go("/diet-plans")}><Salad aria-hidden/><span className="min-w-0 truncate">{item.name}</span><span className="ml-auto text-xs text-muted-foreground">{item.goal}</span></CommandItem>)}</CommandGroup>:null}
           {results.bookings.length ? <CommandGroup heading="Bookings">{results.bookings.map(item=><CommandItem key={item.id} value={`booking ${item.clientNameSnapshot} ${item.trainerNameSnapshot}`} onSelect={()=>go("/bookings")}><CalendarClock aria-hidden/><span className="min-w-0 truncate">{item.clientNameSnapshot || "Group class booking"}</span><span className="ml-auto text-xs text-muted-foreground">{item.date}</span></CommandItem>)}</CommandGroup>:null}
           {results.classes.length ? <CommandGroup heading="Group Classes">{results.classes.map(item=><CommandItem key={item.id} value={`class ${item.name} ${item.trainerNameSnapshot}`} onSelect={()=>go("/group-classes")}><UsersRound aria-hidden/><span className="min-w-0 truncate">{item.name}</span><span className="ml-auto text-xs text-muted-foreground">{item.date}</span></CommandItem>)}</CommandGroup>:null}
+          {results.expenses.length ? <CommandGroup heading="Expenses">{results.expenses.map(item=><CommandItem key={item.id} value={`expense ${item.title} ${item.category}`} onSelect={()=>go("/expenses")}><ReceiptIndianRupee aria-hidden/><span className="min-w-0 truncate">{item.title}</span><span className="ml-auto text-xs text-muted-foreground">{item.category}</span></CommandItem>)}</CommandGroup>:null}
         </CommandList>
       </CommandDialog>
     </>

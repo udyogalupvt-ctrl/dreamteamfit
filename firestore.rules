@@ -13,7 +13,8 @@ service cloud.firestore {
         'packages', 'inquiries', 'clients', 'memberships',
         'followups', 'invoices', 'attendance', 'settings',
         'workoutPlans', 'workoutAssignments', 'dietPlans', 'dietAssignments',
-        'bookings', 'groupClasses', 'classEnrollments'
+        'bookings', 'groupClasses', 'classEnrollments',
+        'expenses', 'expenseActivities'
       ];
     }
 
