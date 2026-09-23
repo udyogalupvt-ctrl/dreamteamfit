@@ -51,7 +51,11 @@ export function authErrorMessage(error: unknown): string {
       return "Too many attempts. Please wait a moment and try again.";
     case "auth/network-request-failed":
       return "Network error. Check your connection and try again.";
+    case "auth/operation-not-allowed":
+      return "Email sign-in isn't enabled for this workspace. Contact an administrator.";
     default:
-      return (error as Error)?.message || "Something went wrong while signing in.";
+      if (code.startsWith("auth/api-key") || code === "auth/invalid-api-key")
+        return "Sign-in is temporarily unavailable (configuration issue). Contact an administrator.";
+      return "Something went wrong while signing in. Please try again.";
   }
 }
