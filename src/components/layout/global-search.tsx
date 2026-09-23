@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { CalendarCheck, CalendarClock, Cpu, Dumbbell, Package, ReceiptIndianRupee, Salad, Search, UserPlus, Users, UsersRound } from "lucide-react";
+import { CalendarCheck, CalendarClock, Cpu, Dumbbell, MessageSquareHeart, Package, ReceiptIndianRupee, Salad, Search, UserPlus, Users, UsersRound } from "lucide-react";
 import {
   CommandDialog,
   CommandEmpty,
@@ -22,7 +22,8 @@ import { subscribeExpenses } from "@/services/expenses.service";
 import { subscribeInvoices } from "@/services/invoices.service";
 import { subscribeAttendance } from "@/services/attendance.service";
 import { subscribeDevices } from "@/services/biometric-devices.service";
-import type { AttendanceEvent, BiometricDevice, Booking, Client, DietPlan, Expense, GroupClass, Invoice, GymPackage, Inquiry, WorkoutPlan } from "@/types/models";
+import { subscribeFollowUps } from "@/services/followups.service";
+import type { AttendanceEvent, BiometricDevice, Booking, Client, DietPlan, Expense, FollowUp, GroupClass, Invoice, GymPackage, Inquiry, WorkoutPlan } from "@/types/models";
 
 export function GlobalSearch({ compact = false }: { compact?: boolean }) {
   const navigate = useNavigate();
@@ -39,6 +40,7 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
   const invoices = useLive<Invoice[]>(subscribeInvoices, [], []);
   const attendance = useLive<AttendanceEvent[]>(subscribeAttendance, [], []);
   const devices = useLive<BiometricDevice[]>(subscribeDevices, [], []);
+  const followUps = useLive<FollowUp[]>(subscribeFollowUps, [], []);
   const q = query.trim().toLowerCase();
   const phone = normalizePhone(query);
 
@@ -69,9 +71,10 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
     expenses: q ? expenses.data.filter((item) => item.title.toLowerCase().includes(q) || item.category.toLowerCase().includes(q) || item.notes.toLowerCase().includes(q)).slice(0, 5) : [],
     attendance: q ? attendance.data.filter(item=>item.clientNameSnapshot.toLowerCase().includes(q)||item.biometricUserId.toLowerCase().includes(q)).slice(0,5):[],
     devices: q ? devices.data.filter(item=>item.name.toLowerCase().includes(q)||item.location.toLowerCase().includes(q)||item.manufacturer.toLowerCase().includes(q)).slice(0,5):[],
-  }), [clients.data, inquiries.data, packages.data, workoutPlans.data, dietPlans.data, bookings.data, classes.data, expenses.data, invoices.data, attendance.data, devices.data, phone, q]);
+    followUps: q ? followUps.data.filter(item=>item.clientNameSnapshot.toLowerCase().includes(q)||item.reason.toLowerCase().includes(q)||(phone.length>=3&&normalizePhone(item.phoneSnapshot).includes(phone))).slice(0,5):[],
+  }), [clients.data, inquiries.data, packages.data, workoutPlans.data, dietPlans.data, bookings.data, classes.data, expenses.data, invoices.data, attendance.data, devices.data, followUps.data, phone, q]);
 
-  const go = (to: "/clients/$clientId" | "/inquiries" | "/packages" | "/workout-plans" | "/diet-plans" | "/bookings" | "/group-classes" | "/expenses" | "/billing" | "/attendance" | "/biometric-devices", clientId?: string) => {
+  const go = (to: "/clients/$clientId" | "/inquiries" | "/packages" | "/workout-plans" | "/diet-plans" | "/bookings" | "/group-classes" | "/expenses" | "/billing" | "/attendance" | "/biometric-devices" | "/follow-ups", clientId?: string) => {
     setOpen(false);
     setQuery("");
     if (to === "/clients/$clientId" && clientId) {
@@ -133,6 +136,7 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
           {results.expenses.length ? <CommandGroup heading="Expenses">{results.expenses.map(item=><CommandItem key={item.id} value={`expense ${item.title} ${item.category}`} onSelect={()=>go("/expenses")}><ReceiptIndianRupee aria-hidden/><span className="min-w-0 truncate">{item.title}</span><span className="ml-auto text-xs text-muted-foreground">{item.category}</span></CommandItem>)}</CommandGroup>:null}
           {results.attendance.length ? <CommandGroup heading="Attendance">{results.attendance.map(item=><CommandItem key={item.id} value={`attendance ${item.clientNameSnapshot} ${item.biometricUserId}`} onSelect={()=>go("/attendance")}><CalendarCheck aria-hidden/><span className="min-w-0 truncate">{item.clientNameSnapshot}</span><span className="ml-auto text-xs text-muted-foreground">{item.attendanceDate}</span></CommandItem>)}</CommandGroup>:null}
           {results.devices.length ? <CommandGroup heading="Biometric Devices">{results.devices.map(item=><CommandItem key={item.id} value={`device ${item.name} ${item.location}`} onSelect={()=>go("/biometric-devices")}><Cpu aria-hidden/><span className="min-w-0 truncate">{item.name}</span><span className="ml-auto text-xs text-muted-foreground">{item.status}</span></CommandItem>)}</CommandGroup>:null}
+          {results.followUps.length ? <CommandGroup heading="Follow-ups">{results.followUps.map(item=><CommandItem key={item.id} value={`follow-up ${item.clientNameSnapshot} ${item.reason}`} onSelect={()=>go("/follow-ups")}><MessageSquareHeart aria-hidden/><span className="min-w-0 truncate">{item.clientNameSnapshot} · {item.reason}</span><span className="ml-auto text-xs text-muted-foreground">{item.followUpDate}</span></CommandItem>)}</CommandGroup>:null}
         </CommandList>
       </CommandDialog>
     </>

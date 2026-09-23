@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, CalendarCheck, CalendarPlus, CreditCard, Dumbbell, Package, ReceiptIndianRupee, Salad, UserPlus, Users, UsersRound } from "lucide-react";
+import { Bell, CalendarCheck, CalendarPlus, CreditCard, Dumbbell, MessageSquareHeart, Package, ReceiptIndianRupee, Salad, UserPlus, Users, UsersRound } from "lucide-react";
 import { GlobalSearch } from "@/components/layout/global-search";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -44,6 +44,7 @@ export function Topbar() {
                <DropdownMenuItem onSelect={() => navigate({ to: "/expenses", search: { create: true } })}><ReceiptIndianRupee aria-hidden /> Expense</DropdownMenuItem>
                <DropdownMenuItem onSelect={() => navigate({ to: "/billing", search: { create: true } })}><CreditCard aria-hidden /> Bill</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => navigate({ to: "/attendance" })}><CalendarCheck aria-hidden /> Attendance</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => navigate({ to: "/follow-ups" })}><MessageSquareHeart aria-hidden /> Follow-up</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -57,7 +58,7 @@ export function Topbar() {
             <DropdownMenuContent align="end" className="w-80 rounded-xl">
               <DropdownMenuLabel>Notifications</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <p className="px-3 py-5 text-center text-sm text-muted-foreground">No notifications yet.</p>
+              <DropdownMenuItem onSelect={() => navigate({ to: "/notifications" })}><Bell aria-hidden /> View automation history</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
