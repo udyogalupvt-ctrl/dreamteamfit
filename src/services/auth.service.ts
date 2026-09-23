@@ -7,7 +7,7 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { getFirebaseAuth } from "@/lib/firebase/client";
+import { getFirebaseAuth } from "@/lib/firebase";
 import type { AppUser } from "@/types";
 
 export function mapUser(user: User | null): AppUser | null {

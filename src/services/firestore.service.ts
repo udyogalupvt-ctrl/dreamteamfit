@@ -11,7 +11,7 @@ import {
   updateDoc,
   type QueryConstraint,
 } from "firebase/firestore";
-import { getDb } from "@/lib/firebase/client";
+import { getDb } from "@/lib/firebase";
 
 /**
  * Thin, typed Firestore access layer.
