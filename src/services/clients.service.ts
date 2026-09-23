@@ -30,7 +30,7 @@ export type ClientInput = Pick<
   | "notes"
   | "status"
 >;
-export type ClientUpdateInput = Partial<ClientInput & Pick<Client, "biometricUserId" | "biometricDeviceId" | "biometricStatus">>;
+export type ClientUpdateInput = Partial<ClientInput & Pick<Client, "biometricUserId" | "biometricDeviceId" | "biometricStatus" | "whatsappOptIn" | "whatsappPhone" | "whatsappStatus" | "lastWhatsappMessageAt">>;
 
 const COUNTER_REF = () => doc(db, COLLECTIONS.settings, "counters");
 
@@ -54,6 +54,10 @@ export const mapClient = (id: string, d: DocumentData): Client => ({
   biometricUserId: d["biometricUserId"] ?? "",
   biometricDeviceId: d["biometricDeviceId"] ?? "",
   biometricStatus: d["biometricStatus"] ?? "not_enrolled",
+  whatsappOptIn: Boolean(d["whatsappOptIn"]),
+  whatsappPhone: d["whatsappPhone"] ?? d["phone"] ?? "",
+  whatsappStatus: d["whatsappStatus"] ?? "opted_out",
+  lastWhatsappMessageAt: d["lastWhatsappMessageAt"] ? toDate(d["lastWhatsappMessageAt"]) : null,
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -125,6 +129,10 @@ export async function createClient(input: ClientInput, inquiryId: string | null 
       biometricUserId: "",
       biometricDeviceId: "",
       biometricStatus: "not_enrolled",
+      whatsappOptIn: false,
+      whatsappPhone: input.phone.trim(),
+      whatsappStatus: "opted_out",
+      lastWhatsappMessageAt: null,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });

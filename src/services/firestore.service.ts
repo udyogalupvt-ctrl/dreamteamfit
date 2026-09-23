@@ -37,6 +37,8 @@ export const COLLECTIONS = {
   birthdayNotifications: "birthdayNotifications",
   notifications: "notifications",
   automationActivities: "automationActivities",
+  whatsappMessages: "whatsappMessages",
+  whatsappWebhookEvents: "whatsappWebhookEvents",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

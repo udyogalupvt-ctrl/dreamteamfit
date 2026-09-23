@@ -281,6 +281,7 @@ function ClientProfilePage() {
               <Detail icon={Mail} label="Email" value={c.email || "—"} />
               <Detail icon={MapPin} label="Address" value={c.address || "—"} />
               <Detail icon={ShieldAlert} label="Emergency contact" value={c.emergencyContact || "—"} />
+              <Detail icon={MessageSquareHeart} label="WhatsApp" value={c.whatsappOptIn ? `Opted in · ${c.whatsappPhone || c.phone}` : "Opted out"} />
             </dl>
           </section>
         </TabsContent>
