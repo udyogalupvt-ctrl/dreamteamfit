@@ -1,9 +1,9 @@
-# Billing, POS & Invoice System
-- [x] Add invoice/business-settings models, validation, calculations, realtime services, counters, and rules
-- [x] Build responsive Billing workspace and Create Bill POS flow
-- [x] Add branded A4 PDF generation, Firebase Storage upload, and retry handling
-- [x] Build secure anonymous public invoice route with download and print
-- [x] Add real billing settings and client membership/invoice integration
-- [x] Connect Dashboard, Reports, global search, quick actions, and client Billing history
-- [ ] Enable Firebase Storage and deploy storage rules (blocked: Firebase CLI authentication required)
-- [x] Verify billing transaction, membership, public invoice, revenue, reports, client history, persistence, responsive layouts, and themes
+# Attendance & Biometric Integration
+- [ ] Add biometric, device, attendance models and validation
+- [ ] Add access decisions, adapters, mock access controller, and idempotent sync
+- [ ] Add Firestore attendance/device/client biometric services and security rules
+- [ ] Build Attendance workspace, simulator, manual attendance, and filters
+- [ ] Build Biometric Devices management page
+- [ ] Integrate client profile biometric access and attendance history
+- [ ] Connect dashboard, reports, navigation, quick actions, and search
+- [ ] Verify access cases, duplicates, persistence, responsive layouts, and themes
