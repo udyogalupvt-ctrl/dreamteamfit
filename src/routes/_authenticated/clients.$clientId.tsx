@@ -2,7 +2,6 @@ import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
-  CalendarCheck,
   Camera,
   CreditCard,
   History,
