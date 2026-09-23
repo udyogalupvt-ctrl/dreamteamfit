@@ -6,6 +6,7 @@ import {
   CalendarCheck,
   CalendarClock,
   CreditCard,
+  ReceiptIndianRupee,
   Dumbbell,
   MessageSquareHeart,
   RefreshCcw,
@@ -17,7 +18,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { useLive } from "@/hooks/use-live-query";
-import { effectiveMembershipStatus, formatNumber, todayISO } from "@/lib/format";
+import { effectiveMembershipStatus, formatNumber, formatPrice, todayISO } from "@/lib/format";
 import { subscribeClients } from "@/services/clients.service";
 import { subscribeInquiries } from "@/services/inquiries.service";
 import { subscribeMemberships } from "@/services/memberships.service";
@@ -26,8 +27,9 @@ import { subscribeDietAssignments } from "@/services/diet-assignments.service";
 import { subscribeBookings } from "@/services/bookings.service";
 import { subscribeGroupClasses } from "@/services/group-classes.service";
 import { subscribeClassEnrollments } from "@/services/class-enrollments.service";
+import { subscribeExpenseActivities, subscribeExpenses } from "@/services/expenses.service";
 import type { ActivityItem, StatMetric } from "@/types";
-import type { Booking, ClassEnrollment, Client, DietAssignment, GroupClass, Inquiry, Membership, WorkoutAssignment } from "@/types/models";
+import type { Booking, ClassEnrollment, Client, DietAssignment, Expense, ExpenseActivity, GroupClass, Inquiry, Membership, WorkoutAssignment } from "@/types/models";
 
 /** Derives dashboard numbers from live Firestore data only — nothing is invented. */
 export function useDashboardMetrics() {
@@ -39,14 +41,19 @@ export function useDashboardMetrics() {
   const bookings = useLive<Booking[]>(subscribeBookings, [], []);
   const classes = useLive<GroupClass[]>(subscribeGroupClasses, [], []);
   const enrollments = useLive<ClassEnrollment[]>(subscribeClassEnrollments, [], []);
+  const expenses = useLive<Expense[]>(subscribeExpenses, [], []);
+  const expenseActivities = useLive<ExpenseActivity[]>(subscribeExpenseActivities, [], []);
 
-  const loading = clients.loading || memberships.loading || inquiries.loading || workouts.loading || diets.loading || bookings.loading || classes.loading || enrollments.loading;
-  const error = clients.error ?? memberships.error ?? inquiries.error ?? workouts.error ?? diets.error ?? bookings.error ?? classes.error ?? enrollments.error;
+  const loading = clients.loading || memberships.loading || inquiries.loading || workouts.loading || diets.loading || bookings.loading || classes.loading || enrollments.loading || expenses.loading || expenseActivities.loading;
+  const error = clients.error ?? memberships.error ?? inquiries.error ?? workouts.error ?? diets.error ?? bookings.error ?? classes.error ?? enrollments.error ?? expenses.error ?? expenseActivities.error;
 
   const result = useMemo(() => {
     const today = todayISO();
     const in7 = format(addDays(new Date(), 7), "yyyy-MM-dd");
     const monthStart = startOfMonth(new Date());
+    const monthStartISO = format(monthStart, "yyyy-MM-dd");
+    const todayExpenses = expenses.data.filter((item) => item.date === today).reduce((sum, item) => sum + item.amount, 0);
+    const monthExpenses = expenses.data.filter((item) => item.date >= monthStartISO && item.date <= today).reduce((sum, item) => sum + item.amount, 0);
 
     const byClient = new Map<string, Membership[]>();
     memberships.data.forEach((m) => {
@@ -93,6 +100,9 @@ export function useDashboardMetrics() {
       { id: "pt-booked", label: "Booked PT Sessions", value: formatNumber(bookings.data.filter((item) => item.bookingType === "pt" && item.status === "scheduled" && item.date >= today).length), hint: "scheduled from today", icon: Dumbbell, tone: "primary" },
       { id: "group-booked", label: "Booked Group Classes", value: formatNumber(enrollments.data.filter((item) => item.status === "enrolled").length), hint: "active enrollments", icon: UsersRound, tone: "info" },
       { id: "today-schedule", label: "Today's Schedule", value: formatNumber(bookings.data.filter((item) => item.date === today && item.status === "scheduled").length + classes.data.filter((item) => item.date === today && item.status === "scheduled").length), hint: "bookings and classes", icon: CalendarClock, tone: "warning" },
+      { id: "today-expenses", label: "Today's Expenses", value: formatPrice(todayExpenses), hint: "from expense records", icon: ReceiptIndianRupee, tone: "danger" },
+      { id: "month-expenses", label: "Monthly Expenses", value: formatPrice(monthExpenses), hint: "current month", icon: ReceiptIndianRupee, tone: "warning" },
+      { id: "profit-loss", label: "Profit/Loss", value: "—", hint: "Available after Billing", icon: BadgeIndianRupee, tone: "info" },
       {
         id: "birthdays",
         label: "Birthdays Today",
@@ -161,6 +171,14 @@ export function useDashboardMetrics() {
         tone: "warning" as const,
         icon: CalendarClock,
       })),
+      ...expenseActivities.data.slice(0, 8).map((item) => ({
+        id: `expense-${item.id}`,
+        title: item.action === "created" ? "Expense added" : item.action === "updated" ? "Expense updated" : "Expense removed",
+        description: `${item.expenseTitleSnapshot} · ${item.createdBy}`,
+        at: item.createdAt,
+        tone: item.action === "deleted" ? "danger" as const : "warning" as const,
+        icon: ReceiptIndianRupee,
+      })),
     ]
       .sort((a, b) => b.at.getTime() - a.at.getTime())
       .slice(0, 6)
@@ -172,7 +190,7 @@ export function useDashboardMetrics() {
     ].sort((a, b) => a.time.localeCompare(b.time));
 
     return { stats, ratios, activity, todaySchedule };
-  }, [clients.data, memberships.data, inquiries.data, workouts.data, diets.data, bookings.data, classes.data, enrollments.data]);
+  }, [clients.data, memberships.data, inquiries.data, workouts.data, diets.data, bookings.data, classes.data, enrollments.data, expenses.data, expenseActivities.data]);
 
   return { ...result, loading, error };
 }
