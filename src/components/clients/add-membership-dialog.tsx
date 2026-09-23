@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { AlertTriangle, CalendarRange, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { FormDialog, Field } from "@/components/common/form-dialog";
@@ -49,6 +49,7 @@ export function AddMembershipDialog({
   const [previousAction, setPreviousAction] = useState<PreviousAction>("expired");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const navigate=useNavigate();
 
   useEffect(() => {
     if (open) {
@@ -98,6 +99,9 @@ export function AddMembershipDialog({
           <Button onClick={() => void submit()} disabled={saving || !pkg}>
             {saving ? <Loader2 className="animate-spin" aria-hidden /> : null}
             Confirm membership
+          </Button>
+          <Button variant="secondary" onClick={()=>{onOpenChange(false);void navigate({to:"/billing",search:{create:true,clientId}})}} disabled={saving}>
+            Generate invoice instead
           </Button>
         </>
       }

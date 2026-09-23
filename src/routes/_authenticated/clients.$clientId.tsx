@@ -32,6 +32,7 @@ import { AddMembershipDialog } from "@/components/clients/add-membership-dialog"
 import { AddWorkoutDialog } from "@/components/clients/add-workout-dialog";
 import { AddDietDialog } from "@/components/clients/add-diet-dialog";
 import { ClientBookingsSection } from "@/components/clients/client-bookings-section";
+import { InvoiceActions } from "@/components/billing/invoice-actions";
 import { BookingFormDialog } from "@/components/scheduling/booking-form-dialog";
 import { AssignmentSection } from "@/components/clients/assignment-section";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,7 @@ import {
   formatDate,
   formatDateISO,
   formatPrice,
+  INVOICE_STATUS_META,
 } from "@/lib/format";
 import { toneIcon } from "@/lib/tone";
 import { cn } from "@/lib/utils";
@@ -55,7 +57,8 @@ import { firestoreErrorMessage } from "@/services/firestore.service";
 import { subscribeClientBookings } from "@/services/bookings.service";
 import { subscribeClientEnrollments } from "@/services/class-enrollments.service";
 import { subscribeGroupClasses } from "@/services/group-classes.service";
-import type { Booking, ClassEnrollment, Client, DietAssignment, GroupClass, Membership, WorkoutAssignment } from "@/types/models";
+import { subscribeClientInvoices } from "@/services/invoices.service";
+import type { Booking, ClassEnrollment, Client, DietAssignment, GroupClass, Invoice, Membership, WorkoutAssignment } from "@/types/models";
 import type { StatTone } from "@/types";
 import { CLOUDINARY_CLIENT_FOLDER } from "@/constants/navigation";
 
@@ -96,6 +99,7 @@ function ClientProfilePage() {
   const bookings = useLive<Booking[]>((ok, fail) => subscribeClientBookings(clientId, ok, fail), [], [clientId]);
   const enrollments = useLive<ClassEnrollment[]>((ok, fail) => subscribeClientEnrollments(clientId, ok, fail), [], [clientId]);
   const groupClasses = useLive<GroupClass[]>(subscribeGroupClasses, [], []);
+  const invoices = useLive<Invoice[]>((ok,fail)=>subscribeClientInvoices(clientId,ok,fail),[],[clientId]);
   const [editOpen, setEditOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -372,11 +376,7 @@ function ClientProfilePage() {
         </TabsContent>
 
         <TabsContent value="billing">
-          <EmptyState
-            icon={Wallet}
-            title="No billing records yet"
-            description="Invoices and payments for this client will appear here once billing is enabled."
-          />
+          {invoices.loading?<Shimmer className="h-40 rounded-2xl"/>:invoices.error?<ErrorState error={invoices.error} title="Couldn't load invoices"/>:invoices.data.length===0?<EmptyState icon={Wallet} title="No billing records yet" description="Create a bill for this client to begin their invoice history." action={<Button asChild><Link to="/billing" search={{create:true,clientId:c.id}}><Plus/> Create bill</Link></Button>}/>:<section className="space-y-4"><div className="grid gap-3 sm:grid-cols-3">{[["Total Invoices",String(invoices.data.length)],["Total Paid",formatPrice(invoices.data.reduce((n,i)=>n+i.amountPaid,0))],["Outstanding",formatPrice(invoices.data.reduce((n,i)=>n+i.balanceDue,0))]].map(([label,value])=><div className="surface-card p-4" key={label}><p className="text-meta">{label}</p><p className="mt-1 text-xl font-extrabold">{value}</p></div>)}</div><div className="surface-card divide-y divide-border">{invoices.data.map(i=><article className="p-4 sm:p-5" key={i.id}><div className="flex flex-col gap-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-bold">{i.invoiceNumber}</p><StatusPill tone={INVOICE_STATUS_META[i.paymentStatus].tone}>{INVOICE_STATUS_META[i.paymentStatus].label}</StatusPill></div><p className="text-meta">{formatDateISO(i.invoiceDate)} · Total {formatPrice(i.total)} · Paid {formatPrice(i.amountPaid)} · Balance {formatPrice(i.balanceDue)}</p></div><InvoiceActions invoice={i}/></div></article>)}</div></section>}
         </TabsContent>
         <TabsContent value="attendance">
           <EmptyState
