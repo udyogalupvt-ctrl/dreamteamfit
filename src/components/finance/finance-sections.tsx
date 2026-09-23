@@ -30,7 +30,7 @@ export function IncomeSection() {
   const s = useMemo(() => buildFinanceSummary(payments.data, invoices.data, manual.data, expenses.data.map((e) => ({ amount: e.amount, date: e.date })), from, to), [payments.data, invoices.data, manual.data, expenses.data, from, to]);
   const save = async () => {
     const amount = Number(f.amount);
-    if (f.title.trim().length < 2 || !(amount > 0)) return toast.error("Enter a title and a positive amount");
+    if (f.title.trim().length < 2 || !(amount > 0)) { toast.error("Enter a title and a positive amount"); return; }
     try { await addManualIncome({ ...f, title: f.title.trim(), amount, createdBy: user?.displayName || user?.email || "Staff" }); toast.success("Income recorded"); setOpen(false); } catch (e) { toast.error(firestoreErrorMessage(e)); }
   };
   return (
