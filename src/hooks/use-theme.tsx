@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import type { ThemeMode } from "@/types";
 
-const STORAGE_KEY = "forge-theme";
+const STORAGE_KEY = "rebuild-fitness-theme";
 
 interface ThemeContextValue {
   theme: ThemeMode;

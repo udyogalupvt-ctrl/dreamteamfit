@@ -1,12 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CreditCard, FileText, MessageSquareHeart, UserPlus, Users } from "lucide-react";
-import { toast } from "sonner";
+import { UserPlus, Users } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { StatCard, StatCardSkeleton } from "@/components/common/stat-card";
 import { ErrorState } from "@/components/common/error-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDashboardMetrics } from "@/hooks/use-dashboard-metrics";
 import { toneIcon } from "@/lib/tone";
 import { cn } from "@/lib/utils";
@@ -14,12 +12,12 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
-      { title: "Dashboard — FORGE Gym Management" },
+      { title: "Dashboard — REBUILD FITNESS" },
       {
         name: "description",
         content: "Live snapshot of members, collections, attendance and follow-ups.",
       },
-      { property: "og:title", content: "Dashboard — FORGE Gym Management" },
+      { property: "og:title", content: "Dashboard — REBUILD FITNESS" },
       {
         property: "og:description",
         content: "Live snapshot of members, collections, attendance and follow-ups.",
@@ -32,17 +30,11 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 const QUICK_ACTIONS = [
   { label: "Create Inquiry", icon: UserPlus, variant: "default" as const, to: "/inquiries" as const },
   { label: "Create Client", icon: Users, variant: "outline" as const, to: "/clients" as const },
-  { label: "Create Follow-up", icon: MessageSquareHeart, variant: "outline" as const },
-  { label: "Create POS Bill", icon: CreditCard, variant: "outline" as const },
 ];
 
 function DashboardPage() {
   const navigate = useNavigate();
   const { stats, ratios, activity, loading, error } = useDashboardMetrics();
-  const soon = (label: string) =>
-    toast.info(`${label} arrives in the next build stage`, {
-      description: "The foundation is ready — module logic ships next.",
-    });
 
   return (
     <div className="space-y-6">
@@ -50,15 +42,6 @@ function DashboardPage() {
         title="Dashboard"
         description="Today at a glance across memberships, revenue and floor activity."
         breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Dashboard" }]}
-        actions={
-          <Tabs defaultValue="today">
-            <TabsList>
-              <TabsTrigger value="today">Today</TabsTrigger>
-              <TabsTrigger value="week">Week</TabsTrigger>
-              <TabsTrigger value="month">Month</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        }
       />
 
       {error ? <ErrorState error={error} title="Couldn't load live metrics" /> : null}
@@ -94,7 +77,7 @@ function DashboardPage() {
                 variant={variant}
                 size="lg"
                 className="h-14 min-w-0 justify-start gap-3"
-                onClick={() => ("to" in rest && rest.to ? void navigate({ to: rest.to }) : soon(label))}
+                onClick={() => void navigate({ to: rest.to })}
               >
                 <Icon aria-hidden />
                 {label}
@@ -124,13 +107,10 @@ function DashboardPage() {
         <section className="surface-card flex min-w-0 flex-col p-5">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-section-title">Recent activity</h2>
-            <Button variant="ghost" size="sm" onClick={() => soon("Activity log")}>
-              <FileText aria-hidden /> View all
-            </Button>
           </div>
           {!loading && activity.length === 0 ? (
             <p className="text-meta py-8 text-center">
-              No activity yet — new inquiries, clients and memberships show up here.
+               Your activity will appear here.
             </p>
           ) : null}
           <ul className="mt-3 divide-y divide-border">

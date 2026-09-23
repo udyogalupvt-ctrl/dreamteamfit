@@ -80,15 +80,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "FORGE — Gym Management Platform" },
+      { title: "REBUILD FITNESS — Gym Management" },
       {
         name: "description",
-        content: "FORGE is a premium gym CRM for memberships, billing, attendance and follow-ups.",
+        content: "REBUILD FITNESS staff workspace for clients, memberships and gym operations.",
       },
-      { property: "og:title", content: "FORGE — Gym Management Platform" },
+      { property: "og:title", content: "REBUILD FITNESS — Gym Management" },
       {
         property: "og:description",
-        content: "FORGE is a premium gym CRM for memberships, billing, attendance and follow-ups.",
+        content: "REBUILD FITNESS staff workspace for clients, memberships and gym operations.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -101,7 +101,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
       },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "icon", href: "/favicon.png", type: "image/png" },
     ],
   }),
   shellComponent: RootShell,

@@ -1,16 +1,14 @@
-import { Dumbbell } from "lucide-react";
 import { cn } from "@/lib/utils";
+import brandLogo from "@/assets/rebuild-fitness-logo.png.asset.json";
 
-export function BrandMark({ className }: { className?: string }) {
+export function BrandMark({ className, imageClassName }: { className?: string; imageClassName?: string }) {
   return (
-    <span
-      className={cn(
-        "grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-soft",
-        className,
-      )}
-      aria-hidden
-    >
-      <Dumbbell className="size-5" strokeWidth={2.5} />
+    <span className={cn("grid size-11 shrink-0 place-items-center", className)}>
+      <img
+        src={brandLogo.url}
+        alt="Rebuild Fitness"
+        className={cn("size-full object-contain", imageClassName)}
+      />
     </span>
   );
 }

@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { Bell, Plus } from "lucide-react";
-import { SearchInput } from "@/components/common/search-input";
+import { useNavigate } from "@tanstack/react-router";
+import { Bell, Package, UserPlus, Users } from "lucide-react";
+import { GlobalSearch } from "@/components/layout/global-search";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { UserMenu } from "@/components/layout/user-menu";
@@ -13,10 +13,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { NOTIFICATIONS } from "@/constants/demo-data";
 
 export function Topbar() {
-  const [search, setSearch] = useState("");
+  const navigate = useNavigate();
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
@@ -24,34 +23,34 @@ export function Topbar() {
         <MobileNavDrawer />
 
         <div className="hidden min-w-0 flex-1 md:block">
-          <SearchInput value={search} onValueChange={setSearch} containerClassName="max-w-md" />
+          <GlobalSearch />
         </div>
 
         <div className="flex flex-1 items-center justify-end gap-2 md:flex-none">
-          <Button size="sm" className="hidden sm:inline-flex">
-            <Plus aria-hidden /> Quick add
-          </Button>
+          <div className="md:hidden"><GlobalSearch compact /></div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" className="hidden sm:inline-flex">Quick add</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => navigate({ to: "/inquiries" })}><UserPlus aria-hidden /> Inquiry</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate({ to: "/clients" })}><Users aria-hidden /> Client</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate({ to: "/packages" })}><Package aria-hidden /> Package</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <DropdownMenu>
             <DropdownMenuTrigger
               className="relative grid size-10 cursor-pointer place-items-center rounded-lg border border-border bg-surface transition-colors hover:bg-accent"
-              aria-label={`Notifications (${NOTIFICATIONS.length} unread)`}
+              aria-label="Notifications"
             >
               <Bell className="size-[18px]" aria-hidden />
-              <span
-                className="absolute top-2 right-2 size-2 rounded-full bg-destructive ring-2 ring-surface"
-                aria-hidden
-              />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-80 rounded-xl">
               <DropdownMenuLabel>Notifications</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {NOTIFICATIONS.map((note) => (
-                <DropdownMenuItem key={note.id} className="flex-col items-start gap-0.5 py-2.5">
-                  <span className="text-sm font-semibold">{note.title}</span>
-                  <span className="text-xs text-muted-foreground">{note.description}</span>
-                </DropdownMenuItem>
-              ))}
+              <p className="px-3 py-5 text-center text-sm text-muted-foreground">No notifications yet.</p>
             </DropdownMenuContent>
           </DropdownMenu>
 

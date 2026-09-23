@@ -12,7 +12,7 @@ import { BrandMark } from "@/components/layout/brand-mark";
 import { NavList } from "@/components/layout/nav-list";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { UserMenu } from "@/components/layout/user-menu";
-import { APP_NAME, GYM_NAME, MOBILE_NAV_PATHS, NAV_ITEMS } from "@/constants/navigation";
+import { APP_NAME, APP_TAGLINE, MOBILE_NAV_PATHS, NAV_ITEMS } from "@/constants/navigation";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -29,11 +29,11 @@ export function MobileNavDrawer() {
       <SheetContent side="left" className="w-[86vw] max-w-[320px] bg-sidebar p-0">
         <SheetHeader className="border-b border-sidebar-border px-4 py-4 text-left">
           <SheetTitle className="flex items-center gap-3">
-            <BrandMark />
+            <BrandMark className="size-12" />
             <span className="min-w-0">
               <span className="font-display block truncate text-sm font-extrabold">{APP_NAME}</span>
               <span className="block truncate text-xs font-medium text-muted-foreground">
-                {GYM_NAME}
+                {APP_TAGLINE}
               </span>
             </span>
           </SheetTitle>

@@ -34,12 +34,12 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="rounded-2xl">
+      <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle className="text-section-title">{title}</AlertDialogTitle>
           {description ? <AlertDialogDescription>{description}</AlertDialogDescription> : null}
         </AlertDialogHeader>
-        <AlertDialogFooter>
+        <AlertDialogFooter className="gap-2 sm:gap-0">
           <AlertDialogCancel className={cn(buttonVariants({ variant: "outline" }), "mt-0")}>
             {cancelLabel}
           </AlertDialogCancel>

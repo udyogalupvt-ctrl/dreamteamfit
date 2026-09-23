@@ -47,13 +47,14 @@ import { cancelMembership, subscribeClientMemberships } from "@/services/members
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import type { Client, Membership } from "@/types/models";
 import type { StatTone } from "@/types";
+import { CLOUDINARY_CLIENT_FOLDER } from "@/constants/navigation";
 
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
   head: () => ({
     meta: [
-      { title: "Client profile — FORGE" },
+      { title: "Client profile — REBUILD FITNESS" },
       { name: "description", content: "Client details, memberships and activity." },
-      { property: "og:title", content: "Client profile — FORGE" },
+      { property: "og:title", content: "Client profile — REBUILD FITNESS" },
       { property: "og:description", content: "Client details, memberships and activity." },
     ],
   }),
@@ -458,7 +459,7 @@ function PhotoDialog({
       <ImageUpload
         key={open ? "open" : "closed"}
         label="Client photo"
-        folder="forge/clients"
+        folder={CLOUDINARY_CLIENT_FOLDER}
         value={
           client.profilePhotoUrl
             ? { url: client.profilePhotoUrl, publicId: "", width: 0, height: 0, format: "" }

@@ -21,7 +21,7 @@ interface ImageUploadProps {
 export function ImageUpload({
   value = null,
   onChange,
-  folder = "forge",
+  folder = "rebuild-fitness",
   label = "Image",
   hint = "JPG, PNG or WEBP up to 5 MB",
   className,

@@ -1,6 +1,6 @@
 rules_version = '2';
 
-// FORGE — only signed-in staff can read/write gym data. Nothing is public.
+// REBUILD FITNESS — only signed-in staff can read/write gym data. Nothing is public.
 // Ready for role-based permissions later (e.g. a /staff/{uid} doc with a role field).
 service cloud.firestore {
   match /databases/{database}/documents {

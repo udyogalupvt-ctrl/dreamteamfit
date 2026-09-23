@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
-import { GYM_NAME } from "@/constants/navigation";
+import { CLOUDINARY_BRAND_FOLDER, GYM_NAME } from "@/constants/navigation";
 import { CLOUDINARY_CLOUD_NAME } from "@/lib/cloudinary";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
@@ -25,9 +25,9 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
     meta: [
-      { title: "Settings — FORGE" },
+      { title: "Settings — REBUILD FITNESS" },
       { name: "description", content: "Gym profile, appearance and platform connections." },
-      { property: "og:title", content: "Settings — FORGE" },
+      { property: "og:title", content: "Settings — REBUILD FITNESS" },
       { property: "og:description", content: "Gym profile, appearance and platform connections." },
     ],
   }),
@@ -121,7 +121,7 @@ function SettingsPage() {
             title="Gym logo"
             description="Uploads go to Cloudinary and are reused for member photos later."
           >
-            <ImageUpload label="Logo" folder="forge/branding" />
+            <ImageUpload label="Logo" folder={CLOUDINARY_BRAND_FOLDER} />
           </FormSection>
         </TabsContent>
 

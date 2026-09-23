@@ -9,21 +9,21 @@ import { Label } from "@/components/ui/label";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { useAuth } from "@/hooks/use-auth";
 import { authErrorMessage } from "@/services/auth.service";
-import { APP_NAME, GYM_NAME } from "@/constants/navigation";
+import { APP_NAME } from "@/constants/navigation";
 
 export const Route = createFileRoute("/login")({
   ssr: false,
   head: () => ({
     meta: [
-      { title: "Sign in — FORGE Gym Management" },
+      { title: "Sign in — REBUILD FITNESS" },
       {
         name: "description",
-        content: "Staff sign-in for the FORGE gym management workspace.",
+        content: "Staff sign-in for the REBUILD FITNESS management workspace.",
       },
-      { property: "og:title", content: "Sign in — FORGE Gym Management" },
+      { property: "og:title", content: "Sign in — REBUILD FITNESS" },
       {
         property: "og:description",
-        content: "Staff sign-in for the FORGE gym management workspace.",
+        content: "Staff sign-in for the REBUILD FITNESS management workspace.",
       },
     ],
   }),
@@ -93,10 +93,10 @@ function LoginPage() {
           className="absolute -top-32 -right-24 size-[28rem] rounded-full bg-primary/25 blur-3xl"
         />
         <div className="relative flex items-center gap-3">
-          <BrandMark />
+          <BrandMark className="size-16" />
           <div>
             <p className="font-display text-lg font-extrabold tracking-tight">{APP_NAME}</p>
-            <p className="text-xs opacity-70">{GYM_NAME}</p>
+            <p className="text-xs opacity-70">Gym Management</p>
           </div>
         </div>
 
@@ -123,7 +123,7 @@ function LoginPage() {
       <section className="flex flex-col bg-background px-5 py-8 sm:px-10">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 lg:hidden">
-            <BrandMark />
+            <BrandMark className="size-14" />
             <span className="font-display text-base font-extrabold">{APP_NAME}</span>
           </div>
           <ThemeToggle className="ml-auto" />
@@ -132,7 +132,7 @@ function LoginPage() {
         <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-10">
           <h2 className="text-page-title">Staff sign in</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Use your work email to access the {GYM_NAME} workspace.
+            Use your work email to access the REBUILD FITNESS workspace.
           </p>
 
           {formError ? (
