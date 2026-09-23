@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { addDays, format, formatDistanceToNow, startOfMonth } from "date-fns";
 import {
-  Apple,
   BadgeIndianRupee,
   Cake,
   CalendarCheck,
@@ -9,6 +8,7 @@ import {
   Dumbbell,
   MessageSquareHeart,
   RefreshCcw,
+  Salad,
   UserPlus,
   UserRoundCheck,
   UserRoundX,
@@ -81,7 +81,7 @@ export function useDashboardMetrics() {
       { id: "follow-ups", label: "Follow-ups", value: formatNumber(followUpsDue), hint: "inquiries due today", icon: MessageSquareHeart, tone: "warning" },
       { id: "renewals", label: "Upcoming Renewals", value: formatNumber(renewals), hint: "ending in 7 days", icon: RefreshCcw, tone: "info" },
       { id: "workouts", label: "Workout Plans Assigned", value: formatNumber(workouts.data.filter((item) => item.status === "active").length), hint: "currently active", icon: Dumbbell, tone: "primary" },
-      { id: "diets", label: "Diet Plans Assigned", value: formatNumber(diets.data.filter((item) => item.status === "active").length), hint: "currently active", icon: Apple, tone: "success" },
+      { id: "diets", label: "Diet Plans Assigned", value: formatNumber(diets.data.filter((item) => item.status === "active").length), hint: "currently active", icon: Salad, tone: "success" },
       {
         id: "birthdays",
         label: "Birthdays Today",
@@ -140,7 +140,7 @@ export function useDashboardMetrics() {
         description: `Diet · ${item.goalSnapshot}`,
         at: item.createdAt,
         tone: "success" as const,
-        icon: Apple,
+        icon: Salad,
       })),
     ]
       .sort((a, b) => b.at.getTime() - a.at.getTime())
