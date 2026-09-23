@@ -7,7 +7,7 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { getFirebaseAuth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import type { AppUser } from "@/types";
 
 export function mapUser(user: User | null): AppUser | null {
@@ -21,18 +21,17 @@ export function mapUser(user: User | null): AppUser | null {
 }
 
 export function subscribeToAuth(cb: (user: AppUser | null) => void) {
-  return onAuthStateChanged(getFirebaseAuth(), (user) => cb(mapUser(user)));
+  return onAuthStateChanged(auth, (user) => cb(mapUser(user)));
 }
 
 export async function loginWithEmail(email: string, password: string, remember: boolean) {
-  const auth = getFirebaseAuth();
   await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
   const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
   return mapUser(credential.user);
 }
 
 export async function logout() {
-  await signOut(getFirebaseAuth());
+  await signOut(auth);
 }
 
 /** Human-readable messages for Firebase auth error codes. */
