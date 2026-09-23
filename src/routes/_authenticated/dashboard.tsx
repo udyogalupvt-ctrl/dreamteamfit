@@ -73,7 +73,7 @@ function DashboardPage() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)] lg:gap-6">
         {/* Quick actions */}
-        <section className="surface-card p-5">
+        <section className="surface-card min-w-0 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-section-title">Quick actions</h2>
             <Badge variant="secondary">Most used</Badge>
@@ -84,7 +84,7 @@ function DashboardPage() {
                 key={label}
                 variant={variant}
                 size="lg"
-                className="h-14 justify-start gap-3"
+                className="h-14 min-w-0 justify-start gap-3"
                 onClick={() => soon(label)}
               >
                 <Icon aria-hidden />
@@ -116,7 +116,7 @@ function DashboardPage() {
         </section>
 
         {/* Recent activity */}
-        <section className="surface-card flex flex-col p-5">
+        <section className="surface-card flex min-w-0 flex-col p-5">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-section-title">Recent activity</h2>
             <Button variant="ghost" size="sm" onClick={() => soon("Activity log")}>
