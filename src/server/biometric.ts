@@ -468,8 +468,8 @@ async function storeTemplates(body: string, device: Device) {
   for (const t of fingerprintTemplates(body)) {
     const client = await clientForPin(t.pin, device);
     if (!client) continue;
-    const registered = client.data()["firstThumbRegistered"] === true;
-    if (!registered && !(await hasLiveEnrollRequest(client.id))) continue;
+    // Only while staff are registering this member: a spoofed upload can't swap a saved thumb.
+    if (!(await hasLiveEnrollRequest(client.id))) continue;
     await firestore.doc(`biometricTemplates/${client.id}`).set(
       {
         clientId: client.id,
@@ -669,8 +669,10 @@ async function forgetDeletedMember(clientId: string, pin: string, deviceId: stri
 }
 
 /**
- * A stored template only proves enrollment while staff are actively registering this member,
- * so a device's first bulk upload of old users can never activate someone by ID coincidence.
+ * Fingerprint evidence only counts while staff are actively registering this member (an
+ * enroll request from the app in the last 20 minutes). This stops a device's first bulk upload
+ * of old users, or anyone posing as the device with its serial number, from activating a
+ * member or replacing a saved thumb.
  */
 async function hasLiveEnrollRequest(clientId: string) {
   const snap = await db().collection("biometricCommands").where("clientId", "==", clientId).get();
@@ -816,7 +818,9 @@ export async function handleIclock(request: Request, url: URL) {
         for (const [pin, kind] of fingerprintEvidence(body)) {
           const client = await clientForPin(pin, device);
           if (!client) continue;
-          if (kind === "template" && !(await hasLiveEnrollRequest(client.id))) continue;
+          // The ADMS protocol has no device password (only the serial number), so a thumb only
+          // counts while staff are registering this member from the app.
+          if (!(await hasLiveEnrollRequest(client.id))) continue;
           await activateBiometric(client.ref, device, pin);
         }
         await storeTemplates(body, device);
