@@ -78,7 +78,9 @@ export const subscribeWhatsAppMessages = (
 
 export async function sendWhatsAppMessage(input: SendInput) {
   let recipient = input.client;
-  if (input.type !== "test") {
+  // A number typed on the Announcements page has no member record to check.
+  const typedNumber = input.type === "announcement" && !input.client.id;
+  if (input.type !== "test" && !typedNumber) {
     const clientSnap = await getDoc(doc(db, COLLECTIONS.clients, input.client.id));
     if (!clientSnap.exists()) throw new Error("Client record not found.");
     const data = clientSnap.data();
@@ -99,10 +101,15 @@ export async function sendWhatsAppMessage(input: SendInput) {
     ref = doc(db, COLLECTIONS.whatsappMessages, id);
   const claimed = await runTransaction(db, async (tx) => {
     const existing = await tx.get(ref);
-    if (
-      existing.exists() &&
-      ["queued", "sent", "delivered", "read"].includes(String(existing.data()["status"]))
-    )
+    const d = existing.data();
+    // "queued" that the server never picked up (the phone / tab closed right after the claim)
+    // may be tried again after 2 minutes. Once the server has claimed it, the server decides.
+    const stuck =
+      d?.["status"] === "queued" &&
+      !d["sendClaimedAt"] &&
+      Date.now() - ((d["updatedAt"] as { toMillis?: () => number } | null)?.toMillis?.() ?? 0) >
+        120_000;
+    if (d && ["queued", "sent", "delivered", "read"].includes(String(d["status"])) && !stuck)
       return false;
     const now = serverTimestamp();
     tx.set(
@@ -126,7 +133,7 @@ export async function sendWhatsAppMessage(input: SendInput) {
         failedAt: null,
         errorCode: "",
         errorMessage: "",
-        createdAt: existing.data()?.["createdAt"] ?? now,
+        createdAt: d?.["createdAt"] ?? now,
         updatedAt: now,
       },
       { merge: true },

@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedActivityLogRouteImport } from './routes/_authenticated/activity-log'
+import { Route as AuthenticatedAnnouncementsRouteImport } from './routes/_authenticated/announcements'
 import { Route as AuthenticatedAttendanceRouteImport } from './routes/_authenticated/attendance'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedBiometricDevicesRouteImport } from './routes/_authenticated/biometric-devices'
@@ -59,6 +60,12 @@ const AuthenticatedActivityLogRoute =
   AuthenticatedActivityLogRouteImport.update({
     id: '/activity-log',
     path: '/activity-log',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAnnouncementsRoute =
+  AuthenticatedAnnouncementsRouteImport.update({
+    id: '/announcements',
+    path: '/announcements',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedAttendanceRoute = AuthenticatedAttendanceRouteImport.update({
@@ -210,6 +217,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/activity-log': typeof AuthenticatedActivityLogRoute
+  '/announcements': typeof AuthenticatedAnnouncementsRoute
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
@@ -242,6 +250,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/activity-log': typeof AuthenticatedActivityLogRoute
+  '/announcements': typeof AuthenticatedAnnouncementsRoute
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
@@ -276,6 +285,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/login': typeof LoginRoute
   '/_authenticated/activity-log': typeof AuthenticatedActivityLogRoute
+  '/_authenticated/announcements': typeof AuthenticatedAnnouncementsRoute
   '/_authenticated/attendance': typeof AuthenticatedAttendanceRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
   '/_authenticated/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
@@ -310,6 +320,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/activity-log'
+    | '/announcements'
     | '/attendance'
     | '/billing'
     | '/biometric-devices'
@@ -342,6 +353,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/activity-log'
+    | '/announcements'
     | '/attendance'
     | '/billing'
     | '/biometric-devices'
@@ -375,6 +387,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/login'
     | '/_authenticated/activity-log'
+    | '/_authenticated/announcements'
     | '/_authenticated/attendance'
     | '/_authenticated/billing'
     | '/_authenticated/biometric-devices'
@@ -440,6 +453,13 @@ declare module '@tanstack/react-router' {
       path: '/activity-log'
       fullPath: '/activity-log'
       preLoaderRoute: typeof AuthenticatedActivityLogRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/announcements': {
+      id: '/_authenticated/announcements'
+      path: '/announcements'
+      fullPath: '/announcements'
+      preLoaderRoute: typeof AuthenticatedAnnouncementsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/attendance': {
@@ -636,6 +656,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedActivityLogRoute: typeof AuthenticatedActivityLogRoute
+  AuthenticatedAnnouncementsRoute: typeof AuthenticatedAnnouncementsRoute
   AuthenticatedAttendanceRoute: typeof AuthenticatedAttendanceRoute
   AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
   AuthenticatedBiometricDevicesRoute: typeof AuthenticatedBiometricDevicesRoute
@@ -665,6 +686,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedActivityLogRoute: AuthenticatedActivityLogRoute,
+  AuthenticatedAnnouncementsRoute: AuthenticatedAnnouncementsRoute,
   AuthenticatedAttendanceRoute: AuthenticatedAttendanceRoute,
   AuthenticatedBillingRoute: AuthenticatedBillingRoute,
   AuthenticatedBiometricDevicesRoute: AuthenticatedBiometricDevicesRoute,

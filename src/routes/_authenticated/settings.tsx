@@ -378,6 +378,17 @@ function WhatsAppSettingsPanel() {
                     onChange={(e) => set("absenceTemplate", e.target.value.trim())}
                   />
                 </Field>
+                <Field
+                  label="Announcement template"
+                  htmlFor="wa-ann"
+                  hint="Body {{1}} name, {{2}} gym, {{3}} your message"
+                >
+                  <Input
+                    id="wa-ann"
+                    value={f.announcementTemplate}
+                    onChange={(e) => set("announcementTemplate", e.target.value.trim())}
+                  />
+                </Field>
               </div>
             </>
           ) : null}

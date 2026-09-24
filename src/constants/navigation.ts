@@ -10,6 +10,7 @@ import {
   Fingerprint,
   History,
   LayoutDashboard,
+  Megaphone,
   MessageCircle,
   Package,
   PhoneCall,
@@ -49,6 +50,13 @@ export const NAV_ITEMS: NavItem[] = [
     to: "/member-calls",
     icon: PhoneCall,
     feature: "memberCalls",
+    group: "Workspace",
+  },
+  {
+    label: "Announcements",
+    to: "/announcements",
+    icon: Megaphone,
+    feature: "announcements",
     group: "Workspace",
   },
   {

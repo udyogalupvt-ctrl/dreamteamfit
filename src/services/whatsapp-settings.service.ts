@@ -24,6 +24,7 @@ export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   paymentDueTemplate: "gym_payment_due",
   birthdayTemplate: "gym_birthday_wish",
   absenceTemplate: "gym_miss_you",
+  announcementTemplate: "gym_announcement",
   followUpTemplate: "follow_up_message",
 };
 

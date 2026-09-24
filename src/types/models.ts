@@ -600,6 +600,7 @@ export const WHATSAPP_MESSAGE_TYPES = [
   "renewal",
   "birthday",
   "follow_up",
+  "announcement",
   "test",
 ] as const;
 export type WhatsAppMessageType = (typeof WHATSAPP_MESSAGE_TYPES)[number];
@@ -642,6 +643,8 @@ export interface WhatsAppSettings {
   birthdayTemplate: string;
   /** Sent when a member has not punched in for `absenceDays` days (Settings → Reminders). */
   absenceTemplate: string;
+  /** Announcements page: {{1}} name, {{2}} gym, {{3}} the message. */
+  announcementTemplate: string;
   followUpTemplate: string;
 }
 
@@ -826,6 +829,7 @@ export const STAFF_FEATURES = [
   "daybook",
   "attendance",
   "memberCalls",
+  "announcements",
   "finance",
   "packages",
   "classes",
@@ -899,4 +903,34 @@ export interface StaffPayment extends BaseDoc {
   expenseId: string;
   notes: string;
   createdBy: string;
+}
+
+// ------------------------------------------------------------------ WhatsApp announcements
+
+/** Member groups an announcement can go to (see member-segments). */
+export const ANNOUNCEMENT_GROUPS = ["active", "inactive", "blacklist"] as const;
+export type AnnouncementGroup = (typeof ANNOUNCEMENT_GROUPS)[number];
+
+export interface AnnouncementRecipient {
+  /** "" for a number typed by staff that is not a member. */
+  clientId: string;
+  name: string;
+  /** Digits with country code, e.g. 919849834102. */
+  phone: string;
+}
+
+/** One WhatsApp announcement (Announcements page). Each number gets it once. */
+export interface Announcement extends BaseDoc {
+  message: string;
+  groups: AnnouncementGroup[];
+  typedNumbers: number;
+  recipients: AnnouncementRecipient[];
+  total: number;
+  sent: number;
+  failed: number;
+  /** Members left out: said no to WhatsApp or no valid number. */
+  skipped: number;
+  status: "sending" | "done";
+  createdByUid: string;
+  createdByName: string;
 }

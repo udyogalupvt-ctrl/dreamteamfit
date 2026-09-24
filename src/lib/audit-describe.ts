@@ -148,12 +148,18 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
         return `Lead ${s(d["name"])}: ${s(b["status"])} → ${s(a["status"])}`;
       return null;
     case "whatsappMessages":
+      // One line per announcement (below), not one per person.
+      if (d["type"] === "announcement") return null;
       if (
         action === "created" ||
         (f.includes("status") && ["sent", "failed"].includes(s(a["status"])))
       )
         return `WhatsApp ${s(d["type"])} ${s(d["status"])}${d["errorMessage"] ? `: ${s(d["errorMessage"])}` : ""}`;
       return null;
+    case "announcements":
+      return action === "created"
+        ? `WhatsApp announcement to ${s(d["total"])} people: ${s(d["message"])}`
+        : null;
     case "memberCalls":
       return `Call · ${s(d["clientNameSnapshot"])} (${s(d["segment"])}): ${s(d["status"]).replace(/_/g, " ")}${d["notes"] ? ` — ${s(d["notes"])}` : ""}`;
     case "expenses":

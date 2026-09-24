@@ -53,6 +53,7 @@ const KINDS: { type: string; label: string; template: keyof WhatsAppSettings }[]
   { type: "renewal", label: "Renewal reminders", template: "renewalTemplate" },
   { type: "birthday", label: "Birthday wishes", template: "birthdayTemplate" },
   { type: "absence", label: "Missed-workout nudges", template: "absenceTemplate" },
+  { type: "announcement", label: "Announcements", template: "announcementTemplate" },
   { type: "test", label: "Tests", template: "invoiceTemplate" },
 ];
 const SENT = new Set(["sent", "delivered", "read"]);

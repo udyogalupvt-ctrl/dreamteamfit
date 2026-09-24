@@ -143,6 +143,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // WhatsApp announcements cost money (Marketing): only logins with that switch.
+    match /announcements/{id} {
+      allow read, write: if can('announcements');
+    }
+
     match /whatsappWebhookEvents/{eventId} {
       allow read: if isStaff();
       allow write: if false;

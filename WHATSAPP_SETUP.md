@@ -14,7 +14,7 @@ the member opens it and can view, download the PDF, or print.
    `gym_payment_receipt` message goes out with a **View bill** button. Renewal reminders
    (7 days before expiry) and birthday wishes go out at 8 AM; missed-workout nudges at 9:30 PM.
 
-## 1. Templates (5)
+## 1. Templates (6)
 
 Meta Business Manager → WhatsApp Manager → Message templates → **Create template**.
 Language **English (en)**, no header, no footer. Category is given for each template below.
@@ -116,10 +116,30 @@ of days set in *Settings → Reminders* (default 3) gets **one** message with a 
 They are not messaged again until they come back and then miss again. It is **off by default**
 because every message has a WhatsApp charge; switch it on in *Settings → Reminders*.
 
+### `gym_announcement` — Announcements page (Marketing, created and approved)
+
+```
+Hello {{1}}, here is an update from {{2}}:
+
+{{3}}
+
+For any questions, please contact the front desk. Thank you!
+```
+
+Samples: `Ravi Kumar` · `REBUILD FITNESS` · `The gym will be closed this Sunday for maintenance. We open again on Monday at 5 AM.`
+
+How it works: *Announcements* (menu) → tick **Active**, **Inactive** and/or **Blacklist**
+(plan ended, not renewed) and/or type any phone numbers → write the message → **Send**. {{1}}
+is the member's first name ("there" for a typed number that is not a member), {{3}} is the
+message as one paragraph (WhatsApp does not allow line breaks inside a value). Each number gets
+it once per announcement; members who said no to WhatsApp are left out. If some fail, the
+announcement shows "not sent" with **Send to the ones not reached**, which only messages those.
+Staff need the "WhatsApp announcements" switch (Staff → Login & features).
+
 ### About the category
 
 - `gym_payment_receipt` and `gym_membership_expiry` are account updates → **Utility**.
-- `gym_birthday_wish` and `gym_miss_you` are greetings / engagement. Meta classifies these as
+- `gym_birthday_wish`, `gym_miss_you` and `gym_announcement` are greetings / engagement / general news. Meta classifies these as
   **Marketing** whatever the wording, so create them as Marketing. They still send, at the
   marketing rate. Keep them switched off in *Settings → Reminders* if you want Utility-only costs.
 - If a Utility template is flagged, remove anything promotional (offers, "don't miss out",

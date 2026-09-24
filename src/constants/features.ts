@@ -11,6 +11,10 @@ export const FEATURE_META: Record<StaffFeature, { label: string; hint: string }>
   },
   attendance: { label: "Attendance", hint: "Member and staff attendance" },
   memberCalls: { label: "Member calls", hint: "Inactive, expiring, renewal and payment-due lists" },
+  announcements: {
+    label: "WhatsApp announcements",
+    hint: "Send a message to active, inactive or not-renewed members, or any number (Meta charges each)",
+  },
   finance: {
     label: "Income & expenses",
     hint: "Expenses, profit, cash book, salaries, incentives",
@@ -49,6 +53,7 @@ const PAGE_FEATURES: [prefix: string, feature: StaffFeature | "owner"][] = [
   ["/day-book", "daybook"],
   ["/attendance", "attendance"],
   ["/member-calls", "memberCalls"],
+  ["/announcements", "announcements"],
   ["/expenses", "finance"],
   ["/packages", "packages"],
   ["/trainers", "packages"],

@@ -15,6 +15,8 @@ const config = () => ({
   token: env("WHATSAPP_ACCESS_TOKEN"),
   phoneNumberId: env("WHATSAPP_PHONE_NUMBER_ID"),
   version: env("WHATSAPP_GRAPH_API_VERSION", "v23.0"),
+  // Only changed for local tests (a fake WhatsApp server), never in production.
+  base: env("WHATSAPP_GRAPH_BASE", "https://graph.facebook.com"),
 });
 const rank: Record<string, number> = { queued: 0, sent: 1, delivered: 2, read: 3, failed: 4 };
 
@@ -53,7 +55,11 @@ export async function sendTemplateMessage(input: {
   if (input.bodyParams.length)
     components.push({
       type: "body",
-      parameters: input.bodyParams.map((t) => ({ type: "text", text: t })),
+      // WhatsApp refuses line breaks, tabs and long runs of spaces inside a value.
+      parameters: input.bodyParams.map((t) => ({
+        type: "text",
+        text: t.replace(/\s+/g, " ").trim() || "-",
+      })),
     });
   if (input.buttonUrlParam)
     components.push({
@@ -62,23 +68,20 @@ export async function sendTemplateMessage(input: {
       index: "0",
       parameters: [{ type: "text", text: input.buttonUrlParam }],
     });
-  const response = await fetch(
-    `https://graph.facebook.com/${c.version}/${c.phoneNumberId}/messages`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${c.token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: input.to,
-        type: "template",
-        template: {
-          name: input.templateName,
-          language: { code: input.language || "en" },
-          components,
-        },
-      }),
-    },
-  );
+  const response = await fetch(`${c.base}/${c.version}/${c.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${c.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: input.to,
+      type: "template",
+      template: {
+        name: input.templateName,
+        language: { code: input.language || "en" },
+        components,
+      },
+    }),
+  });
   const body = await response.text();
   if (!response.ok)
     return { ok: false, error: safeError(response.status, body), code: String(response.status) };
@@ -91,7 +94,7 @@ async function testConnection(request: Request) {
   const c = config();
   if (!c.token || !c.phoneNumberId)
     return json({ configured: false, detail: "WhatsApp credentials are not set on the server." });
-  const response = await fetch(`https://graph.facebook.com/${c.version}/${c.phoneNumberId}`, {
+  const response = await fetch(`${c.base}/${c.version}/${c.phoneNumberId}`, {
     headers: { Authorization: `Bearer ${c.token}` },
   });
   return json(
@@ -142,7 +145,9 @@ async function send(request: Request) {
     });
     return json({ error: message }, status);
   };
-  if (String(data["type"]) !== "test") {
+  // Tests, and numbers staff typed on the Announcements page, have no member to check.
+  const typedNumber = String(data["type"]) === "announcement" && !data["clientId"];
+  if (String(data["type"]) !== "test" && !typedNumber) {
     const client = await db()
       .doc(`clients/${String(data["clientId"])}`)
       .get();
