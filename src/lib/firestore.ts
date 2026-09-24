@@ -54,7 +54,8 @@ function actor() {
   return {
     actorType: "app_user",
     actorUid: u?.uid ?? "",
-    actorName: u?.email || u?.displayName || u?.uid || "",
+    // Staff logins carry their name (set when the login is made); owners show their email.
+    actorName: u?.displayName || u?.email || u?.uid || "",
   };
 }
 

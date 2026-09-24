@@ -82,7 +82,7 @@ export async function sendWhatsAppMessage(input: SendInput) {
   const typedNumber = input.type === "announcement" && !input.client.id;
   if (input.type !== "test" && !typedNumber) {
     const clientSnap = await getDoc(doc(db, COLLECTIONS.clients, input.client.id));
-    if (!clientSnap.exists()) throw new Error("Client record not found.");
+    if (!clientSnap.exists()) throw new Error("Member record not found.");
     const data = clientSnap.data();
     recipient = {
       ...input.client,

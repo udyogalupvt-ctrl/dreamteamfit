@@ -237,6 +237,20 @@ export interface Membership extends BaseDoc {
   status: MembershipStatus;
   counsellorId: string;
   counsellorName: string;
+  /** Pauses (member away): each one moved the end date forward by `days`. */
+  pauses: MembershipPause[];
+}
+
+export const PAUSE_REASONS = ["Travel", "Medical", "Other"] as const;
+export interface MembershipPause {
+  /** Day the pause was entered (YYYY-MM-DD). */
+  on: string;
+  days: number;
+  reason: string;
+  note: string;
+  by: string;
+  /** End date before this pause, so it can be undone exactly. */
+  previousEnd: string;
 }
 
 export const WORKOUT_GOALS = [

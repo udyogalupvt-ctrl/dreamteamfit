@@ -14,7 +14,7 @@ const membershipFrom = (id: string, d: Record<string, unknown>): Membership => (
   startDate: String(d["startDate"] ?? ""),
   endDate: String(d["endDate"] ?? ""),
   counsellorId: String(d["counsellorId"] ?? ""),
-  counsellorName: String(d["counsellorName"] ?? ""),
+  counsellorName: String(d["counsellorName"] ?? ""), pauses: Array.isArray(d["pauses"]) ? d["pauses"] : [],
   status: (d["status"] ?? "pending") as Membership["status"],
   createdAt: new Date(),
   updatedAt: new Date(),

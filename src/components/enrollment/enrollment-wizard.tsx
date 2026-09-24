@@ -1480,16 +1480,26 @@ function ShareStep({
         </div>
       ) : null}
 
-      <Button
-        size="lg"
-        className="h-14 w-full bg-[#25D366] text-base text-white hover:bg-[#1fb857]"
-        onClick={share}
-      >
-        <MessageCircle aria-hidden /> Share bill on WhatsApp
-      </Button>
-      <p className="text-meta -mt-2 text-center">
-        Opens WhatsApp with {invoice.clientPhoneSnapshot} and the bill link ready — just press Send.
-      </p>
+      {autoSend.kind === "sent" ? (
+        // Already delivered by the API: sharing again from this phone would send a second copy.
+        <Button size="sm" variant="ghost" className="w-full" onClick={share}>
+          <MessageCircle aria-hidden /> Also share from this phone
+        </Button>
+      ) : (
+        <>
+          <Button
+            size="lg"
+            className="h-14 w-full bg-[#25D366] text-base text-white hover:bg-[#1fb857]"
+            onClick={share}
+          >
+            <MessageCircle aria-hidden /> Share bill on WhatsApp
+          </Button>
+          <p className="text-meta -mt-2 text-center">
+            Opens WhatsApp with {invoice.clientPhoneSnapshot} and the bill link ready — just press
+            Send.
+          </p>
+        </>
+      )}
 
       <div className="grid grid-cols-2 gap-2">
         <Button variant="outline" disabled={pdfBusy} onClick={() => void makePdf()}>

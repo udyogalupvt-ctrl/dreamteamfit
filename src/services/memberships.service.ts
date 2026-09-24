@@ -10,7 +10,7 @@ import {
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { addDaysISO, todayISO } from "@/lib/format";
-import type { GymPackage, Membership, MembershipSummary } from "@/types/models";
+import type { GymPackage, Membership, MembershipPause, MembershipSummary } from "@/types/models";
 import { col, COLLECTIONS, subscribeCollection, subscribeQuery, toDate } from "./firestore.service";
 
 const mapMembership = (id: string, d: DocumentData): Membership => ({
@@ -25,6 +25,7 @@ const mapMembership = (id: string, d: DocumentData): Membership => ({
   status: d["status"] ?? "pending",
   counsellorId: d["counsellorId"] ?? "",
   counsellorName: d["counsellorName"] ?? "",
+  pauses: Array.isArray(d["pauses"]) ? d["pauses"] : [],
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -133,4 +134,59 @@ export async function cancelMembership(membership: Membership, clientSummaryId?:
     });
   }
   await batch.commit();
+}
+
+/**
+ * Pause (member away for travel, illness…): moves the plan's end date forward by `days`, so
+ * the door, renewal reminders and member lists all follow the new date. Undo restores it.
+ */
+export async function pauseMembership(
+  m: Membership,
+  input: { days: number; reason: string; note: string },
+  by: string,
+  isCurrent: boolean,
+) {
+  const days = Math.floor(input.days);
+  if (!(days >= 1 && days <= 365)) throw new Error("Pause between 1 and 365 days.");
+  const endDate = addDaysISO(m.endDate, days);
+  const pause: MembershipPause = {
+    on: todayISO(),
+    days,
+    reason: input.reason,
+    note: input.note.trim(),
+    by,
+    previousEnd: m.endDate,
+  };
+  const batch = writeBatch(db);
+  batch.update(doc(db, COLLECTIONS.memberships, m.id), {
+    endDate,
+    pauses: [...m.pauses, pause],
+    updatedAt: serverTimestamp(),
+  });
+  if (isCurrent)
+    batch.update(doc(db, COLLECTIONS.clients, m.clientId), {
+      "currentMembership.endDate": endDate,
+      updatedAt: serverTimestamp(),
+    });
+  await batch.commit();
+  return endDate;
+}
+
+/** Takes back the latest pause: the end date returns to what it was before it. */
+export async function undoLastPause(m: Membership, isCurrent: boolean) {
+  const last = m.pauses[m.pauses.length - 1];
+  if (!last) return m.endDate;
+  const batch = writeBatch(db);
+  batch.update(doc(db, COLLECTIONS.memberships, m.id), {
+    endDate: last.previousEnd,
+    pauses: m.pauses.slice(0, -1),
+    updatedAt: serverTimestamp(),
+  });
+  if (isCurrent)
+    batch.update(doc(db, COLLECTIONS.clients, m.clientId), {
+      "currentMembership.endDate": last.previousEnd,
+      updatedAt: serverTimestamp(),
+    });
+  await batch.commit();
+  return last.previousEnd;
 }

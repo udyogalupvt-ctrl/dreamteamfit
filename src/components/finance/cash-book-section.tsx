@@ -292,7 +292,7 @@ export function HandoverDialog({
           />
         </Field>
         <Field
-          label="Opening cash (only to correct)"
+          label="Cash in the drawer this morning (opening)"
           htmlFor="cb-open"
           className="sm:col-span-2"
           hint="Leave empty: opening = yesterday's closing. Fill it on the first day you use the cash book."

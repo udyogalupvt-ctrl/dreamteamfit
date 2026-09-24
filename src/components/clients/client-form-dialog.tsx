@@ -153,11 +153,11 @@ export function ClientFormDialog({
       };
       if (client) {
         await updateClient(client.id, payload);
-        toast.success("Client updated", { description: payload.fullName });
+        toast.success("Member updated", { description: payload.fullName });
         onOpenChange(false);
       } else {
         const id = await createClient(payload, inquiryId);
-        toast.success(inquiryId ? "Inquiry converted to client" : "Client created", {
+        toast.success(inquiryId ? "Inquiry converted to member" : "Member created", {
           description: payload.fullName,
         });
         onOpenChange(false);
@@ -174,7 +174,7 @@ export function ClientFormDialog({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={title ?? (client ? "Edit client" : "Create client")}
+      title={title ?? (client ? "Edit member" : "Create member")}
       description={description ?? "Member details used across memberships, billing and attendance."}
       className="sm:max-w-2xl"
       footer={
@@ -190,7 +190,7 @@ export function ClientFormDialog({
             {saving ? <Loader2 className="animate-spin" aria-hidden /> : null}
             {ackDuplicate && duplicates.length
               ? "Create anyway"
-              : (submitLabel ?? (client ? "Save changes" : "Create client"))}
+              : (submitLabel ?? (client ? "Save changes" : "Create member"))}
           </Button>
         </>
       }
@@ -207,8 +207,8 @@ export function ClientFormDialog({
             <div className="min-w-0 space-y-1">
               <p className="font-semibold">
                 {activeDuplicate
-                  ? "An active client already uses this phone number"
-                  : "A client with this phone number already exists"}
+                  ? "An active member already uses this phone number"
+                  : "A member with this phone number already exists"}
               </p>
               <ul className="space-y-0.5">
                 {duplicates.map((d) => (

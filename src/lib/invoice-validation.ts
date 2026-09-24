@@ -10,7 +10,7 @@ export const invoiceItemSchema = z.object({
 });
 
 export const createInvoiceSchema = z.object({
-  clientId: z.string().min(1, "Select a client"),
+  clientId: z.string().min(1, "Select a member"),
   items: z.array(invoiceItemSchema).min(1, "Add at least one item").max(100),
   discount: z.coerce.number().min(0, "Discount cannot be negative").max(100_000_000),
   amountPaid: z.coerce.number().min(0, "Amount paid cannot be negative").max(100_000_000),

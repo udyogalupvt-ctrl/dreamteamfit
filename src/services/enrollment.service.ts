@@ -145,7 +145,7 @@ export async function enrollMember(input: EnrollmentInput) {
     );
     if (!dup.empty)
       throw new Error(
-        `A client with this phone already exists (${dup.docs[0]!.data()["fullName"]}).`,
+        `A member with this phone already exists (${dup.docs[0]!.data()["fullName"]}).`,
       );
   }
   const existingBio =
@@ -521,7 +521,7 @@ export async function requestFingerprint(input: {
   const pin = input.biometricUserId.trim();
   const clientRef = doc(db, COLLECTIONS.clients, input.clientId);
   const cSnap = await getDoc(clientRef);
-  if (!cSnap.exists()) throw new Error("Client not found.");
+  if (!cSnap.exists()) throw new Error("Member not found.");
   const client = mapClient(cSnap.id, cSnap.data());
   const eRef = input.enrollmentId ? doc(db, COLLECTIONS.enrollments, input.enrollmentId) : null;
 

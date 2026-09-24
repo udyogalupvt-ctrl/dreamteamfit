@@ -10,7 +10,7 @@ export const normalizeTrainerId = (name: string) => name.trim().toLowerCase().re
 
 export const bookingSchema = z.object({
   clientId: z.string().trim().max(128),
-  clientNameSnapshot: text("Client name", 120),
+  clientNameSnapshot: text("Member name", 120),
   bookingType: z.enum(BOOKING_TYPES),
   trainerId: z.string().trim().max(128),
   trainerNameSnapshot: text("Trainer name", 120),
@@ -29,7 +29,7 @@ export const bookingSchema = z.object({
   dateOverride: z.boolean().default(false),
 }).superRefine((value, ctx) => {
   if (value.endTime <= value.startTime) ctx.addIssue({ code: "custom", path: ["endTime"], message: "End time must be after start time" });
-  if (value.bookingType !== "group_class" && !value.clientId) ctx.addIssue({ code: "custom", path: ["clientId"], message: "Client is required" });
+  if (value.bookingType !== "group_class" && !value.clientId) ctx.addIssue({ code: "custom", path: ["clientId"], message: "Member is required" });
   if (value.bookingType === "pt" && !value.ptAssignmentId) ctx.addIssue({ code: "custom", path: ["clientId"], message: "No active PT package for this client." });
   if (value.bookingType === "pt" && !value.trainerId) ctx.addIssue({ code: "custom", path: ["trainerNameSnapshot"], message: "Trainer is required" });
   if (value.bookingType === "group_class" && !value.groupClassId) ctx.addIssue({ code: "custom", path: ["groupClassId"], message: "Group class is required" });

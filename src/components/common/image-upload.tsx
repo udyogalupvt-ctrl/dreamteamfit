@@ -120,7 +120,7 @@ export function ImageUpload({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
         <div
           className={cn(
-            "relative grid aspect-square w-full shrink-0 place-items-center overflow-hidden rounded-xl border border-dashed border-border bg-muted/40 sm:size-32",
+            "relative grid size-28 shrink-0 place-items-center overflow-hidden rounded-xl border border-dashed border-border bg-muted/40 sm:size-32",
             status === "error" && "border-destructive/60",
           )}
         >

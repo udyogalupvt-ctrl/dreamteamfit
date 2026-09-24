@@ -18,6 +18,7 @@ import {
   ShieldAlert,
   UserRoundX,
   Wallet,
+  PauseCircle,
   XCircle,
   MoreHorizontal,
   Trash2,
@@ -71,7 +72,12 @@ import {
 import { toneIcon } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 import { memberIdLabel, subscribeClient, updateClient } from "@/services/clients.service";
-import { cancelMembership, subscribeClientMemberships } from "@/services/memberships.service";
+import {
+  cancelMembership,
+  subscribeClientMemberships,
+  undoLastPause,
+} from "@/services/memberships.service";
+import { PausePlanDialog } from "@/components/clients/pause-plan-dialog";
 import {
   subscribeClientWorkoutAssignments,
   updateWorkoutAssignmentStatus,
@@ -101,10 +107,10 @@ import { CLOUDINARY_CLIENT_FOLDER } from "@/constants/navigation";
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
   head: () => ({
     meta: [
-      { title: "Client profile — REBUILD FITNESS" },
-      { name: "description", content: "Client details, memberships and activity." },
-      { property: "og:title", content: "Client profile — REBUILD FITNESS" },
-      { property: "og:description", content: "Client details, memberships and activity." },
+      { title: "Member profile — REBUILD FITNESS" },
+      { name: "description", content: "Member details, memberships and activity." },
+      { property: "og:title", content: "Member profile — REBUILD FITNESS" },
+      { property: "og:description", content: "Member details, memberships and activity." },
     ],
   }),
   component: ClientProfilePage,
@@ -156,10 +162,11 @@ function ClientProfilePage() {
   const [addDietOpen, setAddDietOpen] = useState(false);
   const [addBookingOpen, setAddBookingOpen] = useState(false);
   const [cancelling, setCancelling] = useState<Membership | null>(null);
+  const [pausing, setPausing] = useState<Membership | null>(null);
 
   const crumbs = [
     { label: "Home", to: "/dashboard" },
-    { label: "Clients", to: "/clients" },
+    { label: "Members", to: "/clients" },
     { label: client.data?.fullName ?? "Profile" },
   ];
 
@@ -167,21 +174,21 @@ function ClientProfilePage() {
   if (client.error)
     return (
       <div className="space-y-6">
-        <PageHeader title="Client profile" breadcrumbs={crumbs} />
-        <ErrorState error={client.error} title="Couldn't load this client" />
+        <PageHeader title="Member profile" breadcrumbs={crumbs} />
+        <ErrorState error={client.error} title="Couldn't load this member" />
       </div>
     );
   if (!client.data)
     return (
       <div className="space-y-6">
-        <PageHeader title="Client not found" breadcrumbs={crumbs} />
+        <PageHeader title="Member not found" breadcrumbs={crumbs} />
         <EmptyState
           icon={UserRoundX}
-          title="This client doesn't exist"
+          title="This member doesn't exist"
           description="It may have been removed, or the link is wrong."
           action={
             <Button asChild>
-              <Link to="/clients">Back to clients</Link>
+              <Link to="/clients">Back to members</Link>
             </Button>
           }
         />
@@ -488,7 +495,7 @@ function ClientProfilePage() {
             <EmptyState
               icon={CreditCard}
               title="No membership records yet"
-              description="Assign a package to start this client's first membership."
+              description="Assign a package to start this member's first membership."
               action={
                 <Button onClick={() => openEnrollment({ existingClient: c })}>
                   <Plus aria-hidden /> Add membership
@@ -498,7 +505,26 @@ function ClientProfilePage() {
           ) : (
             <>
               {current ? (
-                <MembershipHero m={current} onCancel={() => setCancelling(current)} />
+                <MembershipHero
+                  m={current}
+                  onCancel={() => setCancelling(current)}
+                  onPause={can("packages") ? () => setPausing(current) : undefined}
+                  onUndoPause={
+                    can("packages")
+                      ? () =>
+                          void undoLastPause(
+                            current,
+                            c.currentMembership?.membershipId === current.id,
+                          ).then(
+                            (end) =>
+                              toast.success("Pause undone", {
+                                description: `Ends ${formatDateISO(end)} again`,
+                              }),
+                            (e) => toast.error(firestoreErrorMessage(e)),
+                          )
+                      : undefined
+                  }
+                />
               ) : null}
               {upcoming.length ? (
                 <p className="text-sm text-muted-foreground">
@@ -560,7 +586,7 @@ function ClientProfilePage() {
             <EmptyState
               icon={Wallet}
               title="No billing records yet"
-              description="Create a bill for this client to begin their invoice history."
+              description="Create a bill for this member to begin their invoice history."
               action={
                 <Button asChild>
                   <Link to="/billing" search={{ create: true, clientId: c.id }}>
@@ -625,6 +651,11 @@ function ClientProfilePage() {
       <AddDietDialog open={addDietOpen} onOpenChange={setAddDietOpen} clientId={c.id} />
       <BookingFormDialog open={addBookingOpen} onOpenChange={setAddBookingOpen} initialClient={c} />
       <PhotoDialog open={photoOpen} onOpenChange={setPhotoOpen} client={c} />
+      <PausePlanDialog
+        membership={pausing}
+        isCurrent={!!pausing && c.currentMembership?.membershipId === pausing.id}
+        onClose={() => setPausing(null)}
+      />
       <ConfirmDialog
         open={!!cancelling}
         onOpenChange={(o) => !o && setCancelling(null)}
@@ -646,7 +677,18 @@ const MORE_TABS = [
   ["bookings", "Bookings"],
 ] as const;
 
-function MembershipHero({ m, onCancel }: { m: Membership; onCancel: () => void }) {
+function MembershipHero({
+  m,
+  onCancel,
+  onPause,
+  onUndoPause,
+}: {
+  m: Membership;
+  onCancel: () => void;
+  /** Only for logins allowed to change plans. */
+  onPause: (() => void) | undefined;
+  onUndoPause: (() => void) | undefined;
+}) {
   const total = Math.max(1, m.durationDaysSnapshot);
   const daysLeft = Math.max(
     0,
@@ -679,10 +721,32 @@ function MembershipHero({ m, onCancel }: { m: Membership; onCancel: () => void }
           Paid snapshot{" "}
           <span className="font-semibold tabular-nums">{formatPrice(m.priceSnapshot)}</span>
         </p>
-        <Button variant="ghost" size="sm" onClick={onCancel}>
-          <XCircle aria-hidden /> Cancel
-        </Button>
+        <div className="flex flex-wrap gap-1">
+          {onPause ? (
+            <Button variant="outline" size="sm" onClick={onPause}>
+              <PauseCircle aria-hidden /> Pause
+            </Button>
+          ) : null}
+          <Button variant="ghost" size="sm" onClick={onCancel}>
+            <XCircle aria-hidden /> Cancel
+          </Button>
+        </div>
       </div>
+      {m.pauses.length ? (
+        <div className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
+          {m.pauses.map((p, i) => (
+            <p key={i} className="text-meta">
+              Paused {p.days} days on {formatDateISO(p.on)} ({p.reason}
+              {p.note ? `: ${p.note}` : ""}) by {p.by}
+            </p>
+          ))}
+          {onUndoPause ? (
+            <Button variant="link" size="sm" className="h-auto p-0" onClick={onUndoPause}>
+              Undo last pause
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -714,7 +778,7 @@ function PhotoDialog({
     >
       <ImageUpload
         key={open ? "open" : "closed"}
-        label="Client photo"
+        label="Member photo"
         squarePhoto
         folder={CLOUDINARY_CLIENT_FOLDER}
         value={

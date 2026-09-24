@@ -1,25 +1,169 @@
-import { useMemo,useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { BellRing,MessageCircle,Play,Search } from "lucide-react";
-import { toast } from "sonner";
-import { PageHeader } from "@/components/common/page-header";
+import { MessageCircle } from "lucide-react";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingRows } from "@/components/common/loading-state";
+import { PageHeader } from "@/components/common/page-header";
+import { SearchInput } from "@/components/common/search-input";
 import { StatusPill } from "@/components/common/status-pill";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select,SelectContent,SelectItem,SelectTrigger,SelectValue } from "@/components/ui/select";
-import { Tabs,TabsContent,TabsList,TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDate } from "@/lib/format";
-import { processBirthdayNotifications,processRenewalReminders } from "@/services/automation.service";
-import { firestoreErrorMessage } from "@/services/firestore.service";
-import { subscribeNotifications } from "@/services/notifications.service";
 import { subscribeWhatsAppMessages } from "@/services/whatsapp.service";
-import type { Notification,WhatsAppMessage } from "@/types/models";
+import type { StatTone } from "@/types";
+import type { WhatsAppMessage } from "@/types/models";
 
-export const Route=createFileRoute("/_authenticated/notifications")({head:()=>({meta:[{title:"Automation — REBUILD FITNESS"},{name:"description",content:"Communication and automation history."},{property:"og:title",content:"Automation — REBUILD FITNESS"},{property:"og:description",content:"Communication and automation history."},{property:"og:type",content:"website"},{name:"twitter:card",content:"summary"}]}),component:Notifications});
-const tone=(status:string)=>status==="sent"||status==="delivered"||status==="read"?"success":status==="failed"?"danger":status==="cancelled"?"info":"warning" as const;
-function Notifications(){const live=useLive<Notification[]>(subscribeNotifications,[],[]),whatsapp=useLive<WhatsAppMessage[]>(subscribeWhatsAppMessages,[],[]),[type,setType]=useState("all"),[status,setStatus]=useState("all"),[search,setSearch]=useState(""),[running,setRunning]=useState(false);const data=useMemo(()=>live.data.filter(x=>(type==="all"||x.type===type)&&(status==="all"||x.status===status)&&(!search||`${x.clientNameSnapshot} ${x.phoneSnapshot} ${x.message}`.toLowerCase().includes(search.toLowerCase()))),[live.data,type,status,search]);const messages=useMemo(()=>whatsapp.data.filter(x=>(type==="all"||x.type===type)&&(status==="all"||x.status===status)&&(!search||`${x.clientNameSnapshot} ${x.phoneSnapshot} ${x.messagePreview}`.toLowerCase().includes(search.toLowerCase()))),[whatsapp.data,type,status,search]);const run=async(kind:"renewal"|"birthday")=>{setRunning(true);try{const r=kind==="renewal"?await processRenewalReminders():await processBirthdayNotifications();toast.success(`${kind==="renewal"?"Renewal":"Birthday"} check complete: ${r.created} created, ${r.skipped} skipped`)}catch(e){toast.error(firestoreErrorMessage(e))}finally{setRunning(false)}};return <div className="space-y-6"><PageHeader title="Notifications & Automation" description="Scheduled communication and WhatsApp delivery history." breadcrumbs={[{label:"Home",to:"/dashboard"},{label:"Automation"}]}/><details className="surface-card p-4"><summary className="cursor-pointer text-sm font-semibold">Development & demo controls</summary><p className="text-meta mt-2">Runs the same idempotent engines used by the daily schedule.</p><div className="mt-3 flex flex-wrap gap-2"><Button size="sm" variant="outline" disabled={running} onClick={()=>void run("renewal")}><Play/> Run Renewal Check</Button><Button size="sm" variant="outline" disabled={running} onClick={()=>void run("birthday")}><Play/> Run Birthday Check</Button></div></details><div className="grid gap-3 sm:grid-cols-3"><div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"/><Input className="pl-9" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search messages"/></div><Select value={type} onValueChange={setType}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">All types</SelectItem><SelectItem value="invoice">Invoice</SelectItem><SelectItem value="renewal">Renewal</SelectItem><SelectItem value="birthday">Birthday</SelectItem><SelectItem value="absence">Missed workout</SelectItem><SelectItem value="follow_up">Follow-up</SelectItem><SelectItem value="test">Test</SelectItem></SelectContent></Select><Select value={status} onValueChange={setStatus}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{["all","scheduled","queued","sent","delivered","read","failed","cancelled"].map(x=><SelectItem key={x} value={x}>{x}</SelectItem>)}</SelectContent></Select></div><Tabs defaultValue="whatsapp"><TabsList><TabsTrigger value="whatsapp">WhatsApp <span className="text-meta">({messages.length})</span></TabsTrigger><TabsTrigger value="automation">Automation <span className="text-meta">({data.length})</span></TabsTrigger></TabsList><TabsContent value="whatsapp">{whatsapp.loading?<LoadingRows/>:whatsapp.error?<ErrorState error={whatsapp.error} title="Couldn't load WhatsApp history"/>:messages.length===0?<EmptyState icon={MessageCircle} title="No WhatsApp messages" description="Invoice, renewal, birthday and follow-up messages will appear here after they are queued."/>:<MessageList items={messages}/>}</TabsContent><TabsContent value="automation">{live.loading?<LoadingRows/>:live.error?<ErrorState error={live.error} title="Couldn't load automation history"/>:data.length===0?<EmptyState icon={BellRing} title="No notification history" description="Queued renewal and birthday messages will appear here."/>:<div className="grid gap-3">{data.map(x=><article className="surface-card p-4" key={x.id}><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-bold">{x.clientNameSnapshot}</p><p className="text-meta">{formatDate(x.createdAt)} · {x.phoneSnapshot}</p></div><div className="flex gap-2"><StatusPill tone={tone(x.status)}>{x.status}</StatusPill><StatusPill tone="info">{x.provider}</StatusPill></div></div><p className="mt-3 whitespace-pre-line text-sm">{x.message}</p>{x.error?<p className="mt-2 text-sm text-destructive">{x.error}</p>:null}</article>)}</div>}</TabsContent></Tabs></div>}
-function MessageList({items}:{items:WhatsAppMessage[]}){return <div className="grid gap-3">{items.map(x=><article className="surface-card p-4" key={x.id}><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-bold">{x.clientNameSnapshot||"Test recipient"}</p><p className="text-meta">{formatDate(x.createdAt)} · {x.phoneSnapshot} · {x.type.replace("_"," ")}</p></div><div className="flex gap-2"><StatusPill tone={tone(x.status)}>{x.status}</StatusPill><StatusPill tone="info">{x.provider}</StatusPill></div></div><p className="mt-3 text-sm">{x.messagePreview}</p><p className="text-meta mt-2">Template: {x.templateName} · {x.templateLanguage}</p>{x.errorMessage?<p className="mt-2 text-sm text-destructive">{x.errorMessage}</p>:null}</article>)}</div>}
+export const Route = createFileRoute("/_authenticated/notifications")({
+  head: () => ({ meta: [{ title: "Message history — REBUILD FITNESS" }] }),
+  component: MessageHistoryPage,
+});
+
+/** What each message was, in the words staff use. */
+const KIND: Record<string, string> = {
+  invoice: "Bill",
+  payment_due: "Payment reminder",
+  renewal: "Renewal reminder",
+  birthday: "Birthday wish",
+  absence: "Missed-you message",
+  announcement: "Announcement",
+  follow_up: "Message",
+  test: "Test",
+};
+const STATUS: Record<string, { label: string; tone: StatTone }> = {
+  queued: { label: "Sending", tone: "warning" },
+  sent: { label: "Sent", tone: "success" },
+  delivered: { label: "Delivered", tone: "success" },
+  read: { label: "Read", tone: "success" },
+  failed: { label: "Not sent", tone: "danger" },
+};
+const PAGE = 100;
+const time = new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit" });
+
+/** Every WhatsApp message the gym sent (bills, reminders, wishes, announcements) and whether it went. */
+function MessageHistoryPage() {
+  const messages = useLive<WhatsAppMessage[]>(subscribeWhatsAppMessages, [], []);
+  const [kind, setKind] = useState("all");
+  const [status, setStatus] = useState("all");
+  const [search, setSearch] = useState("");
+  const [shown, setShown] = useState(PAGE);
+
+  const rows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return messages.data.filter(
+      (m) =>
+        (kind === "all" || m.type === kind) &&
+        (status === "all" ||
+          (status === "sent"
+            ? ["sent", "delivered", "read"].includes(m.status)
+            : m.status === status)) &&
+        (!q ||
+          `${m.clientNameSnapshot} ${m.phoneSnapshot} ${m.messagePreview}`
+            .toLowerCase()
+            .includes(q)),
+    );
+  }, [messages.data, kind, status, search]);
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Message history"
+        description="Every WhatsApp message the gym sent: bills, reminders, birthday wishes and announcements, and whether it went out."
+        breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Message history" }]}
+      />
+      <div className="grid gap-3 sm:grid-cols-[1fr_12rem_12rem]">
+        <SearchInput
+          value={search}
+          onValueChange={setSearch}
+          placeholder="Search name, phone or message…"
+          label="Search messages"
+        />
+        <Select value={kind} onValueChange={setKind}>
+          <SelectTrigger aria-label="Message type">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All messages</SelectItem>
+            {Object.entries(KIND).map(([k, l]) => (
+              <SelectItem key={k} value={k}>
+                {l}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger aria-label="Message status">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Sent or not</SelectItem>
+            <SelectItem value="sent">Sent</SelectItem>
+            <SelectItem value="failed">Not sent</SelectItem>
+            <SelectItem value="queued">Sending</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {messages.error ? (
+        <ErrorState error={messages.error} title="Couldn't load messages" />
+      ) : messages.loading ? (
+        <LoadingRows rows={4} />
+      ) : !rows.length ? (
+        <EmptyState
+          icon={MessageCircle}
+          title={messages.data.length ? "No messages match" : "No WhatsApp messages yet"}
+          description={
+            messages.data.length
+              ? "Try another name or filter."
+              : "Bills, reminders, birthday wishes and announcements appear here once they are sent."
+          }
+        />
+      ) : (
+        <>
+          <p className="text-meta">
+            {rows.length} message{rows.length === 1 ? "" : "s"}
+          </p>
+          <ul className="grid gap-3 lg:grid-cols-2">
+            {rows.slice(0, shown).map((m) => {
+              const st = STATUS[m.status] ?? { label: m.status, tone: "info" as const };
+              return (
+                <li key={m.id} className="surface-card space-y-2 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-bold">
+                        {m.clientNameSnapshot || m.phoneSnapshot || m.normalizedPhone}
+                      </p>
+                      <p className="text-meta">
+                        {KIND[m.type] ?? m.type} · {formatDate(m.createdAt)}{" "}
+                        {time.format(m.createdAt)} · {m.phoneSnapshot || m.normalizedPhone}
+                      </p>
+                    </div>
+                    <StatusPill tone={st.tone}>{st.label}</StatusPill>
+                  </div>
+                  {m.messagePreview ? (
+                    <p className="line-clamp-3 whitespace-pre-line text-sm">{m.messagePreview}</p>
+                  ) : null}
+                  {m.status === "failed" && m.errorMessage ? (
+                    <p className="text-sm text-destructive">Why: {m.errorMessage}</p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+          {rows.length > shown ? (
+            <Button variant="outline" onClick={() => setShown((n) => n + PAGE)}>
+              Show more
+            </Button>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}

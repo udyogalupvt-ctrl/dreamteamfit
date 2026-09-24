@@ -20,7 +20,7 @@ export function StatCard({ metric, className }: { metric: StatMetric; className?
         className={cn("absolute inset-x-0 top-0 h-0.5 opacity-70", toneBar[tone])}
       />
       <div className="flex items-start justify-between gap-3">
-        <p className="text-eyebrow min-w-0 truncate">{label}</p>
+        <p className="text-eyebrow min-w-0 line-clamp-2 break-words">{label}</p>
         <span
           className={cn(
             "grid size-9 shrink-0 place-items-center rounded-lg ring-1 ring-inset",
@@ -47,7 +47,7 @@ export function StatCard({ metric, className }: { metric: StatMetric; className?
             {delta.value}
           </span>
         ) : null}
-        {hint ? <span className="text-meta truncate">{hint}</span> : null}
+        {hint ? <span className="text-meta line-clamp-2">{hint}</span> : null}
       </div>
     </article>
   );

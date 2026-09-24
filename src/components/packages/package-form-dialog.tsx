@@ -194,7 +194,7 @@ export function PackageFormDialog({ open, onOpenChange, pkg }: Props) {
             <label htmlFor="pkg-active" className="text-label">
               Active
             </label>
-            <p className="text-meta mt-0.5">Only active packages can be assigned to clients.</p>
+            <p className="text-meta mt-0.5">Only active packages can be assigned to members.</p>
           </div>
           <Switch id="pkg-active" checked={isActive} onCheckedChange={setIsActive} />
         </div>

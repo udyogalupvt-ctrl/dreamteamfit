@@ -31,7 +31,7 @@ async function assertNoConflict(input:BookingInput, excludeId?:string){
  if(input.status!=="scheduled") return;
  const day=await getDocs(query(col(COLLECTIONS.bookings),where("date","==",input.date)));
  for(const snap of day.docs){if(snap.id===excludeId)continue;const b=mapBooking(snap.id,snap.data());if(b.status!=="scheduled"||!overlaps(input.startTime,input.endTime,b.startTime,b.endTime))continue;
-  if(input.clientId&&b.clientId===input.clientId)throw new Error("Client is already booked during this time.");
+  if(input.clientId&&b.clientId===input.clientId)throw new Error("Member is already booked during this time.");
   if(input.bookingType==="pt"&&b.bookingType==="pt"&&input.trainerId&&b.trainerId===input.trainerId)throw new Error("Trainer is already booked during this time.");
  }
 }

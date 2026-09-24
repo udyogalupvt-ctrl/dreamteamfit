@@ -38,7 +38,7 @@ export const Route = createFileRoute("/_authenticated/clients/")({
     meta: [
       { title: "Members — REBUILD FITNESS" },
       { name: "description", content: "Member profiles, memberships and history in one place." },
-      { property: "og:title", content: "Clients — REBUILD FITNESS" },
+      { property: "og:title", content: "Members — REBUILD FITNESS" },
       {
         property: "og:description",
         content: "Member profiles, memberships and history in one place.",
@@ -153,8 +153,8 @@ function ClientsPage() {
         <SearchInput
           value={search}
           onValueChange={setSearch}
-          placeholder="Search name, phone or client ID…"
-          label="Search clients"
+          placeholder="Search name, phone or member ID…"
+          label="Search members"
           containerClassName="sm:max-w-md"
         />
         <Tabs
@@ -185,12 +185,12 @@ function ClientsPage() {
       {loading ? (
         <LoadingRows rows={6} />
       ) : error ? (
-        <ErrorState error={error} title="Couldn't load clients" />
+        <ErrorState error={error} title="Couldn't load members" />
       ) : data.length === 0 ? (
         <EmptyState
           icon={Users}
-          title="No clients yet"
-          description="Create your first client to start managing memberships."
+          title="No members yet"
+          description="Create your first member to start managing memberships."
           action={
             <div className="flex flex-wrap justify-center gap-2">
               <Button onClick={() => openEnrollment()}>
@@ -205,8 +205,8 @@ function ClientsPage() {
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={Users}
-          title="No matching clients"
-          description="Try another name, phone or client ID."
+          title="No matching members"
+          description="Try another name, phone or member ID."
         />
       ) : (
         <>
@@ -214,7 +214,7 @@ function ClientsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Client</TableHead>
+                  <TableHead>Member</TableHead>
                   <TableHead>Phone</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Current membership</TableHead>

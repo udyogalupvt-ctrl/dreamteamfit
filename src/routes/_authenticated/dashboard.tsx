@@ -19,6 +19,7 @@ import { useQuickActions } from "@/components/layout/quick-actions";
 import { PageHeader } from "@/components/common/page-header";
 import { StatCard, StatCardSkeleton } from "@/components/common/stat-card";
 import { ErrorState } from "@/components/common/error-state";
+import { SetupChecklist } from "@/components/common/setup-checklist";
 import { StatusPill } from "@/components/common/status-pill";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -48,7 +49,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function DashboardPage() {
   const navigate = useNavigate();
-  const { can } = useAccess();
+  const { can, owner } = useAccess();
   const { openEnrollment } = useEnrollment();
   const actions = useQuickActions();
   const attention = useAttention();
@@ -98,7 +99,11 @@ function DashboardPage() {
       hint: "call them to renew",
       icon: RefreshCcw,
       urgent: attention.expiringSoon > 0,
-      go: () => void navigate({ to: "/clients", search: { filter: "active" } }),
+      // Straight to the call list of these members, when this login has Member calls.
+      go: () =>
+        void (can("memberCalls")
+          ? navigate({ to: "/member-calls", search: { segment: "expiring" } })
+          : navigate({ to: "/clients", search: { filter: "active" } })),
     },
   ];
 
@@ -116,6 +121,8 @@ function DashboardPage() {
       />
 
       {error ? <ErrorState error={error} title="Couldn't load live metrics" /> : null}
+
+      {owner ? <SetupChecklist /> : null}
 
       <section aria-labelledby="attention-title" className="space-y-3">
         <h2 id="attention-title" className="text-card-title">
@@ -144,7 +151,7 @@ function DashboardPage() {
                 <span className="font-display text-2xl font-extrabold tabular-nums">
                   {attention.loading ? "—" : t.value}
                 </span>
-                <span className="text-meta line-clamp-1">{t.hint}</span>
+                <span className="text-meta line-clamp-2">{t.hint}</span>
               </button>
             );
           })}

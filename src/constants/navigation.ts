@@ -108,7 +108,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { label: "Diet Plans", to: "/diet-plans", icon: Salad, feature: "classes", group: "More" },
   { label: "Activity Log", to: "/activity-log", icon: History, feature: "activity", group: "More" },
-  { label: "Message History", to: "/notifications", icon: Bell, feature: "members", group: "More" },
+  { label: "Message history", to: "/notifications", icon: Bell, feature: "members", group: "More" },
   {
     label: "WhatsApp Usage",
     to: "/whatsapp-usage",

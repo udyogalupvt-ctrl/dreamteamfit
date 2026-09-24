@@ -181,10 +181,9 @@ function AttendancePage() {
         <div className="flex flex-col gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4 sm:flex-row sm:items-center">
           <AlertTriangle className="size-5 shrink-0 text-warning" />
           <div className="flex-1">
-            <p className="font-semibold">Hardware unavailable — manual attendance mode</p>
+            <p className="font-semibold">Fingerprint machine is offline</p>
             <p className="text-meta">
-              Configured devices are offline or lack a live adapter. Existing attendance remains
-              available.
+              Mark visits by hand until it is back. Visits already recorded are safe.
             </p>
           </div>
           <Button variant="outline" onClick={() => setManual(true)}>
@@ -215,7 +214,11 @@ function AttendancePage() {
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="access">Access Log</TabsTrigger>
           <TabsTrigger value="staff">Staff</TabsTrigger>
+          <TabsTrigger value="busy">Busy hours</TabsTrigger>
         </TabsList>
+        <TabsContent value="busy">
+          <BusyHours events={attendance.data} />
+        </TabsContent>
         <TabsContent value="today">
           <EventList events={todayEvents} loading={attendance.loading} title="Today's Attendance" />
         </TabsContent>
@@ -258,7 +261,7 @@ function AttendancePage() {
               value={search}
               onValueChange={setSearch}
               label="Search attendance"
-              placeholder="Client or biometric ID…"
+              placeholder="Member or biometric ID…"
             />
             <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
               <SelectTrigger>
@@ -380,8 +383,12 @@ function EventList({
     return (
       <EmptyState
         icon={Clock}
-        title={`No ${title.toLowerCase()}`}
-        description="Real attendance events will appear here as they are recorded."
+        title={
+          title === "Today's Attendance"
+            ? "Nobody has come in yet today"
+            : `No ${title.toLowerCase()}`
+        }
+        description="Each thumb punch at the door shows here. Use Mark visit by hand when the machine is off."
       />
     );
   return (
@@ -448,6 +455,62 @@ function EventList({
           </article>
         ))}
       </div>
+    </section>
+  );
+}
+
+/**
+ * Members coming in per hour over the last 30 days (allowed check-ins), so the owner can plan
+ * trainer shifts, cleaning and offers for quiet hours.
+ */
+function BusyHours({ events }: { events: AttendanceEvent[] }) {
+  const since = Date.now() - 30 * 86_400_000;
+  const counts = new Array<number>(24).fill(0);
+  for (const e of events)
+    if (
+      e.accessDecision === "allowed" &&
+      e.eventType !== "check_out" &&
+      e.timestamp.getTime() >= since
+    )
+      counts[e.timestamp.getHours()]! += 1;
+  const total = counts.reduce((a, b) => a + b, 0);
+  if (!total)
+    return (
+      <EmptyState
+        icon={Clock}
+        title="Not enough visits yet"
+        description="Once members punch in for a few days, the busiest and quietest hours show here."
+      />
+    );
+  const open = counts.map((n, h) => ({ h, n })).filter((x) => x.h >= 4 && x.h <= 23);
+  const max = Math.max(...open.map((x) => x.n), 1);
+  const peak = open.reduce((a, b) => (b.n > a.n ? b : a));
+  const label = (h: number) => `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}`;
+  return (
+    <section className="surface-card space-y-4 p-4 sm:p-5">
+      <div>
+        <h2 className="text-section-title">Busiest hours · last 30 days</h2>
+        <p className="text-meta">
+          {total} visits. Busiest at {label(peak.h)} ({peak.n} visits). Plan trainers and cleaning
+          around it.
+        </p>
+      </div>
+      <ol className="space-y-1.5">
+        {open.map((x) => (
+          <li key={x.h} className="grid grid-cols-[3.5rem_1fr_2.5rem] items-center gap-2 text-sm">
+            <span className="text-meta tabular-nums">{label(x.h)}</span>
+            <span className="h-3 overflow-hidden rounded-full bg-muted">
+              <span
+                className={
+                  x.h === peak.h ? "block h-full bg-primary" : "block h-full bg-primary/50"
+                }
+                style={{ width: `${(x.n / max) * 100}%` }}
+              />
+            </span>
+            <span className="text-right tabular-nums">{x.n}</span>
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }

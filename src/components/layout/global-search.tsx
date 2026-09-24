@@ -235,10 +235,10 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
             ? "grid size-10 place-items-center rounded-lg border border-border bg-surface text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             : "flex h-10 w-full max-w-md items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm text-muted-foreground transition-colors hover:border-ring"
         }
-        aria-label="Search clients, inquiries and packages"
+        aria-label="Search members, inquiries and packages"
       >
         <Search className="size-4 shrink-0" aria-hidden />
-        {!compact ? <span>Search clients, inquiries and packages…</span> : null}
+        {!compact ? <span>Search members, inquiries and packages…</span> : null}
       </button>
       <CommandDialog open={open} onOpenChange={setOpen}>
         <CommandInput
@@ -251,7 +251,7 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
             {q ? "No matching records found." : "Start typing to search."}
           </CommandEmpty>
           {results.clients.length ? (
-            <CommandGroup heading="Clients">
+            <CommandGroup heading="Members">
               {results.clients.map((item) => (
                 <CommandItem
                   key={item.id}

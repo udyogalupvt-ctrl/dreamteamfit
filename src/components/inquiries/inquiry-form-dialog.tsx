@@ -21,6 +21,7 @@ import {
   INQUIRY_STATUS_META,
   SOURCE_LABELS,
   addDaysISO,
+  formatDateISO,
   normalizePhone,
   todayISO,
 } from "@/lib/format";
@@ -117,7 +118,7 @@ export function InquiryFormDialog({
       else await createInquiry(payload);
       toast.success(inquiry ? "Inquiry updated" : "Inquiry saved", {
         description: payload.nextFollowUpDate
-          ? `Follow-up call on ${payload.nextFollowUpDate}`
+          ? `Follow-up call on ${formatDateISO(payload.nextFollowUpDate)}`
           : payload.name,
       });
       onOpenChange(false);

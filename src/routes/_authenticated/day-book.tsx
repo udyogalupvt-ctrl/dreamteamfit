@@ -247,7 +247,28 @@ function DayBookPage() {
           hint={`${spent.length} entr${spent.length === 1 ? "y" : "ies"}`}
         />
         <Card label="Handed over" value={formatPrice(handedOver)} hint="Cash given to the owner" />
-        <Card label="Cash in hand now" value={formatPrice(cashNow)} hint="After today's handover" />
+        {cashNow < 0 ? (
+          // Usually the morning's drawer cash was never entered: say so and open the right box.
+          <button
+            type="button"
+            className="surface-card p-4 text-left ring-1 ring-destructive/50"
+            onClick={() =>
+              setHandover(book.find((r) => r.date === today) ?? emptyRow(today, cashNow))
+            }
+          >
+            <p className="text-meta">Cash in hand now</p>
+            <p className="text-stat tabular-nums text-destructive">{formatPrice(cashNow)}</p>
+            <p className="text-meta">
+              Below zero: tap to enter this morning&apos;s cash in the drawer.
+            </p>
+          </button>
+        ) : (
+          <Card
+            label="Cash in hand now"
+            value={formatPrice(cashNow)}
+            hint="After today's handover"
+          />
+        )}
       </div>
 
       {loading ? (
@@ -265,11 +286,11 @@ function DayBookPage() {
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Member</TableHead>
-                      <TableHead>Bill</TableHead>
+                      <TableHead className="hidden md:table-cell">Bill</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
                       <TableHead>Paid by</TableHead>
-                      <TableHead>Collected by</TableHead>
-                      <TableHead>Counsellor</TableHead>
+                      <TableHead className="hidden md:table-cell">Collected by</TableHead>
+                      <TableHead className="hidden md:table-cell">Counsellor</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -284,13 +305,15 @@ function DayBookPage() {
                             <span className="text-meta block font-normal">balance</span>
                           ) : null}
                         </TableCell>
-                        <TableCell>{p.invoiceNumber}</TableCell>
+                        <TableCell className="hidden md:table-cell">{p.invoiceNumber}</TableCell>
                         <TableCell className="text-right font-bold tabular-nums">
                           {formatPrice(p.amount)}
                         </TableCell>
                         <TableCell>{p.method}</TableCell>
-                        <TableCell>{p.createdBy || "—"}</TableCell>
-                        <TableCell>{p.counsellorName || "—"}</TableCell>
+                        <TableCell className="hidden md:table-cell">{p.createdBy || "—"}</TableCell>
+                        <TableCell className="hidden md:table-cell">
+                          {p.counsellorName || "—"}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -316,7 +339,7 @@ function DayBookPage() {
                       <TableHead>Date</TableHead>
                       <TableHead>Title</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
-                      <TableHead>Note</TableHead>
+                      <TableHead className="hidden md:table-cell">Note</TableHead>
                       <TableHead>Method</TableHead>
                       <TableHead>Who gave</TableHead>
                       <TableHead>Settled</TableHead>
@@ -333,7 +356,7 @@ function DayBookPage() {
                         <TableCell className="text-right font-bold tabular-nums">
                           {formatPrice(e.amount)}
                         </TableCell>
-                        <TableCell className="max-w-48 truncate">
+                        <TableCell className="hidden md:table-cell max-w-48 truncate">
                           {[e.description, e.notes].filter(Boolean).join(" · ") || "—"}
                         </TableCell>
                         <TableCell>{e.paymentMethod}</TableCell>

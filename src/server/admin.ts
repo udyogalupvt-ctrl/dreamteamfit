@@ -9,6 +9,7 @@
 import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
+import { isOwnerEmail } from "@/constants/owners";
 
 /** Pulls the three needed fields out of any text that contains them (e.g. JSON whose line breaks got mangled). */
 function fieldsFromText(text: string) {
@@ -151,11 +152,21 @@ export const json = (body: unknown, status = 200) =>
 export const text = (body: string, status = 200) =>
   new Response(body, { status, headers: { "content-type": "text/plain" } });
 
-/** Signed-in staff only (same rule as Firestore: any signed-in account is staff). */
+/**
+ * Owners and switched-on staff logins only — the same test as isStaff() in firestore.rules. A
+ * self-created account (public sign-up) is signed in but gets nothing here either.
+ */
 export async function requireStaff(request: Request) {
   const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return null;
-  return adminAuth()
+  const user = await adminAuth()
     .verifyIdToken(token)
     .catch(() => null);
+  if (!user) return null;
+  if (isOwnerEmail(user.email)) return user;
+  const access = await db()
+    .doc(`staffAccess/${user.uid}`)
+    .get()
+    .catch(() => null);
+  return access?.exists && access.data()?.["active"] === true ? user : null;
 }

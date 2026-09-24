@@ -161,7 +161,7 @@ function BillingPage() {
             label="Search bills"
             containerClassName="md:max-w-sm"
           />
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div
               className="no-scrollbar flex gap-1.5 overflow-x-auto"
               role="tablist"

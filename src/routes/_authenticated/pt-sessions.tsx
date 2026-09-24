@@ -92,7 +92,7 @@ function Page() {
       <SearchInput
         value={search}
         onValueChange={setSearch}
-        placeholder="Search client or trainer…"
+        placeholder="Search member or trainer…"
         label="Search PT sessions"
       />
       <div className="no-scrollbar overflow-x-auto">
@@ -125,7 +125,7 @@ function Page() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Client</TableHead>
+                  <TableHead>Member</TableHead>
                   <TableHead>PT Package</TableHead>
                   <TableHead>Trainer</TableHead>
                   <TableHead>Date</TableHead>

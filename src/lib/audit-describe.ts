@@ -41,6 +41,28 @@ const NOISE = new Set([
 
 const s = (v: unknown) => (v === null || v === undefined ? "" : String(v));
 const money = (v: unknown) => `₹${Number(v ?? 0).toLocaleString("en-IN")}`;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** "2026-09-25" → "25 Sep 2026"; anything else as it is. */
+const day = (v: unknown) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s(v));
+  return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}` : s(v);
+};
+const STATUS: Record<string, string> = {
+  biometric_pending: "waiting for first thumb",
+  pending: "starts later",
+  expired: "ended",
+};
+/** Plan / PT status in plain words. */
+const st = (v: unknown) => STATUS[s(v)] ?? s(v).replace(/_/g, " ");
+const WA_KIND: Record<string, string> = {
+  invoice: "bill",
+  payment_due: "payment reminder",
+  renewal: "renewal reminder",
+  birthday: "birthday wish",
+  absence: "missed-you message",
+  test: "test message",
+  follow_up: "message",
+};
 export const short = (v: unknown): unknown => {
   if (v === null || v === undefined) return null;
   if (typeof v === "object") {
@@ -87,12 +109,20 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
       return `Details changed: ${f.join(", ")}`;
     case "memberships":
       if (action === "created")
-        return `Plan added: ${s(d["packageNameSnapshot"])} ${s(d["startDate"])} → ${s(d["endDate"])} (${s(d["status"])})`;
+        return `Plan added: ${s(d["packageNameSnapshot"])}, ${day(d["startDate"])} → ${day(d["endDate"])} (${st(d["status"])})`;
       if (action === "deleted") return `Plan deleted: ${s(d["packageNameSnapshot"])}`;
       if (f.includes("status"))
-        return `Plan ${s(d["packageNameSnapshot"])}: ${s(b["status"])} → ${s(a["status"])}`;
+        return `Plan ${s(d["packageNameSnapshot"])}: ${st(b["status"])} → ${st(a["status"])}`;
+      if (f.includes("pauses")) {
+        const before = Array.isArray(b["pauses"]) ? b["pauses"].length : 0;
+        const list = Array.isArray(a["pauses"]) ? (a["pauses"] as D[]) : [];
+        const last = list[list.length - 1];
+        return list.length > before && last
+          ? `Plan ${s(d["packageNameSnapshot"])} paused ${s(last["days"])} days (${s(last["reason"])}): now ends ${day(a["endDate"])}`
+          : `Pause undone on ${s(d["packageNameSnapshot"])}: ends ${day(a["endDate"])} again`;
+      }
       if (f.includes("startDate") || f.includes("endDate"))
-        return `Plan ${s(d["packageNameSnapshot"])} dates: ${s(a["startDate"])} → ${s(a["endDate"])}`;
+        return `Plan ${s(d["packageNameSnapshot"])} dates: ${day(a["startDate"])} → ${day(a["endDate"])}`;
       return null;
     case "invoices":
       if (action === "created")
@@ -115,7 +145,7 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
         return `PT added: ${s(d["ptPackageNameSnapshot"])} with ${s(d["trainerNameSnapshot"])} (trainer ${money(d["trainerShareAmount"])}, gym ${money(d["gymShareAmount"])})`;
       if (action === "deleted") return `PT deleted: ${s(d["ptPackageNameSnapshot"])}`;
       return f.includes("status")
-        ? `PT ${s(d["ptPackageNameSnapshot"])}: ${s(b["status"])} → ${s(a["status"])}`
+        ? `PT ${s(d["ptPackageNameSnapshot"])}: ${st(b["status"])} → ${st(a["status"])}`
         : null;
     case "trainerPayouts":
       if (action === "created")
@@ -132,11 +162,11 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
         action === "created" ||
         (f.includes("status") && a["status"] === "pending" && b["status"] !== "pending")
       )
-        return `Call scheduled ${s(d["followUpDate"])} ${s(d["followUpTime"])}: ${s(d["nextAction"] || d["reason"])}`;
+        return `Call planned for ${day(d["followUpDate"])} ${s(d["followUpTime"])}: ${s(d["nextAction"] || d["reason"])}`;
       if (became(f, b, a, "status", "completed"))
         return `Call done: ${s(a["outcome"]) || "completed"}`;
       if (f.includes("followUpDate"))
-        return `Call moved to ${s(a["followUpDate"])} ${s(a["followUpTime"])}`;
+        return `Call moved to ${day(a["followUpDate"])} ${s(a["followUpTime"])}`;
       return action === "deleted" ? "Call deleted" : null;
     case "leadLogs":
       return action === "created"
@@ -155,7 +185,9 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
         action === "created" ||
         (f.includes("status") && ["sent", "failed"].includes(s(a["status"])))
       )
-        return `WhatsApp ${s(d["type"])} ${s(d["status"])}${d["errorMessage"] ? `: ${s(d["errorMessage"])}` : ""}`;
+        return action === "created"
+          ? `WhatsApp ${WA_KIND[s(d["type"])] ?? s(d["type"])} to ${s(d["clientNameSnapshot"]) || s(d["normalizedPhone"])}`
+          : `WhatsApp ${WA_KIND[s(d["type"])] ?? s(d["type"])} ${a["status"] === "sent" ? "sent" : "not sent"}${d["errorMessage"] ? `: ${s(d["errorMessage"])}` : ""}`;
       return null;
     case "announcements":
       return action === "created"

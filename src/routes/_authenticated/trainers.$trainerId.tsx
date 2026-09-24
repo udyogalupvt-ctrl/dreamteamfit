@@ -14,7 +14,7 @@ import { subscribePayments, subscribePayouts } from "@/services/finance.service"
 import type { Booking, Payment, PtAssignment, Trainer, TrainerPayout } from "@/types/models";
 
 export const Route = createFileRoute("/_authenticated/trainers/$trainerId")({
-  head: () => ({ meta: [{ title: "Trainer Profile — REBUILD FITNESS" }, { name: "description", content: "Trainer PT clients, sessions, collections and payouts." }, { property: "og:title", content: "Trainer Profile — REBUILD FITNESS" }, { property: "og:description", content: "Trainer PT clients, sessions, collections and payouts." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" }] }),
+  head: () => ({ meta: [{ title: "Trainer Profile — REBUILD FITNESS" }, { name: "description", content: "Trainer PT members, sessions, collections and payouts." }, { property: "og:title", content: "Trainer Profile — REBUILD FITNESS" }, { property: "og:description", content: "Trainer PT members, sessions, collections and payouts." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" }] }),
   component: TrainerProfile,
 });
 
@@ -45,7 +45,7 @@ function TrainerProfile() {
   if (trainers.loading) return <LoadingRows rows={4} />;
   if (!trainer) return <EmptyState icon={Users} title="Trainer not found" description="This trainer may have been removed." action={<Link to="/packages" className="font-semibold underline">Back to trainers</Link>} />;
   const cards = [
-    { id: "clients", label: "Active PT Clients", value: formatNumber(s.active.length), icon: Users, tone: "primary" as const },
+    { id: "clients", label: "Active PT Members", value: formatNumber(s.active.length), icon: Users, tone: "primary" as const },
     { id: "upcoming", label: "Upcoming PT Sessions", value: formatNumber(s.upcoming.length), icon: CalendarClock, tone: "info" as const },
     { id: "completed", label: "Completed PT Sessions", value: formatNumber(s.completed.length), icon: CheckCircle2, tone: "success" as const },
     { id: "collected", label: "Total PT Collections", value: formatPrice(s.collected), hint: "payments received for this trainer's PT", icon: BadgeIndianRupee, tone: "success" as const },
@@ -57,8 +57,8 @@ function TrainerProfile() {
       <PageHeader title={trainer.name} description={`${trainer.specialization || "Trainer"} · ${trainer.phone || "no phone"}`} breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Packages", to: "/packages" }, { label: trainer.name }]} />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{cards.map((m) => <StatCard key={m.id} metric={m} />)}</div>
       <section className="surface-card overflow-hidden">
-        <h2 className="text-card-title border-b border-border p-4">Active PT clients</h2>
-        {!s.active.length ? <p className="p-4 text-sm text-muted-foreground">No active PT clients.</p> : <ul className="divide-y divide-border">{s.active.map((a) => (
+        <h2 className="text-card-title border-b border-border p-4">Active PT members</h2>
+        {!s.active.length ? <p className="p-4 text-sm text-muted-foreground">No active PT members.</p> : <ul className="divide-y divide-border">{s.active.map((a) => (
           <li key={a.id} className="flex flex-wrap justify-between gap-2 p-4 text-sm"><Link to="/clients/$clientId" params={{ clientId: a.clientId }} className="font-semibold hover:underline">{a.clientNameSnapshot}</Link><span className="text-meta">{a.ptPackageNameSnapshot} · {formatDateISO(a.startDate)} – {formatDateISO(a.endDate)}</span></li>))}</ul>}
       </section>
       <section className="surface-card overflow-hidden">

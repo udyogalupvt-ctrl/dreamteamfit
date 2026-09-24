@@ -393,7 +393,7 @@ export function useDashboardMetrics() {
     const activity: (ActivityItem & { at: Date })[] = [
       ...clients.data.slice(0, 8).map((c) => ({
         id: `c-${c.id}`,
-        title: `${c.fullName} joined as a client`,
+        title: `${c.fullName} joined as a member`,
         description: `${c.clientCode}${c.inquiryId ? " · converted from inquiry" : ""}`,
         at: c.createdAt,
         tone: "primary" as const,

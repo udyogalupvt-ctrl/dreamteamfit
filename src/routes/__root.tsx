@@ -81,12 +81,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "REBUILD FITNESS — Gym Management" },
       {
         name: "description",
-        content: "REBUILD FITNESS staff workspace for clients, memberships and gym operations.",
+        content: "REBUILD FITNESS staff workspace for members, memberships and gym operations.",
       },
       { property: "og:title", content: "REBUILD FITNESS — Gym Management" },
       {
         property: "og:description",
-        content: "REBUILD FITNESS staff workspace for clients, memberships and gym operations.",
+        content: "REBUILD FITNESS staff workspace for members, memberships and gym operations.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

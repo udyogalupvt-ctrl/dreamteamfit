@@ -211,10 +211,10 @@ function WhatsAppUsagePage() {
             <TableHeader>
               <TableRow>
                 <TableHead>What</TableHead>
-                <TableHead>Template · type</TableHead>
+                <TableHead className="hidden sm:table-cell">Template · type</TableHead>
                 <TableHead className="text-right">Sent</TableHead>
-                <TableHead className="text-right">Failed</TableHead>
-                <TableHead className="text-right">Approx. cost</TableHead>
+                <TableHead className="text-right">Not sent</TableHead>
+                <TableHead className="text-right">Cost</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -222,10 +222,16 @@ function WhatsAppUsagePage() {
                 <TableRow key={r.type}>
                   <TableCell className="font-semibold">
                     <span className="inline-flex items-center gap-2">
-                      <MessageCircle className="size-4 text-[#25D366]" aria-hidden /> {r.label}
+                      <MessageCircle className="size-4 shrink-0 text-[#25D366]" aria-hidden />{" "}
+                      {r.label}
+                    </span>
+                    <span className="mt-1 block sm:hidden">
+                      <StatusPill tone={r.category === "utility" ? "success" : "warning"}>
+                        {r.category === "utility" ? "Utility" : "Marketing"}
+                      </StatusPill>
                     </span>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden sm:table-cell">
                     <span className="block text-sm">{r.template || "—"}</span>
                     <StatusPill tone={r.category === "utility" ? "success" : "warning"}>
                       {r.category === "utility" ? "Utility (cheaper)" : "Marketing"}

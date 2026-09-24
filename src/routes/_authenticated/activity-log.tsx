@@ -64,7 +64,7 @@ function ActivityLogPage() {
     <div className="space-y-5">
       <PageHeader
         title="Activity Log"
-        description="Who did what, and when. Written by the server — nobody can edit or delete it from the app."
+        description="Who did what, and when. Every change is recorded by itself; nobody can edit or delete a line."
         breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Activity Log" }]}
       />
       <div className="flex flex-col gap-3 md:flex-row md:items-center">
@@ -127,23 +127,25 @@ function ActivityLogPage() {
             <li key={e.id} className="flex items-start gap-3 p-4">
               <Lock
                 className="mt-1 size-3.5 shrink-0 text-muted-foreground"
-                aria-label="Server recorded"
+                aria-label="Recorded automatically"
               />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold break-words">{e.summary}</p>
                 <p className="text-meta">
                   {format(e.at, "d MMM yyyy, h:mm a")} · {e.actorName || "Unknown"}
-                  {e.clientId && e.collection !== "clients" && e.clientName ? " · " : null}
                   {e.clientId && e.action !== "deleted" ? (
-                    <Link
-                      to="/clients/$clientId"
-                      params={{ clientId: e.clientId }}
-                      className="underline"
-                    >
-                      {e.clientName || "open member"}
-                    </Link>
+                    <>
+                      {" · "}
+                      <Link
+                        to="/clients/$clientId"
+                        params={{ clientId: e.clientId }}
+                        className="underline"
+                      >
+                        {e.clientName || "open member"}
+                      </Link>
+                    </>
                   ) : e.clientName && e.collection !== "clients" ? (
-                    e.clientName
+                    ` · ${e.clientName}`
                   ) : null}
                 </p>
               </div>

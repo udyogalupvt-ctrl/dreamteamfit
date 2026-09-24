@@ -316,7 +316,7 @@ function WhatsAppSettingsPanel() {
       </div>
       <FormSection
         title="WhatsApp Cloud API"
-        description="Needs a Meta WhatsApp Business account and approved message templates (see WHATSAPP_SETUP.md)."
+        description="Uses your WhatsApp Business number and the approved message templates. Set up once; then press Test connection."
         footer={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" disabled={testing || !api} onClick={() => void test()}>

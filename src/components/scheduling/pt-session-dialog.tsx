@@ -190,14 +190,14 @@ export function PtSessionDialog({
       }
     >
       <form id="pt-session-form" onSubmit={submit} className="grid gap-4" noValidate>
-        <Field label="Client" htmlFor="pts-client" required>
+        <Field label="Member" htmlFor="pts-client" required>
           <Select
             value={clientId}
             onValueChange={setClientId}
             disabled={!!initialClient || !!booking}
           >
             <SelectTrigger id="pts-client" className="w-full">
-              <SelectValue placeholder="Select a client" />
+              <SelectValue placeholder="Select a member" />
             </SelectTrigger>
             <SelectContent>
               {(initialClient ? [initialClient] : clients.data).map((c) => (
