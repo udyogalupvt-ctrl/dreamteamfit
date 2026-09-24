@@ -21,16 +21,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useLive } from "@/hooks/use-live-query";
-import {
-  MEMBERSHIP_STATUS_META,
-  effectiveMembershipStatus,
-  formatDate,
-  formatDateISO,
-  normalizePhone,
-} from "@/lib/format";
+import { formatDate, formatDateISO, normalizePhone } from "@/lib/format";
+import { daysLeftLabel, planByClient, type PlanSummary } from "@/lib/member-plans";
 import { subscribeClients } from "@/services/clients.service";
+import { subscribeMemberships } from "@/services/memberships.service";
+import { subscribePtAssignments } from "@/services/pt.service";
 import { isSetupPending } from "@/services/enrollment.service";
-import type { Client } from "@/types/models";
+import type { Client, Membership, PtAssignment } from "@/types/models";
 
 const FILTERS = ["all", "active", "pending", "expired", "none"] as const;
 type Filter = (typeof FILTERS)[number];
@@ -52,14 +49,21 @@ export const Route = createFileRoute("/_authenticated/clients/")({
 });
 
 /** One status a front-desk person understands at a glance. */
-function memberState(c: Client): Exclude<Filter, "all"> {
+function memberState(c: Client, plan: PlanSummary | undefined): Exclude<Filter, "all"> {
   if (isSetupPending(c)) return "pending";
-  const m = c.currentMembership;
-  if (!m) return "none";
-  return effectiveMembershipStatus(m) === "active" || effectiveMembershipStatus(m) === "pending"
-    ? "active"
-    : "expired";
+  if (!plan) return "none";
+  return plan.status === "active" || plan.status === "upcoming" ? "active" : "expired";
 }
+
+const PLAN_PILL: Record<
+  PlanSummary["status"],
+  { label: string; tone: "success" | "warning" | "danger" | "info" }
+> = {
+  waiting_thumb: { label: "Starts after thumb", tone: "warning" },
+  upcoming: { label: "Upcoming", tone: "info" },
+  active: { label: "Active", tone: "success" },
+  expired: { label: "Expired", tone: "danger" },
+};
 
 const STATE_PILL: Record<
   Exclude<Filter, "all">,
@@ -71,21 +75,29 @@ const STATE_PILL: Record<
   none: { label: "No plan", tone: "info" },
 };
 
-function MembershipCell({ client }: { client: Client }) {
-  const m = client.currentMembership;
-  if (!m)
-    return (
-      <span className="text-muted-foreground">
-        {isSetupPending(client) ? "Starts after thumb" : "No membership"}
-      </span>
-    );
-  const status = effectiveMembershipStatus(m);
+function MembershipCell({ plan }: { plan: PlanSummary | undefined }) {
+  if (!plan) return <span className="text-muted-foreground">No membership</span>;
   return (
     <div className="flex min-w-0 flex-col items-start gap-1">
-      <span className="max-w-40 truncate font-medium">{m.packageName}</span>
-      <StatusPill tone={MEMBERSHIP_STATUS_META[status].tone}>
-        {MEMBERSHIP_STATUS_META[status].label}
-      </StatusPill>
+      <span className="max-w-40 truncate font-medium">{plan.name}</span>
+      <StatusPill tone={PLAN_PILL[plan.status].tone}>{PLAN_PILL[plan.status].label}</StatusPill>
+    </div>
+  );
+}
+
+function ExpiryCell({ plan }: { plan: PlanSummary | undefined }) {
+  if (!plan) return <span className="text-muted-foreground">—</span>;
+  const soon = plan.daysLeft >= 0 && plan.daysLeft <= 7;
+  return (
+    <div className="flex flex-col">
+      <span className="tabular-nums">{formatDateISO(plan.endDate)}</span>
+      <span
+        className={
+          soon || plan.daysLeft < 0 ? "text-xs font-semibold text-destructive" : "text-meta"
+        }
+      >
+        {daysLeftLabel(plan)}
+      </span>
     </div>
   );
 }
@@ -93,6 +105,13 @@ function MembershipCell({ client }: { client: Client }) {
 function ClientsPage() {
   const navigate = useNavigate();
   const { data, loading, error } = useLive<Client[]>(subscribeClients, [], []);
+  const memberships = useLive<Membership[]>(subscribeMemberships, [], []);
+  const pts = useLive<PtAssignment[]>(subscribePtAssignments, [], []);
+  const plans = useMemo(
+    () => planByClient(memberships.data, pts.data),
+    [memberships.data, pts.data],
+  );
+  const stateOf = (c: Client) => memberState(c, plans.get(c.id));
   const [search, setSearch] = useState("");
   const initial = Route.useSearch().filter ?? "all";
   const [filter, setFilter] = useState<Filter>(initial);
@@ -102,7 +121,7 @@ function ClientsPage() {
     const q = search.trim().toLowerCase();
     const qPhone = normalizePhone(search);
     return data.filter((c) => {
-      if (filter !== "all" && memberState(c) !== filter) return false;
+      if (filter !== "all" && stateOf(c) !== filter) return false;
       if (!q) return true;
       return (
         c.fullName.toLowerCase().includes(q) ||
@@ -111,7 +130,8 @@ function ClientsPage() {
         (qPhone.length >= 3 && c.phoneNormalized.includes(qPhone))
       );
     });
-  }, [data, search, filter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, search, filter, plans]);
 
   const open = (id: string) =>
     void navigate({ to: "/clients/$clientId", params: { clientId: id } });
@@ -147,16 +167,16 @@ function ClientsPage() {
               All <Count n={data.length} />
             </TabsTrigger>
             <TabsTrigger value="active">
-              Active <Count n={data.filter((c) => memberState(c) === "active").length} />
+              Active <Count n={data.filter((c) => stateOf(c) === "active").length} />
             </TabsTrigger>
             <TabsTrigger value="pending">
-              Thumb pending <Count n={data.filter((c) => memberState(c) === "pending").length} />
+              Thumb pending <Count n={data.filter((c) => stateOf(c) === "pending").length} />
             </TabsTrigger>
             <TabsTrigger value="expired">
-              Expired <Count n={data.filter((c) => memberState(c) === "expired").length} />
+              Expired <Count n={data.filter((c) => stateOf(c) === "expired").length} />
             </TabsTrigger>
             <TabsTrigger value="none">
-              No plan <Count n={data.filter((c) => memberState(c) === "none").length} />
+              No plan <Count n={data.filter((c) => stateOf(c) === "none").length} />
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -226,15 +246,15 @@ function ClientsPage() {
                     </TableCell>
                     <TableCell className="whitespace-nowrap tabular-nums">{c.phone}</TableCell>
                     <TableCell>
-                      <StatusPill tone={STATE_PILL[memberState(c)].tone}>
-                        {STATE_PILL[memberState(c)].label}
+                      <StatusPill tone={STATE_PILL[stateOf(c)].tone}>
+                        {STATE_PILL[stateOf(c)].label}
                       </StatusPill>
                     </TableCell>
                     <TableCell>
-                      <MembershipCell client={c} />
+                      <MembershipCell plan={plans.get(c.id)} />
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
-                      {formatDateISO(c.currentMembership?.endDate)}
+                      <ExpiryCell plan={plans.get(c.id)} />
                     </TableCell>
                     <TableCell className="hidden whitespace-nowrap text-muted-foreground lg:table-cell">
                       {formatDate(c.createdAt)}
@@ -266,16 +286,16 @@ function ClientsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate font-semibold">{c.fullName}</p>
-                      <StatusPill tone={STATE_PILL[memberState(c)].tone}>
-                        {STATE_PILL[memberState(c)].label}
+                      <StatusPill tone={STATE_PILL[stateOf(c)].tone}>
+                        {STATE_PILL[stateOf(c)].label}
                       </StatusPill>
                     </div>
                     <p className="text-meta mt-0.5 tabular-nums">
                       {c.clientCode} · {c.phone}
                     </p>
                     <p className="mt-1 truncate text-xs">
-                      {c.currentMembership
-                        ? `${c.currentMembership.packageName} · ends ${formatDateISO(c.currentMembership.endDate)}`
+                      {plans.get(c.id)
+                        ? `${plans.get(c.id)!.name} · ends ${formatDateISO(plans.get(c.id)!.endDate)} (${daysLeftLabel(plans.get(c.id)!)})`
                         : "No membership"}
                     </p>
                   </div>

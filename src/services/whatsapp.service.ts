@@ -21,6 +21,9 @@ import type {
   WhatsAppSettings,
 } from "@/types/models";
 import { COLLECTIONS, subscribeCollection, toDate } from "./firestore.service";
+import { getBusinessSettings } from "./business-settings.service";
+import { mapInvoice } from "./invoices.service";
+import { getWhatsAppSettings, isWhatsAppApiLive } from "./whatsapp-settings.service";
 
 type SendInput = {
   client: Pick<Client, "id" | "fullName" | "phone" | "whatsappPhone" | "whatsappOptIn">;
@@ -189,6 +192,37 @@ export async function sendInvoiceWhatsApp(
   });
   await markInvoiceShared(invoice);
   return result;
+}
+
+export type AutoSendResult =
+  | { kind: "sent" }
+  | { kind: "already_sent" }
+  | { kind: "off" }
+  | { kind: "no_opt_in" }
+  | { kind: "failed"; message: string };
+
+/**
+ * Call after ANY money is collected (joining, balance, shop bill). Sends the updated bill
+ * through the WhatsApp Cloud API when the API and "Send the bill automatically" are on and the
+ * member agreed to WhatsApp. Each payment state is sent once (see sendInvoiceWhatsApp).
+ */
+export async function autoSendBill(invoiceId: string): Promise<AutoSendResult> {
+  const [invoiceSnap, wa, business] = await Promise.all([
+    getDoc(doc(db, COLLECTIONS.invoices, invoiceId)),
+    getWhatsAppSettings(),
+    getBusinessSettings(),
+  ]);
+  if (!invoiceSnap.exists()) return { kind: "failed", message: "Bill not found." };
+  if (!isWhatsAppApiLive(wa) || !wa.autoSendInvoice) return { kind: "off" };
+  const invoice = mapInvoice(invoiceSnap.id, invoiceSnap.data());
+  const client = await getDoc(doc(db, COLLECTIONS.clients, invoice.clientId));
+  if (!client.exists() || client.data()["whatsappOptIn"] !== true) return { kind: "no_opt_in" };
+  try {
+    const r = await sendInvoiceWhatsApp(invoice, wa, business);
+    return r.duplicate ? { kind: "already_sent" } : { kind: "sent" };
+  } catch (e) {
+    return { kind: "failed", message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Records that the bill reached the member so a resumed enrollment skips the share step. */

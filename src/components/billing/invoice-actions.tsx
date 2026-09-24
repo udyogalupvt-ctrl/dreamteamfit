@@ -25,7 +25,8 @@ import { manualWhatsAppUrl } from "@/lib/invoice-share";
 import { formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PAYMENT_METHODS, type Invoice, type PaymentMethod } from "@/types/models";
-import { markInvoiceShared, sendInvoiceWhatsApp } from "@/services/whatsapp.service";
+import { autoSendBill, markInvoiceShared, sendInvoiceWhatsApp } from "@/services/whatsapp.service";
+import { toastBillSend } from "@/lib/bill-send-toast";
 import {
   DEFAULT_WHATSAPP_SETTINGS,
   isWhatsAppApiLive,
@@ -180,6 +181,8 @@ function BalancePaymentDialog({
         description: `${formatPrice(amount)} for ${invoice.invoiceNumber}`,
       });
       onOpenChange(false);
+      // The updated bill (new paid / balance) goes to the member automatically.
+      void autoSendBill(invoice.id).then(toastBillSend);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {

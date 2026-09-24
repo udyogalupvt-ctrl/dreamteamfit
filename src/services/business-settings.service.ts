@@ -1,4 +1,4 @@
-import { doc, onSnapshot, serverTimestamp, setDoc, type DocumentData } from "@/lib/firestore";
+import { doc, getDoc, onSnapshot, serverTimestamp, setDoc, type DocumentData } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { businessBillingSchema } from "@/lib/invoice-validation";
 import { COLLECTIONS } from "./firestore.service";
@@ -16,6 +16,9 @@ const mapSettings = (d?: DocumentData): BusinessBillingSettings => ({
   taxRate: Number(d?.["taxRate"] ?? 0), invoicePrefix: d?.["invoicePrefix"] ?? "INV", currency: "INR",
 });
 
+export async function getBusinessSettings() {
+  return mapSettings((await getDoc(doc(db, COLLECTIONS.settings, "business"))).data());
+}
 export function subscribeBusinessSettings(onData:(value:BusinessBillingSettings)=>void,onError:(e:Error)=>void){
   return onSnapshot(doc(db,COLLECTIONS.settings,"business"),snap=>onData(mapSettings(snap.data())),onError);
 }

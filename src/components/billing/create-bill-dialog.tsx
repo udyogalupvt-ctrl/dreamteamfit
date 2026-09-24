@@ -13,6 +13,8 @@ import { calculateInvoiceTotals } from "@/lib/invoice-utils";
 import { createInvoiceSchema, type CreateInvoiceInput } from "@/lib/invoice-validation";
 import { cn } from "@/lib/utils";
 import { createInvoice } from "@/services/invoices.service";
+import { autoSendBill } from "@/services/whatsapp.service";
+import { toastBillSend } from "@/lib/bill-send-toast";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import type {
   BusinessBillingSettings,
@@ -145,10 +147,9 @@ export function CreateBillDialog({
         settings,
         staff: { uid: user.uid, name: user.displayName || user.email || "Staff" },
       });
-      toast.success("Bill created", {
-        description: `${invoice.invoiceNumber} · share it from the list`,
-      });
+      toast.success("Bill created", { description: invoice.invoiceNumber });
       onOpenChange(false);
+      if (invoice.amountPaid > 0) void autoSendBill(invoice.id).then(toastBillSend);
     } catch (e) {
       toast.error("Couldn't create the bill", { description: firestoreErrorMessage(e) });
     } finally {

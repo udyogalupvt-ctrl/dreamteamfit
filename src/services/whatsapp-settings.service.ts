@@ -1,4 +1,4 @@
-import { doc, onSnapshot, serverTimestamp, setDoc, type DocumentData } from "@/lib/firestore";
+import { doc, getDoc, onSnapshot, serverTimestamp, setDoc, type DocumentData } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import type { WhatsAppSettings } from "@/types/models";
 import { COLLECTIONS } from "./firestore.service";
@@ -27,6 +27,9 @@ const map = (d?: DocumentData): WhatsAppSettings => ({
 
 /** True when bills can be delivered automatically through the WhatsApp Cloud API. */
 export const isWhatsAppApiLive = (s: WhatsAppSettings) => s.mode === "whatsapp";
+
+export const getWhatsAppSettings = async () =>
+  map((await getDoc(doc(db, COLLECTIONS.settings, "whatsapp"))).data());
 
 export const subscribeWhatsAppSettings = (
   ok: (x: WhatsAppSettings) => void,

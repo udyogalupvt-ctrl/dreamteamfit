@@ -1,11 +1,29 @@
 rules_version = '2';
 
-// REBUILD FITNESS — only signed-in staff can read/write gym data. Nothing is public.
-// Ready for role-based permissions later (e.g. a /staff/{uid} doc with a role field).
+// REBUILD FITNESS — only the owners and staff logins created by an owner can read/write gym
+// data. A self-created account (Firebase sign-up) gets nothing. Nothing is public.
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Owner accounts. Keep in sync with OWNER_EMAILS in src/constants/owners.ts.
+    function isOwner() {
+      return request.auth != null
+        && request.auth.token.email in ['rebuildfitnesskkd@gmail.com', 'admin@elevategym.com'];
+    }
+    function accessPath() {
+      return /databases/$(database)/documents/staffAccess/$(request.auth.uid);
+    }
+    // Staff login created by an owner (server writes /staffAccess/{uid}); switched off = no access.
+    function isStaffLogin() {
+      return request.auth != null && exists(accessPath()) && get(accessPath()).data.active == true;
+    }
     function isStaff() {
-      return request.auth != null;
+      return isOwner() || isStaffLogin();
+    }
+
+    // Each staff login's features. Owners change them; the staff member can read their own.
+    match /staffAccess/{uid} {
+      allow read: if isOwner() || (request.auth != null && request.auth.uid == uid);
+      allow write: if isOwner();
     }
 
     match /{collection}/{docId} {
