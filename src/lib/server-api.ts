@@ -19,3 +19,13 @@ export async function callServer<T>(path: string, body: unknown = {}): Promise<T
     );
   return data;
 }
+
+/** GET from the app's own server routes as the signed-in staff member. */
+export async function getServer<T>(path: string): Promise<T> {
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw new Error("Please sign in again.");
+  const response = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
+  const data = (await response.json().catch(() => ({}))) as T & { error?: string };
+  if (!response.ok) throw new Error(data.error ?? `Server error ${response.status}`);
+  return data;
+}

@@ -8,11 +8,12 @@ import { FieldValue, type DocumentData } from "firebase-admin/firestore";
 import { db, json, localDate } from "./admin";
 import { sendTemplateMessage, whatsappNumber } from "./whatsapp";
 
-type Kind = "renewal" | "birthday" | "absence";
+type Kind = "renewal" | "birthday" | "absence" | "payment_due";
 const COLLECTION: Record<Kind, string> = {
   renewal: "renewalNotifications",
   birthday: "birthdayNotifications",
   absence: "absenceNotifications",
+  payment_due: "paymentDueNotifications",
 };
 type MembershipRow = { id: string; clientId: string; endDate: string; status: string };
 type ClientRow = {
@@ -50,6 +51,8 @@ async function settings() {
     birthdayEnabled: true,
     absenceEnabled: false,
     absenceDays: 3,
+    paymentDueEnabled: true,
+    paymentDueDaysBefore: 3,
     renewalTemplate: "Hi {{name}}, your membership expires on {{expiryDate}}.",
     birthdayTemplate: "Happy Birthday {{name}}!",
     ...s.data(),
@@ -69,6 +72,7 @@ async function whatsappSettings() {
     renewalTemplate: String(s["renewalTemplate"] ?? "gym_membership_expiry"),
     birthdayTemplate: String(s["birthdayTemplate"] ?? "gym_birthday_wish"),
     absenceTemplate: String(s["absenceTemplate"] ?? "gym_miss_you"),
+    paymentDueTemplate: String(s["paymentDueTemplate"] ?? "gym_payment_due"),
   };
 }
 
@@ -114,7 +118,9 @@ async function queue(
           ? "Renewal reminder queued"
           : kind === "birthday"
             ? "Birthday greeting queued"
-            : "Missed-workout nudge queued",
+            : kind === "payment_due"
+              ? "Balance due reminder queued"
+              : "Missed-workout nudge queued",
       createdAt: now,
       updatedAt: now,
     });
@@ -132,17 +138,24 @@ async function deliver(
   c: ClientRow,
   bodyParams: string[],
   wa: Awaited<ReturnType<typeof whatsappSettings>>,
+  buttonUrlParam = "",
 ) {
   if (!wa.live || !c.whatsappOptIn) return;
   const to = whatsappNumber(c.whatsappPhone || c.phone, wa.countryCode);
-  const templateName =
-    kind === "renewal"
-      ? wa.renewalTemplate
-      : kind === "birthday"
-        ? wa.birthdayTemplate
-        : wa.absenceTemplate;
+  const templateName = {
+    renewal: wa.renewalTemplate,
+    birthday: wa.birthdayTemplate,
+    absence: wa.absenceTemplate,
+    payment_due: wa.paymentDueTemplate,
+  }[kind];
   const result = to
-    ? await sendTemplateMessage({ to, templateName, language: wa.language, bodyParams })
+    ? await sendTemplateMessage({
+        to,
+        templateName,
+        language: wa.language,
+        bodyParams,
+        buttonUrlParam,
+      })
     : ({ ok: false, error: "Invalid WhatsApp number.", code: "invalid_number" } as const);
   const now = FieldValue.serverTimestamp();
   const patch = result.ok
@@ -249,6 +262,56 @@ export async function processBirthdayNotifications() {
   return sent;
 }
 
+/**
+ * Balance due: one WhatsApp a day from `paymentDueDaysBefore` days before the next payment date
+ * up to that date, with the balance and a View bill button (template gym_payment_due, Utility).
+ */
+export async function processPaymentDueReminders() {
+  const cfg = await settings();
+  if (!cfg.automationEnabled || !cfg.paymentDueEnabled) return 0;
+  const wa = await whatsappSettings();
+  const today = localDate();
+  const before = Math.min(7, Math.max(0, Number(cfg.paymentDueDaysBefore ?? 3)));
+  const bills = await db()
+    .collection("invoices")
+    .where("dueDate", ">=", today)
+    .where("dueDate", "<=", plus(today, before))
+    .get();
+  let sent = 0;
+  for (const b of bills.docs) {
+    const inv = b.data();
+    const balance = Number(inv["balanceDue"] ?? 0);
+    if (!(balance > 0) || inv["paymentStatus"] === "refunded" || !inv["clientId"]) continue;
+    const cs = await db()
+      .doc(`clients/${String(inv["clientId"])}`)
+      .get();
+    if (!cs.exists) continue;
+    const c = { id: cs.id, ...cs.data() } as ClientRow;
+    const dueDate = String(inv["dueDate"]);
+    // One message per bill per day.
+    const key = id(b.id, "payment_due", today);
+    const amount = balance.toLocaleString("en-IN");
+    const queued = await queue(
+      "payment_due",
+      key,
+      c,
+      `Hi ${c.fullName}, ₹${amount} is due on ${pretty(dueDate)} on bill ${String(inv["invoiceNumber"] ?? "")}.`,
+      { invoiceId: b.id, balanceDue: balance, dueDate, type: "payment_due" },
+    );
+    if (!queued) continue;
+    sent += 1;
+    await deliver(
+      "payment_due",
+      key,
+      c,
+      [c.fullName, wa.gymName, amount, String(inv["invoiceNumber"] ?? ""), pretty(dueDate)],
+      wa,
+      String(inv["publicToken"] ?? ""),
+    );
+  }
+  return sent;
+}
+
 /** Rotated so members don't get the same line twice in a row. Keep each under ~150 chars. */
 const QUOTES = [
   "The only bad workout is the one you skipped.",
@@ -335,7 +398,8 @@ export async function handleCron(request: Request, url: URL) {
   if (job === "morning") {
     const renewals = await processRenewalReminders();
     const birthdays = await processBirthdayNotifications();
-    return json({ ok: true, renewals, birthdays });
+    const paymentsDue = await processPaymentDueReminders();
+    return json({ ok: true, renewals, birthdays, paymentsDue });
   }
   if (job === "night") return json({ ok: true, absences: await processAbsenceNudges() });
   return json({ error: "Unknown job" }, 404);

@@ -91,6 +91,7 @@ export function FollowUpsView() {
     const lead = inquiries.data.find((i) => i.id === x.inquiryId);
     openEnrollment({
       inquiryId: x.inquiryId,
+      counsellorId: lead?.counsellorId || null,
       prefill: {
         fullName: x.clientNameSnapshot,
         phone: x.phoneSnapshot,

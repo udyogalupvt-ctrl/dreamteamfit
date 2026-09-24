@@ -239,6 +239,10 @@ function BillingPage() {
                         <p className="text-meta">
                           {formatDateISO(i.invoiceDate)} · {i.paymentMethod}
                         </p>
+                        <p className="text-meta">
+                          By {i.createdBy}
+                          {i.counsellorName ? ` · counsellor ${i.counsellorName}` : ""}
+                        </p>
                       </TableCell>
                       <TableCell>
                         <p className="max-w-48 truncate">{i.clientNameSnapshot}</p>
@@ -257,6 +261,9 @@ function BillingPage() {
                         )}
                       >
                         {formatPrice(i.balanceDue)}
+                        {i.balanceDue > 0 && i.dueDate ? (
+                          <p className="text-meta font-normal">due {formatDateISO(i.dueDate)}</p>
+                        ) : null}
                       </TableCell>
                       <TableCell>
                         <StatusPill tone={INVOICE_STATUS_META[i.paymentStatus].tone}>
@@ -281,6 +288,11 @@ function BillingPage() {
                       <p className="truncate font-bold">{i.clientNameSnapshot}</p>
                       <p className="text-meta">
                         {i.invoiceNumber} · {formatDateISO(i.invoiceDate)}
+                      </p>
+                      <p className="text-meta">
+                        By {i.createdBy}
+                        {i.counsellorName ? ` · counsellor ${i.counsellorName}` : ""}
+                        {i.balanceDue > 0 && i.dueDate ? ` · due ${formatDateISO(i.dueDate)}` : ""}
                       </p>
                     </div>
                     <StatusPill tone={INVOICE_STATUS_META[i.paymentStatus].tone}>

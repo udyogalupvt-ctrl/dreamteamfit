@@ -95,6 +95,7 @@ export function LeadsView({
   const setConverting = (i: Inquiry) =>
     openEnrollment({
       inquiryId: i.id,
+      counsellorId: i.counsellorId || null,
       prefill: {
         fullName: i.name,
         phone: i.phone,

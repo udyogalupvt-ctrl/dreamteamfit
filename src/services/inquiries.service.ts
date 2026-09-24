@@ -17,7 +17,10 @@ export type InquiryInput = Pick<
   "name" | "phone" | "email" | "source" | "fitnessGoal" | "notes" | "status" | "nextFollowUpDate"
 > &
   Partial<
-    Pick<Inquiry, "lastContactDate" | "expectedJoinDate" | "expectedVisitDate" | "assignedTo">
+    Pick<
+      Inquiry,
+      "lastContactDate" | "expectedJoinDate" | "expectedVisitDate" | "assignedTo" | "counsellorId"
+    >
   >;
 
 export const mapInquiry = (id: string, d: DocumentData): Inquiry => ({
@@ -35,6 +38,7 @@ export const mapInquiry = (id: string, d: DocumentData): Inquiry => ({
   expectedJoinDate: d["expectedJoinDate"] ?? null,
   expectedVisitDate: d["expectedVisitDate"] ?? null,
   assignedTo: d["assignedTo"] ?? "",
+  counsellorId: d["counsellorId"] ?? "",
   convertedToClient: Boolean(d["convertedToClient"]),
   clientId: d["clientId"] ?? null,
   createdAt: toDate(d["createdAt"]),

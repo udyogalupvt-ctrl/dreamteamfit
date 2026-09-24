@@ -240,7 +240,12 @@ function ClientsPage() {
                           >
                             {c.fullName}
                           </Link>
-                          <p className="text-meta tabular-nums">{c.clientCode}</p>
+                          <p className="text-meta tabular-nums">
+                            {c.clientCode}
+                            {!c.profilePhotoUrl ? (
+                              <span className="ml-1 font-semibold text-warning">· no photo</span>
+                            ) : null}
+                          </p>
                         </div>
                       </div>
                     </TableCell>
@@ -292,6 +297,9 @@ function ClientsPage() {
                     </div>
                     <p className="text-meta mt-0.5 tabular-nums">
                       {c.clientCode} · {c.phone}
+                      {!c.profilePhotoUrl ? (
+                        <span className="font-semibold text-warning"> · no photo</span>
+                      ) : null}
                     </p>
                     <p className="mt-1 truncate text-xs">
                       {plans.get(c.id)

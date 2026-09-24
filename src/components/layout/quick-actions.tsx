@@ -9,6 +9,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEnrollment } from "@/components/enrollment/enrollment-context";
+import { useAccess } from "@/hooks/use-access";
+import type { StaffFeature } from "@/types/models";
 
 export interface QuickAction {
   id: string;
@@ -16,15 +18,18 @@ export interface QuickAction {
   hint: string;
   icon: LucideIcon;
   run: () => void;
+  feature: StaffFeature;
 }
 
 /** The front-desk shortcuts, defined once for the dashboard, top bar and mobile "+" button. */
 export function useQuickActions(): QuickAction[] {
   const navigate = useNavigate();
   const { openEnrollment } = useEnrollment();
-  return [
+  const { can } = useAccess();
+  const all: QuickAction[] = [
     {
       id: "member",
+      feature: "members",
       label: "New member",
       hint: "Details, payment, bill, thumb",
       icon: Users,
@@ -32,6 +37,7 @@ export function useQuickActions(): QuickAction[] {
     },
     {
       id: "inquiry",
+      feature: "leads",
       label: "New inquiry",
       hint: "Someone visited or called",
       icon: UserPlus,
@@ -39,6 +45,7 @@ export function useQuickActions(): QuickAction[] {
     },
     {
       id: "calls",
+      feature: "leads",
       label: "Calls to make",
       hint: "Today's follow-ups",
       icon: Phone,
@@ -46,6 +53,7 @@ export function useQuickActions(): QuickAction[] {
     },
     {
       id: "bill",
+      feature: "billing",
       label: "New bill",
       hint: "Renewal or shop items",
       icon: CreditCard,
@@ -53,17 +61,20 @@ export function useQuickActions(): QuickAction[] {
     },
     {
       id: "expense",
+      feature: "daybook",
       label: "Add expense",
       hint: "Rent, salary, bills…",
       icon: ReceiptIndianRupee,
-      run: () => void navigate({ to: "/expenses", search: { create: true } }),
+      run: () => void navigate({ to: "/day-book", search: { add: "expense" } }),
     },
     {
       id: "booking",
+      feature: "classes",
       label: "Book PT / class",
       hint: "Schedule a session",
       icon: CalendarPlus,
       run: () => void navigate({ to: "/bookings", search: { create: true } }),
     },
   ];
+  return all.filter((a) => can(a.feature));
 }

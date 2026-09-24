@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { SegmentChart } from "@/components/members/segment-chart";
+import { useAccess } from "@/hooks/use-access";
+import { useMemberSegments } from "@/hooks/use-member-segments";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   CalendarClock,
@@ -45,6 +48,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function DashboardPage() {
   const navigate = useNavigate();
+  const { can } = useAccess();
   const { openEnrollment } = useEnrollment();
   const actions = useQuickActions();
   const attention = useAttention();
@@ -152,6 +156,8 @@ function DashboardPage() {
           ? primary.map((m) => <StatCardSkeleton key={m.id} />)
           : primary.map((metric) => <StatCard key={metric.id} metric={metric} />)}
       </section>
+
+      {can("memberCalls") ? <MembersAtAGlance /> : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
         <section className="surface-card p-4 sm:p-5">
@@ -305,6 +311,37 @@ function IntegrationsCard() {
           {online.length ? "Online" : linked.length ? "Offline" : "Set up"}
         </StatusPill>
       </Link>
+    </section>
+  );
+}
+
+/** Member groups as a chart; tapping a bar opens that list in Member calls. */
+function MembersAtAGlance() {
+  const navigate = useNavigate();
+  const { counts, total, loading } = useMemberSegments({
+    absentDays: 7,
+    expiringDays: 7,
+    renewalWindowDays: 365,
+  });
+  return (
+    <section className="surface-card space-y-3 p-4 sm:p-5" aria-labelledby="glance-title">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="glance-title" className="text-card-title">
+          Members at a glance
+        </h2>
+        <Link to="/member-calls" className="text-sm font-semibold underline">
+          Member calls
+        </Link>
+      </div>
+      {loading ? (
+        <div className="h-40 animate-pulse rounded-lg bg-muted" />
+      ) : (
+        <SegmentChart
+          counts={counts}
+          total={total}
+          onSelect={(segment) => void navigate({ to: "/member-calls", search: { segment } })}
+        />
+      )}
     </section>
   );
 }

@@ -1,7 +1,9 @@
 rules_version = '2';
 
 // REBUILD FITNESS — only the owners and staff logins created by an owner can read/write gym
-// data. A self-created account (Firebase sign-up) gets nothing. Nothing is public.
+// data. A self-created account (Firebase sign-up) gets nothing. Nothing is public except a bill
+// opened by its secret link. Each staff login only reaches the features the owner switched on
+// (Staff page → Login & features), the same switches the app uses to show pages.
 service cloud.firestore {
   match /databases/{database}/documents {
     // Owner accounts. Keep in sync with OWNER_EMAILS in src/constants/owners.ts.
@@ -19,6 +21,11 @@ service cloud.firestore {
     function isStaff() {
       return isOwner() || isStaffLogin();
     }
+    // Feature switch, e.g. can('finance'). "All features" (admin) logins have every feature.
+    function can(feature) {
+      return isOwner() || (isStaffLogin()
+        && (get(accessPath()).data.admin == true || feature in get(accessPath()).data.permissions));
+    }
 
     // Each staff login's features. Owners change them; the staff member can read their own.
     match /staffAccess/{uid} {
@@ -26,25 +33,104 @@ service cloud.firestore {
       allow write: if isOwner();
     }
 
+    // Front-desk data every staff login uses.
     match /{collection}/{docId} {
       allow read, write: if isStaff() && collection in [
-        'packages', 'inquiries', 'clients', 'memberships',
-        'followups', 'invoices', 'attendance', 'settings',
+        'inquiries', 'memberships', 'followups', 'invoices', 'attendance',
         'workoutPlans', 'workoutAssignments', 'dietPlans', 'dietAssignments',
         'bookings', 'groupClasses', 'classEnrollments',
-        'expenses', 'expenseActivities', 'biometricDevices',
-        'renewalNotifications', 'birthdayNotifications', 'notifications', 'automationActivities',
-        'whatsappMessages', 'ptPackages', 'trainers', 'ptAssignments', 'payments',
-        'enrollments', 'trainerPayouts', 'manualIncome', 'importBatches', 'leadLogs',
-        'biometricCommands'
+        'renewalNotifications', 'birthdayNotifications', 'absenceNotifications', 'paymentDueNotifications',
+        'notifications', 'automationActivities', 'whatsappMessages', 'ptAssignments',
+        'payments', 'enrollments', 'importBatches', 'leadLogs', 'biometricCommands',
+        'memberCalls'
       ];
+    }
+
+    // Members: everyone adds and edits; deleting needs "Delete members".
+    match /clients/{id} {
+      allow read, create, update: if isStaff();
+      allow delete: if can('deleteMembers');
+    }
+
+    // Settings: bill / member numbers change on every joining; the rest needs "Settings".
+    match /settings/{id} {
+      allow read: if isStaff();
+      allow write: if (id == 'counters' && isStaff()) || can('settings');
+    }
+
+    match /packages/{id} {
+      allow read: if isStaff();
+      allow write: if can('packages');
+    }
+    match /ptPackages/{id} {
+      allow read: if isStaff();
+      allow write: if can('packages');
+    }
+    match /trainers/{id} {
+      allow read: if isStaff();
+      allow write: if can('packages');
+    }
+
+    match /biometricDevices/{id} {
+      allow read: if isStaff();
+      allow write: if can('devices');
+    }
+
+    // Money: only "Income & expenses".
+    // Expenses and the daily cash handover are entered by the front desk (Day book).
+    match /expenses/{id} {
+      allow read, write: if can('finance') || can('daybook');
+    }
+    match /expenseActivities/{id} {
+      allow read, write: if can('finance') || can('daybook');
+    }
+    match /manualIncome/{id} {
+      allow read, write: if can('finance');
+    }
+    match /cashDays/{id} {
+      allow read, write: if can('finance') || can('daybook');
+    }
+    match /staffPayments/{id} {
+      allow read, write: if can('finance');
+    }
+    // Created when PT is sold (any front desk); seen and paid out by finance.
+    match /trainerPayouts/{id} {
+      allow create: if isStaff();
+      allow read: if can('finance') || can('packages');
+      allow update: if can('finance');
+      allow delete: if can('finance') || can('deleteMembers');
+    }
+
+    // Staff: names for the counsellor list; only owners change staff; pay is finance-only.
+    match /staff/{id} {
+      allow read: if isStaff();
+      allow write: if isOwner();
+    }
+    match /staffPrivate/{id} {
+      allow read, write: if isOwner() || can('finance');
+    }
+    // Written by the fingerprint device (server) or marked by hand.
+    match /staffAttendance/{id} {
+      allow read: if can('attendance') || can('finance');
+      allow create: if can('attendance');
+      allow update, delete: if isOwner();
+    }
+    // Present / half day / absent / paid leave set by the admin or receptionist.
+    match /staffDayMarks/{id} {
+      allow read: if can('attendance') || can('finance');
+      allow write: if can('attendance');
+    }
+    // Paid leaves allowed per staff per month: set by the owner / finance.
+    match /staffPayroll/{id} {
+      allow read: if can('attendance') || can('finance');
+      allow write: if can('finance');
     }
 
     // Tamper-proof activity log. The app adds a line in the same write as each change: create
     // only, as the signed-in account itself, stamped with the server clock. Nobody can edit or
     // delete a line from the app (the server adds "System (automatic)" lines with admin access).
     match /auditLogs/{entryId} {
-      allow read: if isStaff();
+      allow read: if can('activity');
       allow create: if isStaff()
         && request.resource.data.actorType == 'app_user'
         && request.resource.data.actorUid == request.auth.uid

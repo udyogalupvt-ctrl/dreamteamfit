@@ -1,7 +1,20 @@
 import { useMemo, useState } from "react";
+import { CashBookSection } from "@/components/finance/cash-book-section";
+import { StaffPaySection } from "@/components/finance/staff-pay-section";
+import { PtReportSection } from "@/components/finance/pt-report-section";
+import { SettleDialog } from "@/components/expenses/settle-dialog";
+import { StatusPill } from "@/components/common/status-pill";
+import { HandCoins } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { endOfWeek, format, startOfMonth, startOfWeek, startOfYear } from "date-fns";
-import { CalendarDays, MoreHorizontal, Pencil, Plus, ReceiptIndianRupee, Trash2 } from "lucide-react";
+import {
+  CalendarDays,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  ReceiptIndianRupee,
+  Trash2,
+} from "lucide-react";
 import { z } from "zod";
 import { toast } from "sonner";
 import { IncomeSection, PayoutsSection } from "@/components/finance/finance-sections";
@@ -14,25 +27,53 @@ import { SearchInput } from "@/components/common/search-input";
 import { StatCard } from "@/components/common/stat-card";
 import { ExpenseFormDialog } from "@/components/expenses/expense-form-dialog";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu,DropdownMenuContent,DropdownMenuItem,DropdownMenuSeparator,DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Select,SelectContent,SelectItem,SelectTrigger,SelectValue } from "@/components/ui/select";
-import { Sheet,SheetContent,SheetDescription,SheetHeader,SheetTitle } from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table,TableBody,TableCell,TableHead,TableHeader,TableRow } from "@/components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useAuth } from "@/hooks/use-auth";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDate, formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { deleteExpense, subscribeExpenses } from "@/services/expenses.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import { EXPENSE_CATEGORIES,EXPENSE_PAYMENT_METHODS,type Expense } from "@/types/models";
+import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, type Expense } from "@/types/models";
 
 export const Route = createFileRoute("/_authenticated/expenses")({
   validateSearch: z.object({ create: z.boolean().optional() }),
   head: () => ({
     meta: [
       { title: "Income & Expenses — REBUILD FITNESS" },
-      { name: "description", content: "Profit, income from memberships and PT, expenses and trainer payouts." },
+      {
+        name: "description",
+        content: "Profit, income from memberships and PT, expenses and trainer payouts.",
+      },
     ],
   }),
   component: ExpensesPage,
@@ -40,7 +81,9 @@ export const Route = createFileRoute("/_authenticated/expenses")({
 
 function ExpensesPage() {
   const { create } = Route.useSearch();
-  const [section, setSection] = useState<"income" | "expenses" | "payouts">(create ? "expenses" : "income");
+  const [section, setSection] = useState<
+    "income" | "expenses" | "payouts" | "cash" | "staff" | "pt"
+  >(create ? "expenses" : "income");
   return (
     <div className="space-y-5">
       <PageHeader
@@ -49,22 +92,422 @@ function ExpensesPage() {
         breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Income & Expenses" }]}
       />
       <Tabs value={section} onValueChange={(v) => setSection(v as typeof section)}>
-        <TabsList className="w-full sm:w-auto">
-          <TabsTrigger value="income" className="flex-1 sm:flex-none">Profit & income</TabsTrigger>
-          <TabsTrigger value="expenses" className="flex-1 sm:flex-none">Expenses</TabsTrigger>
-          <TabsTrigger value="payouts" className="flex-1 sm:flex-none">Trainer payouts</TabsTrigger>
-        </TabsList>
+        <div className="no-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <TabsList className="w-max">
+            <TabsTrigger value="income" className="flex-1 sm:flex-none">
+              Profit & income
+            </TabsTrigger>
+            <TabsTrigger value="expenses" className="flex-1 sm:flex-none">
+              Expenses
+            </TabsTrigger>
+            <TabsTrigger value="cash" className="flex-1 sm:flex-none">
+              Cash book
+            </TabsTrigger>
+            <TabsTrigger value="payouts" className="flex-1 sm:flex-none">
+              Trainer payouts
+            </TabsTrigger>
+            <TabsTrigger value="pt" className="flex-1 sm:flex-none">
+              PT report
+            </TabsTrigger>
+            <TabsTrigger value="staff" className="flex-1 sm:flex-none">
+              Staff pay
+            </TabsTrigger>
+          </TabsList>
+        </div>
       </Tabs>
-      {section === "income" ? <IncomeSection /> : section === "payouts" ? <PayoutsSection /> : <ExpensesList />}
+      {section === "income" ? (
+        <IncomeSection />
+      ) : section === "payouts" ? (
+        <PayoutsSection />
+      ) : section === "cash" ? (
+        <CashBookSection />
+      ) : section === "staff" ? (
+        <StaffPaySection />
+      ) : section === "pt" ? (
+        <PtReportSection />
+      ) : (
+        <ExpensesList />
+      )}
     </div>
   );
 }
-function ExpensesList(){const {create}=Route.useSearch();const {user}=useAuth();const live=useLive<Expense[]>(subscribeExpenses,[],[]);const [search,setSearch]=useState("");const [date,setDate]=useState("");const [category,setCategory]=useState("all");const [payment,setPayment]=useState("all");const [open,setOpen]=useState(Boolean(create));const [editing,setEditing]=useState<Expense|null>(null);const [viewing,setViewing]=useState<Expense|null>(null);const [deleting,setDeleting]=useState<Expense|null>(null);
- const today=todayISO(),now=new Date(),weekStart=format(startOfWeek(now,{weekStartsOn:1}),"yyyy-MM-dd"),weekEnd=format(endOfWeek(now,{weekStartsOn:1}),"yyyy-MM-dd"),monthStart=format(startOfMonth(now),"yyyy-MM-dd"),yearStart=format(startOfYear(now),"yyyy-MM-dd");const sum=(from:string,to=today)=>live.data.filter(e=>e.date>=from&&e.date<=to).reduce((n,e)=>n+e.amount,0);const filtered=useMemo(()=>{const q=search.trim().toLowerCase();return live.data.filter(e=>(!date||e.date===date)&&(category==="all"||e.category===category)&&(payment==="all"||e.paymentMethod===payment)&&(!q||[e.title,e.category,e.notes].some(v=>v.toLowerCase().includes(q))));},[live.data,search,date,category,payment]);
- const remove=async()=>{if(!deleting||!user)return;const item=deleting;setDeleting(null);try{await deleteExpense(item,{uid:user.uid,name:user.displayName||user.email||"Staff"});toast.success("Expense removed",{description:item.title});if(viewing?.id===item.id)setViewing(null);}catch(e){toast.error(firestoreErrorMessage(e));}};
- const cards=[{id:"today",label:"Today",value:formatPrice(sum(today)),hint:"spent today",icon:CalendarDays,tone:"info" as const},{id:"week",label:"This week",value:formatPrice(sum(weekStart,weekEnd)),hint:"Monday to Sunday",icon:CalendarDays,tone:"success" as const},{id:"month",label:"This month",value:formatPrice(sum(monthStart)),hint:"current month",icon:CalendarDays,tone:"warning" as const},{id:"year",label:"This year",value:formatPrice(sum(yearStart)),hint:"year to date",icon:ReceiptIndianRupee,tone:"violet" as const}];
- return <div className="space-y-6"><div className="flex justify-end"><Button onClick={()=>{setEditing(null);setOpen(true)}}><Plus/> Add expense</Button></div>{live.error?<ErrorState error={live.error} title="Couldn't load expenses"/>:null}<div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{cards.map(m=><StatCard key={m.id} metric={m}/>)}</div>
- <section className="space-y-4"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><SearchInput value={search} onValueChange={setSearch} placeholder="Search title, category or notes…" label="Search expenses"/><Input type="date" aria-label="Filter by date" value={date} onChange={e=>setDate(e.target.value)}/><Select value={category} onValueChange={setCategory}><SelectTrigger aria-label="Filter by category"><SelectValue placeholder="All categories"/></SelectTrigger><SelectContent><SelectItem value="all">All categories</SelectItem>{EXPENSE_CATEGORIES.map(v=><SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select><Select value={payment} onValueChange={setPayment}><SelectTrigger aria-label="Filter by payment method"><SelectValue placeholder="All methods"/></SelectTrigger><SelectContent><SelectItem value="all">All methods</SelectItem>{EXPENSE_PAYMENT_METHODS.map(v=><SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></div>
- {live.loading?<LoadingRows rows={5}/>:live.data.length===0?<EmptyState icon={ReceiptIndianRupee} title="No expenses yet" description="Add your first operating expense to begin tracking costs." action={<Button onClick={()=>setOpen(true)}><Plus/> Add expense</Button>}/>:filtered.length===0?<EmptyState icon={ReceiptIndianRupee} title="No matching expenses" description="Try changing your search or filters."/>:<><div className="hidden surface-card overflow-hidden md:block"><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Expense</TableHead><TableHead>Category</TableHead><TableHead>Payment Method</TableHead><TableHead className="text-right">Amount</TableHead><TableHead>Created By</TableHead><TableHead className="w-12"><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader><TableBody>{filtered.map(e=><TableRow key={e.id}><TableCell>{formatDateISO(e.date)}</TableCell><TableCell className="font-semibold">{e.title}</TableCell><TableCell>{e.category}</TableCell><TableCell>{e.paymentMethod}</TableCell><TableCell className="text-right font-bold tabular-nums">{formatPrice(e.amount)}</TableCell><TableCell>{e.createdBy}</TableCell><TableCell><Actions item={e} view={()=>setViewing(e)} edit={()=>{setEditing(e);setOpen(true)}} remove={()=>setDeleting(e)}/></TableCell></TableRow>)}</TableBody></Table></div><div className="grid gap-3 md:hidden">{filtered.map(e=><article key={e.id} className="surface-card p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-semibold">{e.title}</p><p className="text-meta mt-1">{formatDateISO(e.date)} · {e.category}</p></div><Actions item={e} view={()=>setViewing(e)} edit={()=>{setEditing(e);setOpen(true)}} remove={()=>setDeleting(e)}/></div><div className="mt-4 flex items-end justify-between gap-3"><div><p className="text-meta">{e.paymentMethod}</p><p className="text-xs text-muted-foreground">{e.createdBy}</p></div><p className="text-xl font-extrabold tabular-nums">{formatPrice(e.amount)}</p></div></article>)}</div></>}</section>
- <ExpenseFormDialog open={open} onOpenChange={setOpen} expense={editing}/><Sheet open={!!viewing} onOpenChange={v=>!v&&setViewing(null)}><SheetContent className="w-full overflow-y-auto sm:max-w-md">{viewing?<><SheetHeader className="text-left"><SheetTitle>{viewing.title}</SheetTitle><SheetDescription>{viewing.category}</SheetDescription></SheetHeader><p className="mt-6 px-4 text-3xl font-extrabold tabular-nums">{formatPrice(viewing.amount)}</p><dl className="mt-5 grid grid-cols-2 gap-3 px-4">{[["Payment method",viewing.paymentMethod],["Expense date",formatDateISO(viewing.date)],["Created by",viewing.createdBy],["Created date",formatDate(viewing.createdAt)]].map(([k,v])=><div key={k} className="rounded-lg border border-border bg-muted/40 p-3"><dt className="text-meta">{k}</dt><dd className="mt-1 font-semibold">{v}</dd></div>)}</dl><div className="mt-5 space-y-4 px-4"><div><p className="text-label">Description</p><p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{viewing.description||"No description"}</p></div><div><p className="text-label">Notes</p><p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{viewing.notes||"No notes"}</p></div><Button onClick={()=>{setEditing(viewing);setOpen(true)}}><Pencil/> Edit expense</Button></div></>:null}</SheetContent></Sheet><ConfirmDialog open={!!deleting} onOpenChange={v=>!v&&setDeleting(null)} title="Delete this expense?" description="This permanently removes the expense. The removal remains visible in activity history." confirmLabel="Delete expense" destructive onConfirm={()=>void remove()}/></div>}
-function Actions({item,view,edit,remove}:{item:Expense;view:()=>void;edit:()=>void;remove:()=>void}){return <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={`Actions for ${item.title}`}><MoreHorizontal/></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={view}><ReceiptIndianRupee/> View details</DropdownMenuItem><DropdownMenuItem onSelect={edit}><Pencil/> Edit</DropdownMenuItem><DropdownMenuSeparator/><DropdownMenuItem onSelect={remove} className="text-destructive focus:text-destructive"><Trash2/> Delete</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
+function ExpensesList() {
+  const { create } = Route.useSearch();
+  const { user } = useAuth();
+  const live = useLive<Expense[]>(subscribeExpenses, [], []);
+  const [search, setSearch] = useState("");
+  const [date, setDate] = useState("");
+  const [category, setCategory] = useState("all");
+  const [payment, setPayment] = useState("all");
+  const [open, setOpen] = useState(Boolean(create));
+  const [editing, setEditing] = useState<Expense | null>(null);
+  const [viewing, setViewing] = useState<Expense | null>(null);
+  const [deleting, setDeleting] = useState<Expense | null>(null);
+  const [settling, setSettling] = useState<Expense | null>(null);
+  const today = todayISO(),
+    now = new Date(),
+    weekStart = format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
+    weekEnd = format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
+    monthStart = format(startOfMonth(now), "yyyy-MM-dd"),
+    yearStart = format(startOfYear(now), "yyyy-MM-dd");
+  const sum = (from: string, to = today) =>
+    live.data.filter((e) => e.date >= from && e.date <= to).reduce((n, e) => n + e.amount, 0);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return live.data.filter(
+      (e) =>
+        (!date || e.date === date) &&
+        (category === "all" || e.category === category) &&
+        (payment === "all" || e.paymentMethod === payment) &&
+        (!q || [e.title, e.category, e.notes].some((v) => v.toLowerCase().includes(q))),
+    );
+  }, [live.data, search, date, category, payment]);
+  const remove = async () => {
+    if (!deleting || !user) return;
+    const item = deleting;
+    setDeleting(null);
+    try {
+      await deleteExpense(item, { uid: user.uid, name: user.displayName || user.email || "Staff" });
+      toast.success("Expense removed", { description: item.title });
+      if (viewing?.id === item.id) setViewing(null);
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    }
+  };
+  const cards = [
+    {
+      id: "today",
+      label: "Today",
+      value: formatPrice(sum(today)),
+      hint: "spent today",
+      icon: CalendarDays,
+      tone: "info" as const,
+    },
+    {
+      id: "week",
+      label: "This week",
+      value: formatPrice(sum(weekStart, weekEnd)),
+      hint: "Monday to Sunday",
+      icon: CalendarDays,
+      tone: "success" as const,
+    },
+    {
+      id: "month",
+      label: "This month",
+      value: formatPrice(sum(monthStart)),
+      hint: "current month",
+      icon: CalendarDays,
+      tone: "warning" as const,
+    },
+    {
+      id: "year",
+      label: "This year",
+      value: formatPrice(sum(yearStart)),
+      hint: "year to date",
+      icon: ReceiptIndianRupee,
+      tone: "violet" as const,
+    },
+  ];
+  const owed = live.data.filter((e) => !e.settled);
+  const owedBy = [
+    ...owed.reduce(
+      (m, e) => m.set(e.paidBy, (m.get(e.paidBy) ?? 0) + e.amount),
+      new Map<string, number>(),
+    ),
+  ];
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button
+          onClick={() => {
+            setEditing(null);
+            setOpen(true);
+          }}
+        >
+          <Plus /> Add expense
+        </Button>
+      </div>
+      {live.error ? <ErrorState error={live.error} title="Couldn't load expenses" /> : null}
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        {cards.map((m) => (
+          <StatCard key={m.id} metric={m} />
+        ))}
+      </div>
+      {owedBy.length ? (
+        <div className="rounded-xl border border-warning/40 bg-warning/10 p-4">
+          <p className="font-semibold">Gym owes money back</p>
+          <ul className="mt-1 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+            {owedBy.map(([who, amt]) => (
+              <li key={who}>
+                <b>{who}</b> {formatPrice(amt)}
+              </li>
+            ))}
+          </ul>
+          <p className="text-meta mt-1">
+            Paid from their own pocket. Use ⋯ → Paid back on each expense once the gym returns it.
+          </p>
+        </div>
+      ) : null}
+      <section className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <SearchInput
+            value={search}
+            onValueChange={setSearch}
+            placeholder="Search title, category or notes…"
+            label="Search expenses"
+          />
+          <Input
+            type="date"
+            aria-label="Filter by date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
+          <Select value={category} onValueChange={setCategory}>
+            <SelectTrigger aria-label="Filter by category">
+              <SelectValue placeholder="All categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All categories</SelectItem>
+              {EXPENSE_CATEGORIES.map((v) => (
+                <SelectItem key={v} value={v}>
+                  {v}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={payment} onValueChange={setPayment}>
+            <SelectTrigger aria-label="Filter by payment method">
+              <SelectValue placeholder="All methods" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All methods</SelectItem>
+              {EXPENSE_PAYMENT_METHODS.map((v) => (
+                <SelectItem key={v} value={v}>
+                  {v}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {live.loading ? (
+          <LoadingRows rows={5} />
+        ) : live.data.length === 0 ? (
+          <EmptyState
+            icon={ReceiptIndianRupee}
+            title="No expenses yet"
+            description="Add your first operating expense to begin tracking costs."
+            action={
+              <Button onClick={() => setOpen(true)}>
+                <Plus /> Add expense
+              </Button>
+            }
+          />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={ReceiptIndianRupee}
+            title="No matching expenses"
+            description="Try changing your search or filters."
+          />
+        ) : (
+          <>
+            <div className="hidden surface-card overflow-hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Expense</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead>Paid by</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Entered by</TableHead>
+                    <TableHead className="w-12">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((e) => (
+                    <TableRow key={e.id}>
+                      <TableCell>{formatDateISO(e.date)}</TableCell>
+                      <TableCell className="font-semibold">{e.title}</TableCell>
+                      <TableCell>{e.category}</TableCell>
+                      <TableCell>
+                        <span className="block">
+                          {e.paidBy === "Gym"
+                            ? `Gym · ${e.paymentMethod}`
+                            : `${e.paidBy} · ${e.paymentMethod}`}
+                        </span>
+                        {!e.settled ? (
+                          <StatusPill tone="warning">Owed to {e.paidBy}</StatusPill>
+                        ) : e.paidBy !== "Gym" ? (
+                          <span className="text-meta">
+                            paid back {formatDateISO(e.settledDate)}
+                          </span>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="text-right font-bold tabular-nums">
+                        {formatPrice(e.amount)}
+                      </TableCell>
+                      <TableCell>{e.createdBy}</TableCell>
+                      <TableCell>
+                        <Actions
+                          item={e}
+                          view={() => setViewing(e)}
+                          edit={() => {
+                            setEditing(e);
+                            setOpen(true);
+                          }}
+                          remove={() => setDeleting(e)}
+                          settle={() => setSettling(e)}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="grid gap-3 md:hidden">
+              {filtered.map((e) => (
+                <article key={e.id} className="surface-card p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold">{e.title}</p>
+                      <p className="text-meta mt-1">
+                        {formatDateISO(e.date)} · {e.category}
+                      </p>
+                    </div>
+                    <Actions
+                      item={e}
+                      view={() => setViewing(e)}
+                      edit={() => {
+                        setEditing(e);
+                        setOpen(true);
+                      }}
+                      remove={() => setDeleting(e)}
+                      settle={() => setSettling(e)}
+                    />
+                  </div>
+                  <div className="mt-4 flex items-end justify-between gap-3">
+                    <div>
+                      <p className="text-meta">
+                        {e.paidBy === "Gym"
+                          ? `Gym · ${e.paymentMethod}`
+                          : `${e.paidBy} · ${e.paymentMethod}`}
+                      </p>
+                      {!e.settled ? (
+                        <StatusPill tone="warning">Owed to {e.paidBy}</StatusPill>
+                      ) : null}
+                      <p className="text-xs text-muted-foreground">{e.createdBy}</p>
+                    </div>
+                    <p className="text-xl font-extrabold tabular-nums">{formatPrice(e.amount)}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+      <ExpenseFormDialog open={open} onOpenChange={setOpen} expense={editing} />
+      <SettleDialog expense={settling} onClose={() => setSettling(null)} />
+      <Sheet open={!!viewing} onOpenChange={(v) => !v && setViewing(null)}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+          {viewing ? (
+            <>
+              <SheetHeader className="text-left">
+                <SheetTitle>{viewing.title}</SheetTitle>
+                <SheetDescription>{viewing.category}</SheetDescription>
+              </SheetHeader>
+              <p className="mt-6 px-4 text-3xl font-extrabold tabular-nums">
+                {formatPrice(viewing.amount)}
+              </p>
+              <dl className="mt-5 grid grid-cols-2 gap-3 px-4">
+                {[
+                  ["Payment method", viewing.paymentMethod],
+                  ["Expense date", formatDateISO(viewing.date)],
+                  ["Created by", viewing.createdBy],
+                  ["Created date", formatDate(viewing.createdAt)],
+                ].map(([k, v]) => (
+                  <div key={k} className="rounded-lg border border-border bg-muted/40 p-3">
+                    <dt className="text-meta">{k}</dt>
+                    <dd className="mt-1 font-semibold">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="mt-5 space-y-4 px-4">
+                <div>
+                  <p className="text-label">Description</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                    {viewing.description || "No description"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-label">Notes</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                    {viewing.notes || "No notes"}
+                  </p>
+                </div>
+                <Button
+                  onClick={() => {
+                    setEditing(viewing);
+                    setOpen(true);
+                  }}
+                >
+                  <Pencil /> Edit expense
+                </Button>
+              </div>
+            </>
+          ) : null}
+        </SheetContent>
+      </Sheet>
+      <ConfirmDialog
+        open={!!deleting}
+        onOpenChange={(v) => !v && setDeleting(null)}
+        title="Delete this expense?"
+        description="This permanently removes the expense. The removal remains visible in activity history."
+        confirmLabel="Delete expense"
+        destructive
+        onConfirm={() => void remove()}
+      />
+    </div>
+  );
+}
+function Actions({
+  item,
+  view,
+  edit,
+  remove,
+  settle,
+}: {
+  item: Expense;
+  view: () => void;
+  edit: () => void;
+  remove: () => void;
+  settle: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${item.title}`}>
+          <MoreHorizontal />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={view}>
+          <ReceiptIndianRupee /> View details
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={edit}>
+          <Pencil /> Edit
+        </DropdownMenuItem>
+        {!item.settled ? (
+          <DropdownMenuItem onSelect={settle}>
+            <HandCoins /> Paid back to {item.paidBy}
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={remove} className="text-destructive focus:text-destructive">
+          <Trash2 /> Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

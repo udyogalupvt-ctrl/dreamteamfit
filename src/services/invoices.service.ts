@@ -59,6 +59,8 @@ export const mapInvoice = (id: string, d: DocumentData): Invoice => ({
   ptGross: Number(d["ptGross"] ?? 0),
   trainerShareTotal: Number(d["trainerShareTotal"] ?? 0),
   paymentsTracked: Boolean(d["paymentsTracked"]),
+  counsellorId: d["counsellorId"] ?? "",
+  counsellorName: d["counsellorName"] ?? "",
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });

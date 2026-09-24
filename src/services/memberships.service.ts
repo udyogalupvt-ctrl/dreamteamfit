@@ -11,13 +11,7 @@ import {
 import { db } from "@/lib/firebase";
 import { addDaysISO, todayISO } from "@/lib/format";
 import type { GymPackage, Membership, MembershipSummary } from "@/types/models";
-import {
-  col,
-  COLLECTIONS,
-  subscribeCollection,
-  subscribeQuery,
-  toDate,
-} from "./firestore.service";
+import { col, COLLECTIONS, subscribeCollection, subscribeQuery, toDate } from "./firestore.service";
 
 const mapMembership = (id: string, d: DocumentData): Membership => ({
   id,
@@ -29,6 +23,8 @@ const mapMembership = (id: string, d: DocumentData): Membership => ({
   startDate: d["startDate"] ?? "",
   endDate: d["endDate"] ?? "",
   status: d["status"] ?? "pending",
+  counsellorId: d["counsellorId"] ?? "",
+  counsellorName: d["counsellorName"] ?? "",
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });

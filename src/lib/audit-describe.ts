@@ -15,6 +15,7 @@ export const AUDIT_SKIP = new Set([
   "renewalNotifications",
   "birthdayNotifications",
   "absenceNotifications",
+  "paymentDueNotifications",
   "publicInvoices",
   "expenseActivities",
   "importBatches",
@@ -153,6 +154,8 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
       )
         return `WhatsApp ${s(d["type"])} ${s(d["status"])}${d["errorMessage"] ? `: ${s(d["errorMessage"])}` : ""}`;
       return null;
+    case "memberCalls":
+      return `Call · ${s(d["clientNameSnapshot"])} (${s(d["segment"])}): ${s(d["status"]).replace(/_/g, " ")}${d["notes"] ? ` — ${s(d["notes"])}` : ""}`;
     case "expenses":
       return `Expense ${action}: ${s(d["title"])} ${money(d["amount"])}`;
     case "manualIncome":

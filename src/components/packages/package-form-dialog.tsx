@@ -14,8 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DURATION_OPTIONS, formatDuration } from "@/lib/format";
 import { createPackage, updatePackage } from "@/services/packages.service";
+import { DurationFields } from "@/components/packages/duration-fields";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { PACKAGE_CATEGORIES, type GymPackage, type PackageCategory } from "@/types/models";
 
@@ -24,7 +24,9 @@ const schema = z.object({
   description: z.string().trim().max(300, "Keep it under 300 characters"),
   durationDays: z
     .number()
-    .refine((v) => (DURATION_OPTIONS as readonly number[]).includes(v), "Choose a duration"),
+    .int()
+    .min(1, "Enter the duration: months and/or days")
+    .max(3650, "Keep it under 10 years"),
   price: z
     .number({ invalid_type_error: "Enter a price" })
     .finite("Enter a valid price")
@@ -32,6 +34,7 @@ const schema = z.object({
     .max(10_000_000, "Price is too high"),
   isActive: z.boolean(),
   category: z.enum(PACKAGE_CATEGORIES),
+  maxDiscount: z.number().min(0, "Can't be negative").nullable(),
 });
 
 type Errors = Partial<Record<keyof z.infer<typeof schema>, string>>;
@@ -45,7 +48,8 @@ interface Props {
 export function PackageFormDialog({ open, onOpenChange, pkg }: Props) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [duration, setDuration] = useState<string>("");
+  const [durationDays, setDurationDays] = useState(0);
+  const [maxDiscount, setMaxDiscount] = useState("");
   const [price, setPrice] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [category, setCategory] = useState<PackageCategory>("Strength + Cardio");
@@ -57,7 +61,10 @@ export function PackageFormDialog({ open, onOpenChange, pkg }: Props) {
     setName(pkg?.name ?? "");
     setDescription(pkg?.description ?? "");
     // New packages start with no duration, so "Yearly" can't be saved as 30 days by accident.
-    setDuration(pkg ? String(pkg.durationDays) : "");
+    setDurationDays(pkg?.durationDays ?? 0);
+    setMaxDiscount(
+      pkg?.maxDiscount === null || pkg?.maxDiscount === undefined ? "" : String(pkg.maxDiscount),
+    );
     setPrice(pkg ? String(pkg.price) : "");
     setIsActive(pkg?.isActive ?? true);
     setCategory(pkg?.category ?? "Strength + Cardio");
@@ -69,7 +76,8 @@ export function PackageFormDialog({ open, onOpenChange, pkg }: Props) {
     const parsed = schema.safeParse({
       name,
       description,
-      durationDays: Number(duration),
+      durationDays,
+      maxDiscount: maxDiscount.trim() === "" ? null : Number(maxDiscount),
       price: price.trim() === "" ? Number.NaN : Number(price),
       isActive,
       category,
@@ -123,8 +131,16 @@ export function PackageFormDialog({ open, onOpenChange, pkg }: Props) {
         </Field>
         <Field label="Category / training type" htmlFor="pkg-cat">
           <Select value={category} onValueChange={(v) => setCategory(v as PackageCategory)}>
-            <SelectTrigger id="pkg-cat" className="w-full"><SelectValue /></SelectTrigger>
-            <SelectContent>{PACKAGE_CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+            <SelectTrigger id="pkg-cat" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PACKAGE_CATEGORIES.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </Field>
         <Field label="Description" htmlFor="pkg-desc" error={errors.description}>
@@ -137,20 +153,12 @@ export function PackageFormDialog({ open, onOpenChange, pkg }: Props) {
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Duration" htmlFor="pkg-duration" error={errors.durationDays} required>
-            <Select value={duration} onValueChange={setDuration}>
-              <SelectTrigger id="pkg-duration" className="h-10 w-full" aria-invalid={!!errors.durationDays}>
-                <SelectValue placeholder="Choose duration" />
-              </SelectTrigger>
-              <SelectContent>
-                {DURATION_OPTIONS.map((d) => (
-                  <SelectItem key={d} value={String(d)}>
-                    {d} days · {formatDuration(d)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
+          <DurationFields
+            idPrefix="pkg"
+            totalDays={durationDays}
+            onChange={setDurationDays}
+            {...(errors.durationDays ? { error: errors.durationDays } : {})}
+          />
           <Field label="Price (₹)" htmlFor="pkg-price" error={errors.price} required>
             <Input
               id="pkg-price"
@@ -162,6 +170,22 @@ export function PackageFormDialog({ open, onOpenChange, pkg }: Props) {
               onChange={(e) => setPrice(e.target.value)}
               placeholder="999"
               aria-invalid={!!errors.price}
+            />
+          </Field>
+          <Field
+            label="Max discount (₹)"
+            htmlFor="pkg-maxdisc"
+            error={errors.maxDiscount}
+            hint="Highest discount staff can give. Empty = no limit."
+          >
+            <Input
+              id="pkg-maxdisc"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              value={maxDiscount}
+              onChange={(e) => setMaxDiscount(e.target.value)}
+              placeholder="No limit"
             />
           </Field>
         </div>

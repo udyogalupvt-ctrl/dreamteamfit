@@ -19,6 +19,8 @@ export interface EnrollmentOpenOptions {
   inquiryId?: string | null;
   existingClient?: Client | null;
   resumeEnrollmentId?: string | null;
+  /** Counsellor already handling this person (from the lead). */
+  counsellorId?: string | null;
 }
 
 interface EnrollmentApi {

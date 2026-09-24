@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import type { StaffFeature } from "@/types/models";
 
 export interface AppUser {
   uid: string;
@@ -16,6 +17,8 @@ export interface NavItem {
   group: NavGroupLabel;
   badge?: number;
   children?: { label: string; to: string }[];
+  /** Hidden unless the login has this feature ("owner" = owners only). */
+  feature?: StaffFeature | "owner";
 }
 
 export type ThemeMode = "light" | "dark" | "system";

@@ -230,9 +230,31 @@ async function webhook(request: Request, url: URL) {
   return text("EVENT_RECEIVED");
 }
 
+/** Approved templates with their Meta category (Utility / Marketing), for the usage page. */
+async function templates(request: Request) {
+  if (!(await requireStaff(request))) return json({ error: "Sign in required." }, 401);
+  const c = config();
+  const waba = env("WHATSAPP_BUSINESS_ACCOUNT_ID");
+  if (!c.token || !waba) return json({ templates: [] });
+  const r = await fetch(
+    `https://graph.facebook.com/${c.version}/${waba}/message_templates?fields=name,status,category&limit=100`,
+    { headers: { Authorization: `Bearer ${c.token}` } },
+  );
+  if (!r.ok) return json({ templates: [] });
+  const body = (await r.json()) as { data?: { name: string; status: string; category: string }[] };
+  return json({
+    templates: (body.data ?? []).map((t) => ({
+      name: t.name,
+      status: t.status,
+      category: t.category,
+    })),
+  });
+}
+
 export function handleWhatsApp(request: Request, url: URL) {
   const action = url.pathname.replace(/^\/api\/whatsapp\/?/, "").replace(/\/+$/, "");
   if (action === "webhook") return webhook(request, url);
+  if (action === "templates" && request.method === "GET") return templates(request);
   if (request.method !== "POST") return text("Method not allowed", 405);
   if (action === "send") return send(request);
   if (action === "test") return testConnection(request);

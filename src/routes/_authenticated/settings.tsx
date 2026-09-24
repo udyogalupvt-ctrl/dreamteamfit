@@ -357,6 +357,13 @@ function WhatsAppSettingsPanel() {
                     onChange={(e) => set("renewalTemplate", e.target.value.trim())}
                   />
                 </Field>
+                <Field label="Payment due template" htmlFor="wa-due">
+                  <Input
+                    id="wa-due"
+                    value={f.paymentDueTemplate}
+                    onChange={(e) => set("paymentDueTemplate", e.target.value.trim())}
+                  />
+                </Field>
                 <Field label="Birthday template" htmlFor="wa-bday">
                   <Input
                     id="wa-bday"
@@ -385,7 +392,9 @@ function WhatsAppSettingsPanel() {
               inputMode="numeric"
               maxLength={3}
               value={f.defaultCountryCode}
-              onChange={(e) => set("defaultCountryCode", e.target.value.replace(/\D/g, "").slice(0, 3))}
+              onChange={(e) =>
+                set("defaultCountryCode", e.target.value.replace(/\D/g, "").slice(0, 3))
+              }
             />
           </Field>
           <p className="text-meta flex items-center gap-1.5">
@@ -452,6 +461,37 @@ function ReminderSettings() {
               />
             </Field>
           </>
+        ) : null}
+        <ToggleRow
+          label="Balance due reminders"
+          hint="WhatsApp with the balance and bill link, once a day (about 8 AM) from a few days before the next payment date until that day."
+          checked={f.automationEnabled && f.paymentDueEnabled}
+          onChange={(v) =>
+            setF((x) => ({
+              ...x,
+              automationEnabled: v || x.automationEnabled,
+              paymentDueEnabled: v,
+            }))
+          }
+        />
+        {f.paymentDueEnabled ? (
+          <Field
+            label="Start reminders this many days before"
+            htmlFor="pd-days"
+            className="sm:max-w-xs"
+            hint="3 = messages 3, 2 and 1 day before, and on the day. 0 = only on the day."
+          >
+            <Input
+              id="pd-days"
+              type="number"
+              min="0"
+              max="7"
+              value={f.paymentDueDaysBefore}
+              onChange={(e) =>
+                set("paymentDueDaysBefore", Math.min(7, Math.max(0, Number(e.target.value) || 0)))
+              }
+            />
+          </Field>
         ) : null}
         <ToggleRow
           label="Birthday wishes"

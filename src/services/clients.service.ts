@@ -1,5 +1,6 @@
 import {
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { normalizePhone } from "@/lib/format";
+import { createPublicToken } from "@/lib/invoice-utils";
 import type { Client } from "@/types/models";
 import { col, COLLECTIONS, subscribeCollection, toDate } from "./firestore.service";
 
@@ -30,7 +32,19 @@ export type ClientInput = Pick<
   | "notes"
   | "status"
 >;
-export type ClientUpdateInput = Partial<ClientInput & Pick<Client, "biometricUserId" | "biometricDeviceId" | "biometricStatus" | "whatsappOptIn" | "whatsappPhone" | "whatsappStatus" | "lastWhatsappMessageAt">>;
+export type ClientUpdateInput = Partial<
+  ClientInput &
+    Pick<
+      Client,
+      | "biometricUserId"
+      | "biometricDeviceId"
+      | "biometricStatus"
+      | "whatsappOptIn"
+      | "whatsappPhone"
+      | "whatsappStatus"
+      | "lastWhatsappMessageAt"
+    >
+>;
 
 const COUNTER_REF = () => doc(db, COLLECTIONS.settings, "counters");
 
@@ -59,8 +73,10 @@ export const mapClient = (id: string, d: DocumentData): Client => ({
   whatsappStatus: d["whatsappStatus"] ?? "opted_out",
   lastWhatsappMessageAt: d["lastWhatsappMessageAt"] ? toDate(d["lastWhatsappMessageAt"]) : null,
   firstThumbRegistered: Boolean(d["firstThumbRegistered"]),
+  photoUploadToken: d["photoUploadToken"] ?? "",
   enrollmentId: d["enrollmentId"] ?? null,
-  deviceAccess: d["deviceAccess"] === "removed" ? "removed" : d["deviceAccess"] === "on" ? "on" : null,
+  deviceAccess:
+    d["deviceAccess"] === "removed" ? "removed" : d["deviceAccess"] === "on" ? "on" : null,
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -155,4 +171,15 @@ export async function updateClient(id: string, input: ClientUpdateInput) {
   const patch: Record<string, unknown> = { ...input, updatedAt: serverTimestamp() };
   if (input.phone !== undefined) patch["phoneNormalized"] = normalizePhone(input.phone);
   await updateDoc(doc(db, COLLECTIONS.clients, id), patch);
+}
+
+/** Code for the member's photo upload link (/photo/<code>); made once, cleared after upload. */
+export async function ensurePhotoLink(clientId: string) {
+  const ref = doc(db, COLLECTIONS.clients, clientId);
+  const snap = await getDoc(ref);
+  const existing = String(snap.data()?.["photoUploadToken"] ?? "");
+  if (existing) return existing;
+  const token = createPublicToken();
+  await updateDoc(ref, { photoUploadToken: token, updatedAt: serverTimestamp() });
+  return token;
 }

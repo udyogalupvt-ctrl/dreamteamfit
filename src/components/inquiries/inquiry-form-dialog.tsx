@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { useLive } from "@/hooks/use-live-query";
+import { subscribeStaff } from "@/services/staff.service";
+import type { Staff } from "@/types/models";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -64,6 +67,12 @@ export function InquiryFormDialog({
   inquiry?: Inquiry | null;
 }) {
   const [form, setForm] = useState<InquiryInput>(emptyInquiry);
+  const staffList = useLive<Staff[]>(subscribeStaff, [], []);
+  const counsellors = (() => {
+    const active = staffList.data.filter((x) => x.active);
+    const marked = active.filter((x) => x.isCounsellor);
+    return marked.length ? marked : active;
+  })();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [memberHint, setMemberHint] = useState("");
@@ -227,6 +236,31 @@ export function InquiryFormDialog({
             </datalist>
           </Field>
         )}
+        <Field label="Counsellor" htmlFor="i-counsellor" hint="Who is handling this lead">
+          <Select
+            value={form.counsellorId ?? ""}
+            onValueChange={(v) =>
+              setForm((f) => ({
+                ...f,
+                counsellorId: v,
+                assignedTo: counsellors.find((c) => c.id === v)?.name ?? "",
+              }))
+            }
+          >
+            <SelectTrigger id="i-counsellor" className="w-full">
+              <SelectValue
+                placeholder={counsellors.length ? "Select counsellor" : "Add staff first"}
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {counsellors.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
         <Field label="Call them back" htmlFor="i-follow" className="sm:col-span-2">
           <div className="flex flex-wrap gap-1.5">
             {CALL_WHEN.map((c) => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PhotoLinkButtons } from "@/components/clients/photo-link-button";
 import { Link } from "@tanstack/react-router";
 import {
   Check,
@@ -55,7 +56,15 @@ import {
   DEFAULT_BILLING_SETTINGS,
   subscribeBusinessSettings,
 } from "@/services/business-settings.service";
-import { enrollMember, enrollmentTotals, subscribeEnrollment } from "@/services/enrollment.service";
+import {
+  enrollMember,
+  enrollmentTotals,
+  maxDiscountFor,
+  subscribeEnrollment,
+} from "@/services/enrollment.service";
+import { subscribeStaff } from "@/services/staff.service";
+import { useAccess } from "@/hooks/use-access";
+import { addDaysISO } from "@/lib/format";
 import {
   findClientsByPhone,
   subscribeClient,
@@ -124,6 +133,9 @@ interface Draft {
   amountPaid: number | null;
   method: PaymentMethod;
   notes: string;
+  counsellorId?: string;
+  nextPaymentDate?: string;
+  photoLater?: boolean;
 }
 
 const draftStorageKey = (key: string) => `rf.enrollment-draft.${key}`;
@@ -184,6 +196,12 @@ export function EnrollmentWizard({
   const [amountPaid, setAmountPaid] = useState<number | null>(restored?.amountPaid ?? null);
   const [method, setMethod] = useState<PaymentMethod>(restored?.method ?? "UPI");
   const [notes, setNotes] = useState(restored?.notes ?? "");
+  const access = useAccess();
+  const [counsellorId, setCounsellorId] = useState(
+    () => restored?.counsellorId ?? options.counsellorId ?? "",
+  );
+  const [nextPaymentDate, setNextPaymentDate] = useState(restored?.nextPaymentDate ?? "");
+  const [photoLater, setPhotoLater] = useState(restored?.photoLater ?? false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [enrollmentId, setEnrollmentId] = useState<string | null>(
@@ -195,6 +213,19 @@ export function EnrollmentWizard({
   const packages = useLive(subscribePackages, [], []);
   const ptPackages = useLive(subscribePtPackages, [], []);
   const trainers = useLive(subscribeTrainers, [], []);
+  const staffList = useLive(subscribeStaff, [], []);
+  // Counsellors first; if nobody is marked counsellor yet, any active staff member can be picked.
+  const counsellors = useMemo(() => {
+    const active = staffList.data.filter((s) => s.active);
+    const marked = active.filter((s) => s.isCounsellor);
+    return marked.length ? marked : active;
+  }, [staffList.data]);
+  // A counsellor signed in on their own login is pre-selected.
+  useEffect(() => {
+    if (!counsellorId && access.staffId && counsellors.some((c) => c.id === access.staffId))
+      setCounsellorId(access.staffId);
+  }, [access.staffId, counsellors, counsellorId]);
+  const counsellor = counsellors.find((c) => c.id === counsellorId) ?? null;
   const settings = useLive(subscribeBusinessSettings, DEFAULT_BILLING_SETTINGS, []);
   const wa = useLive(subscribeWhatsAppSettings, DEFAULT_WHATSAPP_SETTINGS, []);
   const enrollment = useLive<Enrollment | null>(
@@ -266,6 +297,8 @@ export function EnrollmentWizard({
     [gymPackage, pt, discount, amountPaid, settings.data],
   );
   const paid = amountPaid ?? totals.total;
+  const maxDiscount = maxDiscountFor({ gymPackage, pt });
+  const balanceLeft = totals.total - Math.min(paid, totals.total) > 0;
   const hasEntry = Boolean(client.fullName || client.phone || packageId || ptOn);
 
   // Keep an unsaved draft so an accidental close never loses what staff typed.
@@ -289,6 +322,9 @@ export function EnrollmentWizard({
             amountPaid,
             method,
             notes,
+            counsellorId,
+            nextPaymentDate,
+            photoLater,
           }
         : null,
     );
@@ -310,6 +346,9 @@ export function EnrollmentWizard({
     amountPaid,
     method,
     notes,
+    counsellorId,
+    nextPaymentDate,
+    photoLater,
   ]);
 
   const startFresh = () => {
@@ -323,6 +362,7 @@ export function EnrollmentWizard({
     setDiscount(0);
     setAmountPaid(null);
     setNotes("");
+    setNextPaymentDate("");
     setStep(firstStep);
   };
 
@@ -332,6 +372,9 @@ export function EnrollmentWizard({
       if (client.fullName.trim().length < 2) e["fullName"] = "Enter the member's name";
       if (normalizePhone(client.phone).length < 10) e["phone"] = "Enter a 10-digit mobile number";
       if (client.email && !/^\S+@\S+\.\S+$/.test(client.email)) e["email"] = "Invalid email";
+      // Every member needs a photo: take it now, or send them the upload link.
+      if (!client.profilePhotoUrl && !photoLater)
+        e["photo"] = "Take the member's photo, or tick that they will send it from their phone";
       if (!e["phone"]) {
         const dup = (await findClientsByPhone(client.phone)).filter((c) => c.id !== memberId);
         if (dup.length)
@@ -342,11 +385,17 @@ export function EnrollmentWizard({
       if (!gymPackage && !ptOn) e["package"] = "Pick a gym package (or turn on personal training)";
       if (ptOn && !ptPkg) e["ptPackage"] = "Pick a PT package";
       if (ptOn && !trainer) e["trainer"] = "Pick a trainer";
+      if (counsellors.length && !counsellor) e["counsellor"] = "Pick the counsellor";
     }
     if (s === PAYMENT) {
       if (!gymPackage && !pt) e["package"] = "Pick a package first";
       if (!(paid >= 0) || paid > totals.total)
         e["amountPaid"] = `Enter 0 to ${formatPrice(totals.total)}`;
+      if (maxDiscount !== null && discount > maxDiscount)
+        e["discount"] = `At most ${formatPrice(maxDiscount)} on this package`;
+      if (balanceLeft && !nextPaymentDate) e["nextPaymentDate"] = "When will the rest be paid?";
+      else if (balanceLeft && nextPaymentDate < todayISO())
+        e["nextPaymentDate"] = "Pick today or a later date";
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -378,6 +427,8 @@ export function EnrollmentWizard({
         notes,
         settings: settings.data,
         staff: { uid: user?.uid ?? "", name: user?.displayName || user?.email || "Staff" },
+        counsellor: counsellor ? { id: counsellor.id, name: counsellor.name } : null,
+        nextPaymentDate: balanceLeft ? nextPaymentDate : null,
       });
       writeDraft(draftKey, null);
       setEnrollmentId(r.enrollmentId);
@@ -518,6 +569,8 @@ export function EnrollmentWizard({
 
           {step === DETAILS && (!existing || resuming) ? (
             <DetailsStep
+              photoLater={photoLater}
+              setPhotoLater={setPhotoLater}
               client={client}
               setClient={setClient}
               whatsappOptIn={whatsappOptIn}
@@ -572,14 +625,44 @@ export function EnrollmentWizard({
                       </button>
                     ))}
                 </div>
-                <Field label="Start date" htmlFor="e-start" className="sm:max-w-xs">
-                  <Input
-                    id="e-start"
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                  />
-                </Field>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Start date" htmlFor="e-start">
+                    <Input
+                      id="e-start"
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                    />
+                  </Field>
+                  <Field
+                    label="Counsellor"
+                    htmlFor="e-counsellor"
+                    required={counsellors.length > 0}
+                    error={errors["counsellor"]}
+                    hint={
+                      counsellors.length
+                        ? "Who helped this member join"
+                        : "Add staff in Staff to pick a counsellor"
+                    }
+                  >
+                    <Select
+                      value={counsellorId}
+                      onValueChange={setCounsellorId}
+                      disabled={!counsellors.length}
+                    >
+                      <SelectTrigger id="e-counsellor" className="w-full">
+                        <SelectValue placeholder="Select counsellor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {counsellors.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </div>
               </section>
 
               <section className="space-y-3 rounded-xl border border-border p-3 sm:p-4">
@@ -788,12 +871,50 @@ export function EnrollmentWizard({
                       ))}
                     </div>
                   </Field>
-                  <Field label="Discount ₹" htmlFor="e-disc">
+                  {balanceLeft ? (
+                    <Field
+                      label="Next payment date"
+                      htmlFor="e-nextpay"
+                      required
+                      error={errors["nextPaymentDate"]}
+                      className="col-span-2"
+                      hint="A WhatsApp reminder goes to the member that morning."
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Input
+                          id="e-nextpay"
+                          type="date"
+                          min={todayISO()}
+                          value={nextPaymentDate}
+                          onChange={(e) => setNextPaymentDate(e.target.value)}
+                          className="w-auto"
+                        />
+                        {[7, 15, 30].map((d) => (
+                          <Button
+                            key={d}
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setNextPaymentDate(addDaysISO(todayISO(), d))}
+                          >
+                            +{d} days
+                          </Button>
+                        ))}
+                      </div>
+                    </Field>
+                  ) : null}
+                  <Field
+                    label="Discount ₹"
+                    htmlFor="e-disc"
+                    error={errors["discount"]}
+                    hint={maxDiscount !== null ? `Max ${formatPrice(maxDiscount)}` : undefined}
+                  >
                     <Input
                       id="e-disc"
                       type="number"
                       inputMode="decimal"
                       min={0}
+                      max={maxDiscount ?? undefined}
                       value={discount}
                       onChange={(e) => setDiscount(Number(e.target.value))}
                     />
@@ -884,6 +1005,15 @@ export function EnrollmentWizard({
               </div>
             )
           ) : null}
+          {step === DONE && member.data && !member.data.profilePhotoUrl ? (
+            <div className="mx-auto max-w-md space-y-2 rounded-xl border border-warning/50 bg-warning/10 p-4 text-center">
+              <p className="font-semibold">Photo still needed</p>
+              <p className="text-meta">Send {member.data.fullName} the link to add their photo.</p>
+              <div className="flex justify-center">
+                <PhotoLinkButtons client={member.data} />
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
@@ -966,12 +1096,16 @@ function DetailsStep({
   whatsappOptIn,
   setWhatsappOptIn,
   errors,
+  photoLater,
+  setPhotoLater,
 }: {
   client: ClientInput;
   setClient: (c: ClientInput) => void;
   whatsappOptIn: boolean;
   setWhatsappOptIn: (v: boolean) => void;
   errors: Record<string, string>;
+  photoLater: boolean;
+  setPhotoLater: (v: boolean) => void;
 }) {
   const [more, setMore] = useState(
     Boolean(client.email || client.dateOfBirth || client.address || client.emergencyContact),
@@ -1010,6 +1144,51 @@ function DetailsStep({
           </span>
         </span>
       </label>
+      <div className="space-y-2 sm:col-span-2">
+        <ImageUpload
+          label="Photo (required)"
+          folder={CLOUDINARY_CLIENT_FOLDER}
+          hint="A clear face photo. Take it now with the camera."
+          value={
+            client.profilePhotoUrl
+              ? ({
+                  url: client.profilePhotoUrl,
+                  publicId: "",
+                  width: 0,
+                  height: 0,
+                  format: "",
+                  bytes: 0,
+                } as never)
+              : null
+          }
+          onChange={(img) => {
+            setClient({ ...client, profilePhotoUrl: img?.url ?? null });
+            if (img) setPhotoLater(false);
+          }}
+        />
+        {!client.profilePhotoUrl ? (
+          <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm">
+            <Checkbox
+              checked={photoLater}
+              onCheckedChange={(v) => setPhotoLater(v === true)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block font-semibold">
+                Member will send the photo from their phone
+              </span>
+              <span className="text-meta">
+                After payment, send them the photo link on WhatsApp.
+              </span>
+            </span>
+          </label>
+        ) : null}
+        {errors["photo"] ? (
+          <p role="alert" className="text-sm font-semibold text-destructive">
+            {errors["photo"]}
+          </p>
+        ) : null}
+      </div>
       <Field label="Gender" htmlFor="e-gender">
         <Select
           value={client.gender}
@@ -1046,24 +1225,6 @@ function DetailsStep({
       </Field>
       {more ? (
         <>
-          <ImageUpload
-            className="sm:col-span-2"
-            label="Photo"
-            folder={CLOUDINARY_CLIENT_FOLDER}
-            value={
-              client.profilePhotoUrl
-                ? ({
-                    url: client.profilePhotoUrl,
-                    publicId: "",
-                    width: 0,
-                    height: 0,
-                    format: "",
-                    bytes: 0,
-                  } as never)
-                : null
-            }
-            onChange={(img) => setClient({ ...client, profilePhotoUrl: img?.url ?? null })}
-          />
           <Field label="Date of birth" htmlFor="e-dob" hint="Used for birthday wishes">
             <Input
               id="e-dob"

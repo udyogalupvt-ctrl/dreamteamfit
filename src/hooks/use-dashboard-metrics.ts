@@ -17,6 +17,7 @@ import {
   Users,
   UsersRound,
 } from "lucide-react";
+import { useAccess } from "@/hooks/use-access";
 import { useLive } from "@/hooks/use-live-query";
 import { effectiveMembershipStatus, formatNumber, formatPrice, todayISO } from "@/lib/format";
 import { subscribeClients } from "@/services/clients.service";
@@ -59,6 +60,8 @@ import type { ManualIncome, Payment } from "@/types/models";
 
 /** Derives dashboard numbers from live Firestore data only — nothing is invented. */
 export function useDashboardMetrics() {
+  // Staff without the finance feature never load expenses (Firestore rules would refuse).
+  const finance = useAccess().can("finance");
   const clients = useLive<Client[]>(subscribeClients, [], []);
   const memberships = useLive<Membership[]>(subscribeMemberships, [], []);
   const inquiries = useLive<Inquiry[]>(subscribeInquiries, [], []);
@@ -67,14 +70,22 @@ export function useDashboardMetrics() {
   const bookings = useLive<Booking[]>(subscribeBookings, [], []);
   const classes = useLive<GroupClass[]>(subscribeGroupClasses, [], []);
   const enrollments = useLive<ClassEnrollment[]>(subscribeClassEnrollments, [], []);
-  const expenses = useLive<Expense[]>(subscribeExpenses, [], []);
-  const expenseActivities = useLive<ExpenseActivity[]>(subscribeExpenseActivities, [], []);
+  const expenses = useLive<Expense[]>(finance ? subscribeExpenses : null, [], [finance]);
+  const expenseActivities = useLive<ExpenseActivity[]>(
+    finance ? subscribeExpenseActivities : null,
+    [],
+    [finance],
+  );
   const invoices = useLive<Invoice[]>(subscribeInvoices, [], []);
   const attendance = useLive<AttendanceEvent[]>(subscribeAttendance, [], []);
   const followUps = useLive<FollowUp[]>(subscribeFollowUps, [], []);
   const automationActivities = useLive<AutomationActivity[]>(subscribeAutomationActivities, [], []);
   const payments = useLive<Payment[]>(subscribePayments, [], []);
-  const manualIncome = useLive<ManualIncome[]>(subscribeManualIncome, [], []);
+  const manualIncome = useLive<ManualIncome[]>(
+    finance ? subscribeManualIncome : null,
+    [],
+    [finance],
+  );
 
   const loading =
     payments.loading ||
@@ -225,7 +236,13 @@ export function useDashboardMetrics() {
       },
     ];
 
-    const stats: StatMetric[] = [
+    const FINANCE_ONLY = new Set([
+      "profit-loss",
+      "month-expenses",
+      "trainer-payable",
+      "collection",
+    ]);
+    const allStats: StatMetric[] = [
       {
         id: "profit-loss",
         label: "Profit this month",
@@ -350,6 +367,8 @@ export function useDashboardMetrics() {
       },
     ];
 
+    const stats = finance ? allStats : allStats.filter((s) => !FINANCE_ONLY.has(s.id));
+
     const totalInquiries = inquiries.data.length;
     const converted = inquiries.data.filter((i) => i.convertedToClient).length;
     const ratios = [
@@ -433,26 +452,22 @@ export function useDashboardMetrics() {
         tone: item.action === "deleted" ? ("danger" as const) : ("warning" as const),
         icon: ReceiptIndianRupee,
       })),
-      ...invoices.data
-        .slice(0, 8)
-        .map((item) => ({
-          id: `invoice-${item.id}`,
-          title: `${item.invoiceNumber} generated`,
-          description: `${item.clientNameSnapshot} · ${formatPrice(item.amountPaid)} collected`,
-          at: item.createdAt,
-          tone: "success" as const,
-          icon: BadgeIndianRupee,
-        })),
-      ...automationActivities.data
-        .slice(0, 8)
-        .map((item) => ({
-          id: `automation-${item.id}`,
-          title: item.description,
-          description: item.clientNameSnapshot,
-          at: item.createdAt,
-          tone: item.type === "automation_failed" ? ("danger" as const) : ("warning" as const),
-          icon: MessageSquareHeart,
-        })),
+      ...invoices.data.slice(0, 8).map((item) => ({
+        id: `invoice-${item.id}`,
+        title: `${item.invoiceNumber} generated`,
+        description: `${item.clientNameSnapshot} · ${formatPrice(item.amountPaid)} collected`,
+        at: item.createdAt,
+        tone: "success" as const,
+        icon: BadgeIndianRupee,
+      })),
+      ...automationActivities.data.slice(0, 8).map((item) => ({
+        id: `automation-${item.id}`,
+        title: item.description,
+        description: item.clientNameSnapshot,
+        at: item.createdAt,
+        tone: item.type === "automation_failed" ? ("danger" as const) : ("warning" as const),
+        icon: MessageSquareHeart,
+      })),
     ]
       .sort((a, b) => b.at.getTime() - a.at.getTime())
       .slice(0, 6)
@@ -504,6 +519,7 @@ export function useDashboardMetrics() {
     attendance.data,
     followUps.data,
     automationActivities.data,
+    finance,
   ]);
 
   return { ...result, loading, error };

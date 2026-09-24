@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { PAYMENT_METHODS, type Invoice, type PaymentMethod } from "@/types/models";
 import { autoSendBill, markInvoiceShared, sendInvoiceWhatsApp } from "@/services/whatsapp.service";
 import { toastBillSend } from "@/lib/bill-send-toast";
+import { todayISO } from "@/lib/format";
 import {
   DEFAULT_WHATSAPP_SETTINGS,
   isWhatsAppApiLive,
@@ -162,12 +163,17 @@ function BalancePaymentDialog({
   const { user } = useAuth();
   const [amount, setAmount] = useState(invoice.balanceDue);
   const [method, setMethod] = useState<PaymentMethod>("UPI");
+  const [nextDate, setNextDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [lastOpen, setLastOpen] = useState(false);
   if (open !== lastOpen) {
     setLastOpen(open);
-    if (open) setAmount(invoice.balanceDue);
+    if (open) {
+      setAmount(invoice.balanceDue);
+      setNextDate("");
+    }
   }
+  const restLeft = amount > 0 && amount < invoice.balanceDue;
   const save = async () => {
     setSaving(true);
     try {
@@ -176,6 +182,10 @@ function BalancePaymentDialog({
         amount,
         method,
         user?.displayName || user?.email || "Staff",
+        {
+          staffUid: user?.uid ?? "",
+          nextPaymentDate: restLeft ? nextDate : null,
+        },
       );
       toast.success("Payment recorded", {
         description: `${formatPrice(amount)} for ${invoice.invoiceNumber}`,
@@ -202,7 +212,9 @@ function BalancePaymentDialog({
           </Button>
           <Button
             size="lg"
-            disabled={saving || amount <= 0 || amount > invoice.balanceDue}
+            disabled={
+              saving || amount <= 0 || amount > invoice.balanceDue || (restLeft && !nextDate)
+            }
             onClick={() => void save()}
           >
             {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Record{" "}
@@ -227,6 +239,22 @@ function BalancePaymentDialog({
             onChange={(e) => setAmount(Number(e.target.value))}
           />
         </Field>
+        {restLeft ? (
+          <Field
+            label="Next payment date"
+            htmlFor="bal-next"
+            required
+            hint={`${formatPrice(invoice.balanceDue - amount)} will still be due. The member gets a WhatsApp reminder that morning.`}
+          >
+            <Input
+              id="bal-next"
+              type="date"
+              min={todayISO()}
+              value={nextDate}
+              onChange={(e) => setNextDate(e.target.value)}
+            />
+          </Field>
+        ) : null}
         <Field label="Paid by" htmlFor="bal-method">
           <div className="flex flex-wrap gap-1.5" role="radiogroup" id="bal-method">
             {PAYMENT_METHODS.filter((m) => m !== "Other").map((m) => (

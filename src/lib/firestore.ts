@@ -67,12 +67,13 @@ function sideWrites(ops: { op: Op; before: D | null }[]): Extra[] {
   const commands = fs.collection(db, "biometricCommands");
   const doorFor = new Set<string>();
   const now = fs.serverTimestamp();
-  const note = (type: string, clientId: string, pin = "", deviceId = "") =>
+  const note = (type: string, clientId: string, pin = "", deviceId = "", staffId = "") =>
     out.push({
       ref: fs.doc(commands),
       data: {
         type,
         clientId,
+        staffId,
         deviceId,
         biometricUserId: pin,
         serialNumber: "",
@@ -103,6 +104,21 @@ function sideWrites(ops: { op: Op; before: D | null }[]): Extra[] {
       const clientId = String(doc["clientId"] ?? "");
       // A new member's plan starts only when the thumb is registered (done on the server).
       if (clientId && !(waiting(before) && waiting(after))) doorFor.add(clientId);
+    } else if (
+      col === "staff" &&
+      before &&
+      after &&
+      before["active"] !== false &&
+      after["active"] === false
+    ) {
+      if (before["biometricUserId"])
+        note(
+          "staff_off",
+          "",
+          String(before["biometricUserId"]),
+          String(before["biometricDeviceId"] ?? ""),
+          op.ref.id,
+        );
     } else if (col === "clients" && before) {
       if (!after && before["biometricUserId"])
         note(

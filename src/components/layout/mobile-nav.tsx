@@ -14,7 +14,8 @@ import { NavList } from "@/components/layout/nav-list";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { UserMenu } from "@/components/layout/user-menu";
 import { useQuickActions } from "@/components/layout/quick-actions";
-import { APP_NAME, APP_TAGLINE, MOBILE_NAV_PATHS, NAV_ITEMS } from "@/constants/navigation";
+import { APP_NAME, APP_TAGLINE, MOBILE_NAV_PATHS } from "@/constants/navigation";
+import { useNavItems } from "@/hooks/use-nav-items";
 import { useAttention } from "@/hooks/use-attention";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +63,7 @@ export function MobileBottomNav() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const attention = useAttention();
   const actions = useQuickActions();
+  const NAV_ITEMS = useNavItems();
   const [open, setOpen] = useState(false);
   const items = MOBILE_NAV_PATHS.map((path) => NAV_ITEMS.find((item) => item.to === path)).filter(
     (x): x is (typeof NAV_ITEMS)[number] => Boolean(x),

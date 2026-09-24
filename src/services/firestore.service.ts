@@ -50,6 +50,15 @@ export const COLLECTIONS = {
   leadLogs: "leadLogs",
   biometricCommands: "biometricCommands",
   auditLogs: "auditLogs",
+  staff: "staff",
+  staffPrivate: "staffPrivate",
+  staffAccess: "staffAccess",
+  staffAttendance: "staffAttendance",
+  staffPayments: "staffPayments",
+  memberCalls: "memberCalls",
+  cashDays: "cashDays",
+  staffDayMarks: "staffDayMarks",
+  staffPayroll: "staffPayroll",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

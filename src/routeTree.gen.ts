@@ -19,19 +19,24 @@ import { Route as AuthenticatedBiometricDevicesRouteImport } from './routes/_aut
 import { Route as AuthenticatedBirthdaysRouteImport } from './routes/_authenticated/birthdays'
 import { Route as AuthenticatedBookingsRouteImport } from './routes/_authenticated/bookings'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedDayBookRouteImport } from './routes/_authenticated/day-book'
 import { Route as AuthenticatedDietPlansRouteImport } from './routes/_authenticated/diet-plans'
 import { Route as AuthenticatedExpensesRouteImport } from './routes/_authenticated/expenses'
 import { Route as AuthenticatedFollowUpsRouteImport } from './routes/_authenticated/follow-ups'
 import { Route as AuthenticatedGroupClassesRouteImport } from './routes/_authenticated/group-classes'
 import { Route as AuthenticatedInquiriesRouteImport } from './routes/_authenticated/inquiries'
 import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated/leads'
+import { Route as AuthenticatedMemberCallsRouteImport } from './routes/_authenticated/member-calls'
 import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
 import { Route as AuthenticatedPackagesRouteImport } from './routes/_authenticated/packages'
 import { Route as AuthenticatedPtSessionsRouteImport } from './routes/_authenticated/pt-sessions'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedStaffRouteImport } from './routes/_authenticated/staff'
+import { Route as AuthenticatedWhatsappUsageRouteImport } from './routes/_authenticated/whatsapp-usage'
 import { Route as AuthenticatedWorkoutPlansRouteImport } from './routes/_authenticated/workout-plans'
 import { Route as InvoiceTokenRouteImport } from './routes/invoice.$token'
+import { Route as PhotoTokenRouteImport } from './routes/photo.$token'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
 import { Route as AuthenticatedTrainersTrainerIdRouteImport } from './routes/_authenticated/trainers.$trainerId'
@@ -87,6 +92,11 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedDayBookRoute = AuthenticatedDayBookRouteImport.update({
+  id: '/day-book',
+  path: '/day-book',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedDietPlansRoute = AuthenticatedDietPlansRouteImport.update({
   id: '/diet-plans',
   path: '/diet-plans',
@@ -118,6 +128,12 @@ const AuthenticatedLeadsRoute = AuthenticatedLeadsRouteImport.update({
   path: '/leads',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedMemberCallsRoute =
+  AuthenticatedMemberCallsRouteImport.update({
+    id: '/member-calls',
+    path: '/member-calls',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedNotificationsRoute =
   AuthenticatedNotificationsRouteImport.update({
     id: '/notifications',
@@ -144,6 +160,17 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedStaffRoute = AuthenticatedStaffRouteImport.update({
+  id: '/staff',
+  path: '/staff',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedWhatsappUsageRoute =
+  AuthenticatedWhatsappUsageRouteImport.update({
+    id: '/whatsapp-usage',
+    path: '/whatsapp-usage',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedWorkoutPlansRoute =
   AuthenticatedWorkoutPlansRouteImport.update({
     id: '/workout-plans',
@@ -153,6 +180,11 @@ const AuthenticatedWorkoutPlansRoute =
 const InvoiceTokenRoute = InvoiceTokenRouteImport.update({
   id: '/invoice/$token',
   path: '/invoice/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PhotoTokenRoute = PhotoTokenRouteImport.update({
+  id: '/photo/$token',
+  path: '/photo/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedClientsIndexRoute =
@@ -184,19 +216,24 @@ export interface FileRoutesByFullPath {
   '/birthdays': typeof AuthenticatedBirthdaysRoute
   '/bookings': typeof AuthenticatedBookingsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/day-book': typeof AuthenticatedDayBookRoute
   '/diet-plans': typeof AuthenticatedDietPlansRoute
   '/expenses': typeof AuthenticatedExpensesRoute
   '/follow-ups': typeof AuthenticatedFollowUpsRoute
   '/group-classes': typeof AuthenticatedGroupClassesRoute
   '/inquiries': typeof AuthenticatedInquiriesRoute
   '/leads': typeof AuthenticatedLeadsRoute
+  '/member-calls': typeof AuthenticatedMemberCallsRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/packages': typeof AuthenticatedPackagesRoute
   '/pt-sessions': typeof AuthenticatedPtSessionsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/staff': typeof AuthenticatedStaffRoute
+  '/whatsapp-usage': typeof AuthenticatedWhatsappUsageRoute
   '/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/invoice/$token': typeof InvoiceTokenRoute
+  '/photo/$token': typeof PhotoTokenRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/trainers/$trainerId': typeof AuthenticatedTrainersTrainerIdRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
@@ -211,19 +248,24 @@ export interface FileRoutesByTo {
   '/birthdays': typeof AuthenticatedBirthdaysRoute
   '/bookings': typeof AuthenticatedBookingsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/day-book': typeof AuthenticatedDayBookRoute
   '/diet-plans': typeof AuthenticatedDietPlansRoute
   '/expenses': typeof AuthenticatedExpensesRoute
   '/follow-ups': typeof AuthenticatedFollowUpsRoute
   '/group-classes': typeof AuthenticatedGroupClassesRoute
   '/inquiries': typeof AuthenticatedInquiriesRoute
   '/leads': typeof AuthenticatedLeadsRoute
+  '/member-calls': typeof AuthenticatedMemberCallsRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/packages': typeof AuthenticatedPackagesRoute
   '/pt-sessions': typeof AuthenticatedPtSessionsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/staff': typeof AuthenticatedStaffRoute
+  '/whatsapp-usage': typeof AuthenticatedWhatsappUsageRoute
   '/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/invoice/$token': typeof InvoiceTokenRoute
+  '/photo/$token': typeof PhotoTokenRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/trainers/$trainerId': typeof AuthenticatedTrainersTrainerIdRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
@@ -240,19 +282,24 @@ export interface FileRoutesById {
   '/_authenticated/birthdays': typeof AuthenticatedBirthdaysRoute
   '/_authenticated/bookings': typeof AuthenticatedBookingsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/day-book': typeof AuthenticatedDayBookRoute
   '/_authenticated/diet-plans': typeof AuthenticatedDietPlansRoute
   '/_authenticated/expenses': typeof AuthenticatedExpensesRoute
   '/_authenticated/follow-ups': typeof AuthenticatedFollowUpsRoute
   '/_authenticated/group-classes': typeof AuthenticatedGroupClassesRoute
   '/_authenticated/inquiries': typeof AuthenticatedInquiriesRoute
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
+  '/_authenticated/member-calls': typeof AuthenticatedMemberCallsRoute
   '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
   '/_authenticated/packages': typeof AuthenticatedPackagesRoute
   '/_authenticated/pt-sessions': typeof AuthenticatedPtSessionsRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/staff': typeof AuthenticatedStaffRoute
+  '/_authenticated/whatsapp-usage': typeof AuthenticatedWhatsappUsageRoute
   '/_authenticated/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/invoice/$token': typeof InvoiceTokenRoute
+  '/photo/$token': typeof PhotoTokenRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/trainers/$trainerId': typeof AuthenticatedTrainersTrainerIdRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
@@ -269,19 +316,24 @@ export interface FileRouteTypes {
     | '/birthdays'
     | '/bookings'
     | '/dashboard'
+    | '/day-book'
     | '/diet-plans'
     | '/expenses'
     | '/follow-ups'
     | '/group-classes'
     | '/inquiries'
     | '/leads'
+    | '/member-calls'
     | '/notifications'
     | '/packages'
     | '/pt-sessions'
     | '/reports'
     | '/settings'
+    | '/staff'
+    | '/whatsapp-usage'
     | '/workout-plans'
     | '/invoice/$token'
+    | '/photo/$token'
     | '/clients/$clientId'
     | '/trainers/$trainerId'
     | '/clients/'
@@ -296,19 +348,24 @@ export interface FileRouteTypes {
     | '/birthdays'
     | '/bookings'
     | '/dashboard'
+    | '/day-book'
     | '/diet-plans'
     | '/expenses'
     | '/follow-ups'
     | '/group-classes'
     | '/inquiries'
     | '/leads'
+    | '/member-calls'
     | '/notifications'
     | '/packages'
     | '/pt-sessions'
     | '/reports'
     | '/settings'
+    | '/staff'
+    | '/whatsapp-usage'
     | '/workout-plans'
     | '/invoice/$token'
+    | '/photo/$token'
     | '/clients/$clientId'
     | '/trainers/$trainerId'
     | '/clients'
@@ -324,19 +381,24 @@ export interface FileRouteTypes {
     | '/_authenticated/birthdays'
     | '/_authenticated/bookings'
     | '/_authenticated/dashboard'
+    | '/_authenticated/day-book'
     | '/_authenticated/diet-plans'
     | '/_authenticated/expenses'
     | '/_authenticated/follow-ups'
     | '/_authenticated/group-classes'
     | '/_authenticated/inquiries'
     | '/_authenticated/leads'
+    | '/_authenticated/member-calls'
     | '/_authenticated/notifications'
     | '/_authenticated/packages'
     | '/_authenticated/pt-sessions'
     | '/_authenticated/reports'
     | '/_authenticated/settings'
+    | '/_authenticated/staff'
+    | '/_authenticated/whatsapp-usage'
     | '/_authenticated/workout-plans'
     | '/invoice/$token'
+    | '/photo/$token'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/trainers/$trainerId'
     | '/_authenticated/clients/'
@@ -347,6 +409,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   LoginRoute: typeof LoginRoute
   InvoiceTokenRoute: typeof InvoiceTokenRoute
+  PhotoTokenRoute: typeof PhotoTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -421,6 +484,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/day-book': {
+      id: '/_authenticated/day-book'
+      path: '/day-book'
+      fullPath: '/day-book'
+      preLoaderRoute: typeof AuthenticatedDayBookRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/diet-plans': {
       id: '/_authenticated/diet-plans'
       path: '/diet-plans'
@@ -463,6 +533,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLeadsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/member-calls': {
+      id: '/_authenticated/member-calls'
+      path: '/member-calls'
+      fullPath: '/member-calls'
+      preLoaderRoute: typeof AuthenticatedMemberCallsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/notifications': {
       id: '/_authenticated/notifications'
       path: '/notifications'
@@ -498,6 +575,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/staff': {
+      id: '/_authenticated/staff'
+      path: '/staff'
+      fullPath: '/staff'
+      preLoaderRoute: typeof AuthenticatedStaffRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/whatsapp-usage': {
+      id: '/_authenticated/whatsapp-usage'
+      path: '/whatsapp-usage'
+      fullPath: '/whatsapp-usage'
+      preLoaderRoute: typeof AuthenticatedWhatsappUsageRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/workout-plans': {
       id: '/_authenticated/workout-plans'
       path: '/workout-plans'
@@ -510,6 +601,13 @@ declare module '@tanstack/react-router' {
       path: '/invoice/$token'
       fullPath: '/invoice/$token'
       preLoaderRoute: typeof InvoiceTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/photo/$token': {
+      id: '/photo/$token'
+      path: '/photo/$token'
+      fullPath: '/photo/$token'
+      preLoaderRoute: typeof PhotoTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/clients/': {
@@ -544,17 +642,21 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedBirthdaysRoute: typeof AuthenticatedBirthdaysRoute
   AuthenticatedBookingsRoute: typeof AuthenticatedBookingsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedDayBookRoute: typeof AuthenticatedDayBookRoute
   AuthenticatedDietPlansRoute: typeof AuthenticatedDietPlansRoute
   AuthenticatedExpensesRoute: typeof AuthenticatedExpensesRoute
   AuthenticatedFollowUpsRoute: typeof AuthenticatedFollowUpsRoute
   AuthenticatedGroupClassesRoute: typeof AuthenticatedGroupClassesRoute
   AuthenticatedInquiriesRoute: typeof AuthenticatedInquiriesRoute
   AuthenticatedLeadsRoute: typeof AuthenticatedLeadsRoute
+  AuthenticatedMemberCallsRoute: typeof AuthenticatedMemberCallsRoute
   AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
   AuthenticatedPackagesRoute: typeof AuthenticatedPackagesRoute
   AuthenticatedPtSessionsRoute: typeof AuthenticatedPtSessionsRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedStaffRoute: typeof AuthenticatedStaffRoute
+  AuthenticatedWhatsappUsageRoute: typeof AuthenticatedWhatsappUsageRoute
   AuthenticatedWorkoutPlansRoute: typeof AuthenticatedWorkoutPlansRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
   AuthenticatedTrainersTrainerIdRoute: typeof AuthenticatedTrainersTrainerIdRoute
@@ -569,17 +671,21 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBirthdaysRoute: AuthenticatedBirthdaysRoute,
   AuthenticatedBookingsRoute: AuthenticatedBookingsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedDayBookRoute: AuthenticatedDayBookRoute,
   AuthenticatedDietPlansRoute: AuthenticatedDietPlansRoute,
   AuthenticatedExpensesRoute: AuthenticatedExpensesRoute,
   AuthenticatedFollowUpsRoute: AuthenticatedFollowUpsRoute,
   AuthenticatedGroupClassesRoute: AuthenticatedGroupClassesRoute,
   AuthenticatedInquiriesRoute: AuthenticatedInquiriesRoute,
   AuthenticatedLeadsRoute: AuthenticatedLeadsRoute,
+  AuthenticatedMemberCallsRoute: AuthenticatedMemberCallsRoute,
   AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
   AuthenticatedPackagesRoute: AuthenticatedPackagesRoute,
   AuthenticatedPtSessionsRoute: AuthenticatedPtSessionsRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedStaffRoute: AuthenticatedStaffRoute,
+  AuthenticatedWhatsappUsageRoute: AuthenticatedWhatsappUsageRoute,
   AuthenticatedWorkoutPlansRoute: AuthenticatedWorkoutPlansRoute,
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
   AuthenticatedTrainersTrainerIdRoute: AuthenticatedTrainersTrainerIdRoute,
@@ -594,6 +700,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   LoginRoute: LoginRoute,
   InvoiceTokenRoute: InvoiceTokenRoute,
+  PhotoTokenRoute: PhotoTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

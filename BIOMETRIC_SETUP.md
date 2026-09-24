@@ -68,3 +68,17 @@ shown in the app and enroll a finger; the device reports it and the member is ac
 - Member IDs are numbers and must not already belong to someone else on the device.
 - Punches older than 7 days are ignored on first connection (no bulk history import).
 - Keep the device serial number private; it is how the cloud recognises the device.
+
+## Staff on the same device
+
+*Staff → Thumb* registers a staff member's thumb (device IDs start at 9001, so they never clash
+with member IDs). Their punches become staff attendance (*Attendance → Staff*), not member
+visits, and always open the door while they are active. *Mark as left* removes them from the
+device.
+
+## ZKTeco MB360
+
+The MB360 (face + fingerprint) works with this app only if its firmware has the cloud push
+setting: *Menu → Comm. → Cloud Server Setting* (sometimes "ADMS"). If that menu is there, use the
+steps above. If it is missing, the device needs ZKTeco's "Push" firmware (ask the seller) before
+it can connect to the cloud.

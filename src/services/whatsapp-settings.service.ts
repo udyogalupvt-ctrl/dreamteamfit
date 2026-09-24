@@ -1,4 +1,11 @@
-import { doc, getDoc, onSnapshot, serverTimestamp, setDoc, type DocumentData } from "@/lib/firestore";
+import {
+  doc,
+  getDoc,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+  type DocumentData,
+} from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import type { WhatsAppSettings } from "@/types/models";
 import { COLLECTIONS } from "./firestore.service";
@@ -14,6 +21,7 @@ export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   invoiceTemplate: "gym_payment_receipt",
   autoSendInvoice: true,
   renewalTemplate: "gym_membership_expiry",
+  paymentDueTemplate: "gym_payment_due",
   birthdayTemplate: "gym_birthday_wish",
   absenceTemplate: "gym_miss_you",
   followUpTemplate: "follow_up_message",

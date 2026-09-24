@@ -4,6 +4,8 @@
  */
 import { handleCron } from "./automation";
 import { handleIclock } from "./biometric";
+import { handleStaff } from "./staff";
+import { handleMemberPhoto } from "./member-photo";
 import { text } from "./admin";
 import { handleWhatsApp } from "./whatsapp";
 
@@ -14,6 +16,8 @@ export async function handleServerRoute(request: Request): Promise<Response> {
     if (/^\/iclock(\/|$)/i.test(path)) return await handleIclock(request, url);
     if (path.startsWith("/api/whatsapp/")) return await handleWhatsApp(request, url);
     if (path.startsWith("/api/cron/")) return await handleCron(request, url);
+    if (path.startsWith("/api/staff/")) return await handleStaff(request, url);
+    if (path === "/api/member-photo") return await handleMemberPhoto(request, url);
     return text("Not found", 404);
   } catch (error) {
     console.error("server route failed", path, error);

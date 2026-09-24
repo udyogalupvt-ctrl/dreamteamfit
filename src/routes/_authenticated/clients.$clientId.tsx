@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { PhotoLinkButtons } from "@/components/clients/photo-link-button";
+import { useAccess } from "@/hooks/use-access";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -149,6 +151,7 @@ function ClientProfilePage() {
   const { openEnrollment, resumeSetup } = useEnrollment();
   const [tab, setTab] = useState("overview");
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const { can } = useAccess();
   const [addWorkoutOpen, setAddWorkoutOpen] = useState(false);
   const [addDietOpen, setAddDietOpen] = useState(false);
   const [addBookingOpen, setAddBookingOpen] = useState(false);
@@ -238,17 +241,31 @@ function ClientProfilePage() {
                 <DropdownMenuItem onSelect={() => setEditOpen(true)}>
                   <Pencil aria-hidden /> Edit details only
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => setDeleteOpen(true)}
-                  className="text-destructive focus:text-destructive"
-                >
-                  <Trash2 aria-hidden /> Delete member
-                </DropdownMenuItem>
+                {can("deleteMembers") ? (
+                  <DropdownMenuItem
+                    onSelect={() => setDeleteOpen(true)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 aria-hidden /> Delete member
+                  </DropdownMenuItem>
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
           </>
         }
       />
+
+      {!c.profilePhotoUrl ? (
+        <section className="flex flex-col gap-3 rounded-2xl border border-warning/50 bg-warning/10 p-4 sm:flex-row sm:items-center">
+          <div className="min-w-0 flex-1">
+            <p className="font-bold">Photo missing</p>
+            <p className="text-sm text-muted-foreground">
+              Every member needs a photo. Edit the member to take it, or send them the upload link.
+            </p>
+          </div>
+          <PhotoLinkButtons client={c} />
+        </section>
+      ) : null}
 
       {isSetupPending(c) ? (
         <section

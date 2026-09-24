@@ -14,7 +14,7 @@ the member opens it and can view, download the PDF, or print.
    `gym_payment_receipt` message goes out with a **View bill** button. Renewal reminders
    (7 days before expiry) and birthday wishes go out at 8 AM; missed-workout nudges at 9:30 PM.
 
-## 1. Create these 4 templates
+## 1. Templates (5)
 
 Meta Business Manager → WhatsApp Manager → Message templates → **Create template**.
 Language **English (en)**, no header, no footer. Category is given for each template below.
@@ -54,6 +54,21 @@ Samples: {{1}} `Ravi Kumar` · {{2}} `Rebuild Fitness` · {{3}} `INV-2026-000004
 | Sample URL | `https://YOUR-APP-DOMAIN/invoice/1b9c4f0e2a7d4c8e9f3a5b6c7d8e9f0a1b2c3d4e5f6a7b8c` |
 
 The app fills the button's {{1}} with the bill's secret code, so each member only sees their own bill.
+
+### `gym_payment_due` — balance reminder (Utility, created and approved)
+
+Sent once a day at about 8 AM from 3 days before the member's next payment date (set when they
+pay part of a bill) up to that day. Days before is set in *Settings → Reminders*.
+
+```
+Hello {{1}}, this is a payment reminder from {{2}}.
+
+A balance of ₹{{3}} for bill {{4}} is due on {{5}}. You can pay at the front desk.
+
+Tap View bill to see your bill. If you have already paid, please ignore this message.
+```
+
+Button: **View bill** → `https://dreamteamfit.vercel.app/invoice/{{1}}`.
 
 ### `gym_membership_expiry` — 7 days before the plan ends (Utility)
 
@@ -143,3 +158,9 @@ stored anywhere.
 The reason is shown to staff and saved in *More → Message History*. Common ones: template not
 approved yet or name mismatch, the member did not agree to WhatsApp messages, or an invalid
 number. *Share on WhatsApp* always works as a fallback.
+
+## Usage and cost
+
+*More → WhatsApp Usage* shows how many messages went out per kind (bills, balance reminders,
+renewal, birthday, missed workout), whether each is Utility or Marketing, and the approximate
+cost. Set the ₹-per-message rates there to match your Meta invoice.

@@ -85,6 +85,19 @@ export interface EnrollmentInput {
   notes: string;
   settings: BusinessBillingSettings;
   staff: { uid: string; name: string };
+  /** Staff member who counselled the member (incentives, sales per person). */
+  counsellor: { id: string; name: string } | null;
+  /** When a balance is left: the day the member promised to pay (WhatsApp reminder that morning). */
+  nextPaymentDate: string | null;
+}
+
+/** Highest discount allowed for this checkout; null = no limit set on the packages. */
+export function maxDiscountFor(input: Pick<EnrollmentInput, "gymPackage" | "pt">) {
+  const limits = [input.gymPackage?.maxDiscount, input.pt?.pkg.maxDiscount].filter(
+    (x, i) => (i === 0 ? !!input.gymPackage : !!input.pt) && x !== undefined,
+  );
+  if (limits.some((x) => x === null) || !limits.length) return null;
+  return limits.reduce<number>((n, x) => n + Number(x), 0);
 }
 
 export function enrollmentTotals(
@@ -110,6 +123,19 @@ export async function enrollMember(input: EnrollmentInput) {
   if (!input.gymPackage && !input.pt) throw new Error("Select a gym package or a PT package.");
   const totals = enrollmentTotals(input);
   if (input.amountPaid > totals.total) throw new Error("Amount paid cannot exceed the total.");
+  const maxDiscount = maxDiscountFor(input);
+  if (maxDiscount !== null && input.discount > maxDiscount)
+    throw new Error(
+      `Discount can be at most ₹${maxDiscount.toLocaleString("en-IN")} on this package.`,
+    );
+  const balanceLeft = totals.total - Math.min(input.amountPaid, totals.total) > 0;
+  if (balanceLeft && !input.nextPaymentDate)
+    throw new Error("Pick the date the member will pay the balance.");
+  const dueDate = balanceLeft && input.nextPaymentDate ? input.nextPaymentDate : todayISO();
+  const counsellor = {
+    counsellorId: input.counsellor?.id ?? "",
+    counsellorName: input.counsellor?.name ?? "",
+  };
   const phoneN = normalizePhone(input.client.phone);
   if (!input.existingClient) {
     const dup = await getDocs(
@@ -194,6 +220,7 @@ export async function enrollMember(input: EnrollmentInput) {
         enrollmentId: enrollmentRef.id,
         whatsappOptIn: input.whatsappOptIn,
         whatsappPhone: phone,
+        photoUploadToken: input.client.profilePhotoUrl ? "" : createPublicToken(),
         whatsappStatus: input.whatsappOptIn ? "ready" : "opted_out",
         lastWhatsappMessageAt: null,
         createdAt: now,
@@ -219,6 +246,7 @@ export async function enrollMember(input: EnrollmentInput) {
         status: membershipStatus,
         invoiceId: invoiceRef.id,
         enrollmentId: enrollmentRef.id,
+        ...counsellor,
         createdAt: now,
         updatedAt: now,
       });
@@ -238,6 +266,7 @@ export async function enrollMember(input: EnrollmentInput) {
         status: needsBiometric ? "pending" : "active",
         invoiceId: invoiceRef.id,
         enrollmentId: enrollmentRef.id,
+        ...counsellor,
         createdAt: now,
         updatedAt: now,
       });
@@ -310,8 +339,9 @@ export async function enrollMember(input: EnrollmentInput) {
       paymentStatus,
       paymentMethod: input.method,
       invoiceDate: today,
-      dueDate: today,
+      dueDate,
       notes: input.notes,
+      ...counsellor,
       pdfUrl: "",
       publicToken: token,
       createdBy: input.staff.name,
@@ -330,7 +360,7 @@ export async function enrollMember(input: EnrollmentInput) {
       paymentStatus,
       paymentMethod: input.method,
       invoiceDate: today,
-      dueDate: today,
+      dueDate,
       pdfUrl: "",
       business: input.settings,
       updatedAt: now,
@@ -348,7 +378,9 @@ export async function enrollMember(input: EnrollmentInput) {
         paymentDate: today,
         kind: "initial",
         ...allocatePayment({ total: money.total, ...breakdown }, money.amountPaid),
+        ...counsellor,
         createdBy: input.staff.name,
+        createdByUid: input.staff.uid,
         createdAt: now,
         updatedAt: now,
       });
@@ -367,6 +399,7 @@ export async function enrollMember(input: EnrollmentInput) {
       firstThumbRegistered: !needsBiometric,
       lastError: "",
       invoiceSharedAt: null,
+      ...counsellor,
       createdAt: now,
       updatedAt: now,
     });
@@ -582,7 +615,9 @@ export async function cancelFingerprintRequest(clientId: string) {
   );
   const batch = writeBatch(db);
   snap.docs
-    .filter((d) => d.data()["door"] !== true && ["pending", "sent"].includes(String(d.data()["status"])))
+    .filter(
+      (d) => d.data()["door"] !== true && ["pending", "sent"].includes(String(d.data()["status"])),
+    )
     .forEach((d) => batch.update(d.ref, { status: "cancelled", updatedAt: serverTimestamp() }));
   await batch.commit();
 }

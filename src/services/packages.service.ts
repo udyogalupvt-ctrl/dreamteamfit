@@ -28,6 +28,8 @@ export const mapPackage = (id: string, d: DocumentData): GymPackage => ({
   durationDays: Number(d["durationDays"] ?? 0),
   price: Number(d["price"] ?? 0),
   isActive: Boolean(d["isActive"]),
+  maxDiscount:
+    d["maxDiscount"] === undefined || d["maxDiscount"] === null ? null : Number(d["maxDiscount"]),
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });

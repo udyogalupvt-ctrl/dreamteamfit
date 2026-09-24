@@ -35,7 +35,7 @@ const ENROLL_REQUEST_TTL_MS = 10 * 60 * 1000;
 /** Seconds between device polls. Each poll costs ~1 Firestore read (free plan: 50,000/day). */
 const POLL_DELAY_SECONDS = 15;
 /** App-side notes handled here on the server, never sent to a device. */
-const SERVER_TASKS = new Set(["door_check", "forget"]);
+const SERVER_TASKS = new Set(["door_check", "forget", "staff_off"]);
 
 type Device = { id: string; name: string; serialNumber: string; lastDoorSyncDate: string };
 type KV = Record<string, string>;
@@ -84,6 +84,16 @@ function parseKv(line: string): KV {
       if (i > 0) out[part.slice(0, i).trim().toUpperCase()] = part.slice(i + 1).trim();
     });
   return out;
+}
+
+/** A staff member registered with this ID on this device (staff IDs start at 9001). */
+async function staffForPin(pin: string, device: Device) {
+  const snap = await db().collection("staff").where("biometricUserId", "==", pin).get();
+  return (
+    snap.docs.find((d) => d.data()["biometricDeviceId"] === device.id) ??
+    snap.docs.find((d) => !d.data()["biometricDeviceId"]) ??
+    null
+  );
 }
 
 async function clientForPin(pin: string, device: Device) {
@@ -139,7 +149,13 @@ async function runServerTasks(tasks: QueryDocumentSnapshot[]) {
     const d = t.data();
     let error = "";
     try {
-      if (d["type"] === "forget")
+      if (d["type"] === "staff_off")
+        await removeStaffFromDevice(
+          String(d["staffId"] ?? ""),
+          String(d["biometricUserId"] ?? ""),
+          String(d["deviceId"] ?? ""),
+        );
+      else if (d["type"] === "forget")
         await forgetDeletedMember(
           String(d["clientId"]),
           String(d["biometricUserId"] ?? ""),
@@ -637,6 +653,69 @@ export async function syncAllDoorAccess(today = localDate()) {
   return changed;
 }
 
+/** The device proved a staff member's thumb while the owner was registering it. */
+async function activateStaff(staffRef: DocumentReference, device: Device, pin: string) {
+  const snap = await staffRef.get();
+  if (!snap.exists || snap.data()?.["firstThumbRegistered"] === true) return;
+  const now = FieldValue.serverTimestamp();
+  await staffRef.update({
+    firstThumbRegistered: true,
+    biometricUserId: pin,
+    biometricDeviceId: device.id,
+    updatedAt: now,
+  });
+  const open = await db().collection("biometricCommands").where("staffId", "==", staffRef.id).get();
+  await Promise.all(
+    open.docs
+      .filter(
+        (d) =>
+          ["pending", "sent"].includes(String(d.data()["status"])) &&
+          ["enroll_fp", "user_upsert", "query_fp"].includes(String(d.data()["type"])),
+      )
+      .map((d) => d.ref.update({ status: "done", completedAt: now, updatedAt: now })),
+  );
+  await systemAudit({
+    collection: "staff",
+    docId: staffRef.id,
+    summary: `Staff thumb registered: ${String(snap.data()?.["name"] ?? "")} (${device.name}, ID ${pin})`,
+  });
+}
+
+/** Staff member who left: taken off the device; a new thumb is needed if they come back. */
+async function removeStaffFromDevice(staffId: string, pin: string, deviceId: string) {
+  const firestore = db();
+  const device = deviceId
+    ? (await firestore.doc(`biometricDevices/${deviceId}`).get()).data()
+    : null;
+  const now = FieldValue.serverTimestamp();
+  if (pin && device?.["integrationType"] === "adms")
+    await firestore.collection("biometricCommands").add({
+      deviceId,
+      serialNumber: String(device["serialNumber"] ?? ""),
+      clientId: "",
+      staffId,
+      enrollmentId: null,
+      biometricUserId: pin,
+      status: "pending",
+      door: true,
+      type: "delete_user",
+      order: 1,
+      command: `DATA DELETE USERINFO PIN=${pin}`,
+      cmdNo: null,
+      returnCode: null,
+      error: "",
+      sentAt: null,
+      completedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  if (staffId)
+    await firestore
+      .doc(`staff/${staffId}`)
+      .update({ firstThumbRegistered: false, updatedAt: now })
+      .catch(() => undefined);
+}
+
 /** A deleted member is removed from the device and their stored fingerprint is erased. */
 async function forgetDeletedMember(clientId: string, pin: string, deviceId: string) {
   const firestore = db();
@@ -674,8 +753,8 @@ async function forgetDeletedMember(clientId: string, pin: string, deviceId: stri
  * of old users, or anyone posing as the device with its serial number, from activating a
  * member or replacing a saved thumb.
  */
-async function hasLiveEnrollRequest(clientId: string) {
-  const snap = await db().collection("biometricCommands").where("clientId", "==", clientId).get();
+async function hasLiveEnrollRequest(clientId: string, field: "clientId" | "staffId" = "clientId") {
+  const snap = await db().collection("biometricCommands").where(field, "==", clientId).get();
   const since = Date.now() - 2 * ENROLL_REQUEST_TTL_MS;
   return snap.docs.some(
     (d) =>
@@ -716,6 +795,7 @@ async function attendance(device: Device, body: string) {
   const cutoff = Date.now() - MAX_LOG_AGE_DAYS * 86_400_000;
   const clients = new Map<string, QueryDocumentSnapshot | null>();
   const memberships = new Map<string, Membership[]>();
+  const staffByPin = new Map<string, QueryDocumentSnapshot | null>();
   const rows: { ref: DocumentReference; data: Row }[] = [];
   let received = 0;
   for (const raw of body.split(/\r?\n/)) {
@@ -729,6 +809,28 @@ async function attendance(device: Device, body: string) {
     if (Number.isNaN(at.getTime()) || at.getTime() < cutoff) continue;
     if (!clients.has(pin)) clients.set(pin, await clientForPin(pin, device));
     const client = clients.get(pin) ?? null;
+    if (!client) {
+      if (!staffByPin.has(pin)) staffByPin.set(pin, await staffForPin(pin, device));
+      const staff = staffByPin.get(pin);
+      if (staff) {
+        const reference = `adms:${device.id}:${pin}:${date}T${time}`;
+        rows.push({
+          ref: firestore.doc(`staffAttendance/${reference.replace(/[^a-zA-Z0-9_-]/g, "_")}`),
+          data: {
+            staffId: staff.id,
+            staffNameSnapshot: String(staff.data()["name"] ?? ""),
+            attendanceDate: date,
+            timestamp: at,
+            eventType: EVENT_BY_STATUS[parts[2] ?? "0"] ?? "check_in",
+            source: "biometric",
+            deviceId: device.id,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+        });
+        continue;
+      }
+    }
     if (client && !memberships.has(client.id)) {
       const ms = await firestore.collection("memberships").where("clientId", "==", client.id).get();
       memberships.set(
@@ -817,7 +919,12 @@ export async function handleIclock(request: Request, url: URL) {
         count = body.split(/\r?\n/).filter((l) => l.trim()).length;
         for (const [pin, kind] of fingerprintEvidence(body)) {
           const client = await clientForPin(pin, device);
-          if (!client) continue;
+          if (!client) {
+            const staff = await staffForPin(pin, device);
+            if (staff && (await hasLiveEnrollRequest(staff.id, "staffId")))
+              await activateStaff(staff.ref, device, pin);
+            continue;
+          }
           // The ADMS protocol has no device password (only the serial number), so a thumb only
           // counts while staff are registering this member from the app.
           if (!(await hasLiveEnrollRequest(client.id))) continue;
