@@ -715,6 +715,7 @@ function PhotoDialog({
       <ImageUpload
         key={open ? "open" : "closed"}
         label="Client photo"
+        squarePhoto
         folder={CLOUDINARY_CLIENT_FOLDER}
         value={
           client.profilePhotoUrl

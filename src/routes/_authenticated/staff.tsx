@@ -62,6 +62,14 @@ function StaffPage() {
   const [editing, setEditing] = useState<Staff | "new" | null>(null);
   const [login, setLogin] = useState<Staff | null>(null);
   const [thumb, setThumb] = useState<Staff | null>(null);
+  // A new front-desk / counsellor / manager goes straight to "Create login" once saved.
+  const [loginNext, setLoginNext] = useState<string | null>(null);
+  useEffect(() => {
+    const s = loginNext ? staff.data.find((x) => x.id === loginNext) : undefined;
+    if (!s) return;
+    setLoginNext(null);
+    setLogin(s);
+  }, [loginNext, staff.data]);
   const accessOf = (s: Staff) => access.data.find((a) => a.uid === s.loginUid);
   const payOf = (s: Staff) => pay.data.find((p) => p.staffId === s.id);
 
@@ -176,7 +184,7 @@ function StaffPage() {
           })}
         </div>
       )}
-      <StaffDialog item={editing} onClose={() => setEditing(null)} />
+      <StaffDialog item={editing} onClose={() => setEditing(null)} onCreated={setLoginNext} />
       <LoginDialog
         staff={login}
         access={login ? accessOf(login) : undefined}
@@ -199,7 +207,18 @@ const pick = (s: Staff): StaffInput => ({
   isCounsellor: s.isCounsellor,
 });
 
-function StaffDialog({ item, onClose }: { item: Staff | "new" | null; onClose: () => void }) {
+/** Roles that usually sign in to the app; saving a new one opens "Create login" next. */
+const LOGIN_ROLES = ["Front desk", "Counsellor", "Manager"];
+
+function StaffDialog({
+  item,
+  onClose,
+  onCreated,
+}: {
+  item: Staff | "new" | null;
+  onClose: () => void;
+  onCreated: (staffId: string) => void;
+}) {
   const blank: StaffInput = {
     name: "",
     phone: "",
@@ -234,6 +253,7 @@ function StaffDialog({ item, onClose }: { item: Staff | "new" | null; onClose: (
       await saveStaffPrivate({ staffId: id, ...p });
       toast.success("Staff saved");
       onClose();
+      if (item === "new" && LOGIN_ROLES.includes(f.role)) onCreated(id);
     } catch (e) {
       toast.error(firestoreErrorMessage(e));
     } finally {

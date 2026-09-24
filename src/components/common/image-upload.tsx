@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertCircle, CheckCircle2, ImagePlus, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import {
+  AlertCircle,
+  Camera,
+  CheckCircle2,
+  ImagePlus,
+  Images,
+  Loader2,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
+import { SquareCropDialog } from "@/components/common/square-crop-dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
@@ -15,6 +25,8 @@ interface ImageUploadProps {
   label?: string;
   hint?: string;
   className?: string;
+  /** Member photo: "Take photo" + "From gallery", then a square (1:1) crop before upload. */
+  squarePhoto?: boolean;
 }
 
 /** Reusable Cloudinary uploader: preview, progress, success/error, remove & replace. */
@@ -25,8 +37,11 @@ export function ImageUpload({
   label = "Image",
   hint = "JPG, PNG or WEBP up to 5 MB",
   className,
+  squarePhoto = false,
 }: ImageUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [image, setImage] = useState<UploadedImage | null>(value);
   const [status, setStatus] = useState<Status>(value ? "success" : "idle");
   const [progress, setProgress] = useState(0);
@@ -74,6 +89,21 @@ export function ImageUpload({
     },
     [folder, onChange],
   );
+
+  // Member photos are cropped first. Any size is fine here: only the small square is uploaded.
+  const pick = (file: File) => {
+    if (!squarePhoto) return void handleFile(file);
+    if (!file.type.startsWith("image/")) {
+      setStatus("error");
+      setError("Choose a photo (JPG, PNG or WEBP).");
+      return;
+    }
+    setCropSrc(URL.createObjectURL(file));
+  };
+  const closeCrop = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc);
+    setCropSrc(null);
+  };
 
   const reset = () => {
     setImage(null);
@@ -135,16 +165,39 @@ export function ImageUpload({
           ) : null}
 
           <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant={preview ? "outline" : "default"}
-              size="sm"
-              onClick={() => inputRef.current?.click()}
-              disabled={status === "uploading"}
-            >
-              {preview ? <RefreshCw aria-hidden /> : <ImagePlus aria-hidden />}
-              {preview ? "Replace" : "Upload image"}
-            </Button>
+            {squarePhoto ? (
+              <>
+                <Button
+                  type="button"
+                  variant={preview ? "outline" : "default"}
+                  size="sm"
+                  onClick={() => cameraRef.current?.click()}
+                  disabled={status === "uploading"}
+                >
+                  <Camera aria-hidden /> Take photo
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => inputRef.current?.click()}
+                  disabled={status === "uploading"}
+                >
+                  <Images aria-hidden /> From gallery
+                </Button>
+              </>
+            ) : (
+              <Button
+                type="button"
+                variant={preview ? "outline" : "default"}
+                size="sm"
+                onClick={() => inputRef.current?.click()}
+                disabled={status === "uploading"}
+              >
+                {preview ? <RefreshCw aria-hidden /> : <ImagePlus aria-hidden />}
+                {preview ? "Replace" : "Upload image"}
+              </Button>
+            )}
             {preview ? (
               <Button
                 type="button"
@@ -168,9 +221,35 @@ export function ImageUpload({
         aria-label={`Upload ${label}`}
         onChange={(event) => {
           const file = event.target.files?.[0];
-          if (file) void handleFile(file);
+          if (file) pick(file);
+          event.target.value = "";
         }}
       />
+      {squarePhoto ? (
+        <>
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="sr-only"
+            aria-label={`Take ${label}`}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) pick(file);
+              event.target.value = "";
+            }}
+          />
+          <SquareCropDialog
+            src={cropSrc}
+            onCancel={closeCrop}
+            onDone={(file) => {
+              closeCrop();
+              void handleFile(file);
+            }}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

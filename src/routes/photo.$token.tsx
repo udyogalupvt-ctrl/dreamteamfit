@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Camera, CheckCircle2, ImageOff, Loader2 } from "lucide-react";
+import { Camera, CheckCircle2, ImageOff, Images, Loader2 } from "lucide-react";
+import { SquareCropDialog } from "@/components/common/square-crop-dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { CLOUDINARY_CLIENT_FOLDER } from "@/constants/navigation";
@@ -30,7 +31,22 @@ function PhotoUploadPage() {
   const [error, setError] = useState("");
   const [progress, setProgress] = useState(0);
   const [preview, setPreview] = useState("");
-  const input = useRef<HTMLInputElement>(null);
+  const selfie = useRef<HTMLInputElement>(null);
+  const gallery = useRef<HTMLInputElement>(null);
+  // The picked photo is cropped to a square first; only that small square is uploaded.
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const closeCrop = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc);
+    setCropSrc(null);
+  };
+  const pick = (f: File) => {
+    if (!f.type.startsWith("image/")) {
+      setError("Choose a photo (JPG, PNG or WEBP).");
+      setState("error");
+      return;
+    }
+    setCropSrc(URL.createObjectURL(f));
+  };
 
   useEffect(() => {
     void fetch(`/api/member-photo?token=${encodeURIComponent(token)}`)
@@ -121,25 +137,39 @@ function PhotoUploadPage() {
               </div>
             ) : (
               <>
-                <input
-                  ref={input}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  capture="user"
-                  className="sr-only"
-                  aria-label="Take or choose a photo"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) void upload(f);
-                    e.target.value = "";
-                  }}
-                />
+                {[
+                  { ref: selfie, capture: "user" as const, label: "Take a selfie" },
+                  { ref: gallery, capture: undefined, label: "Choose from gallery" },
+                ].map((x) => (
+                  <input
+                    key={x.label}
+                    ref={x.ref}
+                    type="file"
+                    accept="image/*"
+                    capture={x.capture}
+                    className="sr-only"
+                    aria-label={x.label}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) pick(f);
+                      e.target.value = "";
+                    }}
+                  />
+                ))}
                 <Button
                   size="lg"
                   className="h-14 w-full text-base"
-                  onClick={() => input.current?.click()}
+                  onClick={() => selfie.current?.click()}
                 >
-                  <Camera aria-hidden /> Take or choose a photo
+                  <Camera aria-hidden /> Take a selfie
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="h-14 w-full text-base"
+                  onClick={() => gallery.current?.click()}
+                >
+                  <Images aria-hidden /> Choose from gallery
                 </Button>
                 {error ? (
                   <p role="alert" className="text-sm font-semibold text-destructive">
@@ -151,6 +181,14 @@ function PhotoUploadPage() {
           </>
         )}
       </div>
+      <SquareCropDialog
+        src={cropSrc}
+        onCancel={closeCrop}
+        onDone={(f) => {
+          closeCrop();
+          void upload(f);
+        }}
+      />
     </main>
   );
 }

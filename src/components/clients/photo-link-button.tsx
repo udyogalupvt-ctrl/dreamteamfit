@@ -32,7 +32,10 @@ export function PhotoLinkButtons({
       wa.data.defaultCountryCode,
     );
     // Open the window first (in the click) so phones don't block it, then fill in the link.
-    const win = window.open("", "_blank", "noopener,noreferrer");
+    // No "noopener" here: with it, window.open returns null even though the tab opened, and
+    // the fallback below opened a second tab. The opener is cut by hand instead.
+    const win = window.open("", "_blank");
+    if (win) win.opener = null;
     setBusy(true);
     try {
       const url = await link();

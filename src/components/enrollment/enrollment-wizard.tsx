@@ -1209,8 +1209,9 @@ function DetailsStep({
       <div className="space-y-2 sm:col-span-2">
         <ImageUpload
           label="Photo (required)"
+          squarePhoto
           folder={CLOUDINARY_CLIENT_FOLDER}
-          hint="A clear face photo. Take it now with the camera."
+          hint="A clear face photo: take it now, or pick one from the gallery."
           value={
             client.profilePhotoUrl
               ? ({

@@ -108,7 +108,9 @@ export function ClientFormDialog({
   // Proactively warn about duplicates (e.g. when converting an inquiry).
   useEffect(() => {
     if (!open || client || !initial?.phone) return;
-    findClientsByPhone(initial.phone).then(setDuplicates).catch(() => undefined);
+    findClientsByPhone(initial.phone)
+      .then(setDuplicates)
+      .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -180,7 +182,11 @@ export function ClientFormDialog({
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="submit" form="client-form" disabled={saving || (!!activeDuplicate && form.status === "active")}>
+          <Button
+            type="submit"
+            form="client-form"
+            disabled={saving || (!!activeDuplicate && form.status === "active")}
+          >
             {saving ? <Loader2 className="animate-spin" aria-hidden /> : null}
             {ackDuplicate && duplicates.length
               ? "Create anyway"
@@ -231,6 +237,7 @@ export function ClientFormDialog({
         {!inquiryId ? (
           <ImageUpload
             label="Profile photo"
+            squarePhoto
             folder={CLOUDINARY_CLIENT_FOLDER}
             value={
               form.profilePhotoUrl
@@ -284,7 +291,10 @@ export function ClientFormDialog({
             />
           </Field>
           <Field label="Gender" htmlFor="c-gender">
-            <Select value={form.gender} onValueChange={(v) => set("gender", v as ClientInput["gender"])}>
+            <Select
+              value={form.gender}
+              onValueChange={(v) => set("gender", v as ClientInput["gender"])}
+            >
               <SelectTrigger id="c-gender" className="h-10 w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -298,7 +308,10 @@ export function ClientFormDialog({
             </Select>
           </Field>
           <Field label="Source" htmlFor="c-source">
-            <Select value={form.source} onValueChange={(v) => set("source", v as ClientInput["source"])}>
+            <Select
+              value={form.source}
+              onValueChange={(v) => set("source", v as ClientInput["source"])}
+            >
               <SelectTrigger id="c-source" className="h-10 w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -320,7 +333,10 @@ export function ClientFormDialog({
             />
           </Field>
           <Field label="Status" htmlFor="c-status">
-            <Select value={form.status} onValueChange={(v) => set("status", v as ClientInput["status"])}>
+            <Select
+              value={form.status}
+              onValueChange={(v) => set("status", v as ClientInput["status"])}
+            >
               <SelectTrigger id="c-status" className="h-10 w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -345,7 +361,35 @@ export function ClientFormDialog({
               onChange={(e) => set("notes", e.target.value)}
             />
           </Field>
-          {client ? <div className="sm:col-span-2 rounded-xl border border-border bg-muted/40 p-4"><label className="flex items-start gap-3 text-sm"><Checkbox checked={client.whatsappOptIn} onCheckedChange={async value=>{try{await updateClient(client.id,{whatsappOptIn:value===true,whatsappPhone:client.whatsappPhone||form.phone,whatsappStatus:value===true?"ready":"opted_out"});toast.success(value===true?"WhatsApp consent recorded":"WhatsApp consent withdrawn")}catch(error){toast.error(firestoreErrorMessage(error))}}}/><span><strong className="block">WhatsApp opt-in</strong><span className="text-muted-foreground">Only send approved messages after the client has explicitly consented.</span></span></label></div>:null}
+          {client ? (
+            <div className="sm:col-span-2 rounded-xl border border-border bg-muted/40 p-4">
+              <label className="flex items-start gap-3 text-sm">
+                <Checkbox
+                  checked={client.whatsappOptIn}
+                  onCheckedChange={async (value) => {
+                    try {
+                      await updateClient(client.id, {
+                        whatsappOptIn: value === true,
+                        whatsappPhone: client.whatsappPhone || form.phone,
+                        whatsappStatus: value === true ? "ready" : "opted_out",
+                      });
+                      toast.success(
+                        value === true ? "WhatsApp consent recorded" : "WhatsApp consent withdrawn",
+                      );
+                    } catch (error) {
+                      toast.error(firestoreErrorMessage(error));
+                    }
+                  }}
+                />
+                <span>
+                  <strong className="block">WhatsApp opt-in</strong>
+                  <span className="text-muted-foreground">
+                    Only send approved messages after the client has explicitly consented.
+                  </span>
+                </span>
+              </label>
+            </div>
+          ) : null}
         </div>
       </form>
     </FormDialog>
