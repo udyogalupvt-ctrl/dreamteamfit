@@ -103,6 +103,8 @@ export function FingerprintPanel({
   useEffect(() => {
     if (pin || !client.data) return;
     if (client.data.biometricUserId) setPin(client.data.biometricUserId);
+    // Same number as the member ID, so staff only deal with one number.
+    else if (/^\d+$/.test(client.data.clientCode)) setPin(client.data.clientCode);
     else void suggestBiometricUserId().then((v) => setPin((p) => p || v));
   }, [client.data, pin]);
 

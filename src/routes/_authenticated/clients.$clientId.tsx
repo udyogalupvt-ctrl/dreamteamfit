@@ -70,7 +70,7 @@ import {
 } from "@/lib/format";
 import { toneIcon } from "@/lib/tone";
 import { cn } from "@/lib/utils";
-import { subscribeClient, updateClient } from "@/services/clients.service";
+import { memberIdLabel, subscribeClient, updateClient } from "@/services/clients.service";
 import { cancelMembership, subscribeClientMemberships } from "@/services/memberships.service";
 import {
   subscribeClientWorkoutAssignments,
@@ -302,7 +302,7 @@ function ClientProfilePage() {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs font-semibold tabular-nums">
-              {c.clientCode}
+              {memberIdLabel(c.clientCode)}
             </span>
             {isSetupPending(c) ? (
               <StatusPill tone="warning">Thumb pending</StatusPill>
@@ -386,7 +386,7 @@ function ClientProfilePage() {
             <h2 className="text-section-title">Profile</h2>
             <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
               <Detail label="Full name" value={c.fullName} />
-              <Detail label="Client ID" value={c.clientCode} />
+              <Detail label="Member ID" value={c.clientCode} />
               <Detail label="Date of birth" value={formatDateISO(c.dateOfBirth)} />
               <Detail
                 label="Gender"

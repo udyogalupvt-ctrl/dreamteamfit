@@ -56,6 +56,7 @@ export const COLLECTIONS = {
   staffAttendance: "staffAttendance",
   staffPayments: "staffPayments",
   memberCalls: "memberCalls",
+  memberIds: "memberIds",
   announcements: "announcements",
   cashDays: "cashDays",
   staffDayMarks: "staffDayMarks",

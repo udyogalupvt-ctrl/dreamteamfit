@@ -23,7 +23,7 @@ import {
 import { useLive } from "@/hooks/use-live-query";
 import { formatDate, formatDateISO, normalizePhone } from "@/lib/format";
 import { daysLeftLabel, planByClient, type PlanSummary } from "@/lib/member-plans";
-import { subscribeClients } from "@/services/clients.service";
+import { memberIdLabel, subscribeClients } from "@/services/clients.service";
 import { subscribeMemberships } from "@/services/memberships.service";
 import { subscribePtAssignments } from "@/services/pt.service";
 import { isSetupPending } from "@/services/enrollment.service";
@@ -241,7 +241,7 @@ function ClientsPage() {
                             {c.fullName}
                           </Link>
                           <p className="text-meta tabular-nums">
-                            {c.clientCode}
+                            {memberIdLabel(c.clientCode)}
                             {!c.profilePhotoUrl ? (
                               <span className="ml-1 font-semibold text-warning">· no photo</span>
                             ) : null}
@@ -296,7 +296,7 @@ function ClientsPage() {
                       </StatusPill>
                     </div>
                     <p className="text-meta mt-0.5 tabular-nums">
-                      {c.clientCode} · {c.phone}
+                      {memberIdLabel(c.clientCode)} · {c.phone}
                       {!c.profilePhotoUrl ? (
                         <span className="font-semibold text-warning"> · no photo</span>
                       ) : null}

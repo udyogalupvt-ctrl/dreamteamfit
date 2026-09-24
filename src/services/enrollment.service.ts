@@ -31,7 +31,7 @@ import type {
   Trainer,
 } from "@/types/models";
 import type { ClientInput } from "./clients.service";
-import { mapClient } from "./clients.service";
+import { claimMemberId, mapClient } from "./clients.service";
 import { allocatePayment } from "./finance.service";
 import { col, COLLECTIONS, toDate } from "./firestore.service";
 import { mapInvoice } from "./invoices.service";
@@ -89,6 +89,8 @@ export interface EnrollmentInput {
   counsellor: { id: string; name: string } | null;
   /** When a balance is left: the day the member promised to pay (WhatsApp reminder that morning). */
   nextPaymentDate: string | null;
+  /** New member's ID (a free number, also used on the fingerprint machine). */
+  memberId: string;
 }
 
 /** Highest discount allowed for this checkout; null = no limit set on the packages. */
@@ -190,6 +192,9 @@ export async function enrollMember(input: EnrollmentInput) {
     const inq = inquiryRef ? await tx.get(inquiryRef) : null;
     if (inq?.exists() && inq.data()["convertedToClient"])
       throw new Error("This lead has already been converted.");
+    const idClaim = input.existingClient
+      ? null
+      : await claimMemberId(tx, input.memberId, clientRef.id);
     const c = counter.data() ?? {};
     const year = new Date(`${today}T00:00:00`).getFullYear();
     const invKey = `invoiceSeq${year}`;
@@ -201,16 +206,15 @@ export async function enrollMember(input: EnrollmentInput) {
     };
     const now = serverTimestamp();
 
-    if (!input.existingClient) {
-      const seq = Number(c["clientSeq"] ?? 0) + 1;
-      counterPatch["clientSeq"] = seq;
+    if (idClaim) {
+      idClaim.write();
       tx.set(clientRef, {
         ...input.client,
         fullName,
         phone,
         email,
         phoneNormalized: phoneN,
-        clientCode: `CL-${String(seq).padStart(6, "0")}`,
+        clientCode: idClaim.id,
         inquiryId: input.inquiryId,
         currentMembership: null,
         biometricUserId: "",

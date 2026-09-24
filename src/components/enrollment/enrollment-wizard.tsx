@@ -66,8 +66,12 @@ import { subscribeStaff } from "@/services/staff.service";
 import { useAccess } from "@/hooks/use-access";
 import { addDaysISO } from "@/lib/format";
 import {
+  cleanMemberId,
   findClientsByPhone,
+  memberIdLabel,
+  memberIdProblem,
   subscribeClient,
+  suggestMemberId,
   updateClient,
   type ClientInput,
 } from "@/services/clients.service";
@@ -136,6 +140,7 @@ interface Draft {
   counsellorId?: string;
   nextPaymentDate?: string;
   photoLater?: boolean;
+  memberNo?: string;
 }
 
 const draftStorageKey = (key: string) => `rf.enrollment-draft.${key}`;
@@ -201,7 +206,9 @@ export function EnrollmentWizard({
     () => restored?.counsellorId ?? options.counsellorId ?? "",
   );
   const [nextPaymentDate, setNextPaymentDate] = useState(restored?.nextPaymentDate ?? "");
-  const [photoLater, setPhotoLater] = useState(restored?.photoLater ?? false);
+  // Most members send their photo later from their phone, so this starts ticked.
+  const [photoLater, setPhotoLater] = useState(restored?.photoLater ?? true);
+  const [memberNo, setMemberNo] = useState(restored?.memberNo ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [enrollmentId, setEnrollmentId] = useState<string | null>(
@@ -240,6 +247,11 @@ export function EnrollmentWizard({
     [invoiceId],
   );
   const memberId = enrollment.data?.clientId ?? existing?.id ?? "";
+  // A new member gets the next free ID; staff may change it to another free number.
+  useEffect(() => {
+    if (memberId || memberNo) return;
+    void suggestMemberId().then((v) => setMemberNo((n) => n || v));
+  }, [memberId, memberNo]);
   const member = useLive<Client | null>(
     memberId ? (ok, fail) => subscribeClient(memberId, ok, fail) : null,
     null,
@@ -325,6 +337,7 @@ export function EnrollmentWizard({
             counsellorId,
             nextPaymentDate,
             photoLater,
+            memberNo,
           }
         : null,
     );
@@ -349,6 +362,7 @@ export function EnrollmentWizard({
     counsellorId,
     nextPaymentDate,
     photoLater,
+    memberNo,
   ]);
 
   const startFresh = () => {
@@ -363,6 +377,8 @@ export function EnrollmentWizard({
     setAmountPaid(null);
     setNotes("");
     setNextPaymentDate("");
+    setPhotoLater(true);
+    setMemberNo("");
     setStep(firstStep);
   };
 
@@ -378,7 +394,12 @@ export function EnrollmentWizard({
       if (!e["phone"]) {
         const dup = (await findClientsByPhone(client.phone)).filter((c) => c.id !== memberId);
         if (dup.length)
-          e["phone"] = `Already a member: ${dup[0]!.fullName} (${dup[0]!.clientCode})`;
+          e["phone"] =
+            `Already a member: ${dup[0]!.fullName} (${memberIdLabel(dup[0]!.clientCode)})`;
+      }
+      if (!memberId) {
+        const problem = await memberIdProblem(memberNo);
+        if (problem) e["memberNo"] = problem;
       }
     }
     if (s === PACKAGE) {
@@ -429,6 +450,7 @@ export function EnrollmentWizard({
         staff: { uid: user?.uid ?? "", name: user?.displayName || user?.email || "Staff" },
         counsellor: counsellor ? { id: counsellor.id, name: counsellor.name } : null,
         nextPaymentDate: balanceLeft ? nextPaymentDate : null,
+        memberId: cleanMemberId(memberNo),
       });
       writeDraft(draftKey, null);
       setEnrollmentId(r.enrollmentId);
@@ -569,6 +591,8 @@ export function EnrollmentWizard({
 
           {step === DETAILS && (!existing || resuming) ? (
             <DetailsStep
+              memberNo={memberId ? null : memberNo}
+              setMemberNo={setMemberNo}
               photoLater={photoLater}
               setPhotoLater={setPhotoLater}
               client={client}
@@ -1091,6 +1115,8 @@ export function EnrollmentWizard({
 // ---------------------------------------------------------------- steps
 
 function DetailsStep({
+  memberNo,
+  setMemberNo,
   client,
   setClient,
   whatsappOptIn,
@@ -1099,6 +1125,9 @@ function DetailsStep({
   photoLater,
   setPhotoLater,
 }: {
+  /** null = an existing member (the ID is already given). */
+  memberNo: string | null;
+  setMemberNo: (v: string) => void;
   client: ClientInput;
   setClient: (c: ClientInput) => void;
   whatsappOptIn: boolean;
@@ -1110,8 +1139,41 @@ function DetailsStep({
   const [more, setMore] = useState(
     Boolean(client.email || client.dateOfBirth || client.address || client.emergencyContact),
   );
+  // Live check while typing: only free IDs are accepted.
+  const [idProblem, setIdProblem] = useState("");
+  useEffect(() => {
+    if (memberNo === null || !memberNo) return setIdProblem("");
+    const t = window.setTimeout(
+      () => void memberIdProblem(memberNo).then(setIdProblem, () => setIdProblem("")),
+      350,
+    );
+    return () => window.clearTimeout(t);
+  }, [memberNo]);
+  const idError = errors["memberNo"] || idProblem;
   return (
     <div className="grid gap-4 sm:grid-cols-2">
+      {memberNo !== null ? (
+        <Field
+          label="Member ID"
+          htmlFor="e-id"
+          required
+          error={idError}
+          hint={
+            idError
+              ? undefined
+              : "Next free number, also used on the fingerprint machine. Change it to keep their old number."
+          }
+          className="sm:col-span-2 sm:max-w-sm"
+        >
+          <Input
+            id="e-id"
+            inputMode="numeric"
+            autoComplete="off"
+            value={memberNo}
+            onChange={(e) => setMemberNo(e.target.value.replace(/\D/g, "").slice(0, 4))}
+          />
+        </Field>
+      ) : null}
       <Field label="Full name" htmlFor="e-name" required error={errors["fullName"]}>
         <Input
           id="e-name"

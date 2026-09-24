@@ -46,8 +46,6 @@ export type ClientUpdateInput = Partial<
     >
 >;
 
-const COUNTER_REF = () => doc(db, COLLECTIONS.settings, "counters");
-
 export const mapClient = (id: string, d: DocumentData): Client => ({
   id,
   clientCode: d["clientCode"] ?? "",
@@ -113,13 +111,63 @@ export async function findClientsByPhone(phone: string, excludeId?: string) {
   return snap.docs.map((d) => mapClient(d.id, d.data())).filter((c) => c.id !== excludeId);
 }
 
-/** Atomically reserves the next readable client code (CL-000001…). */
-async function nextClientCode(tx: Transaction) {
-  const snap = await tx.get(COUNTER_REF());
-  const next = Number(snap.exists() ? (snap.data()["clientSeq"] ?? 0) : 0) + 1;
-  tx.set(COUNTER_REF(), { clientSeq: next, updatedAt: serverTimestamp() }, { merge: true });
-  return `CL-${String(next).padStart(6, "0")}`;
+// ------------------------------------------------------------------ member ID
+
+/**
+ * Member IDs are plain numbers (1, 2, 3…), the same number used on the fingerprint machine.
+ * 9001 and up belong to staff on the machine, so members stay below.
+ */
+export const MAX_MEMBER_ID = 8999;
+const memberIdRef = (id: string) => doc(db, COLLECTIONS.memberIds, id);
+const idNumber = (code: string) => Number.parseInt(code.replace(/\D/g, ""), 10) || 0;
+/** "007" → "7". */
+export const cleanMemberId = (id: string) => id.trim().replace(/^0+(?=\d)/, "");
+/** How an ID is shown: "ID 12" (old codes like CL-000012 as they are). */
+export const memberIdLabel = (code: string) => (/^\d+$/.test(code) ? `ID ${code}` : code);
+
+/** The next free member ID: one more than the highest in use (1 when there are no members). */
+export async function suggestMemberId() {
+  const snap = await getDocs(col(COLLECTIONS.clients));
+  const max = snap.docs.reduce(
+    (n, d) => Math.max(n, idNumber(String(d.data()["clientCode"] ?? ""))),
+    0,
+  );
+  return String(Math.min(max + 1, MAX_MEMBER_ID));
 }
+
+/** Why this ID can't be given, or "" when it is free. */
+export async function memberIdProblem(raw: string, excludeClientId?: string) {
+  const id = cleanMemberId(raw);
+  if (!/^\d{1,4}$/.test(id) || Number(id) < 1 || Number(id) > MAX_MEMBER_ID)
+    return `Use a number from 1 to ${MAX_MEMBER_ID}`;
+  const [reserved, same] = await Promise.all([
+    getDoc(memberIdRef(id)),
+    getDocs(query(col(COLLECTIONS.clients), where("clientCode", "==", id))),
+  ]);
+  const owner = same.docs.find((d) => d.id !== excludeClientId);
+  if (owner) return `ID ${id} belongs to ${String(owner.data()["fullName"] ?? "another member")}`;
+  if (reserved.exists() && reserved.data()["clientId"] !== excludeClientId)
+    return `ID ${id} is already taken`;
+  return "";
+}
+
+/**
+ * Inside the save transaction (call before any write): claims the ID so two desks can never
+ * give out the same number. Returns the write to add once all reads are done.
+ */
+export async function claimMemberId(tx: Transaction, raw: string, clientId: string) {
+  const id = cleanMemberId(raw);
+  const s = await tx.get(memberIdRef(id));
+  if (s.exists() && s.data()["clientId"] !== clientId)
+    throw new Error(`Member ID ${id} was just given to someone else. Pick another ID.`);
+  return {
+    id,
+    write: () => tx.set(memberIdRef(id), { clientId, createdAt: serverTimestamp() }),
+  };
+}
+
+/** Frees a deleted member's ID so it can be given again. */
+export const memberIdDocRef = (code: string) => (/^\d+$/.test(code) ? memberIdRef(code) : null);
 
 function clientPayload(input: ClientInput) {
   return {
@@ -132,6 +180,7 @@ function clientPayload(input: ClientInput) {
 
 export async function createClient(input: ClientInput, inquiryId: string | null = null) {
   const ref = doc(col(COLLECTIONS.clients));
+  const memberId = await suggestMemberId();
   await runTransaction(db, async (tx) => {
     // Reads must happen before writes inside a transaction.
     const inquiryRef = inquiryId ? doc(db, COLLECTIONS.inquiries, inquiryId) : null;
@@ -139,7 +188,9 @@ export async function createClient(input: ClientInput, inquiryId: string | null 
     if (inquirySnap?.exists() && inquirySnap.data()["convertedToClient"]) {
       throw new Error("This inquiry has already been converted to a client.");
     }
-    const clientCode = await nextClientCode(tx);
+    const claim = await claimMemberId(tx, memberId, ref.id);
+    const clientCode = claim.id;
+    claim.write();
     tx.set(ref, {
       ...clientPayload(input),
       clientCode,

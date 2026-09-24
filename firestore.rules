@@ -143,6 +143,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Member ID numbers in use (one record per ID), so two desks can never give out the same
+    // number. Freed when the member is deleted.
+    match /memberIds/{id} {
+      allow read, create: if isStaff();
+      allow update: if false;
+      allow delete: if can('deleteMembers');
+    }
+
     // WhatsApp announcements cost money (Marketing): only logins with that switch.
     match /announcements/{id} {
       allow read, write: if can('announcements');

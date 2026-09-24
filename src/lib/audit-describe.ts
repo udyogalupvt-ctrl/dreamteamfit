@@ -6,6 +6,7 @@ export type AuditAction = "created" | "updated" | "deleted";
 /** Machine noise and derived records that would drown the log. */
 export const AUDIT_SKIP = new Set([
   "auditLogs",
+  "memberIds",
   "attendance",
   "biometricCommands",
   "biometricTemplates",

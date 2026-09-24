@@ -2,6 +2,7 @@ import { doc, getDocs, query, where, writeBatch, type DocumentReference } from "
 import { db } from "@/lib/firebase";
 import type { Client, ClassEnrollment } from "@/types/models";
 import { updateEnrollmentStatus } from "./class-enrollments.service";
+import { memberIdDocRef } from "./clients.service";
 import { col, COLLECTIONS, toDate, type CollectionName } from "./firestore.service";
 
 /** Everything that belongs to one member. */
@@ -88,6 +89,9 @@ export async function deleteMemberCompletely(
   // The lead stays in Leads history, just no longer linked to a member.
   leads.forEach((l) => last.update(l.ref, { clientId: null }));
   last.delete(doc(db, COLLECTIONS.clients, client.id));
+  // The member ID becomes free for a new member.
+  const idRef = memberIdDocRef(client.clientCode);
+  if (idRef) last.delete(idRef);
   await last.commit();
   return { records: refs.length, keptAccounts: opts.keepAccounts };
 }
