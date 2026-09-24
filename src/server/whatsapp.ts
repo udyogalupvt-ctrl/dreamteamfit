@@ -111,11 +111,24 @@ async function send(request: Request) {
   const messageId = String(input.messageId ?? "");
   if (!messageId) return json({ error: "Message ID is required." }, 400);
   const ref = db().doc(`whatsappMessages/${messageId}`);
-  const snap = await ref.get();
-  if (!snap.exists) return json({ error: "Message request not found." }, 404);
-  const data = snap.data() ?? {};
-  if (["sent", "delivered", "read"].includes(String(data["status"])))
-    return json({ messageId, duplicate: true, status: data["status"] });
+  // Claim the message in a transaction: two taps / two screens at the same moment can never
+  // both send it. A claim older than 2 minutes (a crashed send) may be taken over.
+  const claim = await db().runTransaction(async (tx) => {
+    const s = await tx.get(ref);
+    if (!s.exists) return { kind: "missing" as const };
+    const d = s.data() ?? {};
+    if (["sent", "delivered", "read"].includes(String(d["status"])))
+      return { kind: "done" as const, status: String(d["status"]) };
+    const claimedAt =
+      (d["sendClaimedAt"] as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+    if (Date.now() - claimedAt < 120_000) return { kind: "busy" as const };
+    tx.update(ref, { sendClaimedAt: FieldValue.serverTimestamp() });
+    return { kind: "claimed" as const, data: d };
+  });
+  if (claim.kind === "missing") return json({ error: "Message request not found." }, 404);
+  if (claim.kind === "done") return json({ messageId, duplicate: true, status: claim.status });
+  if (claim.kind === "busy") return json({ messageId, duplicate: true, status: "sending" });
+  const data = claim.data;
 
   const fail = async (code: string, message: string, status: number) => {
     await ref.update({
@@ -123,6 +136,8 @@ async function send(request: Request) {
       failedAt: FieldValue.serverTimestamp(),
       errorCode: code,
       errorMessage: message,
+      // Released, so staff can press Retry.
+      sendClaimedAt: FieldValue.delete(),
       updatedAt: FieldValue.serverTimestamp(),
     });
     return json({ error: message }, status);

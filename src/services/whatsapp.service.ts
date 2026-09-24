@@ -143,13 +143,19 @@ export async function sendWhatsAppMessage(input: SendInput) {
     });
     return { duplicate: false, messageId: id };
   } catch (error) {
-    await updateDoc(ref, {
-      status: "failed",
-      failedAt: serverTimestamp(),
-      errorCode: "backend_unavailable",
-      errorMessage: error instanceof Error ? error.message : "WhatsApp delivery failed",
-      updatedAt: serverTimestamp(),
-    });
+    // Only a message that never went out becomes "failed". If the server already sent it (and
+    // just the reply was lost), it stays "sent", so a Retry can never send it twice.
+    await runTransaction(db, async (tx) => {
+      const now = await tx.get(ref);
+      if (now.data()?.["status"] !== "queued") return;
+      tx.update(ref, {
+        status: "failed",
+        failedAt: serverTimestamp(),
+        errorCode: "backend_unavailable",
+        errorMessage: error instanceof Error ? error.message : "WhatsApp delivery failed",
+        updatedAt: serverTimestamp(),
+      });
+    }).catch(() => undefined);
     throw error;
   }
 }
