@@ -176,7 +176,7 @@ export async function enrollMember(input: EnrollmentInput) {
     input.existingClient.biometricUserId;
   const needsBiometric = !existingBio;
   let prevActive: string[] = [];
-  if (input.existingClient && !needsBiometric && input.gymPackage) {
+  if (input.existingClient && input.gymPackage) {
     const ms = await getDocs(
       query(col(COLLECTIONS.memberships), where("clientId", "==", input.existingClient.id)),
     );
@@ -205,11 +205,22 @@ export async function enrollMember(input: EnrollmentInput) {
   const fullName = input.existingClient?.fullName ?? input.client.fullName.trim();
   const phone = input.existingClient?.phone ?? input.client.phone.trim();
   const email = input.existingClient?.email ?? input.client.email.trim();
-  const membershipStatus = needsBiometric
-    ? "biometric_pending"
-    : input.startDate > today
-      ? "pending"
-      : "active";
+  // The plan runs from the date staff chose with the member, whether or not the thumb is
+  // registered yet; the thumb only opens the door.
+  const membershipStatus = input.startDate > today ? "pending" : "active";
+  const planEnd = input.gymPackage
+    ? calculateEndDate(input.startDate, input.gymPackage.durationDays)
+    : "";
+  const planSummary =
+    membershipRef && input.gymPackage && membershipStatus === "active"
+      ? {
+          membershipId: membershipRef.id,
+          packageName: input.gymPackage.name,
+          startDate: input.startDate,
+          endDate: planEnd,
+          status: "active" as const,
+        }
+      : null;
 
   await runTransaction(db, async (tx) => {
     const counter = await tx.get(counterRef);
@@ -230,6 +241,8 @@ export async function enrollMember(input: EnrollmentInput) {
         ["cancelled", "expired"].includes(String(upgraded.data()["status"])))
     )
       throw new Error("The plan being upgraded has already ended. Refresh and try again.");
+    if (upgraded && String(upgraded.data()!["endDate"] ?? "") < input.startDate)
+      throw new Error("The upgrade date is after the current plan ends. Use Renew instead.");
     const c = counter.data() ?? {};
     const year = new Date(`${today}T00:00:00`).getFullYear();
     const invKey = `invoiceSeq${year}`;
@@ -251,7 +264,7 @@ export async function enrollMember(input: EnrollmentInput) {
         phoneNormalized: phoneN,
         clientCode: idClaim.id,
         inquiryId: input.inquiryId,
-        currentMembership: null,
+        currentMembership: planSummary,
         biometricUserId: "",
         biometricDeviceId: "",
         biometricStatus: "not_enrolled",
@@ -275,9 +288,11 @@ export async function enrollMember(input: EnrollmentInput) {
         tx.update(doc(db, COLLECTIONS.memberships, id), { status: "expired", updatedAt: now }),
       );
       if (upgradeRef && upgraded && input.upgrade)
-        // The old plan stops yesterday; its unused days became the credit on this bill.
+        // The old plan runs until the day before the new one starts (today → ended); its unused
+        // days after that became the credit on this bill.
         tx.update(upgradeRef, {
-          status: "expired",
+          ...(input.startDate <= today ? { status: "expired" } : {}),
+          upgradeFrom: input.startDate,
           endDate: addDaysISO(input.startDate, -1),
           originalEndDate: upgraded.data()!["endDate"] ?? "",
           upgradedTo: membershipRef.id,
@@ -312,7 +327,7 @@ export async function enrollMember(input: EnrollmentInput) {
         ...share,
         startDate: input.startDate,
         endDate: calculateEndDate(input.startDate, input.pt.pkg.durationDays),
-        status: needsBiometric ? "pending" : "active",
+        status: input.startDate > today ? "pending" : "active",
         invoiceId: invoiceRef.id,
         enrollmentId: enrollmentRef.id,
         ...counsellor,
@@ -463,16 +478,15 @@ export async function enrollMember(input: EnrollmentInput) {
       const clientPatch: Record<string, unknown> = { updatedAt: now };
       // Only a member still waiting for a thumb points at this enrollment, so the profile can resume it.
       if (needsBiometric) clientPatch["enrollmentId"] = enrollmentRef.id;
-      if (membershipRef && membershipStatus === "active") {
-        clientPatch["currentMembership"] = {
-          membershipId: membershipRef.id,
-          packageName: input.gymPackage!.name,
-          startDate: input.startDate,
-          endDate,
-          status: "active",
-        };
+      if (planSummary) {
+        clientPatch["currentMembership"] = planSummary;
         clientPatch["status"] = "active";
-      }
+      } else if (
+        input.upgrade &&
+        input.existingClient.currentMembership?.membershipId === input.upgrade.membershipId
+      )
+        // Upgrade from a later date: the running plan now ends the day before it.
+        clientPatch["currentMembership.endDate"] = addDaysISO(input.startDate, -1);
       if (input.whatsappOptIn && !input.existingClient.whatsappOptIn) {
         clientPatch["whatsappOptIn"] = true;
         clientPatch["whatsappStatus"] = "ready";
@@ -699,8 +713,12 @@ async function activateAfterConfirmedThumb(
   if (enrollmentId) {
     const eRef = doc(db, COLLECTIONS.enrollments, enrollmentId);
     const e = mapEnrollment(enrollmentId, (await getDoc(eRef)).data() ?? {});
-    if (e.membershipId) {
-      const mSnap = await getDoc(doc(db, COLLECTIONS.memberships, e.membershipId));
+    const mSnap = e.membershipId
+      ? await getDoc(doc(db, COLLECTIONS.memberships, e.membershipId))
+      : null;
+    // Plans now run from their start date on their own; only an old-style plan that was still
+    // waiting for the thumb is started here.
+    if (mSnap?.exists() && mSnap.data()["status"] === "biometric_pending") {
       const m = mSnap.data() ?? {};
       const today = todayISO();
       const status = String(m["startDate"] ?? today) > today ? "pending" : "active";
@@ -723,11 +741,14 @@ async function activateAfterConfirmedThumb(
           },
         });
     }
-    if (e.ptAssignmentId)
-      batch.update(doc(db, COLLECTIONS.ptAssignments, e.ptAssignmentId), {
-        status: "active",
-        updatedAt: now,
-      });
+    if (e.ptAssignmentId) {
+      const pt = await getDoc(doc(db, COLLECTIONS.ptAssignments, e.ptAssignmentId));
+      if (
+        pt.data()?.["status"] === "pending" &&
+        String(pt.data()?.["startDate"] ?? "") <= todayISO()
+      )
+        batch.update(pt.ref, { status: "active", updatedAt: now });
+    }
     batch.update(eRef, {
       status: "active",
       biometricDeviceId: device.id,

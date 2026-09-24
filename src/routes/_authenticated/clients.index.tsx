@@ -59,7 +59,7 @@ const PLAN_PILL: Record<
   PlanSummary["status"],
   { label: string; tone: "success" | "warning" | "danger" | "info" }
 > = {
-  waiting_thumb: { label: "Starts after thumb", tone: "warning" },
+  waiting_thumb: { label: "Waiting for thumb", tone: "warning" },
   upcoming: { label: "Upcoming", tone: "info" },
   active: { label: "Active", tone: "success" },
   expired: { label: "Expired", tone: "danger" },

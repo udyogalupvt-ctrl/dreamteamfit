@@ -5,7 +5,7 @@ import { Field, FormDialog } from "@/components/common/form-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
-import { addDaysISO, formatDateISO } from "@/lib/format";
+import { addDaysISO, formatDateISO, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { pauseMembership } from "@/services/memberships.service";
@@ -27,12 +27,14 @@ export function PausePlanDialog({
   const [days, setDays] = useState("15");
   const [reason, setReason] = useState<string>("Travel");
   const [note, setNote] = useState("");
+  const [from, setFrom] = useState(todayISO());
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     if (membership) {
       setDays("15");
       setReason("Travel");
       setNote("");
+      setFrom(todayISO());
     }
   }, [membership]);
 
@@ -44,7 +46,7 @@ export function PausePlanDialog({
     try {
       const end = await pauseMembership(
         membership,
-        { days: n, reason, note },
+        { days: n, reason, note, from },
         user?.displayName || user?.email || "Staff",
         isCurrent,
       );
@@ -107,6 +109,21 @@ export function PausePlanDialog({
               className="max-w-40"
             />
           </div>
+        </Field>
+        <Field
+          label="Pause from"
+          htmlFor="pause-from"
+          hint="Today, or the day the member is away from."
+        >
+          <Input
+            id="pause-from"
+            type="date"
+            min={membership?.startDate}
+            max={membership?.endDate}
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className="max-w-48"
+          />
         </Field>
         <Field label="Why?" htmlFor="pause-reason">
           <div className="flex flex-wrap gap-1.5" role="radiogroup" id="pause-reason">

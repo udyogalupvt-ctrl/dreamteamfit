@@ -243,7 +243,7 @@ export interface Membership extends BaseDoc {
 
 export const PAUSE_REASONS = ["Travel", "Medical", "Other"] as const;
 export interface MembershipPause {
-  /** Day the pause was entered (YYYY-MM-DD). */
+  /** Day the pause starts, as agreed with the member (YYYY-MM-DD). */
   on: string;
   days: number;
   reason: string;

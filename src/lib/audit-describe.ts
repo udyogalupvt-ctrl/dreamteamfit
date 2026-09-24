@@ -120,7 +120,7 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
         const list = Array.isArray(a["pauses"]) ? (a["pauses"] as D[]) : [];
         const last = list[list.length - 1];
         return list.length > before && last
-          ? `Plan ${s(d["packageNameSnapshot"])} paused ${s(last["days"])} days (${s(last["reason"])}): now ends ${day(a["endDate"])}`
+          ? `Plan ${s(d["packageNameSnapshot"])} paused ${s(last["days"])} days from ${day(last["on"])} (${s(last["reason"])}): now ends ${day(a["endDate"])}`
           : `Pause undone on ${s(d["packageNameSnapshot"])}: ends ${day(a["endDate"])} again`;
       }
       if (f.includes("startDate") || f.includes("endDate"))

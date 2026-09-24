@@ -92,7 +92,9 @@ export function buildSegments(
       const last = lastVisit.get(c.id);
       const since = last && last >= plan.startDate ? last : plan.startDate;
       const gap = daysBetween(since, today);
-      if (plan.status === "active" && gap >= o.absentDays)
+      // Visits can only be judged once the member can punch in (thumb) or has a recorded visit.
+      const tracked = c.firstThumbRegistered || lastVisit.has(c.id);
+      if (plan.status === "active" && tracked && gap >= o.absentDays)
         add({
           client: c,
           segment: "inactive",

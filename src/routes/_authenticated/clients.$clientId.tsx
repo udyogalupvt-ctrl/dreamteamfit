@@ -281,10 +281,10 @@ function ClientProfilePage() {
         >
           <Fingerprint className="size-8 shrink-0 text-warning" aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="font-bold">Joining not finished — thumb not registered</p>
+            <p className="font-bold">Thumb not registered yet</p>
             <p className="text-sm text-muted-foreground">
-              Payment is saved, but the membership starts and entry opens only after the first thumb
-              is registered on the device.
+              The plan runs from its start date. Register the thumb so the door opens for this
+              member.
             </p>
           </div>
           <Button size="lg" onClick={() => resumeSetup(c)}>
@@ -349,9 +349,11 @@ function ClientProfilePage() {
             </>
           ) : (
             <p className="mt-1 text-sm text-muted-foreground">
-              {withStatus.some((m) => m.effective === "biometric_pending")
-                ? "Starts after thumb registration"
-                : "None active"}
+              {upcoming[0]
+                ? `Starts ${formatDateISO(upcoming[0].startDate)}`
+                : withStatus.some((m) => m.effective === "biometric_pending")
+                  ? "Waiting for the first thumb"
+                  : "None active"}
             </p>
           )}
         </div>
@@ -736,7 +738,7 @@ function MembershipHero({
         <div className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
           {m.pauses.map((p, i) => (
             <p key={i} className="text-meta">
-              Paused {p.days} days on {formatDateISO(p.on)} ({p.reason}
+              Paused {p.days} days from {formatDateISO(p.on)} ({p.reason}
               {p.note ? `: ${p.note}` : ""}) by {p.by}
             </p>
           ))}

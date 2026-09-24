@@ -142,7 +142,7 @@ export async function cancelMembership(membership: Membership, clientSummaryId?:
  */
 export async function pauseMembership(
   m: Membership,
-  input: { days: number; reason: string; note: string },
+  input: { days: number; reason: string; note: string; from: string },
   by: string,
   isCurrent: boolean,
 ) {
@@ -150,7 +150,7 @@ export async function pauseMembership(
   if (!(days >= 1 && days <= 365)) throw new Error("Pause between 1 and 365 days.");
   const endDate = addDaysISO(m.endDate, days);
   const pause: MembershipPause = {
-    on: todayISO(),
+    on: input.from || todayISO(),
     days,
     reason: input.reason,
     note: input.note.trim(),

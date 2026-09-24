@@ -1,6 +1,6 @@
 /**
  * Daily WhatsApp reminders, run by Vercel Cron (vite.config.ts → nitro vercel crons):
- *   /api/cron/morning  ~8 AM IST   renewal reminders + birthday wishes
+ *   /api/cron/morning  ~8 AM IST   plan roll-over, renewal reminders, birthday wishes
  *   /api/cron/night    ~9:30 PM IST missed-workout nudges (after closing, punches are final)
  * Vercel's free plan runs each cron once a day, somewhere inside the scheduled hour.
  */
@@ -394,16 +394,94 @@ export async function processAbsenceNudges() {
 }
 
 /** Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. Without the secret set, cron is off. */
+/**
+ * Plans follow their dates: a queued renewal / upgrade / future joining becomes active on its
+ * start day (and the member's current plan), a finished plan is marked ended. Old plans that were
+ * waiting for the first thumb follow their dates too. Runs first every morning.
+ */
+export async function rollPlans() {
+  const firestore = db();
+  const today = localDate();
+  const snap = await firestore
+    .collection("memberships")
+    .where("status", "in", ["active", "pending", "biometric_pending"])
+    .get();
+  const byClient = new Map<string, FirebaseFirestore.QueryDocumentSnapshot[]>();
+  for (const d of snap.docs) {
+    const c = String(d.data()["clientId"] ?? "");
+    byClient.set(c, [...(byClient.get(c) ?? []), d]);
+  }
+  let changed = 0;
+  let batch = firestore.batch();
+  let ops = 0;
+  const flush = async () => {
+    if (ops) await batch.commit();
+    batch = firestore.batch();
+    ops = 0;
+  };
+  const now = FieldValue.serverTimestamp();
+  for (const [clientId, plans] of byClient) {
+    let current: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+    for (const d of plans) {
+      const m = d.data();
+      const start = String(m["startDate"] ?? "");
+      const end = String(m["endDate"] ?? "");
+      const status = String(m["status"]);
+      const next = end < today ? "expired" : start <= today ? "active" : "pending";
+      if (next === "active") current = d;
+      if (next !== status) {
+        batch.update(d.ref, { status: next, updatedAt: now });
+        ops += 1;
+        changed += 1;
+      }
+    }
+    if (!clientId) continue;
+    const ref = firestore.doc(`clients/${clientId}`);
+    const cm = current?.data();
+    if (current && cm) {
+      batch.set(
+        ref,
+        {
+          currentMembership: {
+            membershipId: current.id,
+            packageName: cm["packageNameSnapshot"] ?? "",
+            startDate: cm["startDate"] ?? "",
+            endDate: cm["endDate"] ?? "",
+            status: "active",
+          },
+          status: "active",
+          updatedAt: now,
+        },
+        { merge: true },
+      );
+      ops += 1;
+    }
+    if (ops >= 400) await flush();
+  }
+  // PT that has reached its start day.
+  const pts = await firestore.collection("ptAssignments").where("status", "==", "pending").get();
+  for (const d of pts.docs) {
+    if (String(d.data()["startDate"] ?? "") > today) continue;
+    batch.update(d.ref, { status: "active", updatedAt: now });
+    ops += 1;
+    changed += 1;
+    if (ops >= 400) await flush();
+  }
+  await flush();
+  return changed;
+}
+
 export async function handleCron(request: Request, url: URL) {
   const secret = (process.env["CRON_SECRET"] ?? "").trim();
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`)
     return json({ error: "Unauthorized" }, 401);
   const job = url.pathname.replace(/^\/api\/cron\/?/, "").replace(/\/+$/, "");
   if (job === "morning") {
+    const plans = await rollPlans();
     const renewals = await processRenewalReminders();
     const birthdays = await processBirthdayNotifications();
     const paymentsDue = await processPaymentDueReminders();
-    return json({ ok: true, renewals, birthdays, paymentsDue });
+    return json({ ok: true, plans, renewals, birthdays, paymentsDue });
   }
   if (job === "night") return json({ ok: true, absences: await processAbsenceNudges() });
   return json({ error: "Unknown job" }, 404);

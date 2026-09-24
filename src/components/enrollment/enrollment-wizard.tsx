@@ -306,11 +306,17 @@ export function EnrollmentWizard({
   const running = livePlans.find((m) => m.startDate <= today) ?? null;
   const lastEnd = livePlans.reduce((e, m) => (m.endDate > e ? m.endDate : e), "");
   const renewStart = lastEnd ? addDaysISO(lastEnd, 1) : today;
-  const unusedDays = running ? Math.max(0, daysBetween(today, running.endDate)) : 0;
+  const [planMode, setPlanMode] = useState<"renew" | "upgrade">("renew");
+  // "" = the default: the day after the current plan (renew) / today (upgrade).
+  const [renewDate, setRenewDate] = useState("");
+  const [upgradeDate, setUpgradeDate] = useState("");
+  const renewFrom = renewDate || renewStart;
+  const upgradeFrom = upgradeDate || today;
+  // Unused days of the running plan from the day the new plan takes over.
+  const unusedDays = running ? Math.max(0, daysBetween(upgradeFrom, running.endDate)) : 0;
   const autoCredit = running
     ? Math.round((running.priceSnapshot * unusedDays) / Math.max(1, running.durationDaysSnapshot))
     : 0;
-  const [planMode, setPlanMode] = useState<"renew" | "upgrade">("renew");
   const [creditText, setCreditText] = useState("");
   // Upgrading is only offered while nothing is queued after the running plan.
   const canUpgrade = !!running && livePlans.every((m) => m.id === running.id);
@@ -326,11 +332,22 @@ export function EnrollmentWizard({
         credit,
       }
     : null;
-  // The start date follows the choice: after the running plan (renew) or today (upgrade / PT only).
+  const showChoice = !!(existing && !resuming && gymPackage && lastEnd);
+  // The date staff agreed with the member; checked before moving on.
+  const planDateProblem = !showChoice
+    ? ""
+    : upgrading
+      ? upgradeFrom < running.startDate || upgradeFrom > running.endDate
+        ? `Pick a date from ${formatDateISO(running.startDate)} to ${formatDateISO(running.endDate)}`
+        : ""
+      : renewFrom < renewStart
+        ? `Pick ${formatDateISO(renewStart)} or later, or choose Upgrade to change the plan earlier`
+        : "";
+  // The start date follows the choice: renew / upgrade date, or today (expired plan, PT only).
   useEffect(() => {
     if (!existing || resuming) return;
-    setStartDate(gymPackage && lastEnd && !upgrading ? renewStart : todayISO());
-  }, [existing, resuming, gymPackage, lastEnd, upgrading, renewStart]);
+    setStartDate(showChoice ? (upgrading ? upgradeFrom : renewFrom) : todayISO());
+  }, [existing, resuming, showChoice, upgrading, upgradeFrom, renewFrom]);
   const ptPkg = ptOn ? (ptPackages.data.find((p) => p.id === ptPackageId) ?? null) : null;
   const trainer = ptOn ? (trainers.data.find((t) => t.id === trainerId) ?? null) : null;
   const shareType = shareOverride?.type ?? trainer?.defaultShareType ?? "percentage";
@@ -451,6 +468,7 @@ export function EnrollmentWizard({
       if (ptOn && !ptPkg) e["ptPackage"] = "Pick a PT package";
       if (ptOn && !trainer) e["trainer"] = "Pick a trainer";
       if (counsellors.length && !counsellor) e["counsellor"] = "Pick the counsellor";
+      if (planDateProblem) e["planDate"] = planDateProblem;
     }
     if (s === PAYMENT) {
       if (!gymPackage && !pt) e["package"] = "Pick a package first";
@@ -694,12 +712,17 @@ export function EnrollmentWizard({
                       </button>
                     ))}
                 </div>
-                {existing && !resuming && gymPackage && lastEnd ? (
+                {showChoice ? (
                   <RenewChoice
                     running={running}
                     canUpgrade={canUpgrade}
                     lastEnd={lastEnd}
                     renewStart={renewStart}
+                    renewFrom={renewFrom}
+                    setRenewDate={setRenewDate}
+                    upgradeFrom={upgradeFrom}
+                    setUpgradeDate={setUpgradeDate}
+                    error={errors["planDate"] || planDateProblem}
                     unusedDays={unusedDays}
                     autoCredit={autoCredit}
                     mode={planMode}
@@ -709,14 +732,18 @@ export function EnrollmentWizard({
                   />
                 ) : null}
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Start date" htmlFor="e-start">
-                    <Input
-                      id="e-start"
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                    />
-                  </Field>
+                  {showChoice ? (
+                    <div className="max-sm:hidden" />
+                  ) : (
+                    <Field label="Start date" htmlFor="e-start">
+                      <Input
+                        id="e-start"
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                      />
+                    </Field>
+                  )}
                   <Field
                     label="Counsellor"
                     htmlFor="e-counsellor"
@@ -1584,14 +1611,21 @@ function ShareStep({
 }
 
 /**
- * An existing member picks a package while a plan is still running: renew after it (nothing
- * lost) or upgrade now (the running plan stops; its unused days are credited on this bill).
+ * An existing member picks a package while a plan is still running or queued. Staff set the date
+ * agreed with the member: renew from a day after the current plan (nothing lost), or upgrade from
+ * a day (the current plan runs until the day before; its unused days are credited on this bill).
+ * The bill is recorded today either way.
  */
 function RenewChoice({
   running,
   canUpgrade,
   lastEnd,
   renewStart,
+  renewFrom,
+  setRenewDate,
+  upgradeFrom,
+  setUpgradeDate,
+  error,
   unusedDays,
   autoCredit,
   mode,
@@ -1603,6 +1637,11 @@ function RenewChoice({
   canUpgrade: boolean;
   lastEnd: string;
   renewStart: string;
+  renewFrom: string;
+  setRenewDate: (v: string) => void;
+  upgradeFrom: string;
+  setUpgradeDate: (v: string) => void;
+  error: string;
   unusedDays: number;
   autoCredit: number;
   mode: "renew" | "upgrade";
@@ -1610,6 +1649,7 @@ function RenewChoice({
   creditText: string;
   setCreditText: (v: string) => void;
 }) {
+  const today = todayISO();
   const option = (value: "renew" | "upgrade", title: string, detail: string) => (
     <button
       type="button"
@@ -1634,6 +1674,7 @@ function RenewChoice({
       </span>
     </button>
   );
+  const gapDays = daysBetween(renewStart, renewFrom);
   return (
     <div
       className="space-y-2 rounded-xl border border-border p-3"
@@ -1644,8 +1685,8 @@ function RenewChoice({
         {running ? (
           <>
             Current plan: <b>{running.packageNameSnapshot}</b>, ends{" "}
-            <b>{formatDateISO(running.endDate)}</b> ({unusedDays} day{unusedDays === 1 ? "" : "s"}{" "}
-            left)
+            <b>{formatDateISO(running.endDate)}</b> (
+            {Math.max(0, daysBetween(today, running.endDate))} days left)
           </>
         ) : (
           <>
@@ -1655,9 +1696,29 @@ function RenewChoice({
       </p>
       {option(
         "renew",
-        `Renew: starts ${formatDateISO(renewStart)}`,
-        "After the current plan ends. The member loses no days.",
+        `Renew from ${formatDateISO(renewFrom)}`,
+        "After the current plan, from the date agreed with the member. The member loses no days.",
       )}
+      {mode === "renew" ? (
+        <Field
+          label="Renew from"
+          htmlFor="e-renew-date"
+          hint={
+            gapDays > 0
+              ? `No plan from ${formatDateISO(renewStart)} to ${formatDateISO(addDaysISO(renewFrom, -1))}.`
+              : "The day after the current plan ends. Pick a later date if agreed."
+          }
+        >
+          <Input
+            id="e-renew-date"
+            type="date"
+            min={renewStart}
+            value={renewFrom}
+            onChange={(e) => setRenewDate(e.target.value)}
+            className="max-w-48"
+          />
+        </Field>
+      ) : null}
       {running && !canUpgrade ? (
         <p className="text-meta">
           Already renewed until {formatDateISO(lastEnd)}, so an upgrade now isn&apos;t offered.
@@ -1666,28 +1727,51 @@ function RenewChoice({
       {running && canUpgrade
         ? option(
             "upgrade",
-            "Upgrade now: starts today",
-            `The current plan stops today; its ${unusedDays} unused days are taken off this bill.`,
+            `Upgrade from ${formatDateISO(upgradeFrom)}`,
+            upgradeFrom === today
+              ? `The current plan stops today; its ${unusedDays} unused days are taken off this bill.`
+              : `The current plan runs until ${formatDateISO(addDaysISO(upgradeFrom, -1))}; its ${unusedDays} unused days after that are taken off this bill.`,
           )
         : null}
       {running && canUpgrade && mode === "upgrade" ? (
-        <Field
-          label="Credit for unused days ₹"
-          htmlFor="e-credit"
-          hint={`₹${running.priceSnapshot.toLocaleString("en-IN")} × ${unusedDays} ÷ ${running.durationDaysSnapshot} days. Change it if the member paid less.`}
-        >
-          <Input
-            id="e-credit"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            placeholder={String(autoCredit)}
-            value={creditText === "" ? String(autoCredit) : creditText}
-            onChange={(e) => setCreditText(e.target.value)}
-            className="max-w-40"
-          />
-        </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Upgrade from"
+            htmlFor="e-upgrade-date"
+            hint="Today, or the day agreed with the member (e.g. the 1st of next month)."
+          >
+            <Input
+              id="e-upgrade-date"
+              type="date"
+              min={running.startDate}
+              max={running.endDate}
+              value={upgradeFrom}
+              onChange={(e) => setUpgradeDate(e.target.value)}
+            />
+          </Field>
+          <Field
+            label="Credit for unused days ₹"
+            htmlFor="e-credit"
+            hint={`₹${running.priceSnapshot.toLocaleString("en-IN")} × ${unusedDays} ÷ ${running.durationDaysSnapshot} days. Change it if the member paid less.`}
+          >
+            <Input
+              id="e-credit"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              placeholder={String(autoCredit)}
+              value={creditText === "" ? String(autoCredit) : creditText}
+              onChange={(e) => setCreditText(e.target.value)}
+            />
+          </Field>
+        </div>
       ) : null}
+      {error ? (
+        <p role="alert" className="text-sm font-semibold text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <p className="text-meta">The bill and payment are recorded today.</p>
     </div>
   );
 }

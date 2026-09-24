@@ -103,7 +103,8 @@ function sideWrites(ops: { op: Op; before: D | null }[]): Extra[] {
     if (DOOR_COLLECTIONS.has(col)) {
       const waiting = (x: D | null) => !x || x["status"] === "biometric_pending";
       const clientId = String(doc["clientId"] ?? "");
-      // A new member's plan starts only when the thumb is registered (done on the server).
+      // Old-style plans that waited for the thumb need no door check; the server skips members
+      // whose thumb isn't registered anyway.
       if (clientId && !(waiting(before) && waiting(after))) doorFor.add(clientId);
     } else if (
       col === "staff" &&

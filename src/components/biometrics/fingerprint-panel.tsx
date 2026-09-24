@@ -179,7 +179,8 @@ export function FingerprintPanel({
           <div className="space-y-1">
             <p className="font-semibold">No fingerprint device is connected yet.</p>
             <p>
-              The payment is saved. The membership starts only after the thumb is registered.{" "}
+              The payment is saved and the plan runs from its start date. The door opens for the
+              member once the thumb is registered.{" "}
               <Link to="/biometric-devices" className="font-semibold underline">
                 Connect your device
               </Link>{" "}

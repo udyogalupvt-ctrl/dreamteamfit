@@ -328,10 +328,12 @@ async function activateBiometric(clientRef: DocumentReference, device: Device, p
     if (!client.exists) return null;
     const c = client.data() ?? {};
     if (c["firstThumbRegistered"] === true && c["biometricStatus"] === "active") return null;
-    const [enrollments, memberships] = await Promise.all([
+    const [enrollments, memberships, ptList] = await Promise.all([
       tx.get(firestore.collection("enrollments").where("clientId", "==", client.id)),
       tx.get(firestore.collection("memberships").where("clientId", "==", client.id)),
+      tx.get(firestore.collection("ptAssignments").where("clientId", "==", client.id)),
     ]);
+    const pts = ptList.docs;
     const now = FieldValue.serverTimestamp();
     const clientPatch: Row = {
       biometricUserId: pin,
@@ -362,11 +364,15 @@ async function activateBiometric(clientRef: DocumentReference, device: Device, p
         }
         tx.update(m.ref, { status, updatedAt: now });
       }
-      if (ed["ptAssignmentId"])
-        tx.update(firestore.doc(`ptAssignments/${String(ed["ptAssignmentId"])}`), {
-          status: "active",
-          updatedAt: now,
-        });
+      // PT runs from its own start date; only a PT still waiting for the thumb starts here.
+      const ptSnap = ed["ptAssignmentId"]
+        ? pts.find((x) => x.id === String(ed["ptAssignmentId"]))
+        : undefined;
+      if (
+        ptSnap?.data()?.["status"] === "pending" &&
+        String(ptSnap.data()?.["startDate"] ?? "") <= today
+      )
+        tx.update(ptSnap.ref, { status: "active", updatedAt: now });
       tx.update(e.ref, {
         status: "active",
         biometricDeviceId: device.id,
