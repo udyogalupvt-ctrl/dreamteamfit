@@ -10,13 +10,47 @@ import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
+/** Pulls the three needed fields out of any text that contains them (e.g. JSON whose line breaks got mangled). */
+function fieldsFromText(text: string) {
+  const grab = (k: string) => new RegExp(`"${k}"\\s*:\\s*"([^"]+)"`).exec(text)?.[1] ?? "";
+  const pem = /-----BEGIN PRIVATE KEY-----[\s\S]+?-----END PRIVATE KEY-----/.exec(
+    text.replace(/\\n/g, "\n"),
+  )?.[0];
+  const projectId = grab("project_id");
+  const clientEmail = grab("client_email");
+  if (!projectId || !clientEmail || !pem) return null;
+  // Rebuild a clean PEM: header, base64 body in 64-char lines, footer.
+  const body = pem
+    .replace("-----BEGIN PRIVATE KEY-----", "")
+    .replace("-----END PRIVATE KEY-----", "")
+    .replace(/[^A-Za-z0-9+/=]/g, "");
+  const privateKey = `-----BEGIN PRIVATE KEY-----\n${body.match(/.{1,64}/g)!.join("\n")}\n-----END PRIVATE KEY-----\n`;
+  return { projectId, clientEmail, privateKey };
+}
+
 /**
  * Reads the key however it was pasted: raw JSON (one line or many), base64, with or without
- * surrounding quotes. Throws a plain message naming what is wrong (never the key itself).
+ * surrounding quotes, even with mangled line breaks. Throws a plain message naming what is
+ * wrong (never the key itself).
  */
-function credentials() {
+export function credentials() {
+  // Also accepted: three separate variables (the usual Vercel way).
+  const pk = (process.env["FIREBASE_PRIVATE_KEY"] ?? "").trim();
+  if (pk) {
+    const f = fieldsFromText(
+      `"project_id":"${process.env["FIREBASE_PROJECT_ID"] ?? process.env["VITE_FIREBASE_PROJECT_ID"] ?? ""}","client_email":"${process.env["FIREBASE_CLIENT_EMAIL"] ?? ""}" ${pk}`,
+    );
+    if (f) return f;
+  }
   let raw = (process.env["FIREBASE_SERVICE_ACCOUNT"] ?? "").trim();
   if (!raw) throw new Error("FIREBASE_SERVICE_ACCOUNT is not set on the server.");
+  // Mangled paste (quotes / line breaks broken): still usable if the fields are all there.
+  const direct = fieldsFromText(raw);
+  const decoded = /^[A-Za-z0-9+/=\s]+$/.test(raw)
+    ? fieldsFromText(Buffer.from(raw.replace(/\s+/g, ""), "base64").toString("utf8"))
+    : null;
+  if (direct && !raw.startsWith("{")) return direct;
+  if (decoded) return decoded;
   if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'")))
     raw = raw.slice(1, -1).trim();
   const json = raw.startsWith("{")
@@ -30,6 +64,7 @@ function credentials() {
     try {
       parsed = JSON.parse(json.replace(/\\"/g, '"')) as typeof parsed;
     } catch {
+      if (direct) return direct;
       throw new Error("FIREBASE_SERVICE_ACCOUNT is not valid JSON or base64.");
     }
   }
@@ -55,6 +90,16 @@ export async function serverHealth() {
     out["privateKey"] = c.privateKey.includes("BEGIN PRIVATE KEY") ? "ok" : "not a PEM key";
   } catch (e) {
     out["serviceAccount"] = (e as Error).message;
+    // Shape only (never content), to see how the value was pasted.
+    const raw = process.env["FIREBASE_SERVICE_ACCOUNT"] ?? "";
+    out["valueLength"] = String(raw.length);
+    out["valueLines"] = String(raw.split("\n").length);
+    out["startsWith"] = raw.trim().startsWith("{")
+      ? "{ (JSON)"
+      : /^[A-Za-z0-9+/]/.test(raw.trim())
+        ? "letters (base64?)"
+        : `other (${JSON.stringify(raw.trim().charAt(0))})`;
+    out["hasKeyHeader"] = raw.includes("BEGIN PRIVATE KEY") ? "yes" : "no";
     return out;
   }
   try {
