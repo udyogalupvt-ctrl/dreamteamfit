@@ -12,7 +12,7 @@ import {
   type DocumentData,
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
-import { normalizePhone, todayISO } from "@/lib/format";
+import { addDaysISO, normalizePhone, todayISO } from "@/lib/format";
 import {
   calculateInvoiceTotals,
   createPublicToken,
@@ -91,6 +91,19 @@ export interface EnrollmentInput {
   nextPaymentDate: string | null;
   /** New member's ID (a free number, also used on the fingerprint machine). */
   memberId: string;
+  /**
+   * Upgrade: the running plan ends today and its unused days are credited on this bill. null =
+   * a normal joining / renewal (a renewal simply starts after the running plan).
+   */
+  upgrade: UpgradeInput | null;
+}
+
+export interface UpgradeInput {
+  membershipId: string;
+  fromPackage: string;
+  unusedDays: number;
+  /** ₹ taken off this bill for the unused days (staff can adjust it). */
+  credit: number;
 }
 
 /** Highest discount allowed for this checkout; null = no limit set on the packages. */
@@ -103,7 +116,9 @@ export function maxDiscountFor(input: Pick<EnrollmentInput, "gymPackage" | "pt">
 }
 
 export function enrollmentTotals(
-  input: Pick<EnrollmentInput, "gymPackage" | "pt" | "discount" | "amountPaid" | "settings">,
+  input: Pick<EnrollmentInput, "gymPackage" | "pt" | "discount" | "amountPaid" | "settings"> & {
+    upgrade?: UpgradeInput | null;
+  },
 ) {
   const items: { quantity: number; unitPrice: number }[] = [];
   if (input.gymPackage) items.push({ quantity: 1, unitPrice: input.gymPackage.price });
@@ -112,7 +127,14 @@ export function enrollmentTotals(
     ? calculateShare(input.pt.pkg.price, input.pt.shareType, input.pt.shareValue)
     : null;
   return {
-    ...calculateInvoiceTotals(items, input.discount, input.settings, input.amountPaid),
+    // The upgrade credit is taken off like a discount, but it is not limited by "max discount".
+    ...calculateInvoiceTotals(
+      items,
+      input.discount + Math.max(0, input.upgrade?.credit ?? 0),
+      input.settings,
+      input.amountPaid,
+    ),
+    upgradeCredit: Math.max(0, input.upgrade?.credit ?? 0),
     share,
   };
 }
@@ -162,7 +184,9 @@ export async function enrollMember(input: EnrollmentInput) {
     prevActive =
       input.startDate > todayISO()
         ? []
-        : ms.docs.filter((d) => d.data()["status"] === "active").map((d) => d.id);
+        : ms.docs
+            .filter((d) => d.data()["status"] === "active" && d.id !== input.upgrade?.membershipId)
+            .map((d) => d.id);
   }
 
   const clientRef = input.existingClient
@@ -195,6 +219,17 @@ export async function enrollMember(input: EnrollmentInput) {
     const idClaim = input.existingClient
       ? null
       : await claimMemberId(tx, input.memberId, clientRef.id);
+    const upgradeRef = input.upgrade
+      ? doc(db, COLLECTIONS.memberships, input.upgrade.membershipId)
+      : null;
+    const upgraded = upgradeRef ? await tx.get(upgradeRef) : null;
+    if (
+      upgraded &&
+      (!upgraded.exists() ||
+        upgraded.data()["clientId"] !== input.existingClient?.id ||
+        ["cancelled", "expired"].includes(String(upgraded.data()["status"])))
+    )
+      throw new Error("The plan being upgraded has already ended. Refresh and try again.");
     const c = counter.data() ?? {};
     const year = new Date(`${today}T00:00:00`).getFullYear();
     const invKey = `invoiceSeq${year}`;
@@ -239,6 +274,16 @@ export async function enrollMember(input: EnrollmentInput) {
       prevActive.forEach((id) =>
         tx.update(doc(db, COLLECTIONS.memberships, id), { status: "expired", updatedAt: now }),
       );
+      if (upgradeRef && upgraded && input.upgrade)
+        // The old plan stops yesterday; its unused days became the credit on this bill.
+        tx.update(upgradeRef, {
+          status: "expired",
+          endDate: addDaysISO(input.startDate, -1),
+          originalEndDate: upgraded.data()!["endDate"] ?? "",
+          upgradedTo: membershipRef.id,
+          upgradeCredit: input.upgrade.credit,
+          updatedAt: now,
+        });
       tx.set(membershipRef, {
         clientId: clientRef.id,
         packageId: input.gymPackage.id,
@@ -344,7 +389,14 @@ export async function enrollMember(input: EnrollmentInput) {
       paymentMethod: input.method,
       invoiceDate: today,
       dueDate,
-      notes: input.notes,
+      notes: [
+        input.upgrade
+          ? `Upgrade from ${input.upgrade.fromPackage}: ₹${input.upgrade.credit.toLocaleString("en-IN")} credit for ${input.upgrade.unusedDays} unused days`
+          : "",
+        input.notes,
+      ]
+        .filter(Boolean)
+        .join(" · "),
       ...counsellor,
       pdfUrl: "",
       publicToken: token,

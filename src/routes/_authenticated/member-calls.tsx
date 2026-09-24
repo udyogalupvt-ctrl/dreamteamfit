@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { MessageCircle, Phone, PhoneCall } from "lucide-react";
+import { MessageCircle, Phone, PhoneCall, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { ClientAvatar } from "@/components/clients/client-avatar";
+import { useEnrollment } from "@/components/enrollment/enrollment-context";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingRows } from "@/components/common/loading-state";
@@ -175,6 +176,7 @@ function MemberCallsPage() {
 
 function CallRow({ m, call }: { m: SegmentMember; call: MemberCall | undefined }) {
   const { user } = useAuth();
+  const { openEnrollment } = useEnrollment();
   const wa = useLive(subscribeWhatsAppSettings, DEFAULT_WHATSAPP_SETTINGS, []);
   const [notes, setNotes] = useState(call?.notes ?? "");
   useEffect(() => setNotes(call?.notes ?? ""), [call?.notes]);
@@ -239,6 +241,12 @@ function CallRow({ m, call }: { m: SegmentMember; call: MemberCall | undefined }
             <MessageCircle aria-hidden className="text-[#25D366]" /> WhatsApp
           </a>
         </Button>
+        {m.segment === "expiring" || m.segment === "blacklist" ? (
+          // Said yes on the call: take the renewal right here.
+          <Button size="sm" onClick={() => openEnrollment({ existingClient: m.client })}>
+            <RefreshCcw aria-hidden /> Renew
+          </Button>
+        ) : null}
         <Select value={status} onValueChange={(v) => void save({ status: v as CallStatus })}>
           <SelectTrigger className="h-9 w-48" aria-label={`Call status for ${m.client.fullName}`}>
             <SelectValue />

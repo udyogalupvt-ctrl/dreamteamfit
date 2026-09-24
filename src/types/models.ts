@@ -464,6 +464,8 @@ export interface Invoice extends BaseDoc {
   paymentsTracked: boolean;
   counsellorId: string;
   counsellorName: string;
+  /** Part of the discount that is credit for the unused days of an upgraded plan. */
+  upgradeCredit: number;
 }
 
 export interface PublicInvoice {
@@ -485,6 +487,8 @@ export interface PublicInvoice {
   dueDate: string;
   pdfUrl: string;
   business: BusinessBillingSettings;
+  /** Part of the discount that is credit for the unused days of an upgraded plan. */
+  upgradeCredit: number;
   updatedAt: Date;
 }
 

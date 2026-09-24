@@ -61,6 +61,7 @@ export const mapInvoice = (id: string, d: DocumentData): Invoice => ({
   paymentsTracked: Boolean(d["paymentsTracked"]),
   counsellorId: d["counsellorId"] ?? "",
   counsellorName: d["counsellorName"] ?? "",
+  upgradeCredit: Number(d["upgradeCredit"] ?? 0),
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -83,6 +84,7 @@ export const mapPublicInvoice = (token: string, d: DocumentData): PublicInvoice 
   dueDate: d["dueDate"] ?? "",
   pdfUrl: d["pdfUrl"] ?? "",
   business: d["business"],
+  upgradeCredit: Number(d["upgradeCredit"] ?? 0),
   updatedAt: toDate(d["updatedAt"]),
 });
 export function subscribeInvoices(ok: (v: Invoice[]) => void, fail: (e: Error) => void) {

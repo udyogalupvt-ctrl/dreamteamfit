@@ -87,13 +87,17 @@ function MembershipCell({ plan }: { plan: PlanSummary | undefined }) {
 
 function ExpiryCell({ plan }: { plan: PlanSummary | undefined }) {
   if (!plan) return <span className="text-muted-foreground">—</span>;
-  const soon = plan.daysLeft >= 0 && plan.daysLeft <= 7;
+  const soon = plan.daysLeft >= 0 && plan.daysLeft <= 7 && !plan.renewedUntil;
   return (
     <div className="flex flex-col">
       <span className="tabular-nums">{formatDateISO(plan.endDate)}</span>
       <span
         className={
-          soon || plan.daysLeft < 0 ? "text-xs font-semibold text-destructive" : "text-meta"
+          plan.renewedUntil
+            ? "text-xs font-semibold text-success"
+            : soon || plan.daysLeft < 0
+              ? "text-xs font-semibold text-destructive"
+              : "text-meta"
         }
       >
         {daysLeftLabel(plan)}

@@ -92,10 +92,13 @@ import {
   type Client,
   type Enrollment,
   type Invoice,
+  type Membership,
   type PaymentMethod,
   type ShareType,
   type WhatsAppSettings,
 } from "@/types/models";
+import { daysBetween } from "@/lib/member-plans";
+import { subscribeClientMemberships } from "@/services/memberships.service";
 import type { EnrollmentOpenOptions } from "./enrollment-context";
 
 const STEPS = ["Details", "Package", "Payment", "Share bill", "Thumb", "Done"] as const;
@@ -289,6 +292,43 @@ export function EnrollmentWizard({
   }, [resuming, member.data]);
 
   const gymPackage = packages.data.find((p) => p.id === packageId) ?? null;
+
+  // Renew or upgrade: an existing member's plans that are still running or already queued.
+  const plans = useLive<Membership[]>(
+    existing && !resuming ? (ok, fail) => subscribeClientMemberships(existing.id, ok, fail) : null,
+    [],
+    [existing?.id, resuming],
+  );
+  const today = todayISO();
+  const livePlans = plans.data.filter(
+    (m) => !["cancelled", "expired"].includes(m.status) && m.endDate >= today,
+  );
+  const running = livePlans.find((m) => m.startDate <= today) ?? null;
+  const lastEnd = livePlans.reduce((e, m) => (m.endDate > e ? m.endDate : e), "");
+  const renewStart = lastEnd ? addDaysISO(lastEnd, 1) : today;
+  const unusedDays = running ? Math.max(0, daysBetween(today, running.endDate)) : 0;
+  const autoCredit = running
+    ? Math.round((running.priceSnapshot * unusedDays) / Math.max(1, running.durationDaysSnapshot))
+    : 0;
+  const [planMode, setPlanMode] = useState<"renew" | "upgrade">("renew");
+  const [creditText, setCreditText] = useState("");
+  const upgrading = planMode === "upgrade" && !!running && !!gymPackage;
+  const credit = upgrading
+    ? Math.max(0, creditText === "" ? autoCredit : Math.floor(Number(creditText) || 0))
+    : 0;
+  const upgrade = upgrading
+    ? {
+        membershipId: running.id,
+        fromPackage: running.packageNameSnapshot,
+        unusedDays,
+        credit,
+      }
+    : null;
+  // The start date follows the choice: after the running plan (renew) or today (upgrade / PT only).
+  useEffect(() => {
+    if (!existing || resuming) return;
+    setStartDate(gymPackage && lastEnd && !upgrading ? renewStart : todayISO());
+  }, [existing, resuming, gymPackage, lastEnd, upgrading, renewStart]);
   const ptPkg = ptOn ? (ptPackages.data.find((p) => p.id === ptPackageId) ?? null) : null;
   const trainer = ptOn ? (trainers.data.find((t) => t.id === trainerId) ?? null) : null;
   const shareType = shareOverride?.type ?? trainer?.defaultShareType ?? "percentage";
@@ -305,8 +345,10 @@ export function EnrollmentWizard({
         discount,
         amountPaid: amountPaid ?? Number.MAX_SAFE_INTEGER,
         settings: settings.data,
+        upgrade,
       }),
-    [gymPackage, pt, discount, amountPaid, settings.data],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [gymPackage, pt, discount, amountPaid, settings.data, upgrade?.credit, upgrade?.membershipId],
   );
   const paid = amountPaid ?? totals.total;
   const maxDiscount = maxDiscountFor({ gymPackage, pt });
@@ -451,6 +493,7 @@ export function EnrollmentWizard({
         counsellor: counsellor ? { id: counsellor.id, name: counsellor.name } : null,
         nextPaymentDate: balanceLeft ? nextPaymentDate : null,
         memberId: cleanMemberId(memberNo),
+        upgrade,
       });
       writeDraft(draftKey, null);
       setEnrollmentId(r.enrollmentId);
@@ -649,6 +692,19 @@ export function EnrollmentWizard({
                       </button>
                     ))}
                 </div>
+                {existing && !resuming && gymPackage && lastEnd ? (
+                  <RenewChoice
+                    running={running}
+                    lastEnd={lastEnd}
+                    renewStart={renewStart}
+                    unusedDays={unusedDays}
+                    autoCredit={autoCredit}
+                    mode={planMode}
+                    setMode={setPlanMode}
+                    creditText={creditText}
+                    setCreditText={setCreditText}
+                  />
+                ) : null}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label="Start date" htmlFor="e-start">
                     <Input
@@ -958,7 +1014,10 @@ export function EnrollmentWizard({
                   {(
                     [
                       ["Subtotal", totals.subtotal],
-                      ["Discount", -totals.discount],
+                      ["Discount", -(totals.discount - totals.upgradeCredit)],
+                      ...(totals.upgradeCredit
+                        ? [["Upgrade credit", -totals.upgradeCredit] as const]
+                        : []),
                       ...(totals.tax ? [["Tax", totals.tax] as const] : []),
                       ["Total", totals.total],
                       ["Received", Math.min(paid, totals.total)],
@@ -1517,6 +1576,108 @@ function ShareStep({
           <Copy aria-hidden /> Copy link
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * An existing member picks a package while a plan is still running: renew after it (nothing
+ * lost) or upgrade now (the running plan stops; its unused days are credited on this bill).
+ */
+function RenewChoice({
+  running,
+  lastEnd,
+  renewStart,
+  unusedDays,
+  autoCredit,
+  mode,
+  setMode,
+  creditText,
+  setCreditText,
+}: {
+  running: Membership | null;
+  lastEnd: string;
+  renewStart: string;
+  unusedDays: number;
+  autoCredit: number;
+  mode: "renew" | "upgrade";
+  setMode: (m: "renew" | "upgrade") => void;
+  creditText: string;
+  setCreditText: (v: string) => void;
+}) {
+  const option = (value: "renew" | "upgrade", title: string, detail: string) => (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={mode === value}
+      onClick={() => setMode(value)}
+      className={cn(
+        "flex w-full items-start gap-3 rounded-xl border p-3 text-left",
+        mode === value ? "border-primary bg-primary/10" : "border-border hover:bg-accent",
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "mt-1 size-4 shrink-0 rounded-full border-2",
+          mode === value ? "border-primary bg-primary" : "border-muted-foreground",
+        )}
+      />
+      <span>
+        <span className="block font-semibold">{title}</span>
+        <span className="text-meta">{detail}</span>
+      </span>
+    </button>
+  );
+  return (
+    <div
+      className="space-y-2 rounded-xl border border-border p-3"
+      role="radiogroup"
+      aria-label="Renew or upgrade"
+    >
+      <p className="text-sm">
+        {running ? (
+          <>
+            Current plan: <b>{running.packageNameSnapshot}</b>, ends{" "}
+            <b>{formatDateISO(running.endDate)}</b> ({unusedDays} day{unusedDays === 1 ? "" : "s"}{" "}
+            left)
+          </>
+        ) : (
+          <>
+            Already renewed until <b>{formatDateISO(lastEnd)}</b>
+          </>
+        )}
+      </p>
+      {option(
+        "renew",
+        `Renew: starts ${formatDateISO(renewStart)}`,
+        "After the current plan ends. The member loses no days.",
+      )}
+      {running
+        ? option(
+            "upgrade",
+            "Upgrade now: starts today",
+            `The current plan stops today; its ${unusedDays} unused days are taken off this bill.`,
+          )
+        : null}
+      {running && mode === "upgrade" ? (
+        <Field
+          label="Credit for unused days ₹"
+          htmlFor="e-credit"
+          hint={`₹${running.priceSnapshot.toLocaleString("en-IN")} × ${unusedDays} ÷ ${running.durationDaysSnapshot} days. Change it if the member paid less.`}
+        >
+          <Input
+            id="e-credit"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            placeholder={String(autoCredit)}
+            value={creditText === "" ? String(autoCredit) : creditText}
+            onChange={(e) => setCreditText(e.target.value)}
+            className="max-w-40"
+          />
+        </Field>
+      ) : null}
     </div>
   );
 }

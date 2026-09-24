@@ -116,7 +116,8 @@ export function buildSegments(
           plan,
           sortKey: plan.daysLeft,
         });
-      if (plan.daysLeft >= 0 && plan.daysLeft <= o.expiringDays)
+      // Already renewed: nobody needs to call them about it.
+      if (plan.daysLeft >= 0 && plan.daysLeft <= o.expiringDays && !plan.renewedUntil)
         add({
           client: c,
           segment: "expiring",

@@ -1,4 +1,4 @@
-import { effectiveMembershipStatus, todayISO } from "@/lib/format";
+import { effectiveMembershipStatus, formatDateISO, todayISO } from "@/lib/format";
 import type { Membership, PtAssignment } from "@/types/models";
 
 /** The one plan a member is on (or last had), for lists: name, dates and a plain status. */
@@ -10,6 +10,8 @@ export interface PlanSummary {
   status: "waiting_thumb" | "upcoming" | "active" | "expired";
   /** Days until the end date (negative = ended that many days ago). */
   daysLeft: number;
+  /** End of a later plan already paid for (renewed), or "" when not renewed yet. */
+  renewedUntil: string;
 }
 
 const DAY = 86_400_000;
@@ -49,6 +51,7 @@ function summarize(r: Row, today: string): PlanSummary {
     endDate: r.endDate,
     status,
     daysLeft: daysBetween(today, r.endDate),
+    renewedUntil: "",
   };
 }
 
@@ -76,14 +79,23 @@ export function planByClient(memberships: Membership[], pts: PtAssignment[], tod
     ]);
   const out = new Map<string, PlanSummary>();
   for (const id of new Set([...gym.keys(), ...pt.keys()])) {
-    const r = pick(gym.get(id) ?? [], today) ?? pick(pt.get(id) ?? [], today);
-    if (r) out.set(id, summarize(r, today));
+    const rows = gym.get(id) ?? [];
+    const r = pick(rows, today) ?? pick(pt.get(id) ?? [], today);
+    if (!r) continue;
+    const plan = summarize(r, today);
+    // A renewal already paid for: a later gym plan that is not cancelled or ended.
+    const later = rows.filter(
+      (x) => x !== r && !["cancelled", "expired"].includes(x.status) && x.endDate > r.endDate,
+    );
+    plan.renewedUntil = later.reduce((e, x) => (x.endDate > e ? x.endDate : e), "");
+    out.set(id, plan);
   }
   return out;
 }
 
-/** "30 days left", "ends today", "ended 3 days ago". */
+/** "30 days left", "ends today", "ended 3 days ago" (+ "renewed till …" when already renewed). */
 export function daysLeftLabel(p: PlanSummary) {
+  if (p.renewedUntil) return `renewed till ${formatDateISO(p.renewedUntil)}`;
   if (p.daysLeft > 1) return `${p.daysLeft} days left`;
   if (p.daysLeft === 1) return "1 day left";
   if (p.daysLeft === 0) return "ends today";

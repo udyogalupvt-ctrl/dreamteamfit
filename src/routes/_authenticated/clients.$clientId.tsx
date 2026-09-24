@@ -224,7 +224,7 @@ function ClientProfilePage() {
           <>
             <Button variant="outline" asChild className="max-sm:hidden">
               <Link to="/clients">
-                <ArrowLeft aria-hidden /> All clients
+                <ArrowLeft aria-hidden /> All members
               </Link>
             </Button>
             <Button
@@ -233,11 +233,11 @@ function ClientProfilePage() {
             >
               <Pencil aria-hidden /> Edit
             </Button>
-            {isSetupPending(c) ? null : (
-              <Button onClick={() => openEnrollment({ existingClient: c })}>
-                <Plus aria-hidden /> Renew / add package
-              </Button>
-            )}
+            {/* Also while the first thumb is pending (no fingerprint machine yet): members still
+                renew and upgrade. */}
+            <Button onClick={() => openEnrollment({ existingClient: c })}>
+              <Plus aria-hidden /> Renew / add package
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" aria-label="More actions">

@@ -113,6 +113,8 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
       if (action === "deleted") return `Plan deleted: ${s(d["packageNameSnapshot"])}`;
       if (f.includes("status"))
         return `Plan ${s(d["packageNameSnapshot"])}: ${st(b["status"])} → ${st(a["status"])}`;
+      if (f.includes("upgradedTo"))
+        return `Plan ${s(d["packageNameSnapshot"])} upgraded: ended ${day(a["endDate"])}, ${money(a["upgradeCredit"])} credit for unused days`;
       if (f.includes("pauses")) {
         const before = Array.isArray(b["pauses"]) ? b["pauses"].length : 0;
         const list = Array.isArray(a["pauses"]) ? (a["pauses"] as D[]) : [];

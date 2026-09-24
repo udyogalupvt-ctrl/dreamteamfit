@@ -104,7 +104,12 @@ function PublicInvoicePage() {
           <dl className="ml-auto mt-7 max-w-sm space-y-3 text-sm">
             {[
               ["Subtotal", i.subtotal],
-              ...(i.discount ? [["Discount", -i.discount] as [string, number]] : []),
+              ...(i.discount - (i.upgradeCredit ?? 0) > 0
+                ? [["Discount", -(i.discount - (i.upgradeCredit ?? 0))] as [string, number]]
+                : []),
+              ...(i.upgradeCredit
+                ? [["Upgrade credit", -i.upgradeCredit] as [string, number]]
+                : []),
               ...(i.tax ? [[`Tax (${b.taxRate}%)`, i.tax] as [string, number]] : []),
               ["Total", i.total],
               ["Amount Paid", i.amountPaid],

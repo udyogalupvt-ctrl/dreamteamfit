@@ -197,14 +197,18 @@ export async function processRenewalReminders() {
   const today = localDate();
   const target = plus(today, Number(cfg.renewalDaysBefore));
   const [members, clients] = await Promise.all([
-    db().collection("memberships").where("status", "==", "active").get(),
+    // Queued renewals are "pending" (or waiting for a thumb): they count as renewed too.
+    db()
+      .collection("memberships")
+      .where("status", "in", ["active", "pending", "biometric_pending"])
+      .get(),
     db().collection("clients").get(),
   ]);
   const all = members.docs.map((x) => ({ id: x.id, ...x.data() }) as MembershipRow);
   const cm = new Map(clients.docs.map((x) => [x.id, { id: x.id, ...x.data() } as ClientRow]));
   let sent = 0;
-  for (const m of all.filter((x) => x.endDate === target)) {
-    // Already renewed: a later plan exists.
+  for (const m of all.filter((x) => x.status === "active" && x.endDate === target)) {
+    // Already renewed: a later plan exists (running, queued, or waiting for the thumb).
     if (
       all.some(
         (x) =>
