@@ -1,4 +1,4 @@
-import { addDoc, deleteDoc, doc, orderBy, serverTimestamp, updateDoc, writeBatch, type DocumentData } from "firebase/firestore";
+import { addDoc, deleteDoc, doc, orderBy, serverTimestamp, updateDoc, writeBatch, type DocumentData } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { expenseSchema, type ExpenseFormValues } from "@/lib/expense-validation";
 import type { Expense, ExpenseActivity, ExpenseActivityAction } from "@/types/models";

@@ -29,16 +29,17 @@ their stored template and removes them from the device.
 - Plan ends, is cancelled, or staff press **Block entry** → the member is removed from the
   device (`DATA DELETE USERINFO`), so the door does not open for them.
 - Renewal, new PT package, or **Allow entry** → the user and saved thumb are pushed back.
-- Runs on every change and every night at 00:05 (plans end without any edit).
+- Runs on the device's next poll after every change (about 15 seconds), and on the first poll
+  after midnight for everyone (plans end without any edit).
 - If no saved thumb exists, the member is flagged **Register thumb** instead of getting in.
 
 ## One-time setup
 
-1. Deploy the functions: `cd functions && npm install && npm run build && firebase deploy --only functions,firestore:rules`.
+1. The app must be live on Vercel with `FIREBASE_SERVICE_ACCOUNT` set (see README).
 2. In the app: **Fingerprint Devices → Add device**, choose **Cloud (ADMS)** and enter the
    device serial number (device menu → System info → Device info).
 3. On the device: **Menu → Comm. → Cloud Server Setting** (may be called ADMS or Webserver):
-   - Server address: `us-central1-<firebase-project-id>.cloudfunctions.net` (shown on the page)
+   - Server address: the app's domain, e.g. `dreamteamfit.vercel.app` (shown on the page)
    - Port: `443`, HTTPS / SSL: **on**, Proxy: off
 4. Restart the device. Within a minute it shows **Online** on the Fingerprint Devices page.
 
@@ -47,7 +48,7 @@ their stored template and removes them from the device.
 Run the relay on any always-on PC in the gym:
 
 ```sh
-node tools/adms-relay.mjs https://us-central1-<project-id>.cloudfunctions.net/iclock 8081
+node tools/adms-relay.mjs https://dreamteamfit.vercel.app/iclock 8081
 ```
 
 Then set the device's server to that PC's LAN IP, port `8081`, HTTPS off.

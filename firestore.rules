@@ -22,10 +22,16 @@ service cloud.firestore {
       ];
     }
 
-    // Tamper-proof activity log: written only by the server (Cloud Function), never by the app.
+    // Tamper-proof activity log. The app adds a line in the same write as each change: create
+    // only, as the signed-in account itself, stamped with the server clock. Nobody can edit or
+    // delete a line from the app (the server adds "System (automatic)" lines with admin access).
     match /auditLogs/{entryId} {
       allow read: if isStaff();
-      allow write: if false;
+      allow create: if isStaff()
+        && request.resource.data.actorType == 'app_user'
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.at == request.time;
+      allow update, delete: if false;
     }
 
     // Stored fingerprint templates for door-lock restore: server only, no browser access at all.

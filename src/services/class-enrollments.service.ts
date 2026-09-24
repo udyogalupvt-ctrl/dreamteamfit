@@ -1,4 +1,4 @@
-import { doc, query, runTransaction, serverTimestamp, where, type DocumentData } from "firebase/firestore";
+import { doc, query, runTransaction, serverTimestamp, where, type DocumentData } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { enrollmentStatusSchema } from "@/lib/scheduling-validation";
 import type { ClassEnrollment, Client, EnrollmentStatus, GroupClass } from "@/types/models";

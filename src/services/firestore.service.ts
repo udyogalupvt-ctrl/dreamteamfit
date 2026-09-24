@@ -6,7 +6,7 @@ import {
   type DocumentData,
   type Query,
   type QueryConstraint,
-} from "firebase/firestore";
+} from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 
 /**

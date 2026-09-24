@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { getDocs, Timestamp } from "firebase/firestore";
+import { getDocs, Timestamp } from "@/lib/firestore";
 import { col, COLLECTIONS, type CollectionName } from "./firestore.service";
 
 export interface ExportDef { id: string; label: string; collection: CollectionName; dateField?: string }

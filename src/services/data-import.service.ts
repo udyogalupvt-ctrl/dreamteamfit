@@ -1,4 +1,4 @@
-import { doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch, type DocumentReference } from "firebase/firestore";
+import { doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch, type DocumentReference } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { key, type ImportContext, type Resolution, type ValidatedRow } from "@/lib/data-import";
 import { todayISO } from "@/lib/format";

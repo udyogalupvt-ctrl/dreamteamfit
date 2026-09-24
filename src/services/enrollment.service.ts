@@ -10,7 +10,7 @@ import {
   where,
   writeBatch,
   type DocumentData,
-} from "firebase/firestore";
+} from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { normalizePhone, todayISO } from "@/lib/format";
 import {

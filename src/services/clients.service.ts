@@ -10,7 +10,7 @@ import {
   where,
   type DocumentData,
   type Transaction,
-} from "firebase/firestore";
+} from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { normalizePhone } from "@/lib/format";
 import type { Client } from "@/types/models";

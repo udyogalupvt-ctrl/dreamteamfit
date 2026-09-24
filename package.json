@@ -10,8 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "start": "node .output/server/index.mjs",
-    "secrets:whatsapp": "node scripts/set-whatsapp-secret.mjs"
+    "start": "node .output/server/index.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"
@@ -55,6 +54,7 @@
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
     "firebase": "^12.19.0",
+    "firebase-admin": "^13.10.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.575.0",
     "pdf-lib": "^1.17.1",

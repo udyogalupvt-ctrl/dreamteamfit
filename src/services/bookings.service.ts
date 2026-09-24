@@ -1,4 +1,4 @@
-import { addDoc, doc, getDoc, getDocs, orderBy, query, serverTimestamp, updateDoc, where, type DocumentData } from "firebase/firestore";
+import { addDoc, doc, getDoc, getDocs, orderBy, query, serverTimestamp, updateDoc, where, type DocumentData } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { bookingSchema } from "@/lib/scheduling-validation";
 import type { Booking, BookingStatus } from "@/types/models";

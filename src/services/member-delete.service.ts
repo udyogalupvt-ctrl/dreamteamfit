@@ -1,4 +1,4 @@
-import { doc, getDocs, query, where, writeBatch, type DocumentReference } from "firebase/firestore";
+import { doc, getDocs, query, where, writeBatch, type DocumentReference } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import type { Client, ClassEnrollment } from "@/types/models";
 import { updateEnrollmentStatus } from "./class-enrollments.service";

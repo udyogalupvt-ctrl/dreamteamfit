@@ -9,7 +9,7 @@ import {
   updateDoc,
   where,
   type DocumentData,
-} from "firebase/firestore";
+} from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { createInvoiceSchema, type CreateInvoiceInput } from "@/lib/invoice-validation";
 import {

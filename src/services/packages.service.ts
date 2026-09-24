@@ -10,7 +10,7 @@ import {
   updateDoc,
   where,
   type DocumentData,
-} from "firebase/firestore";
+} from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import type { GymPackage } from "@/types/models";
 import { col, COLLECTIONS, subscribeCollection, toDate } from "./firestore.service";

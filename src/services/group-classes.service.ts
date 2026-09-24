@@ -1,4 +1,4 @@
-import { addDoc, doc, orderBy, serverTimestamp, updateDoc, type DocumentData } from "firebase/firestore";
+import { addDoc, doc, orderBy, serverTimestamp, updateDoc, type DocumentData } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { groupClassSchema, normalizeTrainerId } from "@/lib/scheduling-validation";
 import type { GroupClass, GroupClassStatus } from "@/types/models";

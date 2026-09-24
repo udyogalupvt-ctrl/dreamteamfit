@@ -1,4 +1,4 @@
-import { addDoc, doc, orderBy, query, runTransaction, serverTimestamp, updateDoc, where, type DocumentData } from "firebase/firestore";
+import { addDoc, doc, orderBy, query, runTransaction, serverTimestamp, updateDoc, where, type DocumentData } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { todayISO } from "@/lib/format";
 import { derivePaymentStatus } from "@/lib/invoice-utils";

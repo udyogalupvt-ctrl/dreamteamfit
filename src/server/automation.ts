@@ -1,20 +1,13 @@
-import { initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue, type DocumentData } from "firebase-admin/firestore";
-import { onSchedule } from "firebase-functions/v2/scheduler";
-import { sendTemplateMessage, whatsappAccessToken, whatsappNumber } from "./whatsapp.js";
-export { sendWhatsAppMessage, testWhatsAppConnection, whatsappWebhook } from "./whatsapp.js";
-export { auditTrail } from "./audit.js";
-export {
-  dailyDoorAccessSync,
-  doorAccessOnClient,
-  doorAccessOnMembership,
-  doorAccessOnPt,
-  iclock,
-} from "./biometric.js";
+/**
+ * Daily WhatsApp reminders, run by Vercel Cron (vite.config.ts → nitro vercel crons):
+ *   /api/cron/morning  ~8 AM IST   renewal reminders + birthday wishes
+ *   /api/cron/night    ~9:30 PM IST missed-workout nudges (after closing, punches are final)
+ * Vercel's free plan runs each cron once a day, somewhere inside the scheduled hour.
+ */
+import { FieldValue, type DocumentData } from "firebase-admin/firestore";
+import { db, json, localDate } from "./admin";
+import { sendTemplateMessage, whatsappNumber } from "./whatsapp";
 
-initializeApp();
-const db = getFirestore(),
-  TZ = "Asia/Kolkata";
 type Kind = "renewal" | "birthday" | "absence";
 const COLLECTION: Record<Kind, string> = {
   renewal: "renewalNotifications",
@@ -30,13 +23,7 @@ type ClientRow = {
   whatsappOptIn?: boolean;
   whatsappPhone?: string;
 };
-const date = (d = new Date()) =>
-  new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
+
 const plus = (iso: string, n: number) => {
   const d = new Date(`${iso}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
@@ -53,8 +40,9 @@ const pretty = (iso: string) =>
 const id = (...p: string[]) => p.join("__").replace(/[^a-zA-Z0-9_-]/g, "_");
 const render = (t: string, v: Record<string, string>) =>
   t.replace(/{{\s*(\w+)\s*}}/g, (_, k: string) => v[k] ?? "");
+
 async function settings() {
-  const s = await db.doc("settings/automation").get();
+  const s = await db().doc("settings/automation").get();
   return {
     automationEnabled: true,
     renewalEnabled: true,
@@ -62,15 +50,15 @@ async function settings() {
     birthdayEnabled: true,
     absenceEnabled: false,
     absenceDays: 3,
-    renewalTemplate: "Hi {{name}}, your Rebuild Fitness membership expires on {{expiryDate}}.",
-    birthdayTemplate: "Happy Birthday {{name}}! — REBUILD FITNESS",
+    renewalTemplate: "Hi {{name}}, your membership expires on {{expiryDate}}.",
+    birthdayTemplate: "Happy Birthday {{name}}!",
     ...s.data(),
   };
 }
 async function whatsappSettings() {
   const [ws, bs] = await Promise.all([
-    db.doc("settings/whatsapp").get(),
-    db.doc("settings/business").get(),
+    db().doc("settings/whatsapp").get(),
+    db().doc("settings/business").get(),
   ]);
   const s = ws.data() ?? {};
   return {
@@ -83,6 +71,8 @@ async function whatsappSettings() {
     absenceTemplate: String(s["absenceTemplate"] ?? "gym_miss_you"),
   };
 }
+
+/** Claims the reminder once (key is per member + day/streak), so a cron retry never double-sends. */
 async function queue(
   kind: Kind,
   key: string,
@@ -90,34 +80,35 @@ async function queue(
   message: string,
   extra: Record<string, unknown>,
 ) {
-  const specific = db.doc(`${COLLECTION[kind]}/${key}`);
-  return db.runTransaction(async (tx) => {
+  const firestore = db();
+  const specific = firestore.doc(`${COLLECTION[kind]}/${key}`);
+  return firestore.runTransaction(async (tx) => {
     if ((await tx.get(specific)).exists) return false;
-    const now = FieldValue.serverTimestamp(),
-      common = {
-        clientId: c.id,
-        clientNameSnapshot: c.fullName,
-        phoneSnapshot: c.phone,
-        message,
-        status: "queued",
-        provider: "mock",
-        sentAt: null,
-        createdAt: now,
-        updatedAt: now,
-      };
+    const now = FieldValue.serverTimestamp();
+    const common = {
+      clientId: c["id"],
+      clientNameSnapshot: c["fullName"],
+      phoneSnapshot: c["phone"],
+      message,
+      status: "queued",
+      provider: "mock",
+      sentAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
     tx.set(specific, { ...common, ...extra });
-    tx.set(db.doc(`notifications/${key}`), {
+    tx.set(firestore.doc(`notifications/${key}`), {
       ...common,
       type: kind,
       referenceId: key,
-      scheduledFor: date(),
+      scheduledFor: localDate(),
       error: "",
     });
-    tx.set(db.doc(`automationActivities/${key}`), {
+    tx.set(firestore.doc(`automationActivities/${key}`), {
       type: `${kind}_queued`,
       referenceId: key,
-      clientId: c.id,
-      clientNameSnapshot: c.fullName,
+      clientId: c["id"],
+      clientNameSnapshot: c["fullName"],
       description:
         kind === "renewal"
           ? "Renewal reminder queued"
@@ -132,7 +123,7 @@ async function queue(
 }
 
 /**
- * Sends a queued reminder on WhatsApp when the Cloud API is live and the member agreed to
+ * Sends a queued reminder on WhatsApp when the Cloud API is on and the member agreed to
  * WhatsApp messages. Without the API the reminder stays in Message History for staff.
  */
 async function deliver(
@@ -152,16 +143,16 @@ async function deliver(
         : wa.absenceTemplate;
   const result = to
     ? await sendTemplateMessage({ to, templateName, language: wa.language, bodyParams })
-    : ({ ok: false, error: "Invalid WhatsApp number." } as const);
+    : ({ ok: false, error: "Invalid WhatsApp number.", code: "invalid_number" } as const);
   const now = FieldValue.serverTimestamp();
   const patch = result.ok
     ? { status: "sent", provider: "whatsapp", sentAt: now, error: "", updatedAt: now }
     : { status: "failed", provider: "whatsapp", error: result.error, updatedAt: now };
-  const collection = COLLECTION[kind];
+  const firestore = db();
   await Promise.all([
-    db.doc(`${collection}/${key}`).update(patch),
-    db.doc(`notifications/${key}`).update(patch),
-    db.doc(`whatsappMessages/${id(kind, key)}`).set({
+    firestore.doc(`${COLLECTION[kind]}/${key}`).update(patch),
+    firestore.doc(`notifications/${key}`).update(patch),
+    firestore.doc(`whatsappMessages/${id(kind, key)}`).set({
       clientId: c.id,
       clientNameSnapshot: c.fullName,
       phoneSnapshot: c.whatsappPhone || c.phone,
@@ -188,17 +179,19 @@ async function deliver(
 
 export async function processRenewalReminders() {
   const cfg = await settings();
-  if (!cfg.automationEnabled || !cfg.renewalEnabled) return;
+  if (!cfg.automationEnabled || !cfg.renewalEnabled) return 0;
   const wa = await whatsappSettings();
-  const today = date(),
-    target = plus(today, Number(cfg.renewalDaysBefore)),
-    [members, clients] = await Promise.all([
-      db.collection("memberships").where("status", "==", "active").get(),
-      db.collection("clients").get(),
-    ]),
-    all = members.docs.map((x) => ({ id: x.id, ...x.data() }) as MembershipRow),
-    cm = new Map(clients.docs.map((x) => [x.id, { id: x.id, ...x.data() } as ClientRow]));
+  const today = localDate();
+  const target = plus(today, Number(cfg.renewalDaysBefore));
+  const [members, clients] = await Promise.all([
+    db().collection("memberships").where("status", "==", "active").get(),
+    db().collection("clients").get(),
+  ]);
+  const all = members.docs.map((x) => ({ id: x.id, ...x.data() }) as MembershipRow);
+  const cm = new Map(clients.docs.map((x) => [x.id, { id: x.id, ...x.data() } as ClientRow]));
+  let sent = 0;
   for (const m of all.filter((x) => x.endDate === target)) {
+    // Already renewed: a later plan exists.
     if (
       all.some(
         (x) =>
@@ -219,16 +212,21 @@ export async function processRenewalReminders() {
       render(String(cfg.renewalTemplate), { name: c.fullName, expiryDate: pretty(m.endDate) }),
       { membershipId: m.id, expiryDate: m.endDate, reminderDate: today, type: "renewal_7_days" },
     );
-    if (queued) await deliver("renewal", key, c, [c.fullName, wa.gymName, pretty(m.endDate)], wa);
+    if (!queued) continue;
+    sent += 1;
+    await deliver("renewal", key, c, [c.fullName, wa.gymName, pretty(m.endDate)], wa);
   }
+  return sent;
 }
+
 export async function processBirthdayNotifications() {
   const cfg = await settings();
-  if (!cfg.automationEnabled || !cfg.birthdayEnabled) return;
+  if (!cfg.automationEnabled || !cfg.birthdayEnabled) return 0;
   const wa = await whatsappSettings();
-  const today = date(),
-    year = Number(today.slice(0, 4)),
-    clients = await db.collection("clients").get();
+  const today = localDate();
+  const year = Number(today.slice(0, 4));
+  const clients = await db().collection("clients").get();
+  let sent = 0;
   for (const d of clients.docs) {
     const c = { id: d.id, ...d.data() } as ClientRow;
     if (!c.dateOfBirth || c.dateOfBirth.slice(5) !== today.slice(5)) continue;
@@ -238,11 +236,19 @@ export async function processBirthdayNotifications() {
       key,
       c,
       render(String(cfg.birthdayTemplate), { name: c.fullName }),
-      { birthdayDate: today, year, type: "birthday" },
+      {
+        birthdayDate: today,
+        year,
+        type: "birthday",
+      },
     );
-    if (queued) await deliver("birthday", key, c, [c.fullName, wa.gymName], wa);
+    if (!queued) continue;
+    sent += 1;
+    await deliver("birthday", key, c, [c.fullName, wa.gymName], wa);
   }
+  return sent;
 }
+
 /** Rotated so members don't get the same line twice in a row. Keep each under ~150 chars. */
 const QUOTES = [
   "The only bad workout is the one you skipped.",
@@ -265,20 +271,20 @@ const daysBetween = (from: string, to: string) =>
 
 /**
  * Missed-workout nudge (off by default; Settings → Reminders). A member with a running plan and a
- * registered thumb whose last allowed thumb punch at the door is `absenceDays` or more days ago
- * gets ONE motivating message per absence. It repeats only after they come back and miss again.
+ * registered thumb whose last allowed thumb punch is `absenceDays` or more days ago gets ONE
+ * message per absence. It repeats only after they come back and miss again.
  */
 export async function processAbsenceNudges() {
   const cfg = await settings();
-  if (!cfg.automationEnabled || !cfg.absenceEnabled) return;
+  if (!cfg.automationEnabled || !cfg.absenceEnabled) return 0;
   const wa = await whatsappSettings();
   const minDays = Math.max(2, Number(cfg.absenceDays) || 3);
-  const today = date();
+  const today = localDate();
   const [clients, plans, pts, visits] = await Promise.all([
-    db.collection("clients").where("firstThumbRegistered", "==", true).get(),
-    db.collection("memberships").where("status", "in", ["active", "pending"]).get(),
-    db.collection("ptAssignments").where("status", "==", "active").get(),
-    db.collection("attendance").where("attendanceDate", ">=", plus(today, -180)).get(),
+    db().collection("clients").where("firstThumbRegistered", "==", true).get(),
+    db().collection("memberships").where("status", "in", ["active", "pending"]).get(),
+    db().collection("ptAssignments").where("status", "==", "active").get(),
+    db().collection("attendance").where("attendanceDate", ">=", plus(today, -180)).get(),
   ]);
   const lastVisit = new Map<string, string>();
   visits.docs.forEach((v) => {
@@ -294,6 +300,7 @@ export async function processAbsenceNudges() {
     const prev = runningStart.get(d["clientId"]);
     if (!prev || d["startDate"] < prev) runningStart.set(d["clientId"], d["startDate"]);
   }
+  let sent = 0;
   for (const doc of clients.docs) {
     const c = { id: doc.id, ...doc.data() } as ClientRow & { biometricStatus?: string };
     const planStart = runningStart.get(c.id);
@@ -312,22 +319,24 @@ export async function processAbsenceNudges() {
       `Hey ${c.fullName}, we missed you! ${gap} days since your last workout. "${quote}"`,
       { absentDays: gap, lastVisitDate: last ?? "", type: "absence" },
     );
-    if (queued) await deliver("absence", key, c, [c.fullName, wa.gymName, String(gap), quote], wa);
+    if (!queued) continue;
+    sent += 1;
+    await deliver("absence", key, c, [c.fullName, wa.gymName, String(gap), quote], wa);
   }
+  return sent;
 }
 
-export const dailyRetentionAutomation = onSchedule(
-  { schedule: "every day 08:00", timeZone: TZ, secrets: [whatsappAccessToken] },
-  async () => {
-    await processRenewalReminders();
-    await processBirthdayNotifications();
-  },
-);
-
-/** 9:30 PM, after the gym closes, so today's thumb punches are final before counting absences. */
-export const nightlyAbsenceNudges = onSchedule(
-  { schedule: "every day 21:30", timeZone: TZ, secrets: [whatsappAccessToken] },
-  async () => {
-    await processAbsenceNudges();
-  },
-);
+/** Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. Without the secret set, cron is off. */
+export async function handleCron(request: Request, url: URL) {
+  const secret = (process.env["CRON_SECRET"] ?? "").trim();
+  if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`)
+    return json({ error: "Unauthorized" }, 401);
+  const job = url.pathname.replace(/^\/api\/cron\/?/, "").replace(/\/+$/, "");
+  if (job === "morning") {
+    const renewals = await processRenewalReminders();
+    const birthdays = await processBirthdayNotifications();
+    return json({ ok: true, renewals, birthdays });
+  }
+  if (job === "night") return json({ ok: true, absences: await processAbsenceNudges() });
+  return json({ error: "Unknown job" }, 404);
+}

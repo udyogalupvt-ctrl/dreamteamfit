@@ -7,7 +7,7 @@ import {
   where,
   writeBatch,
   type DocumentData,
-} from "firebase/firestore";
+} from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { addDaysISO, todayISO } from "@/lib/format";
 import type { GymPackage, Membership, MembershipSummary } from "@/types/models";

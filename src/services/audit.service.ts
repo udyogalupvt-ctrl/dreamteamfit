@@ -1,4 +1,4 @@
-import { limit, orderBy, query, where, type DocumentData } from "firebase/firestore";
+import { limit, orderBy, query, where, type DocumentData } from "@/lib/firestore";
 import { col, COLLECTIONS, subscribeQuery, toDate } from "./firestore.service";
 
 /** One line of the server-written, read-only activity log. */

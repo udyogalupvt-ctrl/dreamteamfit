@@ -7,7 +7,7 @@ import {
   updateDoc,
   where,
   type DocumentData,
-} from "firebase/firestore";
+} from "@/lib/firestore";
 import { adapterFor } from "@/lib/biometric-adapters";
 import { db } from "@/lib/firebase";
 import type { BiometricCommand, BiometricDevice } from "@/types/models";

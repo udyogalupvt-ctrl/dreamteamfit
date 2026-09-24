@@ -6,9 +6,9 @@ import {
   serverTimestamp,
   updateDoc,
   type DocumentData,
-} from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions";
-import { app, db } from "@/lib/firebase";
+} from "@/lib/firestore";
+import { db } from "@/lib/firebase";
+import { callServer } from "@/lib/server-api";
 import { invoiceShareMessage } from "@/lib/invoice-share";
 import { normalizeWhatsAppPhone } from "@/lib/whatsapp-phone";
 import type {
@@ -133,8 +133,7 @@ export async function sendWhatsAppMessage(input: SendInput) {
   if (!claimed) return { duplicate: true, messageId: id };
   if (input.provider === "mock") return { duplicate: false, messageId: id };
   try {
-    const call = httpsCallable(getFunctions(app), "sendWhatsAppMessage");
-    await call({
+    await callServer("/api/whatsapp/send", {
       messageId: id,
       parameters: input.parameters ?? [],
       buttonUrlParam: input.buttonUrlParam ?? "",
@@ -202,6 +201,5 @@ export async function markInvoiceShared(invoice: Pick<Invoice, "enrollmentId">) 
 }
 
 export async function testWhatsAppConnection() {
-  const call = httpsCallable(getFunctions(app), "testWhatsAppConnection");
-  return (await call({})).data as { configured: boolean; detail: string };
+  return callServer<{ configured: boolean; detail: string }>("/api/whatsapp/test");
 }

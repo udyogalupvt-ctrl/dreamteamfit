@@ -1,7 +1,7 @@
 /**
- * eSSL / ZKTeco "ADMS" (PUSH / iclock) endpoint.
+ * eSSL / ZKTeco "ADMS" (PUSH / iclock) endpoint, served by the app itself on Vercel.
  *
- * The device is configured with Cloud Server = this function's host. It then:
+ * The device's Cloud Server = the app's domain, port 443. It then:
  *   GET  /iclock/cdata?SN=..&options=all   handshake, we answer with push options
  *   GET  /iclock/getrequest?SN=..          polls for queued commands (C:<no>:<command>)
  *   POST /iclock/devicecmd?SN=..           reports each command's Return code
@@ -11,47 +11,35 @@
  *
  * Only devices registered in /biometricDevices with integrationType "adms" and a matching
  * serial number are served. An uploaded fingerprint template is (1) proof that the member's
- * first thumb was enrolled and (2) kept in /biometricTemplates, a server-only collection that
- * Firestore rules deny to every browser, so the door lock can restore a renewed member to the
- * device without a new scan.
+ * first thumb was enrolled and (2) kept in /biometricTemplates (server-only), so the door lock
+ * can restore a renewed member without a new scan.
  *
- * Door lock: a member whose plan ended / was cancelled / was blocked by staff is removed from
- * the device (DATA DELETE USERINFO) so the door stays shut; on renewal or unblock the user and
- * stored template are pushed back. Runs on every membership / PT / client change and nightly.
+ * Door lock without database triggers: the app queues a "door_check" (plan or block changed) or
+ * "forget" (member deleted) note in /biometricCommands; the device's next poll handles it. The
+ * first poll after midnight re-checks everyone, so plans that end at midnight close the door.
  */
-import { getApp } from "firebase-admin/app";
 import {
   FieldValue,
-  getFirestore,
   type DocumentReference,
   type QueryDocumentSnapshot,
 } from "firebase-admin/firestore";
-import { logger } from "firebase-functions";
-import { onDocumentWritten } from "firebase-functions/v2/firestore";
-import { onRequest } from "firebase-functions/v2/https";
-import { onSchedule } from "firebase-functions/v2/scheduler";
+import { db, localDate, text } from "./admin";
+import { systemAudit } from "./audit";
 
 /** Device clocks are set to gym local time (Asia/Kolkata). */
-const TZ = "Asia/Kolkata";
 const TZ_OFFSET = "+05:30";
 /** Punches older than this are skipped, so a first connection does not import years of history. */
 const MAX_LOG_AGE_DAYS = 7;
 /** An enrollment request the device never picked up is not replayed later at a random moment. */
 const ENROLL_REQUEST_TTL_MS = 10 * 60 * 1000;
-const POLL_DELAY_SECONDS = 10;
+/** Seconds between device polls. Each poll costs ~1 Firestore read (free plan: 50,000/day). */
+const POLL_DELAY_SECONDS = 15;
+/** App-side notes handled here on the server, never sent to a device. */
+const SERVER_TASKS = new Set(["door_check", "forget"]);
 
-const db = () => getFirestore(getApp());
-
-type Device = { id: string; name: string; serialNumber: string };
+type Device = { id: string; name: string; serialNumber: string; lastDoorSyncDate: string };
 type KV = Record<string, string>;
-
-const localDate = (d = new Date()) =>
-  new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
+type Row = Record<string, unknown>;
 
 // Warm-instance caches: a polling device costs about one device read per minute.
 const deviceCache = new Map<string, { device: Device | null; at: number }>();
@@ -65,7 +53,12 @@ async function findDevice(sn: string): Promise<Device | null> {
     (d) => d.data()["integrationType"] === "adms" && d.data()["status"] !== "disabled",
   );
   const device = match
-    ? { id: match.id, name: String(match.data()["name"] ?? "Device"), serialNumber: sn }
+    ? {
+        id: match.id,
+        name: String(match.data()["name"] ?? "Device"),
+        serialNumber: sn,
+        lastDoorSyncDate: String(match.data()["lastDoorSyncDate"] ?? ""),
+      }
     : null;
   deviceCache.set(sn, { device, at: Date.now() });
   return device;
@@ -123,27 +116,99 @@ function handshake(sn: string) {
 
 // ---------------------------------------------------------------- commands
 
+const createdMs = (d: Row) =>
+  (d["createdAt"] as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+
+/** Marks a server task as taken, so two polls at once never run it twice. */
+async function claim(ref: DocumentReference) {
+  return db().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.data()?.["status"] !== "pending") return false;
+    tx.update(ref, {
+      status: "sent",
+      sentAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return true;
+  });
+}
+
+async function runServerTasks(tasks: QueryDocumentSnapshot[]) {
+  for (const t of tasks) {
+    if (!(await claim(t.ref))) continue;
+    const d = t.data();
+    let error = "";
+    try {
+      if (d["type"] === "forget")
+        await forgetDeletedMember(
+          String(d["clientId"]),
+          String(d["biometricUserId"] ?? ""),
+          String(d["deviceId"] ?? ""),
+        );
+      else await syncDoorAccess(String(d["clientId"]));
+    } catch (e) {
+      error = String(e);
+      console.error("door task failed", t.id, error);
+    }
+    await t.ref.update({
+      status: error ? "failed" : "done",
+      error,
+      completedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+}
+
+/** Once per day (first poll after midnight): plans that ended yesterday close the door. */
+async function dailySync(device: Device) {
+  const today = localDate();
+  if (device.lastDoorSyncDate === today) return;
+  const ref = db().doc(`biometricDevices/${device.id}`);
+  const mine = await db().runTransaction(async (tx) => {
+    if ((await tx.get(ref)).data()?.["lastDoorSyncDate"] === today) return false;
+    tx.update(ref, { lastDoorSyncDate: today });
+    return true;
+  });
+  device.lastDoorSyncDate = today;
+  if (mine) {
+    const changed = await syncAllDoorAccess(today);
+    console.info("Daily door access sync", { device: device.id, changed });
+  }
+}
+
 async function nextCommands(device: Device) {
   const firestore = db();
-  const deviceRef = firestore.doc(`biometricDevices/${device.id}`);
-  const pendingQuery = firestore
+  await dailySync(device);
+  const pending = await firestore
     .collection("biometricCommands")
-    .where("deviceId", "==", device.id)
-    .where("status", "==", "pending");
+    .where("status", "==", "pending")
+    .get();
+  const tasks = pending.docs.filter((d) => SERVER_TASKS.has(String(d.data()["type"])));
+  if (tasks.length) await runServerTasks(tasks);
+  const mine = pending.docs
+    .filter(
+      (d) => d.data()["deviceId"] === device.id && !SERVER_TASKS.has(String(d.data()["type"])),
+    )
+    .sort(
+      (a, b) =>
+        createdMs(a.data()) - createdMs(b.data()) ||
+        Number(a.data()["order"] ?? 0) - Number(b.data()["order"] ?? 0),
+    )
+    .slice(0, 5);
+  if (!mine.length) return [];
+  const deviceRef = firestore.doc(`biometricDevices/${device.id}`);
   return firestore.runTransaction(async (tx) => {
-    const [deviceSnap, pending] = await Promise.all([tx.get(deviceRef), tx.get(pendingQuery)]);
-    if (pending.empty) return [];
+    const [deviceSnap, ...fresh] = await Promise.all([
+      tx.get(deviceRef),
+      ...mine.map((m) => tx.get(m.ref)),
+    ]);
     const now = Date.now();
-    const sorted = pending.docs.sort((a, b) => {
-      const ta = a.data()["createdAt"]?.toMillis?.() ?? 0;
-      const tb = b.data()["createdAt"]?.toMillis?.() ?? 0;
-      return ta - tb || Number(a.data()["order"] ?? 0) - Number(b.data()["order"] ?? 0);
-    });
     const lines: string[] = [];
     let seq = Number(deviceSnap.data()?.["cmdSeq"] ?? 0);
-    for (const cmd of sorted.slice(0, 5)) {
+    for (const cmd of fresh) {
       const d = cmd.data();
-      const created = d["createdAt"]?.toMillis?.() ?? now;
+      if (!d || d["status"] !== "pending") continue;
+      const created = createdMs(d) || now;
       if (d["type"] === "enroll_fp" && now - created > ENROLL_REQUEST_TTL_MS) {
         tx.update(cmd.ref, {
           status: "failed",
@@ -244,15 +309,15 @@ async function activateBiometric(clientRef: DocumentReference, device: Device, p
   const today = localDate();
   const activated = await firestore.runTransaction(async (tx) => {
     const client = await tx.get(clientRef);
-    if (!client.exists) return false;
+    if (!client.exists) return null;
     const c = client.data() ?? {};
-    if (c["firstThumbRegistered"] === true && c["biometricStatus"] === "active") return false;
+    if (c["firstThumbRegistered"] === true && c["biometricStatus"] === "active") return null;
     const [enrollments, memberships] = await Promise.all([
       tx.get(firestore.collection("enrollments").where("clientId", "==", client.id)),
       tx.get(firestore.collection("memberships").where("clientId", "==", client.id)),
     ]);
     const now = FieldValue.serverTimestamp();
-    const clientPatch: Record<string, unknown> = {
+    const clientPatch: Row = {
       biometricUserId: pin,
       biometricDeviceId: device.id,
       biometricStatus: "active",
@@ -296,10 +361,16 @@ async function activateBiometric(clientRef: DocumentReference, device: Device, p
       });
     }
     tx.update(clientRef, clientPatch);
-    return true;
+    return String(c["fullName"] ?? "");
   });
-  if (!activated) return;
-  logger.info("First thumb registered", { clientId: clientRef.id, device: device.id, pin });
+  if (activated === null) return;
+  await systemAudit({
+    collection: "clients",
+    docId: clientRef.id,
+    clientId: clientRef.id,
+    clientName: activated,
+    summary: `Thumb registered on the device (${device.name}, ID ${pin})`,
+  });
   const open = await firestore
     .collection("biometricCommands")
     .where("clientId", "==", clientRef.id)
@@ -324,7 +395,7 @@ async function activateBiometric(clientRef: DocumentReference, device: Device, p
 
 /**
  * PINs the device reports as having a fingerprint. "enrolled" = the device logged a new
- * enrollment (OPLOG 6); "template" = a stored template was uploaded. Templates are discarded.
+ * enrollment (OPLOG 6); "template" = a stored template was uploaded.
  */
 function fingerprintEvidence(body: string) {
   const found = new Map<string, "enrolled" | "template">();
@@ -414,21 +485,17 @@ async function storeTemplates(body: string, device: Device) {
 
 // ---------------------------------------------------------------- door lock
 
+const covers = (d: Row, statuses: string[], today: string) =>
+  statuses.includes(String(d["status"])) &&
+  String(d["startDate"] ?? "") <= today &&
+  String(d["endDate"] ?? "") >= today;
+
 /** Entry allowed today: thumb registered, not blocked by staff, and a plan (gym or PT) covers today. */
-async function entitledToday(clientId: string, c: Record<string, unknown>, today: string) {
+function entitled(c: Row, plans: Row[], pts: Row[], today: string) {
   if (c["firstThumbRegistered"] !== true || c["biometricStatus"] !== "active") return false;
-  const firestore = db();
-  const [ms, pts] = await Promise.all([
-    firestore.collection("memberships").where("clientId", "==", clientId).get(),
-    firestore.collection("ptAssignments").where("clientId", "==", clientId).get(),
-  ]);
-  const covers = (d: Record<string, unknown>, statuses: string[]) =>
-    statuses.includes(String(d["status"])) &&
-    String(d["startDate"] ?? "") <= today &&
-    String(d["endDate"] ?? "") >= today;
   return (
-    ms.docs.some((m) => covers(m.data(), ["active", "pending"])) ||
-    pts.docs.some((p) => covers(p.data(), ["active"]))
+    plans.some((m) => covers(m, ["active", "pending"], today)) ||
+    pts.some((p) => covers(p, ["active"], today))
   );
 }
 
@@ -438,20 +505,16 @@ async function entitledToday(clientId: string, c: Record<string, unknown>, today
  * "needs_thumb" (entitled again but no stored template: staff must register the thumb),
  * "flipped" (an unsent opposite command was withdrawn) or "none".
  */
-export async function syncDoorAccess(clientId: string, today = localDate()) {
+async function applyDoorAccess(clientId: string, c: Row, allowed: boolean) {
   const firestore = db();
   const ref = firestore.doc(`clients/${clientId}`);
-  const c = (await ref.get()).data();
-  if (!c) return "none";
   const pin = String(c["biometricUserId"] ?? "");
   const deviceId = String(c["biometricDeviceId"] ?? "");
   if (c["firstThumbRegistered"] !== true || !pin || !deviceId) return "none";
+  const onDevice = c["deviceAccess"] !== "removed";
+  if (allowed === onDevice) return "none";
   const device = (await firestore.doc(`biometricDevices/${deviceId}`).get()).data();
   if (!device || device["integrationType"] !== "adms") return "none";
-
-  const entitled = await entitledToday(clientId, c, today);
-  const onDevice = c["deviceAccess"] !== "removed";
-  if (entitled === onDevice) return "none";
 
   const now = FieldValue.serverTimestamp();
   const cmds = await firestore
@@ -459,13 +522,16 @@ export async function syncDoorAccess(clientId: string, today = localDate()) {
     .where("clientId", "==", clientId)
     .get();
   const unsent = cmds.docs.filter(
-    (d) => d.data()["door"] === true && d.data()["status"] === "pending",
+    (d) =>
+      d.data()["door"] === true &&
+      d.data()["status"] === "pending" &&
+      !SERVER_TASKS.has(String(d.data()["type"])),
   );
   if (unsent.length) {
     // The device never ran the last change, so it is still in the state we now want.
     const batch = firestore.batch();
     unsent.forEach((d) => batch.update(d.ref, { status: "cancelled", updatedAt: now }));
-    batch.update(ref, { deviceAccess: entitled ? "on" : "removed", deviceAccessChangedAt: now });
+    batch.update(ref, { deviceAccess: allowed ? "on" : "removed", deviceAccessChangedAt: now });
     await batch.commit();
     return "flipped";
   }
@@ -489,12 +555,15 @@ export async function syncDoorAccess(clientId: string, today = localDate()) {
   const batch = firestore.batch();
   const add = (type: string, order: number, command: string) =>
     batch.set(firestore.collection("biometricCommands").doc(), { ...base, type, order, command });
+  const name = String(c["fullName"] ?? "");
+  const log = (summary: string) =>
+    systemAudit({ collection: "clients", docId: clientId, clientId, clientName: name, summary });
 
-  if (!entitled) {
+  if (!allowed) {
     add("delete_user", 1, `DATA DELETE USERINFO PIN=${pin}`);
     batch.update(ref, { deviceAccess: "removed", deviceAccessChangedAt: now });
     await batch.commit();
-    logger.info("Door access removed", { clientId, pin });
+    await log("Removed from the door device (no running plan, or entry blocked)");
     return "removed";
   }
 
@@ -502,7 +571,7 @@ export async function syncDoorAccess(clientId: string, today = localDate()) {
   const fingers = Object.values(
     (tpl.data()?.["fingers"] ?? {}) as Record<string, { format: "FP" | "BIODATA"; fields: KV }>,
   );
-  add("user_upsert", 1, userInfoCommand(pin, String(c["fullName"] ?? "")));
+  add("user_upsert", 1, userInfoCommand(pin, name));
   if (!fingers.length) {
     // No stored thumb to restore: the member must scan again at the counter.
     batch.update(ref, {
@@ -514,56 +583,63 @@ export async function syncDoorAccess(clientId: string, today = localDate()) {
       updatedAt: now,
     });
     await batch.commit();
+    await log("Added back to the door device: thumb must be registered again");
     return "needs_thumb";
   }
   fingers.forEach((t, i) => add("restore_fp", 2 + i, restoreCommand(pin, t)));
   batch.update(ref, { deviceAccess: "on", deviceAccessChangedAt: now });
   await batch.commit();
-  logger.info("Door access restored", { clientId, pin, fingers: fingers.length });
+  await log("Added back to the door device with the saved thumb");
   return "restored";
 }
 
-type WriteEvent = {
-  data?: {
-    before?: { data(): Record<string, unknown> | undefined };
-    after?: { data(): Record<string, unknown> | undefined };
+/** One member, after the app changed a plan or blocked / allowed entry. */
+export async function syncDoorAccess(clientId: string, today = localDate()) {
+  const firestore = db();
+  const c = (await firestore.doc(`clients/${clientId}`).get()).data();
+  if (!c || c["firstThumbRegistered"] !== true) return "none";
+  const [ms, pts] = await Promise.all([
+    firestore.collection("memberships").where("clientId", "==", clientId).get(),
+    firestore.collection("ptAssignments").where("clientId", "==", clientId).get(),
+  ]);
+  const allowed = entitled(
+    c,
+    ms.docs.map((d) => d.data()),
+    pts.docs.map((d) => d.data()),
+    today,
+  );
+  return applyDoorAccess(clientId, c, allowed);
+}
+
+/** Everyone with a registered thumb, reading each collection once (free-plan friendly). */
+export async function syncAllDoorAccess(today = localDate()) {
+  const firestore = db();
+  const [clients, plans, pts] = await Promise.all([
+    firestore.collection("clients").where("firstThumbRegistered", "==", true).get(),
+    firestore.collection("memberships").where("status", "in", ["active", "pending"]).get(),
+    firestore.collection("ptAssignments").where("status", "==", "active").get(),
+  ]);
+  const group = (docs: QueryDocumentSnapshot[]) => {
+    const m = new Map<string, Row[]>();
+    docs.forEach((d) => {
+      const k = String(d.data()["clientId"] ?? "");
+      m.set(k, [...(m.get(k) ?? []), d.data()]);
+    });
+    return m;
   };
-};
-const clientIdOf = (e: WriteEvent) =>
-  String(e.data?.after?.data()?.["clientId"] ?? e.data?.before?.data()?.["clientId"] ?? "");
-
-export const doorAccessOnMembership = onDocumentWritten("memberships/{id}", async (e) => {
-  const id = clientIdOf(e);
-  if (id) await syncDoorAccess(id);
-});
-
-export const doorAccessOnPt = onDocumentWritten("ptAssignments/{id}", async (e) => {
-  const id = clientIdOf(e);
-  if (id) await syncDoorAccess(id);
-});
-
-/** Staff "Block entry" / "Allow entry", or a thumb just registered. */
-export const doorAccessOnClient = onDocumentWritten("clients/{id}", async (e) => {
-  const before = e.data?.before?.data();
-  const after = e.data?.after?.data();
-  if (!after) {
-    if (before) await forgetDeletedMember(e.params.id, before);
-    return;
+  const byPlan = group(plans.docs);
+  const byPt = group(pts.docs);
+  let changed = 0;
+  for (const c of clients.docs) {
+    const allowed = entitled(c.data(), byPlan.get(c.id) ?? [], byPt.get(c.id) ?? [], today);
+    if ((await applyDoorAccess(c.id, c.data(), allowed)) !== "none") changed += 1;
   }
-  if (
-    before &&
-    before["biometricStatus"] === after["biometricStatus"] &&
-    before["firstThumbRegistered"] === after["firstThumbRegistered"]
-  )
-    return;
-  await syncDoorAccess(e.params.id);
-});
+  return changed;
+}
 
 /** A deleted member is removed from the device and their stored fingerprint is erased. */
-async function forgetDeletedMember(clientId: string, c: Record<string, unknown>) {
+async function forgetDeletedMember(clientId: string, pin: string, deviceId: string) {
   const firestore = db();
-  const pin = String(c["biometricUserId"] ?? "");
-  const deviceId = String(c["biometricDeviceId"] ?? "");
   const device = deviceId
     ? (await firestore.doc(`biometricDevices/${deviceId}`).get()).data()
     : null;
@@ -590,22 +666,7 @@ async function forgetDeletedMember(clientId: string, c: Record<string, unknown>)
     });
   }
   await firestore.doc(`biometricTemplates/${clientId}`).delete();
-  logger.info("Deleted member removed from device", { clientId, pin });
 }
-
-/** Plans end at midnight without any write, so check everyone once a day. */
-export const dailyDoorAccessSync = onSchedule(
-  { schedule: "every day 00:05", timeZone: TZ },
-  async () => {
-    const clients = await db()
-      .collection("clients")
-      .where("firstThumbRegistered", "==", true)
-      .get();
-    let changed = 0;
-    for (const c of clients.docs) if ((await syncDoorAccess(c.id)) !== "none") changed += 1;
-    logger.info("Daily door access sync", { checked: clients.size, changed });
-  },
-);
 
 /**
  * A stored template only proves enrollment while staff are actively registering this member,
@@ -618,7 +679,7 @@ async function hasLiveEnrollRequest(clientId: string) {
     (d) =>
       ["enroll_fp", "query_fp"].includes(String(d.data()["type"])) &&
       d.data()["status"] !== "cancelled" &&
-      (d.data()["createdAt"]?.toMillis?.() ?? 0) > since,
+      createdMs(d.data()) > since,
   );
 }
 
@@ -653,7 +714,7 @@ async function attendance(device: Device, body: string) {
   const cutoff = Date.now() - MAX_LOG_AGE_DAYS * 86_400_000;
   const clients = new Map<string, QueryDocumentSnapshot | null>();
   const memberships = new Map<string, Membership[]>();
-  const rows: { ref: DocumentReference; data: Record<string, unknown> }[] = [];
+  const rows: { ref: DocumentReference; data: Row }[] = [];
   let received = 0;
   for (const raw of body.split(/\r?\n/)) {
     const parts = raw.split("\t").map((p) => p.trim());
@@ -723,40 +784,31 @@ async function attendance(device: Device, body: string) {
 
 // ---------------------------------------------------------------- HTTP entry
 
-export const iclock = onRequest({ memory: "256MiB", timeoutSeconds: 120 }, async (req, res) => {
-  res.set("Content-Type", "text/plain");
-  const endpoint = (req.path.replace(/\/+$/, "").split("/").pop() ?? "").toLowerCase();
-  const sn = String(req.query["SN"] ?? req.query["sn"] ?? "").trim();
-  if (!sn) {
-    res.status(400).send("ERROR: SN required");
-    return;
-  }
+export async function handleIclock(request: Request, url: URL) {
+  const endpoint = (url.pathname.replace(/\/+$/, "").split("/").pop() ?? "").toLowerCase();
+  const sn = String(url.searchParams.get("SN") ?? url.searchParams.get("sn") ?? "").trim();
+  if (!sn) return text("ERROR: SN required", 400);
   try {
     const device = await findDevice(sn);
     if (!device) {
-      logger.warn("Unregistered biometric device tried to connect", { sn, endpoint });
-      res.status(200).send("OK");
-      return;
+      console.warn("Unregistered biometric device tried to connect", { sn, endpoint });
+      return text("OK");
     }
-    await touchDevice(device, String(req.ip ?? ""));
-    const body = req.rawBody ? req.rawBody.toString("utf8") : "";
+    const ip = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "";
+    await touchDevice(device, ip);
+    const body = request.method === "POST" ? await request.text() : "";
 
-    if (endpoint === "cdata" && req.method === "GET") {
-      res.status(200).send(handshake(sn));
-      return;
-    }
+    if (endpoint === "cdata" && request.method === "GET") return text(handshake(sn));
     if (endpoint === "getrequest") {
       const lines = await nextCommands(device);
-      res.status(200).send(lines.length ? `${lines.join("\n")}\n` : "OK");
-      return;
+      return text(lines.length ? `${lines.join("\n")}\n` : "OK");
     }
     if (endpoint === "devicecmd") {
       await commandResults(device, body);
-      res.status(200).send("OK");
-      return;
+      return text("OK");
     }
     if (endpoint === "cdata" || endpoint === "querydata") {
-      const table = String(req.query["table"] ?? "").toUpperCase();
+      const table = String(url.searchParams.get("table") ?? "").toUpperCase();
       let count = 0;
       if (table === "ATTLOG") count = await attendance(device, body);
       else {
@@ -769,16 +821,15 @@ export const iclock = onRequest({ memory: "256MiB", timeoutSeconds: 120 }, async
         }
         await storeTemplates(body, device);
       }
-      res.status(200).send(`OK: ${count}`);
-      return;
+      return text(`OK: ${count}`);
     }
-    res.status(200).send("OK");
+    return text("OK");
   } catch (error) {
-    logger.error("iclock request failed", { sn, endpoint, error: String(error) });
+    console.error("iclock request failed", { sn, endpoint, error: String(error) });
     // A non-OK answer makes the device retry the same upload later.
-    res.status(500).send("ERROR");
+    return text("ERROR", 500);
   }
-});
+}
 
 /** Pure protocol helpers, exported only for tests. */
 export const __adms = {

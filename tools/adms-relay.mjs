@@ -3,7 +3,7 @@
  * ADMS relay for fingerprint devices whose firmware cannot use HTTPS.
  *
  * Run it on any always-on PC in the gym (same network as the device):
- *   node tools/adms-relay.mjs https://us-central1-<project-id>.cloudfunctions.net/iclock 8081
+ *   node tools/adms-relay.mjs https://dreamteamfit.vercel.app/iclock 8081
  *
  * Then on the device set Cloud Server = <this PC's LAN IP>, port 8081, HTTPS off.
  * Every /iclock/... request is forwarded unchanged to the cloud endpoint and the
@@ -14,7 +14,7 @@ import http from "node:http";
 const target = process.argv[2];
 const port = Number(process.argv[3] ?? 8081);
 if (!target || !/^https:\/\//.test(target)) {
-  console.error("Usage: node tools/adms-relay.mjs https://<region>-<project>.cloudfunctions.net/iclock [port]");
+  console.error("Usage: node tools/adms-relay.mjs https://<your-app-domain>/iclock [port]");
   process.exit(1);
 }
 const base = target.replace(/\/+$/, "");

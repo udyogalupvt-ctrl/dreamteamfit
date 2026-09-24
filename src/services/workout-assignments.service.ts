@@ -1,4 +1,4 @@
-import { doc, getDocs, orderBy, query, serverTimestamp, updateDoc, where, writeBatch, type DocumentData } from "firebase/firestore";
+import { doc, getDocs, orderBy, query, serverTimestamp, updateDoc, where, writeBatch, type DocumentData } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { addDaysISO, todayISO } from "@/lib/format";
 import { assignmentStatusSchema, workoutAssignmentSchema } from "@/lib/plan-validation";

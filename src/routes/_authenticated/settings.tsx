@@ -265,8 +265,8 @@ function WhatsAppSettingsPanel() {
       if (r.configured) toast.success(r.detail);
       else toast.warning(r.detail);
     } catch (e) {
-      toast.error("The WhatsApp server function is not deployed yet", {
-        description: firestoreErrorMessage(e),
+      toast.error("Couldn't reach the WhatsApp server", {
+        description: e instanceof Error ? e.message : String(e),
       });
     } finally {
       setTesting(false);
@@ -390,7 +390,7 @@ function WhatsAppSettingsPanel() {
           </Field>
           <p className="text-meta flex items-center gap-1.5">
             <CircleAlert className="size-3.5" aria-hidden /> The access token is kept only on the
-            server (Firebase Functions secrets), never here.
+            server (Vercel environment variables), never here.
           </p>
         </div>
       </FormSection>

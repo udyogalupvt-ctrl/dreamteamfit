@@ -8,7 +8,7 @@ import {
   where,
   writeBatch,
   type DocumentData,
-} from "firebase/firestore";
+} from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { todayISO } from "@/lib/format";
 import type { FollowUp, FollowUpPriority, FollowUpSource } from "@/types/models";

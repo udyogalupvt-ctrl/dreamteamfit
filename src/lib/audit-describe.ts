@@ -1,22 +1,10 @@
-/**
- * Tamper-proof activity log.
- *
- * Every create / change / delete in the gym's data is recorded here by the server, with the
- * signed-in staff account that made it (from the Firestore auth context). The app can read
- * /auditLogs but Firestore rules forbid any browser from writing, editing or deleting it, so
- * the history of "who did what" cannot be changed from the app.
- */
-import { getApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
-import { FieldValue, getFirestore } from "firebase-admin/firestore";
-import { logger } from "firebase-functions";
-import { onDocumentWrittenWithAuthContext } from "firebase-functions/v2/firestore";
+/** Human wording for the activity log. One sentence per change, or null when not worth logging. */
 
 type D = Record<string, unknown>;
-type Action = "created" | "updated" | "deleted";
+export type AuditAction = "created" | "updated" | "deleted";
 
 /** Machine noise and derived records that would drown the log. */
-const SKIP = new Set([
+export const AUDIT_SKIP = new Set([
   "auditLogs",
   "attendance",
   "biometricCommands",
@@ -26,6 +14,7 @@ const SKIP = new Set([
   "automationActivities",
   "renewalNotifications",
   "birthdayNotifications",
+  "absenceNotifications",
   "publicInvoices",
   "expenseActivities",
   "importBatches",
@@ -37,6 +26,7 @@ const NOISE = new Set([
   "lastIp",
   "cmdSeq",
   "lastSyncAt",
+  "lastDoorSyncDate",
   "pdfUrl",
   "phoneNormalized",
   "deviceAccessChangedAt",
@@ -49,7 +39,7 @@ const NOISE = new Set([
 
 const s = (v: unknown) => (v === null || v === undefined ? "" : String(v));
 const money = (v: unknown) => `₹${Number(v ?? 0).toLocaleString("en-IN")}`;
-const short = (v: unknown) => {
+export const short = (v: unknown): unknown => {
   if (v === null || v === undefined) return null;
   if (typeof v === "object") {
     const t = (v as { toDate?: () => Date }).toDate?.();
@@ -59,7 +49,7 @@ const short = (v: unknown) => {
   return typeof v === "string" ? v.slice(0, 200) : v;
 };
 
-function changedFields(before: D, after: D) {
+export function changedFields(before: D, after: D) {
   return [...new Set([...Object.keys(before), ...Object.keys(after)])].filter(
     (k) => !NOISE.has(k) && JSON.stringify(short(before[k])) !== JSON.stringify(short(after[k])),
   );
@@ -68,21 +58,15 @@ function changedFields(before: D, after: D) {
 const became = (f: string[], b: D, a: D, key: string, value: unknown) =>
   f.includes(key) && a[key] === value && b[key] !== value;
 
-/** One human sentence per change. Returns null for changes not worth logging. */
-function describe(col: string, action: Action, b: D, a: D, f: string[]): string | null {
+function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): string | null {
   const d = action === "deleted" ? b : a;
   switch (col) {
     case "clients":
       if (action === "created") return `Member added: ${s(d["fullName"])} (${s(d["clientCode"])})`;
       if (action === "deleted") return `Member deleted: ${s(d["fullName"])} (${s(d["phone"])})`;
-      if (became(f, b, a, "firstThumbRegistered", true)) return "Thumb registered on the device";
-      if (became(f, b, a, "firstThumbRegistered", false)) return "Thumb must be registered again";
       if (became(f, b, a, "biometricStatus", "disabled")) return "Entry blocked by staff";
       if (b["biometricStatus"] === "disabled" && became(f, b, a, "biometricStatus", "active"))
         return "Entry allowed again";
-      if (became(f, b, a, "deviceAccess", "removed")) return "Removed from the door device";
-      if (became(f, b, a, "deviceAccess", "on") && b["deviceAccess"] === "removed")
-        return "Added back to the door device";
       if (
         f.every((k) =>
           [
@@ -93,6 +77,7 @@ function describe(col: string, action: Action, b: D, a: D, f: string[]): string 
             "biometricUserId",
             "biometricDeviceId",
             "deviceAccess",
+            "firstThumbRegistered",
           ].includes(k),
         )
       )
@@ -139,7 +124,7 @@ function describe(col: string, action: Action, b: D, a: D, f: string[]): string 
     case "enrollments":
       if (f.includes("invoiceSharedAt") && !b["invoiceSharedAt"]) return "Bill shared on WhatsApp";
       if (became(f, b, a, "status", "active")) return "Joining completed";
-      return action === "created" ? null : null;
+      return null;
     case "followups":
       if (
         action === "created" ||
@@ -184,64 +169,30 @@ function describe(col: string, action: Action, b: D, a: D, f: string[]): string 
   }
 }
 
-const names = new Map<string, string>();
-async function actorName(authType: string, authId: string | undefined) {
-  if (authType === "app_user" && authId) {
-    if (!names.has(authId)) {
-      const u = await getAuth(getApp())
-        .getUser(authId)
-        .catch(() => null);
-      names.set(authId, u?.email || u?.displayName || authId);
-    }
-    return names.get(authId)!;
-  }
-  if (authType === "service_account" || authType === "api_key" || authType === "system")
-    return "System (automatic)";
-  if (authType === "unauthenticated") return "Not signed in";
-  return "Unknown";
+/** The log line for one write, or null when nothing worth recording changed. */
+export function auditLine(col: string, docId: string, before: D | null, after: D | null) {
+  if (AUDIT_SKIP.has(col) || (col === "settings" && docId === "counters")) return null;
+  const action: AuditAction = !before ? "created" : !after ? "deleted" : "updated";
+  const f = action === "updated" ? changedFields(before!, after!) : [];
+  if (action === "updated" && !f.length) return null;
+  const summary =
+    col === "settings"
+      ? `Settings changed (${docId}): ${f.join(", ") || action}`
+      : describe(col, action, before ?? {}, after ?? {}, f);
+  if (!summary) return null;
+  const doc = (after ?? before ?? {}) as D;
+  return {
+    collection: col,
+    docId,
+    action,
+    summary,
+    clientId: col === "clients" ? docId : s(doc["clientId"]),
+    clientName: s(doc["clientNameSnapshot"] ?? (col === "clients" ? doc["fullName"] : "")),
+    changes:
+      action === "updated"
+        ? Object.fromEntries(
+            f.slice(0, 12).map((k) => [k, { from: short(before![k]), to: short(after![k]) }]),
+          )
+        : {},
+  };
 }
-
-export const auditTrail = onDocumentWrittenWithAuthContext(
-  "{collection}/{docId}",
-  async (event) => {
-    const col = event.params.collection;
-    if (SKIP.has(col) || (col === "settings" && event.params.docId === "counters")) return;
-    const before = (event.data?.before?.data() ?? null) as D | null;
-    const after = (event.data?.after?.data() ?? null) as D | null;
-    const action: Action = !before ? "created" : !after ? "deleted" : "updated";
-    const f = action === "updated" ? changedFields(before!, after!) : [];
-    if (action === "updated" && !f.length) return;
-    const summary =
-      col === "settings"
-        ? `Settings changed (${event.params.docId}): ${f.join(", ") || action}`
-        : describe(col, action, before ?? {}, after ?? {}, f);
-    if (!summary) return;
-    const doc = (after ?? before ?? {}) as D;
-    const clientId = col === "clients" ? event.params.docId : s(doc["clientId"]);
-    const entry = {
-      at: FieldValue.serverTimestamp(),
-      collection: col,
-      docId: event.params.docId,
-      action,
-      summary,
-      clientId,
-      clientName: s(doc["clientNameSnapshot"] ?? (col === "clients" ? doc["fullName"] : "")),
-      actorType: event.authType,
-      actorUid: event.authId ?? "",
-      actorName: await actorName(event.authType, event.authId),
-      changes:
-        action === "updated"
-          ? Object.fromEntries(
-              f.slice(0, 12).map((k) => [k, { from: short(before![k]), to: short(after![k]) }]),
-            )
-          : {},
-    };
-    // The event id makes retries idempotent.
-    await getFirestore(getApp())
-      .doc(`auditLogs/${event.id}`)
-      .create(entry)
-      .catch((e: { code?: number }) => {
-        if (e.code !== 6) logger.error("audit write failed", { error: String(e) });
-      });
-  },
-);

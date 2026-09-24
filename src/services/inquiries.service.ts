@@ -6,7 +6,7 @@ import {
   serverTimestamp,
   updateDoc,
   type DocumentData,
-} from "firebase/firestore";
+} from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { normalizePhone } from "@/lib/format";
 import type { Inquiry } from "@/types/models";

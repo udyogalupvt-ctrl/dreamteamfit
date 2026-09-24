@@ -113,27 +113,23 @@ because every message has a WhatsApp charge; switch it on in *Settings → Remin
 {{2}} is always the gym name from *Settings → Gym & bills*, so the same templates work for every
 gym you run on this WhatsApp number.
 
-## 2. Server configuration
+## 2. Server configuration (Vercel)
 
-Values live in `.env` (git-ignored) and `functions/.env`. Put the secrets into Firebase and
-deploy (needs the Blaze plan):
-
-```sh
-firebase login
-firebase use leadsmanage-1f7cd
-npm run secrets:whatsapp            # WHATSAPP_ACCESS_TOKEN / APP_SECRET / VERIFY_TOKEN from .env
-cd functions && npm install && npm run build && cd ..
-firebase deploy --only functions,firestore:rules
-```
+The WhatsApp token lives only on the server. In Vercel → Project → Settings → Environment
+Variables add `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_GRAPH_API_VERSION`,
+`FIREBASE_SERVICE_ACCOUNT` and `CRON_SECRET` (see README), then redeploy.
 
 Then in the app: *Settings → WhatsApp → Send through WhatsApp Cloud API* ON → **Test connection**.
+
+Renewal reminders and birthday wishes go out once a day around 8 AM, missed-workout nudges
+around 9:30 PM (Vercel Cron; on the free plan the exact minute varies within the hour).
 
 ## 3. Delivery ticks (optional)
 
 Meta app → WhatsApp → Configuration → Webhook:
 
-- Callback URL: `https://us-central1-leadsmanage-1f7cd.cloudfunctions.net/whatsappWebhook`
-- Verify token: the `WHATSAPP_VERIFY_TOKEN` value from `.env`
+- Callback URL: `https://dreamteamfit.vercel.app/api/whatsapp/webhook`
+- Verify token: the `WHATSAPP_VERIFY_TOKEN` value
 - Subscribe to **messages**. Also set `WHATSAPP_APP_SECRET` (Meta app → Settings → Basic).
 
 ## The bill page

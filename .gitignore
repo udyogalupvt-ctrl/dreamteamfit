@@ -34,10 +34,8 @@ dist-ssr
 # Secrets & local config
 .env
 !.env.example
-functions/.secret.local
 
 # Build / tooling output
-functions/lib
 .output
 .nitro
 .firebase
@@ -48,3 +46,6 @@ ui-debug.log
 # Firebase service-account keys (never commit)
 *firebase-adminsdk*.json
 serviceAccount*.json
+
+# Vercel local build output
+.vercel

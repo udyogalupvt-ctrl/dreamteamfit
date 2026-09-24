@@ -44,8 +44,16 @@ function isH3SwallowedErrorBody(body: string): boolean {
   }
 }
 
+/** WhatsApp, cron and fingerprint-device endpoints; loaded only when one of them is called. */
+const isServerRoute = (pathname: string) =>
+  pathname.startsWith("/api/") || /^\/iclock(\/|$)/i.test(pathname);
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    if (isServerRoute(new URL(request.url).pathname)) {
+      const { handleServerRoute } = await import("./server/router");
+      return handleServerRoute(request);
+    }
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);

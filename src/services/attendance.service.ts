@@ -1,4 +1,4 @@
-import { doc,getDocs,orderBy,query,runTransaction,serverTimestamp,Timestamp,where,type DocumentData } from "firebase/firestore";
+import { doc,getDocs,orderBy,query,runTransaction,serverTimestamp,Timestamp,where,type DocumentData } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { format } from "date-fns";
 import type { AccessDecision,AttendanceEvent,AttendanceEventType,AttendanceSource,BiometricDevice,Client } from "@/types/models";

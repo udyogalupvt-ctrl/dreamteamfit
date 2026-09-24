@@ -17,7 +17,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useLive } from "@/hooks/use-live-query";
-import { firebaseConfig } from "@/lib/firebase";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import {
   deviceConnection,
@@ -39,8 +38,9 @@ export const Route = createFileRoute("/_authenticated/biometric-devices")({
   component: DevicesPage,
 });
 
-/** The cloud endpoint the device talks to (Firebase function "iclock"). */
-const SERVER_HOST = `us-central1-${firebaseConfig.projectId ?? "your-project"}.cloudfunctions.net`;
+/** The device talks to this app itself (/iclock on the same Vercel domain), port 443. */
+const serverHost = () =>
+  typeof window === "undefined" ? "your-app.vercel.app" : window.location.host;
 
 function useTick(ms = 15000) {
   const [, set] = useState(0);
@@ -170,7 +170,7 @@ function SetupGuide() {
   const copy = (v: string) =>
     void navigator.clipboard.writeText(v).then(() => toast.success("Copied"));
   const rows: [string, string][] = [
-    ["Server address", SERVER_HOST],
+    ["Server address", serverHost()],
     ["Server port", "443"],
     ["HTTPS / SSL", "ON"],
     ["Domain name", "ON (if asked)"],

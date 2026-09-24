@@ -119,7 +119,7 @@ function ActivityLogPage() {
         <EmptyState
           icon={History}
           title="No activity yet"
-          description="Every change made in the app will appear here once the server functions are deployed."
+          description="Every change made in the app appears here: who did it and when."
         />
       ) : (
         <ol className="surface-card divide-y divide-border">

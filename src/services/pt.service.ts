@@ -1,4 +1,4 @@
-import { addDoc, doc, orderBy, query, serverTimestamp, updateDoc, where, type DocumentData } from "firebase/firestore";
+import { addDoc, doc, orderBy, query, serverTimestamp, updateDoc, where, type DocumentData } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import type { PtAssignment, PtPackage, ShareType, Trainer } from "@/types/models";
 import { col, COLLECTIONS, subscribeCollection, subscribeQuery, toDate } from "./firestore.service";

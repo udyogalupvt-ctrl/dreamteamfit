@@ -1,4 +1,4 @@
-import { doc, onSnapshot, serverTimestamp, setDoc, type DocumentData } from "firebase/firestore";
+import { doc, onSnapshot, serverTimestamp, setDoc, type DocumentData } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import type { WhatsAppSettings } from "@/types/models";
 import { COLLECTIONS } from "./firestore.service";

@@ -1,4 +1,4 @@
-import { doc,getDoc,getDocs,query,runTransaction,serverTimestamp,where } from "firebase/firestore";
+import { doc,getDoc,getDocs,query,runTransaction,serverTimestamp,where } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { communicationProvider } from "@/lib/communication-provider";
 import { DEFAULT_AUTOMATION_SETTINGS,renderTemplate } from "@/lib/automation-templates";

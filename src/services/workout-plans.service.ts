@@ -1,4 +1,4 @@
-import { addDoc, deleteDoc, doc, getDocs, limit, orderBy, query, serverTimestamp, updateDoc, where, type DocumentData } from "firebase/firestore";
+import { addDoc, deleteDoc, doc, getDocs, limit, orderBy, query, serverTimestamp, updateDoc, where, type DocumentData } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { workoutPlanSchema } from "@/lib/plan-validation";
 import type { WorkoutPlan } from "@/types/models";

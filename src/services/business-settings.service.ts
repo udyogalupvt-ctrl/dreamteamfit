@@ -1,4 +1,4 @@
-import { doc, onSnapshot, serverTimestamp, setDoc, type DocumentData } from "firebase/firestore";
+import { doc, onSnapshot, serverTimestamp, setDoc, type DocumentData } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { businessBillingSchema } from "@/lib/invoice-validation";
 import { COLLECTIONS } from "./firestore.service";

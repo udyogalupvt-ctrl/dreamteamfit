@@ -1,4 +1,4 @@
-import { doc,getDoc,getDocs,query,where } from "firebase/firestore";
+import { doc,getDoc,getDocs,query,where } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { todayISO } from "@/lib/format";
 import type { AccessDecision,Client,Membership } from "@/types/models";
