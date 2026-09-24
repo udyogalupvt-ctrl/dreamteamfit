@@ -312,7 +312,9 @@ export function EnrollmentWizard({
     : 0;
   const [planMode, setPlanMode] = useState<"renew" | "upgrade">("renew");
   const [creditText, setCreditText] = useState("");
-  const upgrading = planMode === "upgrade" && !!running && !!gymPackage;
+  // Upgrading is only offered while nothing is queued after the running plan.
+  const canUpgrade = !!running && livePlans.every((m) => m.id === running.id);
+  const upgrading = planMode === "upgrade" && canUpgrade && !!gymPackage;
   const credit = upgrading
     ? Math.max(0, creditText === "" ? autoCredit : Math.floor(Number(creditText) || 0))
     : 0;
@@ -695,6 +697,7 @@ export function EnrollmentWizard({
                 {existing && !resuming && gymPackage && lastEnd ? (
                   <RenewChoice
                     running={running}
+                    canUpgrade={canUpgrade}
                     lastEnd={lastEnd}
                     renewStart={renewStart}
                     unusedDays={unusedDays}
@@ -1586,6 +1589,7 @@ function ShareStep({
  */
 function RenewChoice({
   running,
+  canUpgrade,
   lastEnd,
   renewStart,
   unusedDays,
@@ -1596,6 +1600,7 @@ function RenewChoice({
   setCreditText,
 }: {
   running: Membership | null;
+  canUpgrade: boolean;
   lastEnd: string;
   renewStart: string;
   unusedDays: number;
@@ -1653,14 +1658,19 @@ function RenewChoice({
         `Renew: starts ${formatDateISO(renewStart)}`,
         "After the current plan ends. The member loses no days.",
       )}
-      {running
+      {running && !canUpgrade ? (
+        <p className="text-meta">
+          Already renewed until {formatDateISO(lastEnd)}, so an upgrade now isn&apos;t offered.
+        </p>
+      ) : null}
+      {running && canUpgrade
         ? option(
             "upgrade",
             "Upgrade now: starts today",
             `The current plan stops today; its ${unusedDays} unused days are taken off this bill.`,
           )
         : null}
-      {running && mode === "upgrade" ? (
+      {running && canUpgrade && mode === "upgrade" ? (
         <Field
           label="Credit for unused days ₹"
           htmlFor="e-credit"
