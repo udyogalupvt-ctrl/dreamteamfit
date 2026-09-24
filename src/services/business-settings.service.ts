@@ -22,6 +22,10 @@ export async function getBusinessSettings() {
 export function subscribeBusinessSettings(onData:(value:BusinessBillingSettings)=>void,onError:(e:Error)=>void){
   return onSnapshot(doc(db,COLLECTIONS.settings,"business"),snap=>onData(mapSettings(snap.data())),onError);
 }
+/** The logo is saved the moment it is uploaded or removed, so it can't be lost by leaving the page. */
+export async function saveBusinessLogo(logoUrl: string) {
+  await setDoc(doc(db, COLLECTIONS.settings, "business"), { logoUrl, updatedAt: serverTimestamp() }, { merge: true });
+}
 export async function saveBusinessSettings(input:BusinessBillingSettings){
   const value=businessBillingSchema.parse(input);
   await setDoc(doc(db,COLLECTIONS.settings,"business"),{...value,updatedAt:serverTimestamp()},{merge:true});

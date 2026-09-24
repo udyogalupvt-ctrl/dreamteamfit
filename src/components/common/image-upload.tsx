@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, ImagePlus, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,18 @@ export function ImageUpload({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(value?.url ?? null);
+
+  // The saved image often arrives after the box is on screen (settings still loading), or the
+  // form is cleared from outside: follow those changes instead of keeping the first value.
+  const valueUrl = value?.url ?? null;
+  useEffect(() => {
+    if (status === "uploading" || valueUrl === (image?.url ?? null)) return;
+    setImage(valueUrl ? value : null);
+    setPreview(valueUrl);
+    setStatus(valueUrl ? "success" : "idle");
+    setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valueUrl]);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -114,7 +126,10 @@ export function ImageUpload({
           ) : null}
 
           {status === "error" && error ? (
-            <p role="alert" className="flex items-center gap-1.5 text-sm font-medium text-destructive">
+            <p
+              role="alert"
+              className="flex items-center gap-1.5 text-sm font-medium text-destructive"
+            >
               <AlertCircle className="size-4" aria-hidden /> {error}
             </p>
           ) : null}

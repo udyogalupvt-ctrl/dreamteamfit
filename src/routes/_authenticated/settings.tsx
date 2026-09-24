@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   CheckCircle2,
@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { DEFAULT_AUTOMATION_SETTINGS } from "@/lib/automation-templates";
 import {
   DEFAULT_BILLING_SETTINGS,
+  saveBusinessLogo,
   saveBusinessSettings,
   subscribeBusinessSettings,
 } from "@/services/business-settings.service";
@@ -122,9 +123,27 @@ function GymSettings() {
   const live = useLive(subscribeBusinessSettings, DEFAULT_BILLING_SETTINGS, []);
   const [f, setF] = useState<BusinessBillingSettings>(DEFAULT_BILLING_SETTINGS);
   const [saving, setSaving] = useState(false);
-  useEffect(() => setF(live.data), [live.data]);
+  // Fill the form once from the saved details; later only the logo follows the database, so a
+  // logo save never wipes other fields typed but not saved yet.
+  const filled = useRef(false);
+  useEffect(() => {
+    if (live.loading) return;
+    if (!filled.current) {
+      filled.current = true;
+      setF(live.data);
+    } else setF((x) => ({ ...x, logoUrl: live.data.logoUrl }));
+  }, [live.data, live.loading]);
   const set = <K extends keyof BusinessBillingSettings>(k: K, v: BusinessBillingSettings[K]) =>
     setF((x) => ({ ...x, [k]: v }));
+  const saveLogo = async (url: string) => {
+    set("logoUrl", url);
+    try {
+      await saveBusinessLogo(url);
+      toast.success(url ? "Logo saved" : "Logo removed");
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    }
+  };
   const save = async () => {
     setSaving(true);
     try {
@@ -218,15 +237,14 @@ function GymSettings() {
           </div>
         </div>
         <ImageUpload
-          key={live.data.logoUrl || "no-logo"}
           className="sm:col-span-2"
           label="Logo on bills"
           folder={CLOUDINARY_BRAND_FOLDER}
           value={
             f.logoUrl ? { url: f.logoUrl, publicId: "", width: 0, height: 0, format: "" } : null
           }
-          onChange={(img) => set("logoUrl", img?.url ?? "")}
-          hint="PNG works best on the PDF. Press Save after uploading."
+          onChange={(img) => void saveLogo(img?.url ?? "")}
+          hint="PNG works best on the PDF. Saved as soon as it uploads."
         />
       </div>
     </FormSection>
