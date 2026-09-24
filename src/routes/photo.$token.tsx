@@ -148,7 +148,10 @@ function PhotoUploadPage() {
                     accept="image/*"
                     capture={x.capture}
                     className="sr-only"
-                    aria-label={x.label}
+                    // The visible buttons below open these; hidden so each is announced once.
+                    aria-hidden
+                    tabIndex={-1}
+                    data-picker={x.label}
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (f) pick(f);
