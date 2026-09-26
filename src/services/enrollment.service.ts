@@ -567,6 +567,15 @@ async function assertPinFree(clientId: string, device: BiometricDevice, pin: str
   );
   if (other)
     throw new Error(`Biometric ID ${pin} already belongs to ${String(other.data()["fullName"])}.`);
+  // Someone the old software put on this machine under the same number.
+  const onMachine = await getDoc(
+    doc(db, COLLECTIONS.deviceUsers, `${device.id}_${pin.replace(/[^a-zA-Z0-9_-]/g, "_")}`),
+  ).catch(() => null);
+  const u = onMachine?.data();
+  if (u && u["removed"] !== true && u["linkId"] !== clientId)
+    throw new Error(
+      `Machine ID ${pin} is already used on the machine${u["name"] ? ` by ${String(u["name"])}` : ""}. Use another ID, or link that machine user under Fingerprint devices.`,
+    );
 }
 
 export type FingerprintRequestResult =

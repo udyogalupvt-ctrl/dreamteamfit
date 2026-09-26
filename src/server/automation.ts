@@ -23,6 +23,7 @@ type ClientRow = {
   dateOfBirth?: string;
   whatsappOptIn?: boolean;
   whatsappPhone?: string;
+  thumbSince?: string;
 };
 
 const plus = (iso: string, n: number) => {
@@ -373,8 +374,10 @@ export async function processAbsenceNudges() {
     const planStart = runningStart.get(c.id);
     if (c.biometricStatus !== "active" || !planStart) continue;
     const last = lastVisit.get(c.id);
-    // Never visited on this plan: count from the day the plan started.
-    const since = last && last >= planStart ? last : planStart;
+    // Never visited on this plan: count from the day the plan started (or, for a thumb linked
+    // from the old machine mid-plan, from the day it was linked: earlier visits aren't here).
+    const from = c.thumbSince && c.thumbSince > planStart ? c.thumbSince : planStart;
+    const since = last && last >= from ? last : from;
     const gap = daysBetween(since, today);
     if (gap < minDays) continue;
     const key = id(c.id, "absence", since);

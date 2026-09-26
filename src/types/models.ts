@@ -106,6 +106,8 @@ export interface Client extends BaseDoc {
   whatsappStatus: "opted_out" | "ready" | "invalid";
   lastWhatsappMessageAt: Date | null;
   firstThumbRegistered: boolean;
+  /** Day an existing machine fingerprint was linked (visits are only counted from then). */
+  thumbSince: string;
   enrollmentId: string | null;
   /** Door lock state kept by the cloud: "removed" = taken off the device (plan ended / blocked). */
   deviceAccess: "on" | "removed" | null;
@@ -141,6 +143,33 @@ export interface BiometricDevice extends BaseDoc {
   lastSyncAt: Date | null;
   /** Last time the device contacted the cloud endpoint (ADMS devices only). */
   lastSeenAt: Date | null;
+  /**
+   * On = members whose plan ended are taken off the machine (and put back on renewal). Off =
+   * attendance only: the machine keeps everyone (e.g. while the old software still runs).
+   */
+  doorControl: boolean;
+  /** "Read users from the machine" accepts the machine's upload until this time. */
+  importUntil: Date | null;
+  lastImportAt: Date | null;
+}
+
+/** Someone registered on a fingerprint machine, found by "Read users from the machine". */
+export interface DeviceUser {
+  id: string;
+  deviceId: string;
+  /** The ID on the machine. */
+  pin: string;
+  /** Name stored on the machine (short, capitals on many machines). */
+  name: string;
+  hasFingerprint: boolean;
+  fingerCount: number;
+  /** A machine administrator (can open the machine's menu). */
+  admin: boolean;
+  linkType: "client" | "staff" | "";
+  linkId: string;
+  linkName: string;
+  /** Taken off the machine from the app. */
+  removed: boolean;
 }
 
 export const BIOMETRIC_COMMAND_TYPES = [

@@ -1,6 +1,7 @@
 import { doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch, type DocumentReference } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { key, type ImportContext, type Resolution, type ValidatedRow } from "@/lib/data-import";
+import { MAX_MEMBER_ID } from "./clients.service";
 import { todayISO } from "@/lib/format";
 import type { ImportBatchStatus, ImportType } from "@/types/models";
 import { col, COLLECTIONS, type CollectionName } from "./firestore.service";
@@ -8,7 +9,8 @@ import { col, COLLECTIONS, type CollectionName } from "./firestore.service";
 export interface ImportResult { batchId: string; rowsFound: number; imported: number; updated: number; skipped: number; failed: number; duplicates: number; status: ImportBatchStatus; failures: { row: number; field: string; reason: string }[] }
 
 const TARGET: Record<ImportType, CollectionName> = { clients: COLLECTIONS.clients, packages: COLLECTIONS.packages, trainers: COLLECTIONS.trainers, memberships: COLLECTIONS.memberships, expenses: COLLECTIONS.expenses };
-const CHUNK = 400;
+// Up to two writes per row (e.g. member + its ID), and a batch holds at most 500.
+const CHUNK = 200;
 const slug = (s: string) => key(s).replace(/[^a-z0-9]+/g, "-").slice(0, 60);
 
 export async function fingerprintFile(type: ImportType, fileName: string, rows: unknown[]) {
@@ -31,6 +33,8 @@ export async function findCompletedBatch(fingerprint: string) {
 export async function runImport(params: {
   type: ImportType; fileName: string; fingerprint: string; rows: ValidatedRow[]; ctx: ImportContext;
   staff: { uid: string; name: string }; onProgress?: (done: number, total: number) => void;
+  /** New members may get bills and reminders on WhatsApp (they gave the number to the gym). */
+  whatsappOptIn?: boolean;
 }): Promise<ImportResult> {
   const { type, rows, ctx, staff } = params;
   const batchId = `imp_${params.fingerprint.slice(0, 24)}`;
@@ -70,19 +74,43 @@ export async function runImport(params: {
       }
     }
 
-    // Reserve readable client codes once for the new clients in this run.
+    // Member IDs: the old software's number when the file has one (it is also the number on the
+    // fingerprint machine), otherwise the next free numbers. Every ID is claimed in /memberIds.
     const newClients = type === "clients" ? work.filter((r) => r.action === "create" && !existing.has(idFor(r))) : [];
-    let codeStart = 0;
+    const codeOf = new Map<number, string>();
+    const claimed = new Set<number>();
     if (newClients.length) {
-      codeStart = await runTransaction(db, async (tx) => {
-        const ref = doc(db, COLLECTIONS.settings, "counters");
-        const s = await tx.get(ref);
-        const cur = Number(s.exists() ? (s.data()["clientSeq"] ?? 0) : 0);
-        tx.set(ref, { clientSeq: cur + newClients.length, updatedAt: serverTimestamp() }, { merge: true });
-        return cur + 1;
-      });
+      const [reserved, onMachine] = await Promise.all([
+        getDocs(col(COLLECTIONS.memberIds)),
+        getDocs(col(COLLECTIONS.deviceUsers)).catch(() => null),
+      ]);
+      const reservedBy = new Map(reserved.docs.map((d) => [d.id, String(d.data()["clientId"] ?? "")]));
+      const taken = new Set<string>([...reservedBy.keys(), ...ctx.clients.map((c) => c.clientCode)]);
+      const kept: ValidatedRow[] = [];
+      for (const r of newClients) {
+        const mid = String(r.data["memberId"] ?? "");
+        const holder = mid ? reservedBy.get(mid) : undefined;
+        if (mid && holder !== undefined && holder !== idFor(r)) {
+          failures.push({ row: r.row, field: "Member ID", reason: `ID ${mid} is already taken` });
+          continue;
+        }
+        if (mid) { codeOf.set(r.row, mid); taken.add(mid); if (holder === idFor(r)) claimed.add(r.row); }
+        kept.push(r);
+      }
+      // Numbers the old machine still uses (people not in this file) stay free for them.
+      for (const d of onMachine?.docs ?? []) if (d.data()["removed"] !== true) taken.add(String(d.data()["pin"] ?? ""));
+      let next = Math.max(0, ...[...taken].map((c) => (/^\d+$/.test(c) ? Number(c) : 0)).filter((n) => n <= MAX_MEMBER_ID)) + 1;
+      for (const r of kept) {
+        if (codeOf.has(r.row)) continue;
+        while (taken.has(String(next))) next++;
+        if (next > MAX_MEMBER_ID) { failures.push({ row: r.row, field: "Member ID", reason: "No free member ID left" }); continue; }
+        codeOf.set(r.row, String(next));
+        taken.add(String(next));
+      }
     }
-    const codeOf = new Map(newClients.map((r, i) => [r.row, `CL-${String(codeStart + i).padStart(6, "0")}`]));
+    const dropped = new Set(type === "clients" ? work.filter((r) => r.action === "create" && !existing.has(idFor(r)) && !codeOf.has(r.row)).map((r) => r.row) : []);
+    const toWrite = work.filter((r) => !dropped.has(r.row));
+    const optIn = params.whatsappOptIn === true;
 
     // Latest active imported membership per client becomes the client's current membership summary.
     const latest = new Map<string, ValidatedRow>();
@@ -93,8 +121,8 @@ export async function runImport(params: {
     }
 
     let imported = 0, updated = 0;
-    for (let i = 0; i < work.length; i += CHUNK) {
-      const chunk = work.slice(i, i + CHUNK);
+    for (let i = 0; i < toWrite.length; i += CHUNK) {
+      const chunk = toWrite.slice(i, i + CHUNK);
       const wb = writeBatch(db);
       for (const r of chunk) {
         const d = r.data; const id = idFor(r);
@@ -106,7 +134,11 @@ export async function runImport(params: {
         if (existing.has(id)) continue;
         const ref: DocumentReference = doc(db, TARGET[type], id);
         const base = { importBatchId: batchId, importedRow: r.row, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
-        if (type === "clients") wb.set(ref, { ...pickFields(type, d), clientCode: codeOf.get(r.row), profilePhotoUrl: null, source: "other", status: "active", inquiryId: null, currentMembership: null, biometricUserId: "", biometricDeviceId: "", biometricStatus: "not_enrolled", firstThumbRegistered: false, enrollmentId: null, whatsappOptIn: false, whatsappPhone: d["phone"], whatsappStatus: "opted_out", lastWhatsappMessageAt: null, ...base });
+        if (type === "clients") {
+          const clientCode = codeOf.get(r.row)!;
+          if (!claimed.has(r.row)) wb.set(doc(db, COLLECTIONS.memberIds, clientCode), { clientId: id, createdAt: serverTimestamp() });
+          wb.set(ref, { ...pickFields(type, d), clientCode, profilePhotoUrl: null, source: "other", status: "active", inquiryId: null, currentMembership: null, biometricUserId: "", biometricDeviceId: "", biometricStatus: "not_enrolled", firstThumbRegistered: false, enrollmentId: null, whatsappOptIn: optIn, whatsappPhone: d["phone"], whatsappStatus: optIn ? "ready" : "opted_out", lastWhatsappMessageAt: null, ...base });
+        }
         else if (type === "packages") wb.set(ref, { ...pickFields(type, d), isActive: true, ...base });
         else if (type === "trainers") wb.set(ref, { ...pickFields(type, d), status: "active", defaultShareType: "percentage", defaultTrainerShare: Number(d["shareValue"] ?? 0) || 0, notes: "", ...base });
         else if (type === "expenses") wb.set(ref, { ...pickFields(type, d), description: "", createdBy: staff.name, createdByUid: staff.uid, ...base });
@@ -131,7 +163,7 @@ export async function runImport(params: {
         const reason = e instanceof Error ? e.message : "Write failed";
         for (const r of chunk) failures.push({ row: r.row, field: "—", reason: `Not saved: ${reason}` });
       }
-      params.onProgress?.(Math.min(i + CHUNK, work.length), work.length);
+      params.onProgress?.(Math.min(i + CHUNK, toWrite.length), toWrite.length);
     }
     const failed = invalid.length + (work.length - imported - updated);
     const status: ImportBatchStatus = imported + updated === 0 && failed > 0 ? "failed" : failed > 0 ? "completed_with_errors" : "completed";

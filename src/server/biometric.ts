@@ -20,11 +20,13 @@
  */
 import {
   FieldValue,
+  Timestamp,
   type DocumentReference,
   type QueryDocumentSnapshot,
 } from "firebase-admin/firestore";
 import { db, localDate, text } from "./admin";
 import { systemAudit } from "./audit";
+import { importDeviceData, importWindowOpen, type MachineUser } from "./device-import";
 
 /** Device clocks are set to gym local time (Asia/Kolkata). */
 const TZ_OFFSET = "+05:30";
@@ -107,11 +109,12 @@ async function clientForPin(pin: string, device: Device) {
 
 // ---------------------------------------------------------------- handshake
 
-function handshake(sn: string) {
+function handshake(sn: string, fullUpload = false) {
   return [
     `GET OPTION FROM: ${sn}`,
     "ATTLOGStamp=None",
-    "OPERLOGStamp=9999",
+    // None = send every user and fingerprint again (only right after "Read users").
+    `OPERLOGStamp=${fullUpload ? "None" : "9999"}`,
     "ATTPHOTOStamp=None",
     "ErrorDelay=30",
     `Delay=${POLL_DELAY_SECONDS}`,
@@ -464,6 +467,24 @@ function fingerprintTemplates(body: string) {
   return out;
 }
 
+/** User records the machine uploads ("USER PIN=1 Name=Ravi Pri=0…", any letter case). */
+function machineUsers(body: string): MachineUser[] {
+  const out: MachineUser[] = [];
+  for (const raw of body.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!/^USER\s/i.test(line)) continue;
+    const kv = parseKv(line);
+    const pin = (kv["PIN"] ?? "").trim();
+    if (!/^\d{1,9}$/.test(pin)) continue;
+    out.push({
+      pin,
+      name: (kv["NAME"] ?? "").trim(),
+      privilege: kv["PRI"] ?? kv["PRIVILEGE"] ?? "0",
+    });
+  }
+  return out;
+}
+
 /** Device command that puts a stored template back on the device. */
 function restoreCommand(pin: string, t: { format: "FP" | "BIODATA"; fields: KV }) {
   const f = t.fields;
@@ -487,6 +508,7 @@ function userInfoCommand(pin: string, name: string) {
 /** Keeps a copy of each enrolled finger so a renewed member can be restored without a new scan. */
 async function storeTemplates(body: string, device: Device) {
   const firestore = db();
+  const saved = new Set<string>();
   for (const t of fingerprintTemplates(body)) {
     const client = await clientForPin(t.pin, device);
     if (!client) continue;
@@ -502,7 +524,10 @@ async function storeTemplates(body: string, device: Device) {
       },
       { merge: true },
     );
+    saved.add(client.id);
   }
+  // A lock-out that waited for this fingerprint to be saved can go ahead now.
+  for (const id of saved) await syncDoorAccess(id);
 }
 
 // ---------------------------------------------------------------- door lock
@@ -537,6 +562,10 @@ async function applyDoorAccess(clientId: string, c: Row, allowed: boolean) {
   if (allowed === onDevice) return "none";
   const device = (await firestore.doc(`biometricDevices/${deviceId}`).get()).data();
   if (!device || device["integrationType"] !== "adms") return "none";
+  // "Attendance only": an ended plan doesn't lock anyone out until the owner switches door
+  // control on. A staff "Block entry" (and putting a member back) still works.
+  if (device["doorControl"] !== true && !allowed && c["biometricStatus"] !== "disabled")
+    return "none";
 
   const now = FieldValue.serverTimestamp();
   const cmds = await firestore
@@ -582,6 +611,26 @@ async function applyDoorAccess(clientId: string, c: Row, allowed: boolean) {
     systemAudit({ collection: "clients", docId: clientId, clientId, clientName: name, summary });
 
   if (!allowed) {
+    // Never take anyone off the machine before their fingerprint is saved here, so a renewal
+    // can always put them back without a new scan. Ask the machine for it first; the lock-out
+    // follows as soon as it arrives (storeTemplates).
+    const saved = (await firestore.doc(`biometricTemplates/${clientId}`).get()).data();
+    if (!Object.keys((saved?.["fingers"] ?? {}) as object).length) {
+      const since = Date.now() - 2 * ENROLL_REQUEST_TTL_MS;
+      const asked = cmds.docs.some(
+        (d) => d.data()["type"] === "query_fp" && createdMs(d.data()) > since,
+      );
+      if (!asked)
+        // Not a door change: just a request for the fingerprint.
+        await firestore.collection("biometricCommands").add({
+          ...base,
+          door: false,
+          type: "query_fp",
+          order: 1,
+          command: `DATA QUERY FINGERTMP PIN=${pin}`,
+        });
+      return "none";
+    }
     add("delete_user", 1, `DATA DELETE USERINFO PIN=${pin}`);
     batch.update(ref, { deviceAccess: "removed", deviceAccessChangedAt: now });
     await batch.commit();
@@ -751,6 +800,19 @@ async function forgetDeletedMember(clientId: string, pin: string, deviceId: stri
     });
   }
   await firestore.doc(`biometricTemplates/${clientId}`).delete();
+  // The machine user list no longer points at the deleted member.
+  const linked = await firestore.collection("deviceUsers").where("linkId", "==", clientId).get();
+  await Promise.all(
+    linked.docs.map((d) =>
+      d.ref.update({
+        linkType: "",
+        linkId: "",
+        linkName: "",
+        removed: !!pin,
+        updatedAt: FieldValue.serverTimestamp(),
+      }),
+    ),
+  );
 }
 
 /**
@@ -759,6 +821,17 @@ async function forgetDeletedMember(clientId: string, pin: string, deviceId: stri
  * of old users, or anyone posing as the device with its serial number, from activating a
  * member or replacing a saved thumb.
  */
+/** Any member or staff thumb registration started from the app in the last 20 minutes. */
+async function anyLiveEnrollRequest() {
+  const since = Timestamp.fromMillis(Date.now() - 2 * ENROLL_REQUEST_TTL_MS);
+  const snap = await db().collection("biometricCommands").where("createdAt", ">", since).get();
+  return snap.docs.some(
+    (d) =>
+      ["enroll_fp", "query_fp"].includes(String(d.data()["type"])) &&
+      d.data()["status"] !== "cancelled",
+  );
+}
+
 async function hasLiveEnrollRequest(clientId: string, field: "clientId" | "staffId" = "clientId") {
   const snap = await db().collection("biometricCommands").where(field, "==", clientId).get();
   const since = Date.now() - 2 * ENROLL_REQUEST_TTL_MS;
@@ -908,7 +981,13 @@ export async function handleIclock(request: Request, url: URL) {
     await touchDevice(device, ip);
     const body = request.method === "POST" ? await request.text() : "";
 
-    if (endpoint === "cdata" && request.method === "GET") return text(handshake(sn));
+    if (endpoint === "cdata" && request.method === "GET") {
+      const ref = db().doc(`biometricDevices/${device.id}`);
+      const full =
+        (await ref.get()).data()?.["fullUpload"] === true && (await importWindowOpen(device.id));
+      if (full) await ref.update({ fullUpload: false });
+      return text(handshake(sn, full));
+    }
     if (endpoint === "getrequest") {
       const lines = await nextCommands(device);
       return text(lines.length ? `${lines.join("\n")}\n` : "OK");
@@ -923,7 +1002,10 @@ export async function handleIclock(request: Request, url: URL) {
       if (table === "ATTLOG") count = await attendance(device, body);
       else {
         count = body.split(/\r?\n/).filter((l) => l.trim()).length;
-        for (const [pin, kind] of fingerprintEvidence(body)) {
+        // A thumb only counts during a registration started from the app: with none running
+        // (e.g. a full "Read users" upload) there is nothing to check person by person.
+        const registering = await anyLiveEnrollRequest();
+        for (const [pin, kind] of registering ? fingerprintEvidence(body) : []) {
           const client = await clientForPin(pin, device);
           if (!client) {
             const staff = await staffForPin(pin, device);
@@ -936,7 +1018,9 @@ export async function handleIclock(request: Request, url: URL) {
           if (!(await hasLiveEnrollRequest(client.id))) continue;
           await activateBiometric(client.ref, device, pin);
         }
-        await storeTemplates(body, device);
+        if (registering) await storeTemplates(body, device);
+        if (await importWindowOpen(device.id))
+          await importDeviceData(device, machineUsers(body), fingerprintTemplates(body));
       }
       return text(`OK: ${count}`);
     }

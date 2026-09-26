@@ -170,3 +170,15 @@ export async function requireStaff(request: Request) {
     .catch(() => null);
   return access?.exists && access.data()?.["active"] === true ? user : null;
 }
+
+/** requireStaff + one feature switch (Staff → Login & features), like can() in firestore.rules. */
+export async function requireFeature(request: Request, feature: string) {
+  const user = await requireStaff(request);
+  if (!user) return null;
+  if (isOwnerEmail(user.email)) return user;
+  const a = (await db().doc(`staffAccess/${user.uid}`).get()).data();
+  const permissions = Array.isArray(a?.["permissions"]) ? (a["permissions"] as string[]) : [];
+  return a?.["active"] === true && (a["admin"] === true || permissions.includes(feature))
+    ? user
+    : null;
+}

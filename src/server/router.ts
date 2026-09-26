@@ -5,6 +5,7 @@
 import { handleCron } from "./automation";
 import { handleIclock } from "./biometric";
 import { handleStaff } from "./staff";
+import { handleDeviceUsers } from "./device-import";
 import { handleMemberPhoto } from "./member-photo";
 import { json, serverHealth, text } from "./admin";
 import { handleWhatsApp } from "./whatsapp";
@@ -18,6 +19,7 @@ export async function handleServerRoute(request: Request): Promise<Response> {
     if (path.startsWith("/api/whatsapp/")) return await handleWhatsApp(request, url);
     if (path.startsWith("/api/cron/")) return await handleCron(request, url);
     if (path.startsWith("/api/staff/")) return await handleStaff(request, url);
+    if (path.startsWith("/api/devices/")) return await handleDeviceUsers(request, url);
     if (path === "/api/member-photo") return await handleMemberPhoto(request, url);
     return text("Not found", 404);
   } catch (error) {

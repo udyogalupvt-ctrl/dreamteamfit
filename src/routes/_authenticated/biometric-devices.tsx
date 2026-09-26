@@ -4,6 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 import { Copy, Fingerprint, MoreHorizontal, Pencil, Plus, Power } from "lucide-react";
 import { toast } from "sonner";
 import { DeviceFormDialog } from "@/components/biometrics/device-form-dialog";
+import { DeviceUsersSection } from "@/components/biometrics/device-users-section";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingRows } from "@/components/common/loading-state";
@@ -155,6 +156,7 @@ function DevicesPage() {
                       ? "Test device — it can never activate a member."
                       : "Not linked to the cloud. Edit it and choose Cloud (ADMS) to register thumbs."}
                 </p>
+                {d.integrationType === "adms" ? <DeviceUsersSection device={d} /> : null}
               </li>
             );
           })}
@@ -217,8 +219,12 @@ function SetupGuide() {
           a minute.
         </li>
         <li>
-          Register thumbs from the joining screen. The device beeps and asks the member to press 3
-          times.
+          People already on the machine (old software)? Press <b>Read users from the machine</b>{" "}
+          first: they are linked to their members and nobody scans again.
+        </li>
+        <li>
+          Register new thumbs from the joining screen. The device beeps and asks the member to press
+          3 times.
         </li>
       </ol>
       <p className="text-meta">

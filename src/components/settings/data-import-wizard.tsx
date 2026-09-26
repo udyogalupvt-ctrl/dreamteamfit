@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -100,6 +101,7 @@ export function DataImportWizard() {
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState<ImportResult | null>(null);
   const [filter, setFilter] = useState<"all" | "invalid" | "duplicates">("all");
+  const [whatsappOptIn, setWhatsappOptIn] = useState(true);
 
   const ctx = {
     clients: clients.data,
@@ -194,6 +196,7 @@ export function DataImportWizard() {
         ctx,
         staff: { uid: user.uid, name: user.displayName || user.email || "Staff" },
         onProgress: (d, t) => setProgress(`${d} / ${t}`),
+        whatsappOptIn: type === "clients" && whatsappOptIn,
       });
       setResult(res);
       setStep(9);
@@ -261,8 +264,9 @@ export function DataImportWizard() {
               ))}
             </div>
             <p className="text-meta">
-              Tip: import Packages and Clients before Memberships — memberships are matched to
-              clients by phone number.
+              Tip: import Packages and Clients before Memberships. Keep the old software's member
+              number in a "Member ID" column: it stays the member's ID (the number on the
+              fingerprint machine), and memberships are matched by it (or by phone).
             </p>
             <div>
               <Button onClick={() => setStep(1)}>Continue</Button>
@@ -730,11 +734,34 @@ export function DataImportWizard() {
                 imported · {validated.filter((r) => !r.errors.length && r.action === "skip").length}{" "}
                 duplicate(s) skipped.
               </p>
+              {type === "clients" ? (
+                <p className="mt-1">
+                  Member IDs: the file's Member ID column where filled; everyone else gets the next
+                  free number.
+                </p>
+              ) : null}
               <p className="text-meta mt-2 flex items-center gap-1">
                 <AlertTriangle className="size-3.5" /> Rows are saved in safe groups; importing the
                 same file twice is blocked.
               </p>
             </div>
+            {type === "clients" ? (
+              <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm">
+                <Checkbox
+                  checked={whatsappOptIn}
+                  onCheckedChange={(v) => setWhatsappOptIn(v === true)}
+                  className="mt-0.5"
+                  aria-label="Send bills and reminders on WhatsApp"
+                />
+                <span>
+                  <span className="block font-semibold">Send bills & reminders on WhatsApp</span>
+                  <span className="text-meta">
+                    For members who already got gym messages on their number. Untick to switch it on
+                    later member by member.
+                  </span>
+                </span>
+              </label>
+            ) : null}
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(6)}>
                 Back

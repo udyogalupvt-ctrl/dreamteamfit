@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { normalizePhone, todayISO } from "@/lib/format";
+import { cleanMemberId, MAX_MEMBER_ID } from "@/services/clients.service";
 import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, GENDERS, PACKAGE_CATEGORIES, type Client, type Expense, type GymPackage, type ImportType, type Membership, type Trainer } from "@/types/models";
 
 export type FieldKind = "text" | "phone" | "date" | "number" | "email";
@@ -7,8 +8,12 @@ export interface FieldDef { key: string; label: string; required?: boolean; kind
 
 export const IMPORT_LABELS: Record<ImportType, string> = { clients: "Clients", packages: "Packages", trainers: "Trainers", memberships: "Memberships", expenses: "Expenses" };
 
+/** The old software's member number: kept as the Member ID (the number on the fingerprint machine). */
+const MEMBER_ID_ALIASES = ["id", "member id", "memberid", "member no", "member number", "membership no", "membership id", "member code", "client id", "client code", "customer id", "reg no", "registration no", "registration number", "enroll no", "enrollment no", "enrolment no", "enroll id", "biometric id", "machine id", "user id", "userid"];
+
 export const IMPORT_FIELDS: Record<ImportType, FieldDef[]> = {
   clients: [
+    { key: "memberId", label: "Member ID", kind: "text", aliases: MEMBER_ID_ALIASES },
     { key: "fullName", label: "Full name", required: true, kind: "text", aliases: ["name", "customer name", "client name", "member name", "full name", "customer"] },
     { key: "phone", label: "Phone", required: true, kind: "phone", aliases: ["phone", "mobile", "mobile number", "phone number", "contact", "contact number", "mobile no", "whatsapp"] },
     { key: "email", label: "Email", kind: "email", aliases: ["email", "email id", "mail", "e-mail"] },
@@ -34,7 +39,8 @@ export const IMPORT_FIELDS: Record<ImportType, FieldDef[]> = {
     { key: "shareValue", label: "Trainer share %", kind: "number", aliases: ["share", "trainer share", "share %", "commission", "percentage"] },
   ],
   memberships: [
-    { key: "phone", label: "Client phone", required: true, kind: "phone", aliases: ["phone", "mobile", "mobile number", "contact", "phone number"] },
+    { key: "memberId", label: "Member ID", kind: "text", aliases: MEMBER_ID_ALIASES },
+    { key: "phone", label: "Client phone", kind: "phone", aliases: ["phone", "mobile", "mobile number", "contact", "phone number"] },
     { key: "clientName", label: "Client name", kind: "text", aliases: ["name", "customer name", "client name", "member name"] },
     { key: "packageName", label: "Package", required: true, kind: "text", aliases: ["package", "plan", "package name", "membership", "membership type"] },
     { key: "startDate", label: "Start date", required: true, kind: "date", aliases: ["start", "start date", "membership start", "from", "joining date"] },
@@ -57,7 +63,10 @@ export type RawRow = Record<string, unknown>;
 export interface ParsedFile { headers: string[]; rows: RawRow[]; sheetNames: string[] }
 
 export async function readSpreadsheet(file: File, sheet?: string): Promise<ParsedFile> {
-  const wb = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+  // CSV: keep the text as typed. The library would read "05/01/1990" the American way (May 1);
+  // parseDate reads it the Indian way (5 January). Excel date cells stay day numbers: turned into
+  // JS dates they land minutes before midnight in India (1900 clock offset), a day early.
+  const wb = XLSX.read(await file.arrayBuffer(), { type: "array", raw: /\.csv$/i.test(file.name) });
   const name = sheet && wb.SheetNames.includes(sheet) ? sheet : wb.SheetNames[0];
   if (!name) throw new Error("The file has no sheets.");
   const ws = wb.Sheets[name]!;
@@ -107,6 +116,11 @@ export interface ValidatedRow { row: number; raw: RawRow; data: Record<string, u
 export interface ImportContext { clients: Client[]; packages: GymPackage[]; trainers: Trainer[]; memberships: Membership[]; expenses: Expense[]; packageRes: Record<string, Resolution>; trainerRes: Record<string, Resolution>; dupActions: Record<number, DupAction> }
 
 export const key = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+const nameWords = (s: string) => s.toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 3);
+/** Loosely the same person ("RAMESH K" / "Ramesh Kumar"). */
+export const namesAgree = (a: string, b: string) => { const y = nameWords(b); return nameWords(a).some((x) => y.includes(x)); };
+/** "007" / "7.0" (Excel) → "7"; "" when empty. */
+const memberIdOf = (v: unknown) => cleanMemberId(String(v ?? "").trim().replace(/\.0+$/, ""));
 export function unknownNames(type: ImportType, rows: RawRow[], mapping: Record<string, string>, ctx: Pick<ImportContext, "packages" | "trainers">) {
   if (type !== "memberships") return { packages: [] as string[], trainers: [] as string[] };
   const pk = new Set(ctx.packages.map((p) => key(p.name))), tr = new Set(ctx.trainers.map((t) => key(t.name)));
@@ -123,7 +137,9 @@ const addDays = (d: string, n: number) => { const dt = new Date(`${d}T00:00:00`)
 export function validateRows(type: ImportType, rows: RawRow[], mapping: Record<string, string>, ctx: ImportContext): ValidatedRow[] {
   const fields = IMPORT_FIELDS[type];
   const seen = new Map<string, number>();
+  const seenIds = new Map<string, number>();
   const clientsByPhone = new Map(ctx.clients.map((c) => [c.phoneNormalized || normalizePhone(c.phone), c]));
+  const clientsByCode = new Map(ctx.clients.map((c) => [c.clientCode, c]));
   return rows.map((raw, i) => {
     const row = i + 2; // header is spreadsheet row 1
     const errors: RowError[] = [], warnings: string[] = [], data: Record<string, unknown> = {};
@@ -143,9 +159,24 @@ export function validateRows(type: ImportType, rows: RawRow[], mapping: Record<s
       if (String(data["fullName"] ?? "").length === 1) errors.push({ field: "Full name", reason: "Name is too short" });
       const g = key(String(data["gender"] ?? "")); data["gender"] = (GENDERS as readonly string[]).includes(g) ? g : g === "m" ? "male" : g === "f" ? "female" : "unspecified";
       if (data["dateOfBirth"] && String(data["dateOfBirth"]) > todayISO()) errors.push({ field: "Date of birth", reason: "Date of birth is in the future" });
-      const p = String(data["phoneNormalized"] ?? ""); dupKey = p;
-      const ex = p ? clientsByPhone.get(p) : undefined;
-      if (ex) duplicate = { id: ex.id, label: `${ex.fullName} · ${ex.phone} · ${ex.clientCode}`, incoming: `${data["fullName"]} · ${data["phone"]}` };
+      const p = String(data["phoneNormalized"] ?? "");
+      const mid = memberIdOf(data["memberId"]); data["memberId"] = mid;
+      // Family members often share one phone: with a member ID, the ID tells people apart.
+      dupKey = mid ? `id:${mid}` : p;
+      let ex = p ? clientsByPhone.get(p) : undefined;
+      if (ex && mid && ex.clientCode !== mid && !namesAgree(ex.fullName, String(data["fullName"] ?? ""))) { warnings.push(`Same phone as ${ex.fullName} (${ex.clientCode}); added as a separate member`); ex = undefined; }
+      if (ex) duplicate = { id: ex.id, label: `${ex.fullName} · ${ex.phone} · ${ex.clientCode}`, incoming: `${data["fullName"]} · ${data["phone"]}${mid ? ` · ID ${mid}` : ""}` };
+      if (mid) {
+        if (!/^\d{1,4}$/.test(mid) || +mid < 1 || +mid > MAX_MEMBER_ID) errors.push({ field: "Member ID", reason: `Member ID "${mid}" must be a number from 1 to ${MAX_MEMBER_ID}` });
+        else {
+          const owner = clientsByCode.get(mid);
+          if (owner && owner.id !== ex?.id) errors.push({ field: "Member ID", reason: `ID ${mid} already belongs to ${owner.fullName}` });
+          else if (ex && ex.clientCode !== mid) warnings.push(`${ex.fullName} keeps member ID ${ex.clientCode}`);
+          const first = seenIds.get(mid);
+          if (first !== undefined) errors.push({ field: "Member ID", reason: `Same member ID as row ${first}` });
+          else seenIds.set(mid, row);
+        }
+      }
     } else if (type === "packages") {
       if (errors.length === 0 && !(Number(data["durationDays"]) >= 1)) errors.push({ field: "Duration", reason: "Duration must be at least 1 day" });
       const c = (PACKAGE_CATEGORIES as readonly string[]).find((x) => key(x) === key(String(data["category"] ?? ""))); data["category"] = c ?? "Custom";
@@ -158,8 +189,11 @@ export function validateRows(type: ImportType, rows: RawRow[], mapping: Record<s
       const ex = ctx.trainers.find((t) => (data["phoneNormalized"] && normalizePhone(t.phone) === data["phoneNormalized"]) || key(t.name) === key(String(data["name"] ?? "")));
       if (ex) duplicate = { id: ex.id, label: `${ex.name} · ${ex.phone || "no phone"}`, incoming: `${data["name"]} · ${data["phone"] || "no phone"}` };
     } else if (type === "memberships") {
-      const client = clientsByPhone.get(String(data["phoneNormalized"] ?? ""));
-      if (data["phoneNormalized"] && !client) errors.push({ field: "Client phone", reason: `No client with phone ${data["phone"]} — import clients first` });
+      const mid = memberIdOf(data["memberId"]); data["memberId"] = mid;
+      // The member ID is the surest match (phones are shared in families); phone otherwise.
+      const client = (mid ? clientsByCode.get(mid) : undefined) ?? clientsByPhone.get(String(data["phoneNormalized"] ?? ""));
+      if (!mid && !data["phoneNormalized"]) errors.push({ field: "Member", reason: "Missing member ID or phone" });
+      else if (!client) errors.push({ field: mid ? "Member ID" : "Client phone", reason: `No member with ${[mid ? `ID ${mid}` : "", data["phone"] ? `phone ${String(data["phone"])}` : ""].filter(Boolean).join(" or ")} — import members first` });
       if (client) { data["clientId"] = client.id; data["clientNameSnapshot"] = client.fullName; }
       const pname = String(data["packageName"] ?? "");
       let pkg = ctx.packages.find((p) => key(p.name) === key(pname)) ?? null;
@@ -178,7 +212,8 @@ export function validateRows(type: ImportType, rows: RawRow[], mapping: Record<s
       if (data["price"] === null) data["price"] = pkg?.price ?? (res?.mode === "create" ? Number(res.price) : 0);
       const st = key(String(data["status"] ?? ""));
       if (st && !["active", "expired", "cancelled", "inactive"].includes(st)) errors.push({ field: "Status", reason: `Invalid membership status "${data["status"]}"` });
-      data["status"] = st === "cancelled" ? "cancelled" : String(data["endDate"] ?? "") < todayISO() ? "expired" : st === "expired" || st === "inactive" ? "expired" : "active";
+      // The dates decide: ended → expired, starts later → queued (starts on its own that morning).
+      data["status"] = st === "cancelled" ? "cancelled" : String(data["endDate"] ?? "") < todayISO() ? "expired" : st === "expired" || st === "inactive" ? "expired" : String(data["startDate"] ?? "") > todayISO() ? "pending" : "active";
       const tname = String(data["trainerName"] ?? "");
       if (tname) {
         const t = ctx.trainers.find((x) => key(x.name) === key(tname)); const tr = ctx.trainerRes[key(tname)];

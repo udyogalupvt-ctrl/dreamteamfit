@@ -10,12 +10,20 @@ import {
 } from "@/lib/firestore";
 import { adapterFor } from "@/lib/biometric-adapters";
 import { db } from "@/lib/firebase";
-import type { BiometricCommand, BiometricDevice } from "@/types/models";
+import { callServer } from "@/lib/server-api";
+import type { BiometricCommand, BiometricDevice, DeviceUser } from "@/types/models";
 import { col, COLLECTIONS, subscribeCollection, subscribeQuery, toDate } from "./firestore.service";
 
 export type DeviceInput = Omit<
   BiometricDevice,
-  "id" | "createdAt" | "updatedAt" | "lastSyncAt" | "lastSeenAt"
+  | "id"
+  | "createdAt"
+  | "updatedAt"
+  | "lastSyncAt"
+  | "lastSeenAt"
+  | "doorControl"
+  | "importUntil"
+  | "lastImportAt"
 >;
 
 export const mapDevice = (id: string, d: DocumentData): BiometricDevice => ({
@@ -33,6 +41,9 @@ export const mapDevice = (id: string, d: DocumentData): BiometricDevice => ({
   integrationType: d["integrationType"] ?? "manual",
   lastSyncAt: d["lastSyncAt"] ? toDate(d["lastSyncAt"]) : null,
   lastSeenAt: d["lastSeenAt"] ? toDate(d["lastSeenAt"]) : null,
+  doorControl: d["doorControl"] === true,
+  importUntil: d["importUntil"] ? toDate(d["importUntil"]) : null,
+  lastImportAt: d["lastImportAt"] ? toDate(d["lastImportAt"]) : null,
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -136,3 +147,57 @@ export async function testDeviceConnection(device: BiometricDevice) {
   }
   return adapterFor(device).testConnection();
 }
+
+// ---------------------------------------------------------------- users already on a machine
+
+export const mapDeviceUser = (id: string, d: DocumentData): DeviceUser => ({
+  id,
+  deviceId: d["deviceId"] ?? "",
+  pin: String(d["pin"] ?? ""),
+  name: d["name"] ?? "",
+  hasFingerprint: d["hasFingerprint"] === true,
+  fingerCount: Array.isArray(d["fingerKeys"]) ? d["fingerKeys"].length : 0,
+  admin: d["admin"] === true,
+  linkType: d["linkType"] === "client" || d["linkType"] === "staff" ? d["linkType"] : "",
+  linkId: d["linkId"] ?? "",
+  linkName: d["linkName"] ?? "",
+  removed: d["removed"] === true,
+});
+
+export const subscribeDeviceUsers = (
+  deviceId: string,
+  ok: (x: DeviceUser[]) => void,
+  fail: (e: Error) => void,
+) =>
+  subscribeQuery(
+    query(col(COLLECTIONS.deviceUsers), where("deviceId", "==", deviceId)),
+    mapDeviceUser,
+    (rows) => ok(rows.sort((a, b) => Number(a.pin) - Number(b.pin))),
+    fail,
+  );
+
+/** Asks the machine to send everyone registered on it (window of 30 minutes). */
+export const readUsersFromMachine = (deviceId: string) =>
+  callServer<{ ok: true }>("/api/devices/read-users", { deviceId });
+
+/** Links a machine ID to a member or staff member; both empty = unlink. */
+export const linkMachineUser = (
+  deviceId: string,
+  pin: string,
+  to: { clientId?: string; staffId?: string },
+) => callServer<{ ok: true }>("/api/devices/link", { deviceId, pin, ...to });
+
+/** Takes someone who is not a member or staff here off the machine. */
+export const removeMachineUser = (deviceId: string, pin: string) =>
+  callServer<{ ok: true }>("/api/devices/remove", { deviceId, pin });
+
+/**
+ * Door control on/off. Turning it on re-checks everyone at the machine's next contact (not only
+ * after midnight), so members whose plan already ended are locked out straight away.
+ */
+export const setDoorControl = (deviceId: string, on: boolean) =>
+  updateDoc(doc(db, COLLECTIONS.biometricDevices, deviceId), {
+    doorControl: on,
+    ...(on ? { lastDoorSyncDate: "" } : {}),
+    updatedAt: serverTimestamp(),
+  });

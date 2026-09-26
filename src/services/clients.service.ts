@@ -71,6 +71,7 @@ export const mapClient = (id: string, d: DocumentData): Client => ({
   whatsappStatus: d["whatsappStatus"] ?? "opted_out",
   lastWhatsappMessageAt: d["lastWhatsappMessageAt"] ? toDate(d["lastWhatsappMessageAt"]) : null,
   firstThumbRegistered: Boolean(d["firstThumbRegistered"]),
+  thumbSince: d["thumbSince"] ?? "",
   photoUploadToken: d["photoUploadToken"] ?? "",
   enrollmentId: d["enrollmentId"] ?? null,
   deviceAccess:
@@ -125,12 +126,28 @@ export const cleanMemberId = (id: string) => id.trim().replace(/^0+(?=\d)/, "");
 /** How an ID is shown: "ID 12" (old codes like CL-000012 as they are). */
 export const memberIdLabel = (code: string) => (/^\d+$/.test(code) ? `ID ${code}` : code);
 
-/** The next free member ID: one more than the highest in use (1 when there are no members). */
+/** Machine IDs already on a fingerprint machine (from "Read users"), with who has them. */
+async function machineIds() {
+  const snap = await getDocs(col(COLLECTIONS.deviceUsers)).catch(() => null);
+  return (snap?.docs ?? [])
+    .map((d) => d.data())
+    .filter((u) => u["removed"] !== true)
+    .map((u) => ({
+      pin: String(u["pin"] ?? ""),
+      name: String(u["name"] ?? ""),
+      linkId: String(u["linkId"] ?? ""),
+    }));
+}
+
+/**
+ * The next free member ID: one more than the highest in use (1 when there are no members),
+ * also above any member number already on the fingerprint machine.
+ */
 export async function suggestMemberId() {
-  const snap = await getDocs(col(COLLECTIONS.clients));
-  const max = snap.docs.reduce(
-    (n, d) => Math.max(n, idNumber(String(d.data()["clientCode"] ?? ""))),
-    0,
+  const [snap, onMachine] = await Promise.all([getDocs(col(COLLECTIONS.clients)), machineIds()]);
+  const max = Math.max(
+    snap.docs.reduce((n, d) => Math.max(n, idNumber(String(d.data()["clientCode"] ?? ""))), 0),
+    ...onMachine.map((u) => Number(u.pin)).filter((n) => n > 0 && n <= MAX_MEMBER_ID),
   );
   return String(Math.min(max + 1, MAX_MEMBER_ID));
 }
@@ -148,6 +165,11 @@ export async function memberIdProblem(raw: string, excludeClientId?: string) {
   if (owner) return `ID ${id} belongs to ${String(owner.data()["fullName"] ?? "another member")}`;
   if (reserved.exists() && reserved.data()["clientId"] !== excludeClientId)
     return `ID ${id} is already taken`;
+  const machine = (await machineIds()).find(
+    (u) => u.pin === id && (!excludeClientId || u.linkId !== excludeClientId),
+  );
+  if (machine)
+    return `ID ${id} is used on the fingerprint machine${machine.name ? ` by ${machine.name}` : ""}. Pick another ID, or link that machine user under Fingerprint devices.`;
   return "";
 }
 

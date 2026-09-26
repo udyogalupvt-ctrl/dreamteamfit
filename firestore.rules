@@ -138,7 +138,17 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Stored fingerprint templates for door-lock restore: server only, no browser access at all.
+    // Users found on a fingerprint machine ("Read users"): written by the server only. Every desk
+    // can read them, so a new member is never given a machine ID the old software already used.
+    match /deviceUsers/{id} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+    // Their fingerprint templates, and the ones kept for door-lock restore: server only.
+    match /deviceUserTemplates/{id} {
+      allow read, write: if false;
+    }
+
     match /biometricTemplates/{clientId} {
       allow read, write: if false;
     }

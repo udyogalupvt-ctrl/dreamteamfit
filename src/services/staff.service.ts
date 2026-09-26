@@ -155,10 +155,18 @@ export const updateStaffLogin = (input: {
 
 /** Staff IDs on the device start at 9001, so they never clash with member IDs. */
 export async function suggestStaffBiometricId() {
-  const snap = await getDocs(col(COLLECTIONS.staff));
-  const max = snap.docs.reduce(
-    (n, d) => Math.max(n, Number.parseInt(String(d.data()["biometricUserId"] ?? ""), 10) || 0),
-    9000,
+  const [snap, onMachine] = await Promise.all([
+    getDocs(col(COLLECTIONS.staff)),
+    getDocs(col(COLLECTIONS.deviceUsers)).catch(() => null),
+  ]);
+  const max = Math.max(
+    snap.docs.reduce(
+      (n, d) => Math.max(n, Number.parseInt(String(d.data()["biometricUserId"] ?? ""), 10) || 0),
+      9000,
+    ),
+    ...(onMachine?.docs ?? [])
+      .filter((d) => d.data()["removed"] !== true)
+      .map((d) => Number(d.data()["pin"]) || 0),
   );
   return String(max + 1);
 }
@@ -183,6 +191,14 @@ export async function requestStaffFingerprint(staff: Staff, device: BiometricDev
   ]);
   if (!members.empty || others.docs.some((d) => d.id !== staff.id))
     throw new Error(`ID ${pin} is already used on the device. Pick another number.`);
+  // Someone the old software put on this machine under the same number.
+  const u = (
+    await getDoc(doc(db, COLLECTIONS.deviceUsers, `${device.id}_${pin}`)).catch(() => null)
+  )?.data();
+  if (u && u["removed"] !== true && u["linkId"] !== staff.id)
+    throw new Error(
+      `ID ${pin} is already used on the machine${u["name"] ? ` by ${String(u["name"])}` : ""}. Pick another number, or link that machine user under Fingerprint devices.`,
+    );
   const earlier = await getDocs(
     query(col(COLLECTIONS.biometricCommands), where("staffId", "==", staff.id)),
   );

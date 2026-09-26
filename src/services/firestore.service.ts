@@ -57,6 +57,7 @@ export const COLLECTIONS = {
   staffPayments: "staffPayments",
   memberCalls: "memberCalls",
   memberIds: "memberIds",
+  deviceUsers: "deviceUsers",
   announcements: "announcements",
   cashDays: "cashDays",
   staffDayMarks: "staffDayMarks",

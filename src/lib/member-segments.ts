@@ -90,7 +90,9 @@ export function buildSegments(
     const running = plan && (plan.status === "active" || plan.status === "upcoming");
     if (running && plan) {
       const last = lastVisit.get(c.id);
-      const since = last && last >= plan.startDate ? last : plan.startDate;
+      // Linked from the old machine mid-plan: only visits since then were recorded here.
+      const from = c.thumbSince > plan.startDate ? c.thumbSince : plan.startDate;
+      const since = last && last >= from ? last : from;
       const gap = daysBetween(since, today);
       // Visits can only be judged once the member can punch in (thumb) or has a recorded visit.
       const tracked = c.firstThumbRegistered || lastVisit.has(c.id);
