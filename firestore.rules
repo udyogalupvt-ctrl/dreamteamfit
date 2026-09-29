@@ -2,7 +2,8 @@ rules_version = '2';
 
 // REBUILD FITNESS — only the owners and staff logins created by an owner can read/write gym
 // data. A self-created account (Firebase sign-up) gets nothing. Nothing is public except a bill
-// opened by its secret link. Each staff login only reaches the features the owner switched on
+// opened by its secret link. Member / trainer app logins reach only their own chat and ticks
+// (bottom of this file). Each staff login only reaches the features the owner switched on
 // (Staff page → Login & features), the same switches the app uses to show pages.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -175,6 +176,86 @@ service cloud.firestore {
       allow get: if true;
       allow list: if isStaff();
       allow create, update, delete: if isStaff();
+    }
+
+    // ------------------------------------------------------ member app and trainer app
+    // Their logins are made by the server (src/server/portal.ts) and carry a claim:
+    // { portal: 'member', clientId } or { portal: 'trainer', trainerId }. They are never staff
+    // (no staffAccess, not an owner email), so none of the rules above let them in. Everything
+    // else they see comes from the server; only these two things are read / written directly.
+    function portalKind() {
+      return request.auth != null ? request.auth.token.get('portal', '') : '';
+    }
+    function myClientId() {
+      return request.auth.token.get('clientId', '');
+    }
+    function myTrainerId() {
+      return request.auth.token.get('trainerId', '');
+    }
+    function isMemberApp(clientId) {
+      return portalKind() == 'member' && myClientId() == clientId;
+    }
+    function isTrainerApp() {
+      return portalKind() == 'trainer' && myTrainerId() != '';
+    }
+    function chatPath(clientId) {
+      return /databases/$(database)/documents/chats/$(clientId);
+    }
+    // The member's current PT trainer: the server keeps chats/{clientId}.trainerId up to date.
+    function isTrainerOf(clientId) {
+      return isTrainerApp() && exists(chatPath(clientId))
+        && get(chatPath(clientId)).data.trainerId == myTrainerId();
+    }
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+    function lastMessageBy(who) {
+      return request.resource.data.lastFrom == who
+        || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['lastText', 'lastFrom', 'lastAt']);
+    }
+
+    // Member ↔ PT trainer chat. The server opens it (with the trainer) when PT is active.
+    match /chats/{clientId} {
+      allow read: if isOwner() || isMemberApp(clientId)
+        || (isTrainerApp() && resource.data.trainerId == myTrainerId());
+      allow update: if (isMemberApp(clientId)
+          && onlyChanges(['lastText', 'lastFrom', 'lastAt', 'memberReadAt']) && lastMessageBy('member'))
+        || (isTrainerApp() && resource.data.trainerId == myTrainerId()
+          && onlyChanges(['lastText', 'lastFrom', 'lastAt', 'trainerReadAt']) && lastMessageBy('trainer'));
+      allow create, delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isOwner() || isMemberApp(clientId) || isTrainerOf(clientId);
+        allow create: if request.resource.data.keys().hasOnly(['from', 'name', 'text', 'at'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 2000
+          && request.resource.data.name is string && request.resource.data.name.size() <= 80
+          && request.resource.data.at == request.time
+          && ((isMemberApp(clientId) && exists(chatPath(clientId)) && request.resource.data.from == 'member')
+            || (isTrainerOf(clientId) && request.resource.data.from == 'trainer'));
+        allow update, delete: if false;
+      }
+    }
+
+    // What a member ticked each day (planLogs/{clientId}_{YYYY-MM-DD}): only they write their own.
+    match /planLogs/{logId} {
+      allow read: if isStaff()
+        || (portalKind() == 'member' && logId.matches(myClientId() + '_[0-9]{4}-[0-9]{2}-[0-9]{2}'));
+      allow create, update: if portalKind() == 'member'
+        && request.resource.data.clientId == myClientId()
+        && request.resource.data.date is string
+        && request.resource.data.date.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && logId == myClientId() + '_' + request.resource.data.date
+        && request.resource.data.keys().hasOnly(['clientId', 'date', 'workoutDay', 'workoutDone', 'dietDone', 'updatedAt'])
+        && request.resource.data.workoutDay is int
+        && request.resource.data.workoutDone is list && request.resource.data.workoutDone.size() <= 60
+        && request.resource.data.dietDone is list && request.resource.data.dietDone.size() <= 60;
+      allow delete: if can('deleteMembers');
+    }
+
+    // Encrypted copies of staff / trainer passwords: the server only (owner's "Show password").
+    match /loginVault/{id} {
+      allow read, write: if false;
     }
 
     // Deny everything else by default.

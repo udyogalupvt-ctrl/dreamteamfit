@@ -3,6 +3,7 @@ import { db } from "@/lib/firebase";
 import type { Client, ClassEnrollment } from "@/types/models";
 import { updateEnrollmentStatus } from "./class-enrollments.service";
 import { memberIdDocRef } from "./clients.service";
+import { memberAppAction } from "./portal.service";
 import { col, COLLECTIONS, toDate, type CollectionName } from "./firestore.service";
 
 /** Everything that belongs to one member. */
@@ -47,6 +48,10 @@ export async function deleteMemberCompletely(
 ): Promise<DeleteResult> {
   const byClient = async (name: CollectionName) =>
     (await getDocs(query(col(name), where("clientId", "==", client.id)))).docs;
+
+  // Member app: its login, chat and daily ticks (server side). A server that is not set up
+  // must not stop the delete: the login alone then stays behind, unusable without the member.
+  await memberAppAction(client.id, "delete").catch(() => undefined);
 
   // Free group-class seats first so class counts stay right.
   for (const d of await byClient(COLLECTIONS.classEnrollments)) {

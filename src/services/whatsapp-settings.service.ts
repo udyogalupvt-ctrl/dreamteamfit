@@ -26,6 +26,8 @@ export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   absenceTemplate: "gym_miss_you",
   announcementTemplate: "gym_announcement",
   followUpTemplate: "follow_up_message",
+  memberAppTemplate: "gym_member_app",
+  autoSendMemberApp: true,
 };
 
 const map = (d?: DocumentData): WhatsAppSettings => ({

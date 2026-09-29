@@ -23,6 +23,7 @@ import {
   type ClientInput,
 } from "@/services/clients.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
+import { memberAppAction } from "@/services/portal.service";
 import { GENDERS, LEAD_SOURCES, type Client } from "@/types/models";
 import { CLOUDINARY_CLIENT_FOLDER } from "@/constants/navigation";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -146,14 +147,24 @@ export function ClientFormDialog({
           return; // first click shows the warning, second confirms
         }
       }
+      // Only the fields on this form: the rest of the record (plan, thumb, member app) may have
+      // changed while the form was open and must not be written back.
       const payload: ClientInput = {
-        ...form,
+        ...(Object.fromEntries(
+          Object.keys(EMPTY).map((k) => [k, form[k as keyof ClientInput]]),
+        ) as ClientInput),
         email: form.email.trim(),
         dateOfBirth: form.dateOfBirth || null,
       };
       if (client) {
         await updateClient(client.id, payload);
         toast.success("Member updated", { description: payload.fullName });
+        // The member app password is the date of birth: keep it the same.
+        if (client.portalCode && payload.dateOfBirth && payload.dateOfBirth !== client.dateOfBirth)
+          void memberAppAction(client.id, "reset").then(
+            () => toast.info("Member app password is now the new date of birth"),
+            () => toast.error("Member app password not changed: use Reset password on the profile"),
+          );
         onOpenChange(false);
       } else {
         const id = await createClient(payload, inquiryId);

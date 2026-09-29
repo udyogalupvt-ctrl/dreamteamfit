@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Fingerprint, KeyRound, Loader2, Pencil, Plus, Power, UserCog } from "lucide-react";
+import {
+  Eye,
+  Fingerprint,
+  KeyRound,
+  Loader2,
+  MessageCircle,
+  Pencil,
+  Plus,
+  Power,
+  UserCog,
+} from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
@@ -24,6 +34,7 @@ import { useLive } from "@/hooks/use-live-query";
 import { formatPrice, todayISO } from "@/lib/format";
 import { subscribeDevices } from "@/services/biometric-devices.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
+import { staffSavedPassword, whatsAppShareUrl } from "@/services/portal.service";
 import {
   createStaffLogin,
   getStaffPrivate,
@@ -384,6 +395,65 @@ function StaffDialog({
   );
 }
 
+/**
+ * The login's password from the encrypted password safe (owner only), to read out or send
+ * again on WhatsApp. Logins made before the safe existed show "not saved" until a new one is set.
+ */
+function SavedPassword({ staff, email }: { staff: Staff; email: string }) {
+  const [password, setPassword] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setPassword(null), [staff.id]);
+  const load = async () => {
+    setBusy(true);
+    try {
+      const r = await staffSavedPassword(staff.id);
+      setPassword(r.password);
+      return r.password;
+    } catch (e) {
+      toast.error((e as Error).message);
+      return "";
+    } finally {
+      setBusy(false);
+    }
+  };
+  const send = () => {
+    const win = window.open("", "_blank");
+    if (win) win.opener = null;
+    void (async () => {
+      const pw = password || (await load());
+      if (!pw) return win?.close();
+      const text = `Hi ${staff.name.split(" ")[0]}, your gym app login: ${window.location.origin}/login\nEmail: ${email}\nPassword: ${pw}`;
+      const target = whatsAppShareUrl(staff.phone, text);
+      if (win) win.location.href = target;
+      else window.open(target, "_blank", "noopener,noreferrer");
+    })();
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border p-3 text-sm">
+      <span className="text-meta">Saved password:</span>
+      {password === null ? (
+        <>
+          <span className="font-mono font-bold">••••••</span>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void load()}>
+            {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Eye aria-hidden />} Show
+          </Button>
+        </>
+      ) : password ? (
+        <span className="font-mono font-bold tracking-wider">{password}</span>
+      ) : (
+        <span className="text-meta">
+          Not saved (made before the password safe). Type a new password above and save.
+        </span>
+      )}
+      {password !== "" ? (
+        <Button size="sm" variant="outline" className="ml-auto" disabled={busy} onClick={send}>
+          <MessageCircle aria-hidden /> Send on WhatsApp
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 function LoginDialog({
   staff,
   access,
@@ -476,7 +546,7 @@ function LoginDialog({
         <Field
           label={access ? "New password (leave empty to keep)" : "Password"}
           htmlFor="lg-pass"
-          hint="At least 6 characters. Tell it to the staff member."
+          hint="At least 6 characters. Saved safely: you can see it and send it again later."
         >
           <Input
             id="lg-pass"
@@ -486,6 +556,7 @@ function LoginDialog({
             onChange={(e) => setPassword(e.target.value)}
           />
         </Field>
+        {access && staff ? <SavedPassword staff={staff} email={access.email} /> : null}
         {access ? (
           <label className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
             <span>

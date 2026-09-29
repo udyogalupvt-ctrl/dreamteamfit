@@ -65,6 +65,7 @@ export function DeleteMemberDialog({
       <div className="space-y-4 text-sm">
         <ul className="list-disc space-y-1 pl-5">
           <li>Profile, plans, PT, visits, calls, bookings and messages are deleted.</li>
+          <li>Their member app stops working; its chat and daily ticks are deleted.</li>
           <li>They are removed from the fingerprint device and their saved thumb is erased.</li>
           <li>The activity log keeps a permanent “Member deleted” line with who did it.</li>
         </ul>

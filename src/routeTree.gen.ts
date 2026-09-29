@@ -37,7 +37,9 @@ import { Route as AuthenticatedStaffRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedWhatsappUsageRouteImport } from './routes/_authenticated/whatsapp-usage'
 import { Route as AuthenticatedWorkoutPlansRouteImport } from './routes/_authenticated/workout-plans'
 import { Route as InvoiceTokenRouteImport } from './routes/invoice.$token'
+import { Route as MCodeRouteImport } from './routes/m.$code'
 import { Route as PhotoTokenRouteImport } from './routes/photo.$token'
+import { Route as TCodeRouteImport } from './routes/t.$code'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
 import { Route as AuthenticatedTrainersTrainerIdRouteImport } from './routes/_authenticated/trainers.$trainerId'
@@ -189,9 +191,19 @@ const InvoiceTokenRoute = InvoiceTokenRouteImport.update({
   path: '/invoice/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MCodeRoute = MCodeRouteImport.update({
+  id: '/m/$code',
+  path: '/m/$code',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PhotoTokenRoute = PhotoTokenRouteImport.update({
   id: '/photo/$token',
   path: '/photo/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TCodeRoute = TCodeRouteImport.update({
+  id: '/t/$code',
+  path: '/t/$code',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedClientsIndexRoute =
@@ -241,7 +253,9 @@ export interface FileRoutesByFullPath {
   '/whatsapp-usage': typeof AuthenticatedWhatsappUsageRoute
   '/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/invoice/$token': typeof InvoiceTokenRoute
+  '/m/$code': typeof MCodeRoute
   '/photo/$token': typeof PhotoTokenRoute
+  '/t/$code': typeof TCodeRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/trainers/$trainerId': typeof AuthenticatedTrainersTrainerIdRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
@@ -274,7 +288,9 @@ export interface FileRoutesByTo {
   '/whatsapp-usage': typeof AuthenticatedWhatsappUsageRoute
   '/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/invoice/$token': typeof InvoiceTokenRoute
+  '/m/$code': typeof MCodeRoute
   '/photo/$token': typeof PhotoTokenRoute
+  '/t/$code': typeof TCodeRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/trainers/$trainerId': typeof AuthenticatedTrainersTrainerIdRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
@@ -309,7 +325,9 @@ export interface FileRoutesById {
   '/_authenticated/whatsapp-usage': typeof AuthenticatedWhatsappUsageRoute
   '/_authenticated/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/invoice/$token': typeof InvoiceTokenRoute
+  '/m/$code': typeof MCodeRoute
   '/photo/$token': typeof PhotoTokenRoute
+  '/t/$code': typeof TCodeRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/trainers/$trainerId': typeof AuthenticatedTrainersTrainerIdRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
@@ -344,7 +362,9 @@ export interface FileRouteTypes {
     | '/whatsapp-usage'
     | '/workout-plans'
     | '/invoice/$token'
+    | '/m/$code'
     | '/photo/$token'
+    | '/t/$code'
     | '/clients/$clientId'
     | '/trainers/$trainerId'
     | '/clients/'
@@ -377,7 +397,9 @@ export interface FileRouteTypes {
     | '/whatsapp-usage'
     | '/workout-plans'
     | '/invoice/$token'
+    | '/m/$code'
     | '/photo/$token'
+    | '/t/$code'
     | '/clients/$clientId'
     | '/trainers/$trainerId'
     | '/clients'
@@ -411,7 +433,9 @@ export interface FileRouteTypes {
     | '/_authenticated/whatsapp-usage'
     | '/_authenticated/workout-plans'
     | '/invoice/$token'
+    | '/m/$code'
     | '/photo/$token'
+    | '/t/$code'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/trainers/$trainerId'
     | '/_authenticated/clients/'
@@ -422,7 +446,9 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   LoginRoute: typeof LoginRoute
   InvoiceTokenRoute: typeof InvoiceTokenRoute
+  MCodeRoute: typeof MCodeRoute
   PhotoTokenRoute: typeof PhotoTokenRoute
+  TCodeRoute: typeof TCodeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -623,11 +649,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InvoiceTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/m/$code': {
+      id: '/m/$code'
+      path: '/m/$code'
+      fullPath: '/m/$code'
+      preLoaderRoute: typeof MCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/photo/$token': {
       id: '/photo/$token'
       path: '/photo/$token'
       fullPath: '/photo/$token'
       preLoaderRoute: typeof PhotoTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/t/$code': {
+      id: '/t/$code'
+      path: '/t/$code'
+      fullPath: '/t/$code'
+      preLoaderRoute: typeof TCodeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/clients/': {
@@ -722,7 +762,9 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   LoginRoute: LoginRoute,
   InvoiceTokenRoute: InvoiceTokenRoute,
+  MCodeRoute: MCodeRoute,
   PhotoTokenRoute: PhotoTokenRoute,
+  TCodeRoute: TCodeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

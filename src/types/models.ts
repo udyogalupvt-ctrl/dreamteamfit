@@ -113,6 +113,12 @@ export interface Client extends BaseDoc {
   deviceAccess: "on" | "removed" | null;
   /** Private link code for the member to upload their own photo; empty once uploaded. */
   photoUploadToken: string;
+  /** Member app (/m/<code>), made by the server at the first payment. "" = not made yet. */
+  portalCode: string;
+  /** False = switched off by staff (the member can't sign in). */
+  portalActive: boolean;
+  /** When the member app link went out on WhatsApp (API or shared by hand). */
+  portalSentAt: Date | null;
 }
 
 export const BIOMETRIC_STATUSES = ["not_enrolled", "active", "disabled"] as const;
@@ -306,6 +312,12 @@ export type DietGoal = (typeof DIET_GOALS)[number];
 export const ASSIGNMENT_STATUSES = ["active", "completed", "cancelled"] as const;
 export type AssignmentStatus = (typeof ASSIGNMENT_STATUSES)[number];
 
+/** One training day of a plan: its name and the exercises, one per line. */
+export interface WorkoutDay {
+  title: string;
+  exercises: string;
+}
+
 export interface WorkoutPlan extends BaseDoc {
   name: string;
   goal: WorkoutGoal;
@@ -313,6 +325,8 @@ export interface WorkoutPlan extends BaseDoc {
   durationWeeks: number;
   daysPerWeek: number;
   isActive: boolean;
+  /** Day 1, Day 2… the member ticks each exercise in the member app. */
+  days: WorkoutDay[];
 }
 
 export interface DietPlan extends BaseDoc {
@@ -325,7 +339,19 @@ export interface DietPlan extends BaseDoc {
   isActive: boolean;
 }
 
-export interface WorkoutAssignment extends BaseDoc {
+/**
+ * Who gave a plan and what is in it. A gym plan (custom = false) shows the plan as it is in
+ * Workout / Diet plans today; a personal plan (custom = true, e.g. from the PT trainer) keeps
+ * its own content here.
+ */
+export interface AssignmentAuthor {
+  custom: boolean;
+  /** PT trainer who wrote it; "" = the gym (front desk). */
+  trainerId: string;
+  assignedByName: string;
+}
+
+export interface WorkoutAssignment extends BaseDoc, AssignmentAuthor {
   clientId: string;
   workoutPlanId: string;
   planNameSnapshot: string;
@@ -335,9 +361,12 @@ export interface WorkoutAssignment extends BaseDoc {
   endDate: string;
   status: AssignmentStatus;
   notes: string;
+  /** Personal plans only. */
+  description: string;
+  days: WorkoutDay[];
 }
 
-export interface DietAssignment extends BaseDoc {
+export interface DietAssignment extends BaseDoc, AssignmentAuthor {
   clientId: string;
   dietPlanId: string;
   planNameSnapshot: string;
@@ -348,6 +377,41 @@ export interface DietAssignment extends BaseDoc {
   endDate: string;
   status: AssignmentStatus;
   notes: string;
+  /** Personal plans only: meals, one per line. */
+  description: string;
+  mealStructure: string;
+}
+
+/** What a member ticked on one day in the member app: planLogs/{clientId}_{YYYY-MM-DD}. */
+export interface PlanLog {
+  clientId: string;
+  date: string;
+  /** Which workout day they did (index in the plan's days). */
+  workoutDay: number;
+  /** Exercise numbers ticked (index in that day's list). */
+  workoutDone: number[];
+  /** Meal numbers ticked. */
+  dietDone: number[];
+}
+
+/** Member ↔ PT trainer chat: chats/{clientId}, messages in chats/{clientId}/messages. */
+export interface ChatThread {
+  clientId: string;
+  clientName: string;
+  trainerId: string;
+  trainerName: string;
+  lastText: string;
+  lastFrom: "member" | "trainer" | "";
+  lastAt: Date | null;
+  memberReadAt: Date | null;
+  trainerReadAt: Date | null;
+}
+export interface ChatMessage {
+  id: string;
+  from: "member" | "trainer";
+  name: string;
+  text: string;
+  at: Date;
 }
 
 export const BOOKING_TYPES = ["pt", "group_class", "general"] as const;
@@ -650,6 +714,7 @@ export const WHATSAPP_MESSAGE_TYPES = [
   "birthday",
   "follow_up",
   "announcement",
+  "member_app",
   "test",
 ] as const;
 export type WhatsAppMessageType = (typeof WHATSAPP_MESSAGE_TYPES)[number];
@@ -695,6 +760,10 @@ export interface WhatsAppSettings {
   /** Announcements page: {{1}} name, {{2}} gym, {{3}} the message. */
   announcementTemplate: string;
   followUpTemplate: string;
+  /** Member app link: {{1}} name, {{2}} gym; button https://<app>/m/{{1}} (the member's code). */
+  memberAppTemplate: string;
+  /** Send the member app link by itself after a member's first payment. */
+  autoSendMemberApp: boolean;
 }
 
 // ---------------- PT, trainers, payments, enrollment, finance, import ----------------
@@ -721,6 +790,9 @@ export interface Trainer extends BaseDoc {
   defaultShareType: ShareType;
   defaultTrainerShare: number;
   notes: string;
+  /** Trainer app (/t/<code>), made by the owner. "" = no login yet. */
+  portalCode: string;
+  portalActive: boolean;
 }
 export const PT_ASSIGNMENT_STATUSES = ["pending", "active", "completed", "cancelled"] as const;
 export type PtAssignmentStatus = (typeof PT_ASSIGNMENT_STATUSES)[number];

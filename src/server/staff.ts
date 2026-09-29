@@ -2,12 +2,15 @@
  * Staff logins, created and changed only by an owner (OWNER_EMAILS):
  *   POST /api/staff/create-login  { staffId, email, password, admin, permissions }
  *   POST /api/staff/update-login  { staffId, admin?, permissions?, active?, password? }
- * The login's features live in /staffAccess/{uid}; Firestore rules read them.
+ *   POST /api/staff/password      { staffId } → { password } the saved password ("" = not saved)
+ * The login's features live in /staffAccess/{uid}; Firestore rules read them. Each password the
+ * owner sets is also kept in the encrypted password safe (./vault) so it can be sent again.
  */
 import { FieldValue } from "firebase-admin/firestore";
 import { isOwnerEmail } from "@/constants/owners";
 import { STAFF_FEATURES, type StaffFeature } from "@/types/models";
 import { adminAuth, db, json, requireStaff } from "./admin";
+import { readPassword, savePassword } from "./vault";
 
 const cleanFeatures = (x: unknown): StaffFeature[] =>
   Array.isArray(x)
@@ -83,6 +86,7 @@ async function createLogin(body: Record<string, unknown>, ownerEmail: string) {
     updatedAt: FieldValue.serverTimestamp(),
   });
   await batch.commit();
+  await savePassword("staff", staffId, password);
   await logLine(
     ownerEmail,
     staffId,
@@ -125,6 +129,7 @@ async function updateLogin(body: Record<string, unknown>, ownerEmail: string) {
     return json({ error: authError(e) }, 400);
   }
   await db().doc(`staffAccess/${uid}`).set(patch, { merge: true });
+  if (authPatch.password) await savePassword("staff", staffId, authPatch.password);
   if (changes.length)
     await logLine(
       ownerEmail,
@@ -132,6 +137,22 @@ async function updateLogin(body: Record<string, unknown>, ownerEmail: string) {
       `Login of ${String(staff.data()?.["name"] ?? "")}: ${changes.join(", ")}`,
     );
   return json({ ok: true });
+}
+
+/** The saved password, for the owner to see or send again. Every look is logged. */
+async function showPassword(body: Record<string, unknown>, ownerEmail: string) {
+  const staffId = String(body["staffId"] ?? "");
+  const staff = await db().doc(`staff/${staffId}`).get();
+  if (!staff.exists || !staff.data()?.["loginUid"])
+    return json({ error: "This staff member has no login." }, 404);
+  const password = await readPassword("staff", staffId);
+  if (password)
+    await logLine(
+      ownerEmail,
+      staffId,
+      `Password of ${String(staff.data()?.["name"] ?? "")} viewed by the owner`,
+    );
+  return json({ password });
 }
 
 export async function handleStaff(request: Request, url: URL) {
@@ -144,5 +165,6 @@ export async function handleStaff(request: Request, url: URL) {
   const action = url.pathname.replace(/^\/api\/staff\/?/, "").replace(/\/+$/, "");
   if (action === "create-login") return createLogin(body, user.email ?? "owner");
   if (action === "update-login") return updateLogin(body, user.email ?? "owner");
+  if (action === "password") return showPassword(body, user.email ?? "owner");
   return json({ error: "Not found" }, 404);
 }

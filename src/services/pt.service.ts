@@ -36,6 +36,8 @@ export const mapTrainer = (id: string, d: DocumentData): Trainer => ({
   defaultShareType: d["defaultShareType"] ?? "percentage",
   defaultTrainerShare: Number(d["defaultTrainerShare"] ?? 0),
   notes: d["notes"] ?? "",
+  portalCode: d["portalCode"] ?? "",
+  portalActive: d["portalActive"] !== false,
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -86,7 +88,11 @@ export const subscribeClientPtAssignments = (
   );
 
 export type PtPackageInput = Omit<PtPackage, "id" | "createdAt" | "updatedAt">;
-export type TrainerInput = Omit<Trainer, "id" | "createdAt" | "updatedAt">;
+/** The trainer app login (portal*) is set only by the server, never by the trainer form. */
+export type TrainerInput = Omit<
+  Trainer,
+  "id" | "createdAt" | "updatedAt" | "portalCode" | "portalActive"
+>;
 
 export async function savePtPackage(input: PtPackageInput, id?: string) {
   if (id) {
@@ -104,7 +110,13 @@ export async function savePtPackage(input: PtPackageInput, id?: string) {
     })
   ).id;
 }
-export async function saveTrainer(input: TrainerInput, id?: string) {
+export async function saveTrainer(raw: TrainerInput, id?: string) {
+  // A form opened before the owner made the trainer's login must not wipe it.
+  const {
+    portalCode: _c,
+    portalActive: _a,
+    ...input
+  } = raw as TrainerInput & Partial<Pick<Trainer, "portalCode" | "portalActive">>;
   if (id) {
     await updateDoc(doc(db, COLLECTIONS.trainers, id), { ...input, updatedAt: serverTimestamp() });
     return id;

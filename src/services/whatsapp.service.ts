@@ -238,6 +238,40 @@ export async function autoSendBill(invoiceId: string): Promise<AutoSendResult> {
   }
 }
 
+/**
+ * Sends the member their app link ("gym_member_app" template: {{1}} name, {{2}} gym; the
+ * "Open my app" button is https://<app>/m/{{1}} with the member's code). `again` = a resend by
+ * staff (the first one is sent only once per member).
+ */
+export async function sendMemberAppWhatsApp(
+  client: Pick<Client, "id" | "fullName" | "phone" | "whatsappPhone" | "whatsappOptIn">,
+  code: string,
+  wa: WhatsAppSettings,
+  business: BusinessBillingSettings,
+  again = false,
+) {
+  if (wa.mode !== "whatsapp")
+    throw new Error("WhatsApp API is not connected. Use Share on WhatsApp instead.");
+  if (!wa.memberAppTemplate)
+    throw new Error("Add the member app template name in Settings → WhatsApp.");
+  const result = await sendWhatsAppMessage({
+    client,
+    type: "member_app",
+    referenceId: again ? `${client.id}_${Date.now()}` : client.id,
+    templateName: wa.memberAppTemplate,
+    templateLanguage: wa.templateLanguage,
+    parameters: [client.fullName, business.businessName || "our gym"],
+    buttonUrlParam: code,
+    messagePreview: `Member app link for ${client.fullName} (password: date of birth DDMMYYYY)`,
+    provider: wa.mode,
+  });
+  await updateDoc(doc(db, COLLECTIONS.clients, client.id), {
+    portalSentAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return result;
+}
+
 /** Records that the bill reached the member so a resumed enrollment skips the share step. */
 export async function markInvoiceShared(invoice: Pick<Invoice, "enrollmentId">) {
   if (!invoice.enrollmentId) return;

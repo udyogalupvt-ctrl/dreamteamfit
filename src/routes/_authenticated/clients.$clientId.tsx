@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PhotoLinkButtons } from "@/components/clients/photo-link-button";
+import { MemberAppCard } from "@/components/clients/member-app-card";
 import { useAccess } from "@/hooks/use-access";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
@@ -391,6 +392,7 @@ function ClientProfilePage() {
 
         <TabsContent value="overview" className="grid gap-4 lg:grid-cols-2">
           <ClientBiometricCard client={c} />
+          <MemberAppCard client={c} />
           <section className="surface-card p-5">
             <h2 className="text-section-title">Profile</h2>
             <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
@@ -447,6 +449,7 @@ function ClientProfilePage() {
         <TabsContent value="workout">
           <AssignmentSection
             kind="workout"
+            clientId={c.id}
             items={workouts.data}
             loading={workouts.loading}
             error={workouts.error}
@@ -464,6 +467,7 @@ function ClientProfilePage() {
         <TabsContent value="diet">
           <AssignmentSection
             kind="diet"
+            clientId={c.id}
             items={diets.data}
             loading={diets.loading}
             error={diets.error}

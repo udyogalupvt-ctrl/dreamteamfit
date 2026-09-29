@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PhotoLinkButtons } from "@/components/clients/photo-link-button";
+import { MemberAppCard } from "@/components/clients/member-app-card";
 import { Link } from "@tanstack/react-router";
 import {
   Check,
@@ -1083,6 +1084,10 @@ export function EnrollmentWizard({
               setAutoSend={setAutoSend}
             />
           ) : null}
+          {/* First payment: the member's app link is made and sent here, once. */}
+          {step === SHARE && confirmed && member.data ? (
+            <MemberAppCard client={member.data} auto className="mt-4" />
+          ) : null}
 
           {step === THUMB && confirmed && memberId ? (
             thumbNeeded ? (
@@ -1226,7 +1231,7 @@ function DetailsStep({
   setPhotoLater: (v: boolean) => void;
 }) {
   const [more, setMore] = useState(
-    Boolean(client.email || client.dateOfBirth || client.address || client.emergencyContact),
+    Boolean(client.email || client.address || client.emergencyContact),
   );
   // Live check while typing: only free IDs are accepted.
   const [idProblem, setIdProblem] = useState("");
@@ -1341,6 +1346,19 @@ function DetailsStep({
           </p>
         ) : null}
       </div>
+      <Field
+        label="Date of birth"
+        htmlFor="e-dob"
+        hint="Password for their member app (and birthday wishes)"
+      >
+        <Input
+          id="e-dob"
+          type="date"
+          max={new Date().toISOString().slice(0, 10)}
+          value={client.dateOfBirth ?? ""}
+          onChange={(e) => setClient({ ...client, dateOfBirth: e.target.value || null })}
+        />
+      </Field>
       <Field label="Gender" htmlFor="e-gender">
         <Select
           value={client.gender}
@@ -1377,14 +1395,6 @@ function DetailsStep({
       </Field>
       {more ? (
         <>
-          <Field label="Date of birth" htmlFor="e-dob" hint="Used for birthday wishes">
-            <Input
-              id="e-dob"
-              type="date"
-              value={client.dateOfBirth ?? ""}
-              onChange={(e) => setClient({ ...client, dateOfBirth: e.target.value || null })}
-            />
-          </Field>
           <Field label="Email" htmlFor="e-email" error={errors["email"]}>
             <Input
               id="e-email"

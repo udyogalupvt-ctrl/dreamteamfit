@@ -76,6 +76,9 @@ export const mapClient = (id: string, d: DocumentData): Client => ({
   enrollmentId: d["enrollmentId"] ?? null,
   deviceAccess:
     d["deviceAccess"] === "removed" ? "removed" : d["deviceAccess"] === "on" ? "on" : null,
+  portalCode: d["portalCode"] ?? "",
+  portalActive: d["portalActive"] !== false,
+  portalSentAt: d["portalSentAt"] ? toDate(d["portalSentAt"]) : null,
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });

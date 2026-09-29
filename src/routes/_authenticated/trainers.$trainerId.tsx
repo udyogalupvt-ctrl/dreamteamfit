@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { BadgeIndianRupee, CalendarClock, CheckCircle2, Dumbbell, Users, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/common/page-header";
 import { StatCard } from "@/components/common/stat-card";
+import { TrainerLoginCard } from "@/components/packages/trainer-login-card";
 import { StatusPill } from "@/components/common/status-pill";
 import { EmptyState } from "@/components/common/empty-state";
 import { LoadingRows } from "@/components/common/loading-state";
@@ -55,6 +56,7 @@ function TrainerProfile() {
   return (
     <div className="space-y-6">
       <PageHeader title={trainer.name} description={`${trainer.specialization || "Trainer"} · ${trainer.phone || "no phone"}`} breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Packages", to: "/packages" }, { label: trainer.name }]} />
+      <TrainerLoginCard trainer={trainer} />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{cards.map((m) => <StatCard key={m.id} metric={m} />)}</div>
       <section className="surface-card overflow-hidden">
         <h2 className="text-card-title border-b border-border p-4">Active PT members</h2>

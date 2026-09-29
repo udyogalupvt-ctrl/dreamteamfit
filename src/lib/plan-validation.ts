@@ -12,6 +12,9 @@ export const workoutPlanSchema = z.object({
   durationWeeks: z.number().int("Duration must be a whole number").positive("Duration must be positive").max(104, "Duration is too long"),
   daysPerWeek: z.number().int().min(1, "Choose at least 1 day").max(7, "Days per week cannot exceed 7"),
   isActive: z.boolean(),
+  days: z
+    .array(z.object({ title: safeText("Day name", 60), exercises: safeText("Exercises", 3000) }))
+    .max(7, "A plan can have up to 7 days"),
 });
 
 export const dietPlanSchema = z.object({

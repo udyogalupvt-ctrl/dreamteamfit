@@ -60,6 +60,7 @@ const WA_KIND: Record<string, string> = {
   renewal: "renewal reminder",
   birthday: "birthday wish",
   absence: "missed-you message",
+  member_app: "member app link",
   test: "test message",
   follow_up: "message",
 };
@@ -91,6 +92,7 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
       if (became(f, b, a, "biometricStatus", "disabled")) return "Entry blocked by staff";
       if (b["biometricStatus"] === "disabled" && became(f, b, a, "biometricStatus", "active"))
         return "Entry allowed again";
+      if (f.length === 1 && f[0] === "portalSentAt") return "Member app link sent to the member";
       if (
         f.every((k) =>
           [
@@ -149,6 +151,15 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
       return f.includes("status")
         ? `PT ${s(d["ptPackageNameSnapshot"])}: ${st(b["status"])} → ${st(a["status"])}`
         : null;
+    case "workoutAssignments":
+    case "dietAssignments": {
+      const what = col === "workoutAssignments" ? "Workout" : "Diet";
+      if (action === "created")
+        return `${what} plan given: ${s(d["planNameSnapshot"])}${d["assignedByName"] ? ` (by ${s(d["assignedByName"])})` : ""}`;
+      if (f.includes("status"))
+        return `${what} plan ${s(d["planNameSnapshot"])}: ${s(b["status"])} → ${s(a["status"])}`;
+      return null;
+    }
     case "trainerPayouts":
       if (action === "created")
         return `Trainer share due: ${s(d["trainerNameSnapshot"])} ${money(d["trainerShareAmount"])}`;

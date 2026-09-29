@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { DataImportWizard } from "@/components/settings/data-import-wizard";
 import { DataExportPanel } from "@/components/settings/data-export-panel";
+import { MemberAppBulkSend } from "@/components/settings/member-app-bulk";
 import { PageHeader } from "@/components/common/page-header";
 import { FormSection } from "@/components/common/form-section";
 import { Field } from "@/components/common/form-dialog";
@@ -407,7 +408,24 @@ function WhatsAppSettingsPanel() {
                     onChange={(e) => set("announcementTemplate", e.target.value.trim())}
                   />
                 </Field>
+                <Field
+                  label="Member app template"
+                  htmlFor="wa-app"
+                  hint="Body {{1}} name, {{2}} gym · URL button …/m/{{1}}"
+                >
+                  <Input
+                    id="wa-app"
+                    value={f.memberAppTemplate}
+                    onChange={(e) => set("memberAppTemplate", e.target.value.trim())}
+                  />
+                </Field>
               </div>
+              <ToggleRow
+                label="Send the member app link after the first payment"
+                hint="Once per member, right after the bill. Password = date of birth (DDMMYYYY)."
+                checked={f.autoSendMemberApp}
+                onChange={(v) => set("autoSendMemberApp", v)}
+              />
             </>
           ) : null}
           <Field
@@ -432,6 +450,7 @@ function WhatsAppSettingsPanel() {
           </p>
         </div>
       </FormSection>
+      <MemberAppBulkSend />
     </div>
   );
 }
