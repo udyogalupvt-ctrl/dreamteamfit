@@ -45,13 +45,17 @@ their stored template and removes them from the device.
 
 ### Devices without HTTPS
 
-Run the relay on any always-on PC in the gym:
+Vercel only answers HTTPS (a plain `http://` request gets a redirect the machine can't follow).
+A machine whose Cloud Server Setting has no HTTPS / SSL switch needs a relay in between:
 
-```sh
-node tools/adms-relay.mjs https://dreamteamfit.vercel.app/iclock 8081
-```
+- **Cloudflare Worker (recommended, free, no PC):** paste `tools/cloudflare-relay.js` into a new
+  Worker. On the machine: Enable Domain Name **ON**, Server Address = the worker's address
+  (`<name>.<account>.workers.dev`), Server Port **80**, Proxy off.
+- **A PC in the gym (must stay on):** `node tools/adms-relay.mjs https://dreamteamfit.vercel.app/iclock 8081`,
+  then Server Address = that PC's LAN IP (give it a fixed IP in the router), port `8081`.
 
-Then set the device's server to that PC's LAN IP, port `8081`, HTTPS off.
+Test the relay before touching the machine: `http://<relay>/iclock/cdata?SN=TEST&options=all`
+must answer `OK` (unknown serial numbers get `OK`; the real one gets the settings list).
 
 ## Registering a thumb (front desk)
 
@@ -78,7 +82,15 @@ device.
 
 ## ZKTeco MB360
 
-The MB360 (face + fingerprint) works with this app only if its firmware has the cloud push
-setting: *Menu → Comm. → Cloud Server Setting* (sometimes "ADMS"). If that menu is there, use the
-steps above. If it is missing, the device needs ZKTeco's "Push" firmware (ask the seller) before
-it can connect to the cloud.
+The gym's MB360 (face + fingerprint) has *Menu → Comm. → Cloud Server Setting* with Server Mode
+ADMS, but no HTTPS switch: use a relay (above). Its old software used the same method (ADMS to a
+server at a fixed IP, port 86), so remote thumb registration works the same way: the app sends
+"create user + enroll", the machine asks for the thumb 3 times.
+
+Only one cloud server can be set: pointing the machine at this app disconnects the old software
+at that moment. The machine opens the door by itself for anyone registered on it, even while the
+internet is down; punches wait on the machine and upload when it is back.
+
+After a thumb is registered (and after a renewed member is put back) the app also sends the
+member's photo (`DATA UPDATE USERPIC`, a 240x320 JPEG made by Cloudinary), so the machine shows
+ID, name and photo after each punch, as it did before.

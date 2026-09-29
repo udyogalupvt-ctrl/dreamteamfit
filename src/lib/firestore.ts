@@ -122,6 +122,13 @@ function sideWrites(ops: { op: Op; before: D | null }[]): Extra[] {
           op.ref.id,
         );
     } else if (col === "clients" && before) {
+      // New photo for a member already on the fingerprint machine: send it there too.
+      if (
+        after?.["profilePhotoUrl"] &&
+        after["profilePhotoUrl"] !== before["profilePhotoUrl"] &&
+        after["firstThumbRegistered"] === true
+      )
+        note("photo_sync", op.ref.id);
       if (!after && before["biometricUserId"])
         note(
           "forget",

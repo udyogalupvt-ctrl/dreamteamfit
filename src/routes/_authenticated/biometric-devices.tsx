@@ -228,8 +228,8 @@ function SetupGuide() {
         </li>
       </ol>
       <p className="text-meta">
-        Older devices without HTTPS can use the small relay in <code>tools/adms-relay.mjs</code> on
-        the front-desk PC. See BIOMETRIC_SETUP.md.
+        No HTTPS switch on the machine (e.g. ZKTeco MB360)? It connects through a relay address
+        instead (a free Cloudflare relay, port 80, domain name on). See BIOMETRIC_SETUP.md.
       </p>
     </section>
   );

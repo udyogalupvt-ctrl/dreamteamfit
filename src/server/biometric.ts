@@ -37,7 +37,7 @@ const ENROLL_REQUEST_TTL_MS = 10 * 60 * 1000;
 /** Seconds between device polls. Each poll costs ~1 Firestore read (free plan: 50,000/day). */
 const POLL_DELAY_SECONDS = 15;
 /** App-side notes handled here on the server, never sent to a device. */
-const SERVER_TASKS = new Set(["door_check", "forget", "staff_off"]);
+const SERVER_TASKS = new Set(["door_check", "forget", "staff_off", "photo_sync"]);
 
 type Device = { id: string; name: string; serialNumber: string; lastDoorSyncDate: string };
 type KV = Record<string, string>;
@@ -164,6 +164,7 @@ async function runServerTasks(tasks: QueryDocumentSnapshot[]) {
           String(d["biometricUserId"] ?? ""),
           String(d["deviceId"] ?? ""),
         );
+      else if (d["type"] === "photo_sync") await queueMemberPhoto(String(d["clientId"]));
       else await syncDoorAccess(String(d["clientId"]));
     } catch (e) {
       error = String(e);
@@ -416,6 +417,62 @@ async function activateBiometric(clientRef: DocumentReference, device: Device, p
         }),
       ),
   );
+  // Like the old software: the machine shows the member's photo with the name after a punch.
+  await queueMemberPhoto(clientRef.id);
+}
+
+/** Cloudinary serves a small portrait JPEG just by changing the link (no image tools here). */
+const devicePhotoUrl = (url: string) =>
+  /^https:\/\/res\.cloudinary\.com\/[^/\s]+\/image\/upload\//.test(url)
+    ? url.replace("/image/upload/", "/image/upload/c_fill,g_face,w_240,h_320,q_60,f_jpg/")
+    : "";
+
+/**
+ * Sends the member's photo to the machine they are on (shown after each punch). Only for a
+ * member whose thumb is on the machine; a missing photo or a slow image host never blocks
+ * anything, the photo is simply not sent.
+ */
+export async function queueMemberPhoto(clientId: string) {
+  try {
+    const firestore = db();
+    const c = (await firestore.doc(`clients/${clientId}`).get()).data();
+    const pin = String(c?.["biometricUserId"] ?? "");
+    const deviceId = String(c?.["biometricDeviceId"] ?? "");
+    const src = devicePhotoUrl(String(c?.["profilePhotoUrl"] ?? ""));
+    if (!c || !pin || !deviceId || !src) return false;
+    if (c["firstThumbRegistered"] !== true || c["deviceAccess"] === "removed") return false;
+    const device = (await firestore.doc(`biometricDevices/${deviceId}`).get()).data();
+    if (!device || device["integrationType"] !== "adms") return false;
+    const res = await fetch(src, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return false;
+    const photo = Buffer.from(await res.arrayBuffer()).toString("base64");
+    // A 240x320 JPEG is about 15 KB; anything far bigger is not a photo the machine wants.
+    if (!photo || photo.length > 60_000) return false;
+    await firestore.collection("biometricCommands").add({
+      deviceId,
+      serialNumber: String(device["serialNumber"] ?? ""),
+      clientId,
+      enrollmentId: null,
+      biometricUserId: pin,
+      door: false,
+      type: "user_photo",
+      order: 90,
+      // Size = length of the base64 text (as the machine reports its own photos).
+      command: `DATA UPDATE USERPIC PIN=${pin}\tSize=${photo.length}\tContent=${photo}`,
+      status: "pending",
+      cmdNo: null,
+      returnCode: null,
+      error: "",
+      sentAt: null,
+      completedAt: null,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return true;
+  } catch (e) {
+    console.error("member photo not sent to the machine", clientId, String(e));
+    return false;
+  }
 }
 
 /**
@@ -661,6 +718,7 @@ async function applyDoorAccess(clientId: string, c: Row, allowed: boolean) {
   batch.update(ref, { deviceAccess: "on", deviceAccessChangedAt: now });
   await batch.commit();
   await log("Added back to the door device with the saved thumb");
+  await queueMemberPhoto(clientId);
   return "restored";
 }
 

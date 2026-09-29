@@ -7,6 +7,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { db, json } from "./admin";
 import { systemAudit } from "./audit";
+import { queueMemberPhoto } from "./biometric";
 
 async function memberFor(token: string) {
   if (!/^[a-f0-9]{24,64}$/i.test(token)) return null;
@@ -57,5 +58,7 @@ export async function handleMemberPhoto(request: Request, url: URL) {
     clientName: String(member.data()["fullName"] ?? ""),
     summary: "Member uploaded their photo from the link",
   });
+  // Already on the fingerprint machine: show the new photo there too.
+  await queueMemberPhoto(member.id);
   return json({ ok: true });
 }
