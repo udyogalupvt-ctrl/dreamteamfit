@@ -26,7 +26,12 @@ import {
 } from "firebase-admin/firestore";
 import { db, localDate, text } from "./admin";
 import { systemAudit } from "./audit";
-import { importDeviceData, importWindowOpen, type MachineUser } from "./device-import";
+import {
+  importDeviceData,
+  importWindowOpen,
+  matchPending,
+  type MachineUser,
+} from "./device-import";
 
 /** Device clocks are set to gym local time (Asia/Kolkata). */
 const TZ_OFFSET = "+05:30";
@@ -39,7 +44,13 @@ const POLL_DELAY_SECONDS = 15;
 /** App-side notes handled here on the server, never sent to a device. */
 const SERVER_TASKS = new Set(["door_check", "forget", "staff_off", "photo_sync"]);
 
-type Device = { id: string; name: string; serialNumber: string; lastDoorSyncDate: string };
+type Device = {
+  id: string;
+  name: string;
+  serialNumber: string;
+  lastDoorSyncDate: string;
+  pendingMatches: boolean;
+};
 type KV = Record<string, string>;
 type Row = Record<string, unknown>;
 
@@ -60,6 +71,7 @@ async function findDevice(sn: string): Promise<Device | null> {
         name: String(match.data()["name"] ?? "Device"),
         serialNumber: sn,
         lastDoorSyncDate: String(match.data()["lastDoorSyncDate"] ?? ""),
+        pendingMatches: match.data()["pendingMatches"] === true,
       }
     : null;
   deviceCache.set(sn, { device, at: Date.now() });
@@ -205,9 +217,35 @@ async function nextCommands(device: Device) {
     .get();
   const tasks = pending.docs.filter((d) => SERVER_TASKS.has(String(d.data()["type"])));
   if (tasks.length) await runServerTasks(tasks);
+  // Users uploaded faster than they could be linked: link some more on each check-in.
+  if (device.pendingMatches) {
+    const left = await matchPending(device).catch(() => 1);
+    if (left === 0) device.pendingMatches = false;
+  }
+  // "Read users" pressed several times: the machine is asked once (repeats are withdrawn).
+  const asked = new Set<string>();
+  const repeats = pending.docs.filter((d) => {
+    const x = d.data();
+    if (x["deviceId"] !== device.id || !String(x["type"]).startsWith("import_")) return false;
+    const key = String(x["command"]);
+    if (asked.has(key)) return true;
+    asked.add(key);
+    return false;
+  });
+  if (repeats.length) {
+    const b = firestore.batch();
+    repeats.forEach((d) =>
+      b.update(d.ref, { status: "cancelled", updatedAt: FieldValue.serverTimestamp() }),
+    );
+    await b.commit();
+  }
+  const withdrawn = new Set(repeats.map((d) => d.id));
   const mine = pending.docs
     .filter(
-      (d) => d.data()["deviceId"] === device.id && !SERVER_TASKS.has(String(d.data()["type"])),
+      (d) =>
+        d.data()["deviceId"] === device.id &&
+        !SERVER_TASKS.has(String(d.data()["type"])) &&
+        !withdrawn.has(d.id),
     )
     .sort(
       (a, b) =>
@@ -534,7 +572,7 @@ function machineUsers(body: string): MachineUser[] {
     if (!/^USER\s/i.test(line)) continue;
     const kv = parseKv(line);
     const pin = (kv["PIN"] ?? "").trim();
-    if (!/^\d{1,9}$/.test(pin)) continue;
+    if (!/^[A-Za-z0-9]{1,24}$/.test(pin)) continue;
     out.push({
       pin,
       name: (kv["NAME"] ?? "").trim(),
@@ -1027,10 +1065,37 @@ async function attendance(device: Device, body: string) {
 
 // ---------------------------------------------------------------- HTTP entry
 
+/** What an upload holds: line counts by record type ("USER", "FP", "OPLOG", "PUNCH"…). */
+function bodySummary(body: string) {
+  const kinds: Record<string, number> = {};
+  for (const raw of body.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const k =
+      /^([A-Za-z]+)[\s=]/.exec(line)?.[1]?.toUpperCase() ?? (/^\w/.test(line) ? "PUNCH" : "OTHER");
+    kinds[k] = (kinds[k] ?? 0) + 1;
+  }
+  return kinds;
+}
+
+/**
+ * Server-only log of what each machine sends and gets (uploads, commands handed out, errors),
+ * to see what a machine is doing when something looks stuck. Never blocks the machine.
+ */
+function journal(entry: Row) {
+  return db()
+    .collection("deviceLog")
+    .add({ ...entry, at: FieldValue.serverTimestamp() })
+    .catch(() => undefined);
+}
+
 export async function handleIclock(request: Request, url: URL) {
   const endpoint = (url.pathname.replace(/\/+$/, "").split("/").pop() ?? "").toLowerCase();
   const sn = String(url.searchParams.get("SN") ?? url.searchParams.get("sn") ?? "").trim();
   if (!sn) return text("ERROR: SN required", 400);
+  const table = String(url.searchParams.get("table") ?? "").toUpperCase();
+  const started = Date.now();
+  let body = "";
   try {
     const device = await findDevice(sn);
     if (!device) {
@@ -1039,25 +1104,38 @@ export async function handleIclock(request: Request, url: URL) {
     }
     const ip = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "";
     await touchDevice(device, ip);
-    const body = request.method === "POST" ? await request.text() : "";
+    body = request.method === "POST" ? await request.text() : "";
+    const base = { sn, deviceId: device.id, method: request.method, endpoint, table };
+    // Uploads other than single punches are noted when they arrive, so one that never finishes
+    // (too slow, too big) still shows up.
+    if (request.method === "POST" && (table !== "ATTLOG" || body.length > 2000))
+      await journal({ ...base, phase: "start", bytes: body.length, kinds: bodySummary(body) });
 
     if (endpoint === "cdata" && request.method === "GET") {
       const ref = db().doc(`biometricDevices/${device.id}`);
       const full =
         (await ref.get()).data()?.["fullUpload"] === true && (await importWindowOpen(device.id));
       if (full) await ref.update({ fullUpload: false });
+      await journal({
+        ...base,
+        phase: "handshake",
+        fullUpload: full,
+        query: url.search.slice(0, 300),
+      });
       return text(handshake(sn, full));
     }
     if (endpoint === "getrequest") {
       const lines = await nextCommands(device);
+      if (lines.length)
+        await journal({ ...base, phase: "commands", commands: lines.map((l) => l.slice(0, 60)) });
       return text(lines.length ? `${lines.join("\n")}\n` : "OK");
     }
     if (endpoint === "devicecmd") {
       await commandResults(device, body);
+      await journal({ ...base, phase: "results", results: body.slice(0, 500) });
       return text("OK");
     }
     if (endpoint === "cdata" || endpoint === "querydata") {
-      const table = String(url.searchParams.get("table") ?? "").toUpperCase();
       let count = 0;
       if (table === "ATTLOG") count = await attendance(device, body);
       else {
@@ -1082,13 +1160,34 @@ export async function handleIclock(request: Request, url: URL) {
         if (await importWindowOpen(device.id))
           await importDeviceData(device, machineUsers(body), fingerprintTemplates(body));
       }
+      await journal({
+        ...base,
+        phase: "done",
+        bytes: body.length,
+        count,
+        ms: Date.now() - started,
+      });
       return text(`OK: ${count}`);
     }
     return text("OK");
   } catch (error) {
     console.error("iclock request failed", { sn, endpoint, error: String(error) });
-    // A non-OK answer makes the device retry the same upload later.
-    return text("ERROR", 500);
+    await journal({
+      sn,
+      method: request.method,
+      endpoint,
+      table,
+      phase: "error",
+      bytes: body.length,
+      kinds: bodySummary(body),
+      error: String(error).slice(0, 500),
+      ms: Date.now() - started,
+    });
+    // A non-OK answer makes the machine send the same upload again. For punches that is right
+    // (a short outage must not lose visits); any other upload is accepted anyway, so one bad
+    // batch can never keep the machine re-sending it forever, blocking punches and commands.
+    if (request.method === "POST" && table === "ATTLOG") return text("ERROR", 500);
+    return text(request.method === "POST" ? "OK: 0" : "OK");
   }
 }
 

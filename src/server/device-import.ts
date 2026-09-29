@@ -197,6 +197,8 @@ export async function importDeviceData(
   device: DeviceInfo,
   users: MachineUser[],
   templates: Template[],
+  // Answer the machine quickly: whatever isn't linked by then is linked on its next check-ins.
+  deadline = Date.now() + 5000,
 ) {
   const firestore = db();
   const now = FieldValue.serverTimestamp();
@@ -270,11 +272,67 @@ export async function importDeviceData(
     const match = await autoMatch(device, pin, names.get(pin) ?? String(cur["name"] ?? ""));
     if (match) await linkTo(device, pin, match, "matched by machine ID and name");
   };
-  for (let k = 0; k < pins.length; k += 10) await Promise.all(pins.slice(k, k + 10).map(work));
+  let k = 0;
+  for (; k < pins.length && Date.now() < deadline; k += 10)
+    await Promise.all(pins.slice(k, k + 10).map(work));
+  const later = pins.slice(k);
+  if (later.length) {
+    const w = firestore.bulkWriter();
+    for (const pin of later)
+      void w.set(userRef(device.id, pin), { needsMatch: true }, { merge: true });
+    await w.close();
+  }
   if (pins.length)
-    await firestore
-      .doc(`biometricDevices/${device.id}`)
-      .update({ lastImportAt: now, updatedAt: now });
+    await firestore.doc(`biometricDevices/${device.id}`).update({
+      lastImportAt: now,
+      ...(later.length ? { pendingMatches: true } : {}),
+      updatedAt: now,
+    });
+}
+
+/** Links machine users whose upload came in faster than they could be matched (a few per call). */
+export async function matchPending(device: DeviceInfo, budgetMs = 3000) {
+  const deadline = Date.now() + budgetMs;
+  const firestore = db();
+  const snap = await firestore
+    .collection("deviceUsers")
+    .where("deviceId", "==", device.id)
+    .where("needsMatch", "==", true)
+    .limit(40)
+    .get();
+  if (snap.empty) {
+    await firestore.doc(`biometricDevices/${device.id}`).update({ pendingMatches: false });
+    return 0;
+  }
+  let done = 0;
+  for (let k = 0; k < snap.docs.length && Date.now() < deadline; k += 10) {
+    await Promise.all(
+      snap.docs.slice(k, k + 10).map(async (d) => {
+        const u = d.data();
+        const pin = String(u["pin"] ?? "");
+        const hasTpl = (await templatesRef(device.id, pin).get()).exists;
+        if (u["linkId"]) {
+          if (hasTpl)
+            await linkTo(
+              device,
+              pin,
+              {
+                type: String(u["linkType"]) as "client" | "staff",
+                id: String(u["linkId"]),
+                name: String(u["linkName"] ?? ""),
+              },
+              String(u["linkedBy"] ?? "matched by machine ID"),
+            );
+        } else {
+          const match = await autoMatch(device, pin, String(u["name"] ?? ""));
+          if (match) await linkTo(device, pin, match, "matched by machine ID and name");
+        }
+        await d.ref.update({ needsMatch: false });
+        done += 1;
+      }),
+    );
+  }
+  return done;
 }
 
 // ---------------------------------------------------------------- app endpoints
@@ -328,6 +386,25 @@ export async function handleDeviceUsers(request: Request, url: URL) {
   const firestore = db();
 
   if (action === "read-users") {
+    // Pressed again while a read is still going: keep the window open, don't ask twice.
+    const recent = await firestore
+      .collection("biometricCommands")
+      .where("deviceId", "==", device.id)
+      .get();
+    const busy = recent.docs.some(
+      (d) =>
+        String(d.data()["type"]).startsWith("import_") &&
+        ["pending", "sent"].includes(String(d.data()["status"])) &&
+        Date.now() - ((d.data()["createdAt"] as { toMillis?: () => number })?.toMillis?.() ?? 0) <
+          10 * 60 * 1000,
+    );
+    if (busy) {
+      await firestore.doc(`biometricDevices/${device.id}`).update({
+        importUntil: new Date(Date.now() + IMPORT_WINDOW_MS),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return json({ ok: true, alreadyReading: true });
+    }
     const batch = firestore.batch();
     batch.update(firestore.doc(`biometricDevices/${device.id}`), {
       importUntil: new Date(Date.now() + IMPORT_WINDOW_MS),
@@ -349,7 +426,7 @@ export async function handleDeviceUsers(request: Request, url: URL) {
   }
 
   const pin = String(body["pin"] ?? "").trim();
-  if (!/^\d{1,9}$/.test(pin)) return json({ error: "Machine ID must be a number." }, 400);
+  if (!/^[A-Za-z0-9]{1,24}$/.test(pin)) return json({ error: "Machine ID not valid." }, 400);
 
   if (action === "link") {
     const clientId = String(body["clientId"] ?? "");

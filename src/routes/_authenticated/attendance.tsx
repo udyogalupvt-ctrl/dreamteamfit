@@ -48,7 +48,7 @@ import {
 } from "@/lib/attendance-utils";
 import { formatNumber, todayISO } from "@/lib/format";
 import { subscribeAttendance } from "@/services/attendance.service";
-import { subscribeDevices } from "@/services/biometric-devices.service";
+import { deviceConnection, subscribeDevices } from "@/services/biometric-devices.service";
 import { subscribeClients } from "@/services/clients.service";
 import type { AttendanceEvent, BiometricDevice, Client } from "@/types/models";
 export const Route = createFileRoute("/_authenticated/attendance")({
@@ -119,9 +119,12 @@ function AttendancePage() {
           e.biometricUserId.toLowerCase().includes(q)),
     );
   }, [attendance.data, range, device, decision, eventType, source, search]);
-  const offline =
-    devices.data.length > 0 &&
-    devices.data.every((d) => d.status !== "online" && d.integrationType !== "mock");
+  // Same test as the Fingerprint Devices page: a cloud machine is online while it keeps checking
+  // in. Manual / test devices never make the page say "offline".
+  const machines = devices.data.filter(
+    (d) => d.integrationType === "adms" && d.status !== "disabled",
+  );
+  const offline = machines.length > 0 && machines.every((d) => !deviceConnection(d).online);
   const cards = [
     {
       id: "visits",

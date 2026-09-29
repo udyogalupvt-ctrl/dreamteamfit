@@ -30,6 +30,8 @@ export default defineConfig(({ command }) => ({
             // node_modules instead of being bundled.
             traceDeps: ["firebase-admin*", "@google-cloud/firestore*", "google-gax*"],
             vercel: {
+              // A machine's big upload (hundreds of users) must not be cut off after 10 s.
+              functions: { maxDuration: 60 },
               config: {
                 version: 3,
                 crons: [
@@ -45,7 +47,14 @@ export default defineConfig(({ command }) => ({
   ],
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
-    dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@tanstack/react-query", "@tanstack/query-core"],
+    dedupe: [
+      "react",
+      "react-dom",
+      "react/jsx-runtime",
+      "react/jsx-dev-runtime",
+      "@tanstack/react-query",
+      "@tanstack/query-core",
+    ],
   },
   server: { port: 8080 },
 }));
