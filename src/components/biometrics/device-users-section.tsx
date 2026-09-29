@@ -1,5 +1,14 @@
 import { useMemo, useState } from "react";
-import { DoorClosed, DoorOpen, Download, Link2, Loader2, Search, UserX } from "lucide-react";
+import {
+  DoorClosed,
+  DoorOpen,
+  Download,
+  ImageIcon,
+  Link2,
+  Loader2,
+  Search,
+  UserX,
+} from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { FormDialog } from "@/components/common/form-dialog";
@@ -14,6 +23,7 @@ import {
   readUsersFromMachine,
   removeMachineUser,
   setDoorControl,
+  setSendPhotos,
   subscribeDeviceUsers,
 } from "@/services/biometric-devices.service";
 import { subscribeClients } from "@/services/clients.service";
@@ -100,6 +110,26 @@ export function DeviceUsersSection({ device }: { device: BiometricDevice }) {
           checked={device.doorControl}
           onCheckedChange={(on) => (on ? setConfirmDoor(true) : void door(false))}
           aria-label="Lock out members whose plan ended"
+        />
+      </div>
+
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex gap-3">
+          <ImageIcon className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
+          <div>
+            <p className="font-semibold">Send member photos to the machine</p>
+            <p className="text-meta">
+              The machine takes its own photo when a thumb is registered. Turn this on only if you
+              want the app's photo shown after a punch instead.
+            </p>
+          </div>
+        </div>
+        <Switch
+          checked={device.sendPhotos}
+          onCheckedChange={(on) =>
+            void setSendPhotos(device.id, on).catch((e) => toast.error(firestoreErrorMessage(e)))
+          }
+          aria-label="Send member photos to the machine"
         />
       </div>
 

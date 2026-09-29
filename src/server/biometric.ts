@@ -442,7 +442,9 @@ export async function queueMemberPhoto(clientId: string) {
     if (!c || !pin || !deviceId || !src) return false;
     if (c["firstThumbRegistered"] !== true || c["deviceAccess"] === "removed") return false;
     const device = (await firestore.doc(`biometricDevices/${deviceId}`).get()).data();
-    if (!device || device["integrationType"] !== "adms") return false;
+    // Off unless the owner switched it on: the machine normally takes its own photo.
+    if (!device || device["integrationType"] !== "adms" || device["sendPhotos"] !== true)
+      return false;
     const res = await fetch(src, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return false;
     const photo = Buffer.from(await res.arrayBuffer()).toString("base64");

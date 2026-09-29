@@ -148,6 +148,8 @@ export interface BiometricDevice extends BaseDoc {
    * attendance only: the machine keeps everyone (e.g. while the old software still runs).
    */
   doorControl: boolean;
+  /** Also send the app's member photo to the machine (off: the machine keeps its own photo). */
+  sendPhotos: boolean;
   /** "Read users from the machine" accepts the machine's upload until this time. */
   importUntil: Date | null;
   lastImportAt: Date | null;

@@ -22,6 +22,7 @@ export type DeviceInput = Omit<
   | "lastSyncAt"
   | "lastSeenAt"
   | "doorControl"
+  | "sendPhotos"
   | "importUntil"
   | "lastImportAt"
 >;
@@ -42,6 +43,7 @@ export const mapDevice = (id: string, d: DocumentData): BiometricDevice => ({
   lastSyncAt: d["lastSyncAt"] ? toDate(d["lastSyncAt"]) : null,
   lastSeenAt: d["lastSeenAt"] ? toDate(d["lastSeenAt"]) : null,
   doorControl: d["doorControl"] === true,
+  sendPhotos: d["sendPhotos"] === true,
   importUntil: d["importUntil"] ? toDate(d["importUntil"]) : null,
   lastImportAt: d["lastImportAt"] ? toDate(d["lastImportAt"]) : null,
   createdAt: toDate(d["createdAt"]),
@@ -195,6 +197,12 @@ export const removeMachineUser = (deviceId: string, pin: string) =>
  * Door control on/off. Turning it on re-checks everyone at the machine's next contact (not only
  * after midnight), so members whose plan already ended are locked out straight away.
  */
+export const setSendPhotos = (deviceId: string, on: boolean) =>
+  updateDoc(doc(db, COLLECTIONS.biometricDevices, deviceId), {
+    sendPhotos: on,
+    updatedAt: serverTimestamp(),
+  });
+
 export const setDoorControl = (deviceId: string, on: boolean) =>
   updateDoc(doc(db, COLLECTIONS.biometricDevices, deviceId), {
     doorControl: on,

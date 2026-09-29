@@ -91,6 +91,7 @@ Only one cloud server can be set: pointing the machine at this app disconnects t
 at that moment. The machine opens the door by itself for anyone registered on it, even while the
 internet is down; punches wait on the machine and upload when it is back.
 
-After a thumb is registered (and after a renewed member is put back) the app also sends the
-member's photo (`DATA UPDATE USERPIC`, a 240x320 JPEG made by Cloudinary), so the machine shows
-ID, name and photo after each punch, as it did before.
+The machine takes its own photo when a thumb is registered and shows it with ID and name after a
+punch. Optional: *Send member photos to the machine* (per device, off by default) sends the app's
+photo instead (`DATA UPDATE USERPIC`, a 240x320 JPEG made by Cloudinary) after registration, on
+renewal and when the photo changes.
