@@ -24,7 +24,7 @@ import { subscribeClient } from "@/services/clients.service";
 import {
   cancelFingerprintRequest,
   requestFingerprint,
-  suggestBiometricUserId,
+  freeMachineId,
 } from "@/services/enrollment.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import type { BiometricCommand, BiometricDevice, Client } from "@/types/models";
@@ -102,11 +102,17 @@ export function FingerprintPanel({
   }, [usable, deviceId]);
   useEffect(() => {
     if (pin || !client.data) return;
-    if (client.data.biometricUserId) setPin(client.data.biometricUserId);
-    // Same number as the member ID, so staff only deal with one number.
-    else if (/^\d+$/.test(client.data.clientCode)) setPin(client.data.clientCode);
-    else void suggestBiometricUserId().then((v) => setPin((p) => p || v));
-  }, [client.data, pin]);
+    // Wait for the machine to be picked: its own user list decides which numbers are free.
+    if (usable.length && !deviceId) return;
+    if (client.data.biometricUserId) {
+      setPin(client.data.biometricUserId);
+      return;
+    }
+    // Same number as the member ID when the machine doesn't use it for someone else, so staff
+    // usually deal with one number.
+    const preferred = /^\d+$/.test(client.data.clientCode) ? client.data.clientCode : "";
+    void freeMachineId(deviceId, preferred, client.data.id).then((v) => setPin((p) => p || v));
+  }, [client.data, pin, deviceId, usable.length]);
 
   const registered = Boolean(client.data?.firstThumbRegistered);
   useEffect(() => {

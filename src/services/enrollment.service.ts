@@ -539,6 +539,36 @@ export async function closeOpenFollowUps(
   return open.length;
 }
 
+/**
+ * The machine ID to suggest for a member: their member ID when nobody else has it (on the
+ * machine, e.g. from the old software, or in the app), otherwise the next free number. Members
+ * stay below 9000 (staff start at 9001).
+ */
+export async function freeMachineId(deviceId: string, preferred: string, clientId: string) {
+  const [clients, onMachine] = await Promise.all([
+    getDocs(col(COLLECTIONS.clients)),
+    deviceId
+      ? getDocs(query(col(COLLECTIONS.deviceUsers), where("deviceId", "==", deviceId))).catch(
+          () => null,
+        )
+      : Promise.resolve(null),
+  ]);
+  const taken = new Set<string>();
+  clients.docs.forEach((d) => {
+    const p = String(d.data()["biometricUserId"] ?? "");
+    if (p && d.id !== clientId) taken.add(p);
+  });
+  onMachine?.docs.forEach((d) => {
+    const u = d.data();
+    if (u["removed"] !== true && u["linkId"] !== clientId) taken.add(String(u["pin"] ?? ""));
+  });
+  if (preferred && !taken.has(preferred)) return preferred;
+  const numbers = [...taken].map(Number).filter((n) => Number.isInteger(n) && n > 0 && n < 9000);
+  let next = Math.max(0, ...numbers) + 1;
+  while (taken.has(String(next))) next += 1;
+  return String(next);
+}
+
 /** Suggests the next free numeric biometric user ID (device PINs are numeric). */
 export async function suggestBiometricUserId() {
   const snap = await getDocs(col(COLLECTIONS.clients));

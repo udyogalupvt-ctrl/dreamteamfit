@@ -474,6 +474,16 @@ export async function rollPlans() {
   return changed;
 }
 
+/** The fingerprint machine's request log is for troubleshooting: keep one week. */
+async function pruneDeviceLog() {
+  const cutoff = new Date(Date.now() - 7 * 86_400_000);
+  const old = await db().collection("deviceLog").where("at", "<", cutoff).limit(2000).get();
+  const writer = db().bulkWriter();
+  old.docs.forEach((d) => void writer.delete(d.ref));
+  await writer.close();
+  return old.size;
+}
+
 export async function handleCron(request: Request, url: URL) {
   const secret = (process.env["CRON_SECRET"] ?? "").trim();
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`)
@@ -484,7 +494,8 @@ export async function handleCron(request: Request, url: URL) {
     const renewals = await processRenewalReminders();
     const birthdays = await processBirthdayNotifications();
     const paymentsDue = await processPaymentDueReminders();
-    return json({ ok: true, plans, renewals, birthdays, paymentsDue });
+    const deviceLog = await pruneDeviceLog();
+    return json({ ok: true, plans, renewals, birthdays, paymentsDue, deviceLog });
   }
   if (job === "night") return json({ ok: true, absences: await processAbsenceNudges() });
   return json({ error: "Unknown job" }, 404);

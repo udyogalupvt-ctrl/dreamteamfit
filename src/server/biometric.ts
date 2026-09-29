@@ -43,6 +43,9 @@ const ENROLL_REQUEST_TTL_MS = 10 * 60 * 1000;
 const POLL_DELAY_SECONDS = 15;
 /** App-side notes handled here on the server, never sent to a device. */
 const SERVER_TASKS = new Set(["door_check", "forget", "staff_off", "photo_sync"]);
+/** Machine requests that expire if the machine doesn't pick them up in time. */
+const STALE_WHEN_LATE = new Set(["user_upsert", "import_check", "import_users", "import_fp"]);
+const STALE_AFTER_MS = 30 * 60 * 1000;
 
 type Device = {
   id: string;
@@ -271,6 +274,22 @@ async function nextCommands(device: Device) {
         tx.update(cmd.ref, {
           status: "failed",
           error: "The device did not connect in time. Check it is online, then press Try again.",
+          completedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        continue;
+      }
+      // Registration and "Read users" only make sense while someone is at the machine: after
+      // the machine was off for a while they are dropped, not run by surprise. Door lock-outs
+      // and put-backs (door: true) always go through.
+      if (
+        d["door"] !== true &&
+        STALE_WHEN_LATE.has(String(d["type"])) &&
+        now - created > STALE_AFTER_MS
+      ) {
+        tx.update(cmd.ref, {
+          status: "failed",
+          error: "Not sent: the machine was off. Press Try again.",
           completedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         });
