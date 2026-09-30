@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { ClientAvatar } from "@/components/clients/client-avatar";
 import { Field, FormDialog } from "@/components/common/form-dialog";
 import { StatusPill } from "@/components/common/status-pill";
+import { AppSetupCard, NotificationToggle } from "@/components/portal/app-setup";
 import { ChatPanel, isUnread, mapThread } from "@/components/portal/chat-panel";
 import { PlanContent, PlanHeading, WeekStrip } from "@/components/portal/plan-view";
 import {
@@ -161,7 +162,11 @@ function TrainerApp() {
             openChat={(id) => open({ view: "chats", member: id, tab: "chat" })}
           />
         ) : (
-          <MemberList data={data} threads={threads} openMember={(id) => open({ member: id })} />
+          <>
+            <AppSetupCard kind="trainer" />
+            <MemberList data={data} threads={threads} openMember={(id) => open({ member: id })} />
+            <NotificationToggle kind="trainer" className="surface-card p-4" />
+          </>
         )}
       </main>
       <BottomNav

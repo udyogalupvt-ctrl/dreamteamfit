@@ -12,6 +12,7 @@ import {
   portalSignOut,
   signedInAs,
 } from "@/lib/portal-firebase";
+import { disablePush } from "@/lib/push";
 import { cn } from "@/lib/utils";
 
 type Hello = { firstName: string; gymName: string; logoUrl: string; active: boolean };
@@ -256,7 +257,8 @@ export function PortalHeader({
           variant="ghost"
           size="icon"
           aria-label="Sign out"
-          onClick={() => void portalSignOut()}
+          // Signing out also stops this phone's notifications for this login.
+          onClick={() => void disablePush().finally(() => void portalSignOut())}
         >
           <LogOut aria-hidden />
         </Button>

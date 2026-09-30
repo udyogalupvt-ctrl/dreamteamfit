@@ -3,15 +3,17 @@ import {
   deleteDoc,
   doc,
   orderBy,
+  query,
   serverTimestamp,
   updateDoc,
+  where,
   writeBatch,
   type DocumentData,
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { expenseSchema, type ExpenseFormValues } from "@/lib/expense-validation";
 import type { Expense, ExpenseActivity, ExpenseActivityAction } from "@/types/models";
-import { col, COLLECTIONS, subscribeCollection, toDate } from "./firestore.service";
+import { col, COLLECTIONS, subscribeCollection, subscribeQuery, toDate } from "./firestore.service";
 
 export const mapExpense = (id: string, d: DocumentData): Expense => ({
   id,
@@ -51,6 +53,32 @@ const activity = (
   createdBy,
   createdAt: serverTimestamp(),
 });
+/** Expenses dated `from` (YYYY-MM-DD) or later, newest first. */
+export const subscribeExpensesSince = (
+  from: string,
+  ok: (items: Expense[]) => void,
+  fail: (e: Error) => void,
+) =>
+  subscribeQuery(
+    query(col(COLLECTIONS.expenses), where("date", ">=", from)),
+    mapExpense,
+    (x) => ok(x.sort((a, b) => b.date.localeCompare(a.date))),
+    fail,
+  );
+
+/** Expenses paid back (settled) on `from` or later, whatever their own date. */
+export const subscribeExpensesSettledSince = (
+  from: string,
+  ok: (items: Expense[]) => void,
+  fail: (e: Error) => void,
+) =>
+  subscribeQuery(
+    query(col(COLLECTIONS.expenses), where("settledDate", ">=", from)),
+    mapExpense,
+    ok,
+    fail,
+  );
+
 export function subscribeExpenses(onData: (items: Expense[]) => void, onError: (e: Error) => void) {
   return subscribeCollection(
     COLLECTIONS.expenses,

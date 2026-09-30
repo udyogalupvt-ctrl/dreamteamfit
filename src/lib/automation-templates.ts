@@ -14,6 +14,8 @@ export const DEFAULT_AUTOMATION_SETTINGS: AutomationSettings = {
   renewalTemplate: DEFAULT_RENEWAL_TEMPLATE,
   birthdayTemplate: DEFAULT_BIRTHDAY_TEMPLATE,
   timezone: "Asia/Kolkata",
+  pushEnabled: true,
+  pushInsteadOfWhatsApp: false,
 };
 export function renderTemplate(template: string, values: Record<string, string>) {
   return template.replace(/{{\s*(\w+)\s*}}/g, (_, key: string) => values[key] ?? "");

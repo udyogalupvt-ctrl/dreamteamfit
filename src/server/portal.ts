@@ -2,6 +2,7 @@
  * Member app and trainer app (see src/constants/portal.ts).
  *
  *   GET  /api/portal/hello?kind=member|trainer&code=…  no login: first name + gym for the sign-in page
+ *   GET  /api/portal/manifest/m|t/<code>               no login: that link's installable app
  *   GET  /api/portal/me                                 member / trainer login: what their app shows
  *   GET  /api/portal/trainer-member?clientId=…          trainer: one of their PT members
  *   POST /api/portal/trainer-assign                     trainer: give a PT member a personal plan
@@ -84,18 +85,19 @@ async function log(entry: {
 
 const staffName = (u: DecodedIdToken) => s(u["name"]) || s(u.email) || "Staff";
 
-/** The member / trainer behind a request, from their app login's claims. */
-async function portalUser(request: Request) {
+/** The member / trainer behind a request, from their app login's claims (code: their link). */
+export async function portalUser(request: Request) {
   const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return null;
   const user = await adminAuth()
     .verifyIdToken(token)
     .catch(() => null);
   if (!user) return null;
+  const code = s(user.email).split("@")[0]!.slice(2);
   if (user["portal"] === "member" && s(user["clientId"]))
-    return { kind: "member" as const, id: s(user["clientId"]) };
+    return { kind: "member" as const, id: s(user["clientId"]), code };
   if (user["portal"] === "trainer" && s(user["trainerId"]))
-    return { kind: "trainer" as const, id: s(user["trainerId"]) };
+    return { kind: "trainer" as const, id: s(user["trainerId"]), code };
   return null;
 }
 
@@ -846,9 +848,55 @@ async function hello(url: URL) {
   });
 }
 
+/**
+ * Each member's / trainer's own installable app ("Install app" in their link): the icon on the
+ * phone opens straight on their link. Same for everyone except the link, so no database read, and
+ * Vercel's CDN keeps it (no function run after the first time).
+ */
+function appManifest(kind: "m" | "t", code: string) {
+  if (!isPortalCode(code)) return json({ error: "Not found" }, 404);
+  const path = `/${kind}/${code}`;
+  const member = kind === "m";
+  const icon = (src: string, size: string, purpose: string) => ({
+    src,
+    sizes: size,
+    type: "image/png",
+    purpose,
+  });
+  const manifest = {
+    id: path,
+    name: member ? "REBUILD FITNESS" : "REBUILD FITNESS Trainer",
+    short_name: member ? "Rebuild Fitness" : "RF Trainer",
+    description: member
+      ? "Your membership, visits, workout, payments and reminders."
+      : "Your PT members, their plans and chat.",
+    start_url: path,
+    scope: path,
+    display: "standalone",
+    orientation: "portrait",
+    background_color: "#121110",
+    theme_color: "#121110",
+    icons: [
+      icon("/icons/icon-192.png", "192x192", "any"),
+      icon("/icons/icon-512.png", "512x512", "any"),
+      icon("/icons/maskable-192.png", "192x192", "maskable"),
+      icon("/icons/maskable-512.png", "512x512", "maskable"),
+    ],
+  };
+  return new Response(JSON.stringify(manifest), {
+    headers: {
+      "Content-Type": "application/manifest+json",
+      "Cache-Control": "public, max-age=86400, s-maxage=2592000",
+    },
+  });
+}
+
 export async function handlePortal(request: Request, url: URL): Promise<Response> {
   const action = url.pathname.replace(/^\/api\/portal\/?/, "").replace(/\/+$/, "");
   if (request.method === "GET" && action === "hello") return hello(url);
+  const manifest = /^manifest\/(m|t)\/([^/]+)$/.exec(action);
+  if (request.method === "GET" && manifest)
+    return appManifest(manifest[1] as "m" | "t", manifest[2]!);
   if (request.method === "POST" && (action === "member-access" || action === "trainer-access")) {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     return action === "member-access" ? memberAccess(request, body) : trainerAccess(request, body);

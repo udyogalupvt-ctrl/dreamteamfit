@@ -1,12 +1,16 @@
 import {
   addDoc,
   doc,
+  documentId,
+  getAggregateFromServer,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
   runTransaction,
   serverTimestamp,
   setDoc,
+  sum,
   updateDoc,
   where,
   type DocumentData,
@@ -103,6 +107,50 @@ export const subscribePayouts = (ok: (x: TrainerPayout[]) => void, fail: (e: Err
     fail,
     orderBy("createdAt", "desc"),
   );
+/** Payments dated `from` (YYYY-MM-DD) or later, newest first: only the period a screen shows. */
+export const subscribePaymentsSince = (
+  from: string,
+  ok: (x: Payment[]) => void,
+  fail: (e: Error) => void,
+) =>
+  subscribeQuery(
+    query(col(COLLECTIONS.payments), where("paymentDate", ">=", from)),
+    mapPayment,
+    (x) => ok(x.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())),
+    fail,
+  );
+export const subscribeManualIncomeSince = (
+  from: string,
+  ok: (x: ManualIncome[]) => void,
+  fail: (e: Error) => void,
+) =>
+  subscribeQuery(
+    query(col(COLLECTIONS.manualIncome), where("date", ">=", from)),
+    mapManualIncome,
+    ok,
+    fail,
+  );
+
+/**
+ * All money ever collected (same as buildFinanceSummary's gross with no dates), added up by the
+ * database: about 1 read per 1,000 records instead of reading every payment and bill. Old bills
+ * imported without payment records count their paid amount.
+ */
+export async function allTimeCollected() {
+  const [payments, bills, tracked] = await Promise.all([
+    getAggregateFromServer(col(COLLECTIONS.payments), { total: sum("amount") }),
+    getAggregateFromServer(col(COLLECTIONS.invoices), { paid: sum("amountPaid") }),
+    getAggregateFromServer(query(col(COLLECTIONS.invoices), where("paymentsTracked", "==", true)), {
+      paid: sum("amountPaid"),
+    }),
+  ]);
+  return round(
+    Number(payments.data().total ?? 0) +
+      Number(bills.data().paid ?? 0) -
+      Number(tracked.data().paid ?? 0),
+  );
+}
+
 export const subscribeManualIncome = (ok: (x: ManualIncome[]) => void, fail: (e: Error) => void) =>
   subscribeCollection(
     COLLECTIONS.manualIncome,
@@ -272,24 +320,47 @@ export function buildFinanceSummary(
 
 // ------------------------------------------------------------------ daily cash book
 
+const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+const mapCashDay = (d: { id: string; data: () => DocumentData }): CashDay => ({
+  date: d.id,
+  handover: Number(d.data()["handover"] ?? 0),
+  handoverTo: String(d.data()["handoverTo"] ?? ""),
+  note: String(d.data()["note"] ?? ""),
+  openingOverride: num(d.data()["openingOverride"]),
+  carriedOpening: num(d.data()["carriedOpening"]),
+});
+
 export const subscribeCashDays = (ok: (x: CashDay[]) => void, fail: (e: Error) => void) =>
+  onSnapshot(col(COLLECTIONS.cashDays), (s) => ok(s.docs.map(mapCashDay)), fail);
+
+/** Cash days from `from` (YYYY-MM-DD) on; all of them when `from` is "". */
+export const subscribeCashDaysSince = (
+  from: string,
+  ok: (x: CashDay[]) => void,
+  fail: (e: Error) => void,
+) =>
   onSnapshot(
-    col(COLLECTIONS.cashDays),
-    (s) =>
-      ok(
-        s.docs.map((d) => ({
-          date: d.id,
-          handover: Number(d.data()["handover"] ?? 0),
-          handoverTo: String(d.data()["handoverTo"] ?? ""),
-          note: String(d.data()["note"] ?? ""),
-          openingOverride:
-            d.data()["openingOverride"] === null || d.data()["openingOverride"] === undefined
-              ? null
-              : Number(d.data()["openingOverride"]),
-        })),
-      ),
+    from
+      ? query(col(COLLECTIONS.cashDays), where(documentId(), ">=", from))
+      : col(COLLECTIONS.cashDays),
+    (s) => ok(s.docs.map(mapCashDay)),
     fail,
   );
+
+/** Days with a saved carry-forward (about one a month), oldest first. */
+export async function cashCheckpoints() {
+  const snap = await getDocs(query(col(COLLECTIONS.cashDays), where("carriedOpening", ">", -1e12)));
+  return snap.docs.map((d) => d.id).sort();
+}
+
+/** Saves a day's worked-out opening cash as a carry-forward point (never over a typed opening). */
+export async function saveCashCheckpoint(date: string, opening: number) {
+  await setDoc(
+    doc(db, COLLECTIONS.cashDays, date),
+    { carriedOpening: round(opening), updatedAt: serverTimestamp() },
+    { merge: true },
+  );
+}
 
 /** Saves the hand-entered part of a day: handover to the owner, and/or opening cash. */
 export async function saveCashDay(day: CashDay, by: string) {

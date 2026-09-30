@@ -263,6 +263,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Phones that get member-app / trainer-app notifications, and the gym's push keys: server only.
+    match /pushSubscriptions/{id} {
+      allow read, write: if false;
+    }
+    match /serverSecrets/{id} {
+      allow read, write: if false;
+    }
+
     // Deny everything else by default.
     match /{document=**} {
       allow read, write: if false;

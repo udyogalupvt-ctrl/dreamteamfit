@@ -1,6 +1,7 @@
 import {
   doc,
   getDoc,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -87,6 +88,29 @@ export const mapPublicInvoice = (token: string, d: DocumentData): PublicInvoice 
   upgradeCredit: Number(d["upgradeCredit"] ?? 0),
   updatedAt: toDate(d["updatedAt"]),
 });
+/** The newest bills (dashboard feed). */
+export const subscribeRecentInvoices = (ok: (v: Invoice[]) => void, fail: (e: Error) => void) =>
+  subscribeCollection(
+    COLLECTIONS.invoices,
+    mapInvoice,
+    ok,
+    fail,
+    orderBy("createdAt", "desc"),
+    limit(8),
+  );
+/** Bills dated `from` (YYYY-MM-DD) or later. */
+export const subscribeInvoicesSince = (
+  from: string,
+  ok: (v: Invoice[]) => void,
+  fail: (e: Error) => void,
+) =>
+  subscribeQuery(
+    query(col(COLLECTIONS.invoices), where("invoiceDate", ">=", from)),
+    mapInvoice,
+    ok,
+    fail,
+  );
+
 export function subscribeInvoices(ok: (v: Invoice[]) => void, fail: (e: Error) => void) {
   return subscribeCollection(
     COLLECTIONS.invoices,

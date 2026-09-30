@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Dumbbell,
   Home,
+  Hourglass,
   MapPin,
   MessageCircle,
   Phone,
@@ -17,6 +18,7 @@ import {
 import { toast } from "sonner";
 import { ClientAvatar } from "@/components/clients/client-avatar";
 import { StatusPill } from "@/components/common/status-pill";
+import { AppSetupCard, NotificationToggle } from "@/components/portal/app-setup";
 import { ChatPanel, isUnread, mapThread } from "@/components/portal/chat-panel";
 import {
   CheckRow,
@@ -38,7 +40,8 @@ import {
   usePortalData,
   type NavItem,
 } from "@/components/portal/portal-shell";
-import { VisitsCalendar } from "@/components/portal/visits-calendar";
+import { VisitsCalendar, clock12, sessionOf } from "@/components/portal/visits-calendar";
+import { FormDialog } from "@/components/common/form-dialog";
 import { Button } from "@/components/ui/button";
 import {
   indiaToday,
@@ -178,7 +181,105 @@ function MemberApp() {
         ) : null}
       </main>
       <BottomNav items={items} value={current} onChange={go} />
+      <RenewalPopup data={data} />
     </div>
+  );
+}
+
+/** wa.me link to the gym's number with the message typed in (free: opens the member's WhatsApp). */
+function whatsappLink(phone: string, message: string) {
+  let digits = phone.replace(/\D/g, "");
+  if (digits.length === 10) digits = `91${digits}`;
+  return digits.length >= 11 ? `https://wa.me/${digits}?text=${encodeURIComponent(message)}` : "";
+}
+const renewText = (d: MemberPortalData) =>
+  `Hi, I would like to renew my package. ${d.member.name}${d.member.memberId ? `, Member ID ${d.member.memberId}` : ""}.`;
+
+/**
+ * From 7 days before the package ends (and after it ended, until renewed): a popup when the app
+ * opens, once a day, with Renew on WhatsApp / Call the gym. Not shown when a renewal is queued.
+ */
+function RenewalPopup({ data }: { data: MemberPortalData }) {
+  const { current, today, member, gym } = data;
+  const renewed = data.memberships.some(
+    (m) => m.status === "pending" || m.status === "biometric_pending",
+  );
+  const ended = current
+    ? undefined
+    : data.memberships
+        .filter((m) => m.status === "expired" || m.status === "completed")
+        .sort((a, b) => b.endDate.localeCompare(a.endDate))[0];
+  const left = current ? Math.max(0, daysBetween(today, current.endDate)) : 0;
+  const due = !renewed && ((current && left <= 7) || (!current && !!ended));
+  const key = `rf-renew-popup-${member.id}`;
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!due) return;
+    let seen = "";
+    try {
+      seen = localStorage.getItem(key) ?? "";
+    } catch {
+      /* storage blocked: shown every time */
+    }
+    if (seen !== today) setOpen(true);
+  }, [due, key, today]);
+  if (!due) return null;
+  const close = () => {
+    try {
+      localStorage.setItem(key, today);
+    } catch {
+      /* storage blocked */
+    }
+    setOpen(false);
+  };
+  const plan = (current ?? ended)!;
+  const wa = whatsappLink(gym.phone, renewText(data));
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={(v) => (v ? setOpen(true) : close())}
+      title={
+        current
+          ? left === 0
+            ? "Your package ends today"
+            : `Your package ends in ${left} day${left === 1 ? "" : "s"}`
+          : "Your package has ended"
+      }
+      description={
+        current
+          ? `${plan.packageName} ends on ${day(plan.endDate)}. Renew now to keep training without a break.`
+          : `${plan.packageName} ended on ${day(plan.endDate)}. Renew to start training again.`
+      }
+      footer={
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+          {wa ? (
+            <Button asChild className="bg-[#25D366] text-white hover:bg-[#1ebe5b]">
+              <a href={wa} target="_blank" rel="noreferrer" onClick={close}>
+                <MessageCircle aria-hidden /> Renew on WhatsApp
+              </a>
+            </Button>
+          ) : null}
+          {gym.phone ? (
+            <Button asChild variant="outline">
+              <a href={`tel:${gym.phone.replace(/\s/g, "")}`} onClick={close}>
+                <Phone aria-hidden /> Call the gym
+              </a>
+            </Button>
+          ) : null}
+          <Button variant="ghost" onClick={close}>
+            Later
+          </Button>
+        </div>
+      }
+    >
+      <div className="flex items-center gap-3 rounded-xl bg-warning/15 p-3">
+        <Hourglass className="size-6 shrink-0 text-warning" aria-hidden />
+        <p className="text-sm">
+          Renew at the front desk, or message the gym on WhatsApp and they will get it ready for
+          you.
+        </p>
+      </div>
+    </FormDialog>
   );
 }
 
@@ -221,13 +322,30 @@ function HomeTab({ data, go }: { data: MemberPortalData; go: (t: Tab) => void })
   const wItems = w ? dayItems(w, wDay) : [];
   const wDone = todayLog && todayLog.workoutDay === wDay ? todayLog.workoutDone.length : 0;
 
+  const lastDay = data.visits[0];
+  const lastTime = lastDay ? data.visitTimes[lastDay] : "";
+  const LastIcon = lastTime ? sessionOf(lastTime).Icon : CalendarCheck;
+  const renewUrl = whatsappLink(data.gym.phone, renewText(data));
   return (
     <>
+      <AppSetupCard kind="member" />
       <section className="surface-card flex items-center gap-4 p-4">
         <ClientAvatar name={member.name} url={member.photoUrl || null} size={64} />
         <div className="min-w-0 flex-1">
           <p className="text-card-title truncate">{member.name}</p>
           <p className="text-meta">Member ID {member.memberId || "—"}</p>
+          {lastDay ? (
+            <p className="text-meta mt-0.5 flex items-center gap-1">
+              <LastIcon className="size-3.5 shrink-0" aria-hidden />
+              Last visit:{" "}
+              {lastDay === today
+                ? "Today"
+                : lastDay === shiftDate(today, -1)
+                  ? "Yesterday"
+                  : day(lastDay)}
+              {lastTime ? `, ${clock12(lastTime)}` : ""}
+            </p>
+          ) : null}
           <div className="mt-1.5">
             {current ? (
               <StatusPill tone="success">Active member</StatusPill>
@@ -241,7 +359,7 @@ function HomeTab({ data, go }: { data: MemberPortalData; go: (t: Tab) => void })
       </section>
 
       {current ? (
-        <CurrentPlan m={current} today={today} />
+        <CurrentPlan m={current} today={today} renewUrl={renewUrl} />
       ) : (
         <section className="surface-card border-warning/50 bg-warning/10 p-4">
           <p className="font-bold">
@@ -255,6 +373,13 @@ function HomeTab({ data, go }: { data: MemberPortalData; go: (t: Tab) => void })
             <p className="mt-1 text-sm text-muted-foreground">
               Visit the front desk to renew and keep training.
             </p>
+          ) : null}
+          {!upcoming && renewUrl ? (
+            <Button asChild size="sm" variant="outline" className="mt-3">
+              <a href={renewUrl} target="_blank" rel="noreferrer">
+                <MessageCircle aria-hidden /> Renew on WhatsApp
+              </a>
+            </Button>
           ) : null}
         </section>
       )}
@@ -370,12 +495,21 @@ function HomeTab({ data, go }: { data: MemberPortalData; go: (t: Tab) => void })
             </a>
           </Button>
         ) : null}
+        <NotificationToggle kind="member" className="border-t border-border pt-3" />
       </section>
     </>
   );
 }
 
-function CurrentPlan({ m, today }: { m: PortalMembership; today: string }) {
+function CurrentPlan({
+  m,
+  today,
+  renewUrl,
+}: {
+  m: PortalMembership;
+  today: string;
+  renewUrl: string;
+}) {
   const total = Math.max(1, daysBetween(m.startDate, m.endDate));
   const left = Math.max(0, daysBetween(today, m.endDate));
   const pct = Math.min(100, Math.max(0, Math.round(((total - left) / total) * 100)));
@@ -402,9 +536,18 @@ function CurrentPlan({ m, today }: { m: PortalMembership; today: string }) {
         />
       </div>
       {left <= 7 ? (
-        <p className="mt-2 text-sm font-semibold text-warning-foreground dark:text-warning">
-          Ending soon. Renew at the front desk to keep going.
-        </p>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-warning-foreground dark:text-warning">
+            Ending soon. Renew at the front desk to keep going.
+          </p>
+          {renewUrl ? (
+            <Button asChild size="sm" variant="outline">
+              <a href={renewUrl} target="_blank" rel="noreferrer">
+                <MessageCircle aria-hidden /> Renew on WhatsApp
+              </a>
+            </Button>
+          ) : null}
+        </div>
       ) : null}
       {m.pausedDays ? <p className="text-meta mt-2">Includes {m.pausedDays} paused days.</p> : null}
     </section>
@@ -632,12 +775,49 @@ function VisitsTab({ data }: { data: MemberPortalData }) {
           </div>
         ))}
       </div>
+      <UsualTime
+        times={visits
+          .slice(0, 30)
+          .map((v) => data.visitTimes[v] ?? "")
+          .filter(Boolean)}
+      />
       <VisitsCalendar visits={visits} today={today} times={data.visitTimes} />
       <p className="text-meta text-center">
         {visits[0] ? `Last visit: ${day(visits[0])}` : "No visits recorded yet."} Visits are counted
         from the fingerprint machine.
       </p>
     </>
+  );
+}
+
+const hhmmOf = (m: number) =>
+  `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+/** "You usually come in the morning, around 6:15 AM" from the last 30 arrival times. */
+function UsualTime({ times }: { times: string[] }) {
+  if (times.length < 3) return null;
+  const counts = new Map<string, number>();
+  for (const t of times) counts.set(sessionOf(t).label, (counts.get(sessionOf(t).label) ?? 0) + 1);
+  const [label, count] = [...counts].sort((a, b) => b[1] - a[1])[0]!;
+  // The middle arrival time of that part of the day.
+  const mins = times
+    .filter((t) => sessionOf(t).label === label)
+    .map((t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5)))
+    .sort((a, b) => a - b);
+  const usual = hhmmOf(mins[Math.floor(mins.length / 2)]!);
+  const { Icon } = sessionOf(usual);
+  return (
+    <section className="surface-card flex items-center gap-3 p-4">
+      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+        <Icon className="size-5" aria-hidden />
+      </span>
+      <p className="min-w-0 text-sm">
+        You usually come in the <b>{label.toLowerCase()}</b>, around <b>{clock12(usual)}</b>.
+        <span className="text-meta block">
+          {count} of your last {times.length} visits.
+        </span>
+      </p>
+    </section>
   );
 }
 

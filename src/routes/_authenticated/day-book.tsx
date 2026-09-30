@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { endOfWeek, format, startOfMonth, startOfWeek, subDays } from "date-fns";
+import { endOfWeek, format, startOfMonth, startOfWeek, subDays, subMonths } from "date-fns";
 import { Download, HandCoins, Plus, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import { z } from "zod";
@@ -31,8 +31,13 @@ import {
 import { useLive } from "@/hooks/use-live-query";
 import { buildCashBook, type CashBookRow, type CashDay } from "@/lib/cash-book";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
-import { subscribeExpenses } from "@/services/expenses.service";
-import { subscribeCashDays, subscribePayments } from "@/services/finance.service";
+import { subscribeExpensesSince, subscribeExpensesSettledSince } from "@/services/expenses.service";
+import {
+  cashCheckpoints,
+  saveCashCheckpoint,
+  subscribeCashDaysSince,
+  subscribePaymentsSince,
+} from "@/services/finance.service";
 import { subscribeStaff } from "@/services/staff.service";
 import type { Expense, Payment, Staff } from "@/types/models";
 
@@ -50,14 +55,19 @@ type Period = "today" | "yesterday" | "week" | "month" | "custom";
  */
 function DayBookPage() {
   const { add } = Route.useSearch();
-  const payments = useLive<Payment[]>(subscribePayments, [], []);
-  const expenses = useLive<Expense[]>(subscribeExpenses, [], []);
-  const days = useLive<CashDay[]>(subscribeCashDays, [], []);
   const staff = useLive<Staff[]>(subscribeStaff, [], []);
   const today = todayISO();
   const [period, setPeriod] = useState<Period>("today");
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
+  // Carry-forward points (about one a month): the cash book starts from the latest one before the
+  // period shown, so only the records since then are read, not every payment / expense ever.
+  const [checkpoints, setCheckpoints] = useState<string[] | null>(null);
+  useEffect(() => {
+    void cashCheckpoints()
+      .then(setCheckpoints)
+      .catch(() => setCheckpoints([]));
+  }, []);
   const [adding, setAdding] = useState(add === "expense");
   const [settling, setSettling] = useState<Expense | null>(null);
   const [handover, setHandover] = useState<CashBookRow | null>(null);
@@ -72,6 +82,40 @@ function DayBookPage() {
     if (period === "custom") return [from, to];
     return [today, today];
   }, [period, from, to, today]);
+  // "" = from the very first record (no carry-forward yet, or a period older than all of them).
+  const base =
+    checkpoints === null ? null : ([...checkpoints].reverse().find((d) => d <= start) ?? "");
+  const on = base !== null;
+  const payments = useLive<Payment[]>(
+    on ? (ok, fail) => subscribePaymentsSince(base, ok, fail) : null,
+    [],
+    [base],
+  );
+  const expensesByDate = useLive<Expense[]>(
+    on ? (ok, fail) => subscribeExpensesSince(base, ok, fail) : null,
+    [],
+    [base],
+  );
+  // Paid from someone's pocket earlier and paid back in cash since: that cash left the drawer then.
+  const expensesSettled = useLive<Expense[]>(
+    on && base ? (ok, fail) => subscribeExpensesSettledSince(base, ok, fail) : null,
+    [],
+    [base],
+  );
+  const expenses = useMemo(() => {
+    const byId = new Map<string, Expense>();
+    for (const e of [...expensesByDate.data, ...expensesSettled.data]) byId.set(e.id, e);
+    return {
+      data: [...byId.values()],
+      loading: !on || expensesByDate.loading || expensesSettled.loading,
+      error: expensesByDate.error ?? expensesSettled.error,
+    };
+  }, [on, expensesByDate, expensesSettled]);
+  const days = useLive<CashDay[]>(
+    on ? (ok, fail) => subscribeCashDaysSince(base, ok, fail) : null,
+    [],
+    [base],
+  );
 
   const paid = payments.data
     .filter((p) => p.paymentDate >= start && p.paymentDate <= end)
@@ -86,6 +130,19 @@ function DayBookPage() {
   );
   const cashRows = book.filter((r) => r.date >= start && r.date <= end).reverse();
   const cashNow = book[book.length - 1]?.closing ?? 0;
+  // Once a month, save the 1st of last month's opening as a carry-forward point.
+  const ready = on && !payments.loading && !expenses.loading && !days.loading;
+  useEffect(() => {
+    if (!ready || !checkpoints) return;
+    const point = format(subMonths(startOfMonth(new Date()), 1), "yyyy-MM-dd");
+    if (checkpoints.includes(point) || (base ?? "") >= point) return;
+    const row = book.find((r) => r.date === point);
+    const typed = days.data.find((d) => d.date === point)?.openingOverride;
+    if (!row || (typed !== null && typed !== undefined)) return;
+    void saveCashCheckpoint(point, row.opening)
+      .then(() => setCheckpoints((c) => [...(c ?? []), point].sort()))
+      .catch(() => undefined);
+  }, [ready, checkpoints, base, book, days.data]);
   const byMethod = paid.reduce<Record<string, number>>(
     (m, p) => ({ ...m, [p.method]: (m[p.method] ?? 0) + p.amount }),
     {},
@@ -173,7 +230,7 @@ function DayBookPage() {
     w.print();
   };
 
-  const loading = payments.loading || expenses.loading || days.loading;
+  const loading = !on || payments.loading || expenses.loading || days.loading;
   const error = payments.error ?? expenses.error ?? days.error;
 
   return (

@@ -498,10 +498,24 @@ function ReminderSettings() {
   return (
     <FormSection
       title="Automatic reminders"
-      description="Checked every morning (India time)."
+      description="Checked every morning (India time). Sent on WhatsApp and as app notifications."
       footer={<Button onClick={() => void save()}>Save reminders</Button>}
     >
       <div className="grid gap-4">
+        <ToggleRow
+          label="App notifications"
+          hint="Free notifications on phones from the member app and trainer app: the reminders below, trainer chat messages and announcements. Each member turns them on once in their own app."
+          checked={f.pushEnabled}
+          onChange={(v) => set("pushEnabled", v)}
+        />
+        {f.pushEnabled ? (
+          <ToggleRow
+            label="Save WhatsApp: app first"
+            hint="A reminder that reached the member's phone through the app is not sent again on WhatsApp. Members without app notifications still get it on WhatsApp."
+            checked={f.pushInsteadOfWhatsApp}
+            onChange={(v) => set("pushInsteadOfWhatsApp", v)}
+          />
+        ) : null}
         <ToggleRow
           label="Renewal reminders"
           hint="Message members before their plan ends."

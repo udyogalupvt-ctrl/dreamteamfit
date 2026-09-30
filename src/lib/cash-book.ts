@@ -9,6 +9,11 @@ export interface CashDay {
   note: string;
   /** Only for the first day (or a correction): cash in the drawer at opening. */
   openingOverride: number | null;
+  /**
+   * Saved automatically once a month: the opening cash this day had, worked out from all the
+   * days before. The Day Book starts from here instead of reading every older record.
+   */
+  carriedOpening?: number | null;
 }
 
 export interface CashBookRow {
@@ -61,6 +66,8 @@ export function buildCashBook(
     const day = entered.get(d);
     if (day?.openingOverride !== null && day?.openingOverride !== undefined)
       opening = day.openingOverride;
+    else if (day?.carriedOpening !== null && day?.carriedOpening !== undefined)
+      opening = day.carriedOpening;
     const received = inByDay.get(d) ?? 0;
     const expensesToday = outByDay.get(d) ?? 0;
     const balance = opening + received - expensesToday;

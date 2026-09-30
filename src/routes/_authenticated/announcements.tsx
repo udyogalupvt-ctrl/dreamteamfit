@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Check, Loader2, Megaphone, Send } from "lucide-react";
 import { toast } from "sonner";
+import { callServer } from "@/lib/server-api";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
@@ -146,6 +147,12 @@ function AnnouncementsPage() {
       setMessage("");
       setTyped("");
       setGroups([]);
+      // Free: also a notification in the member app, for members who turned them on.
+      const clientIds = recipients.map((r) => r.clientId).filter(Boolean);
+      if (clientIds.length)
+        void callServer("/api/push/members", { clientIds, title: gym, body: text }).catch(
+          () => undefined,
+        );
       await run({ id, message: text, recipients });
     } catch (e) {
       setRunning(null);

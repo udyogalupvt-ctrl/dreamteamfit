@@ -92,44 +92,53 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  head: () => ({
-    meta: [
-      { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      // Installable app ("Install app" on phones and computers).
-      { name: "theme-color", content: "#121110" },
-      { name: "mobile-web-app-capable", content: "yes" },
-      { name: "apple-mobile-web-app-capable", content: "yes" },
-      { name: "apple-mobile-web-app-title", content: "Rebuild Fitness" },
-      { name: "apple-mobile-web-app-status-bar-style", content: "black" },
-      { title: "REBUILD FITNESS — Gym Management" },
-      {
-        name: "description",
-        content: "REBUILD FITNESS staff workspace for members, memberships and gym operations.",
-      },
-      { property: "og:title", content: "REBUILD FITNESS — Gym Management" },
-      {
-        property: "og:description",
-        content: "REBUILD FITNESS staff workspace for members, memberships and gym operations.",
-      },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-    ],
-    links: [
-      { rel: "stylesheet", href: appCss },
-      { rel: "preconnect", href: "https://fonts.googleapis.com" },
-      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      {
-        rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
-      },
-      { rel: "manifest", href: "/manifest.webmanifest" },
-      { rel: "icon", href: "/favicon-32.png", type: "image/png", sizes: "32x32" },
-      { rel: "icon", href: "/favicon-48.png", type: "image/png", sizes: "48x48" },
-      { rel: "icon", href: "/icons/icon-192.png", type: "image/png", sizes: "192x192" },
-      { rel: "apple-touch-icon", href: "/apple-touch-icon.png", sizes: "180x180" },
-    ],
-  }),
+  head: ({ matches }) => {
+    // A member's / trainer's link installs as their own app (opens on their link, not /dashboard).
+    const portal = matches.find((m) => ["/m/$code", "/t/$code"].includes(String(m.routeId)));
+    const code = (portal?.params as { code?: string } | undefined)?.code ?? "";
+    const manifest =
+      portal && code
+        ? `/api/portal/manifest/${String(portal.routeId)[1]}/${code}`
+        : "/manifest.webmanifest";
+    return {
+      meta: [
+        { charSet: "utf-8" },
+        { name: "viewport", content: "width=device-width, initial-scale=1" },
+        // Installable app ("Install app" on phones and computers).
+        { name: "theme-color", content: "#121110" },
+        { name: "mobile-web-app-capable", content: "yes" },
+        { name: "apple-mobile-web-app-capable", content: "yes" },
+        { name: "apple-mobile-web-app-title", content: "Rebuild Fitness" },
+        { name: "apple-mobile-web-app-status-bar-style", content: "black" },
+        { title: "REBUILD FITNESS — Gym Management" },
+        {
+          name: "description",
+          content: "REBUILD FITNESS staff workspace for members, memberships and gym operations.",
+        },
+        { property: "og:title", content: "REBUILD FITNESS — Gym Management" },
+        {
+          property: "og:description",
+          content: "REBUILD FITNESS staff workspace for members, memberships and gym operations.",
+        },
+        { property: "og:type", content: "website" },
+        { name: "twitter:card", content: "summary_large_image" },
+      ],
+      links: [
+        { rel: "stylesheet", href: appCss },
+        { rel: "preconnect", href: "https://fonts.googleapis.com" },
+        { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+        {
+          rel: "stylesheet",
+          href: "https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
+        },
+        { rel: "manifest", href: manifest },
+        { rel: "icon", href: "/favicon-32.png", type: "image/png", sizes: "32x32" },
+        { rel: "icon", href: "/favicon-48.png", type: "image/png", sizes: "48x48" },
+        { rel: "icon", href: "/icons/icon-192.png", type: "image/png", sizes: "192x192" },
+        { rel: "apple-touch-icon", href: "/apple-touch-icon.png", sizes: "180x180" },
+      ],
+    };
+  },
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,

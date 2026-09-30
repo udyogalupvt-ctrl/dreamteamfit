@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { plansForLists, type PlanRow } from "@/lib/member-plans";
 import { addDays, format, formatDistanceToNow, startOfMonth } from "date-fns";
 import {
@@ -29,8 +29,12 @@ import { subscribeDietAssignments } from "@/services/diet-assignments.service";
 import { subscribeBookings } from "@/services/bookings.service";
 import { subscribeGroupClasses } from "@/services/group-classes.service";
 import { subscribeClassEnrollments } from "@/services/class-enrollments.service";
-import { subscribeExpenseActivities, subscribeExpenses } from "@/services/expenses.service";
-import { subscribeInvoices } from "@/services/invoices.service";
+import { subscribeExpenseActivities, subscribeExpensesSince } from "@/services/expenses.service";
+import {
+  subscribeInvoicesSince,
+  subscribeDueInvoices,
+  subscribeRecentInvoices,
+} from "@/services/invoices.service";
 import type { ActivityItem, StatMetric } from "@/types";
 import type {
   AttendanceEvent,
@@ -54,8 +58,9 @@ import { subscribeAutomationActivities } from "@/services/notifications.service"
 import { attendanceSummary } from "@/lib/attendance-utils";
 import {
   buildFinanceSummary,
-  subscribeManualIncome,
-  subscribePayments,
+  subscribeManualIncomeSince,
+  subscribePaymentsSince,
+  allTimeCollected,
 } from "@/services/finance.service";
 import type { ManualIncome, Payment } from "@/types/models";
 
@@ -74,13 +79,36 @@ export function useDashboardMetrics() {
   const bookings = useLive<Booking[]>(subscribeBookings, [], []);
   const classes = useLive<GroupClass[]>(subscribeGroupClasses, [], []);
   const enrollments = useLive<ClassEnrollment[]>(subscribeClassEnrollments, [], []);
-  const expenses = useLive<Expense[]>(finance ? subscribeExpenses : null, [], [finance]);
+  // Money: only this month's records, the open bills and the newest bills are loaded (not every
+  // bill / payment ever, which grows each month); the all-time total is added up by the database.
+  const monthFrom = format(startOfMonth(new Date()), "yyyy-MM-dd");
+  const expenses = useLive<Expense[]>(
+    finance ? (ok, fail) => subscribeExpensesSince(monthFrom, ok, fail) : null,
+    [],
+    [finance, monthFrom],
+  );
   const expenseActivities = useLive<ExpenseActivity[]>(
     finance ? subscribeExpenseActivities : null,
     [],
     [finance],
   );
-  const invoices = useLive<Invoice[]>(subscribeInvoices, [], []);
+  const invoices = useLive<Invoice[]>(subscribeRecentInvoices, [], []);
+  const openInvoices = useLive<Invoice[]>(subscribeDueInvoices, [], []);
+  const monthInvoices = useLive<Invoice[]>(
+    (ok, fail) => subscribeInvoicesSince(monthFrom, ok, fail),
+    [],
+    [monthFrom],
+  );
+  const [allTime, setAllTime] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    void allTimeCollected()
+      .then((v) => live && setAllTime(v))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
   // Only today's visits are shown here.
   const today = todayISO();
   const attendance = useLive<AttendanceEvent[]>(
@@ -90,11 +118,15 @@ export function useDashboardMetrics() {
   );
   const followUps = useLive<FollowUp[]>(subscribeFollowUps, [], []);
   const automationActivities = useLive<AutomationActivity[]>(subscribeAutomationActivities, [], []);
-  const payments = useLive<Payment[]>(subscribePayments, [], []);
-  const manualIncome = useLive<ManualIncome[]>(
-    finance ? subscribeManualIncome : null,
+  const payments = useLive<Payment[]>(
+    (ok, fail) => subscribePaymentsSince(monthFrom, ok, fail),
     [],
-    [finance],
+    [monthFrom],
+  );
+  const manualIncome = useLive<ManualIncome[]>(
+    finance ? (ok, fail) => subscribeManualIncomeSince(monthFrom, ok, fail) : null,
+    [],
+    [finance, monthFrom],
   );
 
   const loading =
@@ -110,6 +142,8 @@ export function useDashboardMetrics() {
     expenses.loading ||
     expenseActivities.loading ||
     invoices.loading ||
+    openInvoices.loading ||
+    monthInvoices.loading ||
     attendance.loading ||
     followUps.loading ||
     automationActivities.loading;
@@ -127,6 +161,8 @@ export function useDashboardMetrics() {
     expenses.error ??
     expenseActivities.error ??
     invoices.error ??
+    openInvoices.error ??
+    monthInvoices.error ??
     attendance.error ??
     followUps.error ??
     automationActivities.error;
@@ -144,15 +180,9 @@ export function useDashboardMetrics() {
       .reduce((sum, item) => sum + item.amount, 0);
     // Money comes from payment records (by payment date), so a balance paid today counts today.
     const expenseRows = expenses.data.map((e) => ({ amount: e.amount, date: e.date }));
-    const allTime = buildFinanceSummary(
-      payments.data,
-      invoices.data,
-      manualIncome.data,
-      expenseRows,
-    );
     const todayMoney = buildFinanceSummary(
       payments.data,
-      invoices.data,
+      monthInvoices.data,
       manualIncome.data,
       expenseRows,
       today,
@@ -160,16 +190,16 @@ export function useDashboardMetrics() {
     );
     const monthMoney = buildFinanceSummary(
       payments.data,
-      invoices.data,
+      monthInvoices.data,
       manualIncome.data,
       expenseRows,
       monthStartISO,
       today,
     );
-    const totalCollected = allTime.gross;
+    const totalCollected = allTime;
     const todayCollected = todayMoney.gross;
     const monthCollected = monthMoney.gross;
-    const outstanding = invoices.data
+    const outstanding = openInvoices.data
       .filter((item) => item.paymentStatus !== "refunded")
       .reduce((sum, item) => sum + item.balanceDue, 0);
     const attendanceToday = attendance.data.filter((item) => item.attendanceDate === today);
@@ -288,7 +318,7 @@ export function useDashboardMetrics() {
       {
         id: "collection",
         label: "Total collected",
-        value: formatPrice(totalCollected),
+        value: totalCollected === null ? "…" : formatPrice(totalCollected),
         hint: "all time",
         icon: BadgeIndianRupee,
         tone: "success",
@@ -527,6 +557,9 @@ export function useDashboardMetrics() {
     expenses.data,
     expenseActivities.data,
     invoices.data,
+    openInvoices.data,
+    monthInvoices.data,
+    allTime,
     attendance.data,
     followUps.data,
     automationActivities.data,

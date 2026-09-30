@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { format, startOfMonth } from "date-fns";
+import { format, startOfMonth, subMonths } from "date-fns";
 import {
   CalendarDays,
   CircleDollarSign,
@@ -36,8 +36,12 @@ import {
   subscribeBusinessSettings,
 } from "@/services/business-settings.service";
 import { subscribeClients } from "@/services/clients.service";
-import { buildFinanceSummary, subscribePayments } from "@/services/finance.service";
-import { subscribeInvoices } from "@/services/invoices.service";
+import { buildFinanceSummary, subscribePaymentsSince } from "@/services/finance.service";
+import {
+  subscribeDueInvoices,
+  subscribeInvoices,
+  subscribeInvoicesSince,
+} from "@/services/invoices.service";
 import { subscribePackages } from "@/services/packages.service";
 import type { Invoice, Payment } from "@/types/models";
 
@@ -56,8 +60,31 @@ type StatusFilter = "all" | "due" | "paid";
 
 function BillingPage() {
   const searchParams = Route.useSearch();
-  const invoices = useLive<Invoice[]>(subscribeInvoices, [], []);
-  const payments = useLive<Payment[]>(subscribePayments, [], []);
+  // Bills of the last 3 months and every bill with money due; the whole history only when asked
+  // (reads grow with every bill ever made). Payments: this month (the cards).
+  const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
+  const since = format(subMonths(startOfMonth(new Date()), 2), "yyyy-MM-dd");
+  const [older, setOlder] = useState(false);
+  const recent = useLive<Invoice[]>(
+    older ? subscribeInvoices : (ok, fail) => subscribeInvoicesSince(since, ok, fail),
+    [],
+    [older, since],
+  );
+  const due = useLive<Invoice[]>(subscribeDueInvoices, [], []);
+  const invoices = useMemo(() => {
+    const byId = new Map<string, Invoice>();
+    for (const i of [...recent.data, ...due.data]) byId.set(i.id, i);
+    return {
+      data: [...byId.values()].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+      loading: recent.loading || due.loading,
+      error: recent.error ?? due.error,
+    };
+  }, [recent, due]);
+  const payments = useLive<Payment[]>(
+    (ok, fail) => subscribePaymentsSince(monthStart, ok, fail),
+    [],
+    [monthStart],
+  );
   const clients = useLive(subscribeClients, [], []);
   const packages = useLive(subscribePackages, [], []);
   const settings = useLive(subscribeBusinessSettings, DEFAULT_BILLING_SETTINGS, []);
@@ -65,6 +92,10 @@ function BillingPage() {
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
+  // A date before the loaded months: load the older bills.
+  useEffect(() => {
+    if (date && date < since) setOlder(true);
+  }, [date, since]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -83,7 +114,6 @@ function BillingPage() {
   }, [invoices.data, search, date, status]);
 
   const today = todayISO();
-  const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
   const collectedToday = buildFinanceSummary(
     payments.data,
     invoices.data,
@@ -202,7 +232,7 @@ function BillingPage() {
 
         {invoices.loading ? (
           <LoadingRows rows={5} />
-        ) : !invoices.data.length ? (
+        ) : !invoices.data.length && older ? (
           <EmptyState
             icon={ReceiptIndianRupee}
             title="No bills yet"
@@ -212,7 +242,18 @@ function BillingPage() {
           <EmptyState
             icon={ReceiptIndianRupee}
             title="No matching bills"
-            description="Try another search or filter."
+            description={
+              older
+                ? "Try another search or filter."
+                : `Searched the bills since ${formatDateISO(since)} and every bill with a balance due.`
+            }
+            action={
+              older ? undefined : (
+                <Button variant="outline" onClick={() => setOlder(true)}>
+                  Search older bills too
+                </Button>
+              )
+            }
           />
         ) : (
           <>
@@ -326,6 +367,14 @@ function BillingPage() {
             </ul>
           </>
         )}
+        {!older && !invoices.loading ? (
+          <p className="text-meta flex flex-wrap items-center gap-2">
+            Showing bills since {formatDateISO(since)} and every bill with a balance due.
+            <Button size="sm" variant="ghost" onClick={() => setOlder(true)}>
+              Show older bills
+            </Button>
+          </p>
+        ) : null}
       </section>
       <CreateBillDialog
         open={open}

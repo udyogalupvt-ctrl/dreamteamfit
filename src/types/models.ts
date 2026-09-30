@@ -640,7 +640,8 @@ export interface FollowUp extends BaseDoc {
   parentFollowUpId: string | null;
 }
 
-export type CommunicationProviderName = "mock" | "whatsapp";
+/** "app": delivered as a member-app notification (no WhatsApp message needed). */
+export type CommunicationProviderName = "mock" | "whatsapp" | "app";
 export type AutomationStatus = "pending" | "queued" | "sent" | "failed" | "cancelled";
 export interface RenewalNotification extends BaseDoc {
   membershipId: string;
@@ -708,6 +709,10 @@ export interface AutomationSettings {
   renewalTemplate: string;
   birthdayTemplate: string;
   timezone: string;
+  /** Free phone notifications in the member app / trainer app (reminders, chat, announcements). */
+  pushEnabled: boolean;
+  /** Reminders go by WhatsApp only to members whose phones didn't get the app notification. */
+  pushInsteadOfWhatsApp: boolean;
 }
 
 export const WHATSAPP_MESSAGE_TYPES = [

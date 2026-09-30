@@ -16,7 +16,7 @@ import { Loader2, MessageCircle, SendHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { indiaToday } from "@/constants/portal";
-import { portalDb } from "@/lib/portal-firebase";
+import { portalCall, portalDb } from "@/lib/portal-firebase";
 import { cn } from "@/lib/utils";
 import type { ChatMessage, ChatThread } from "@/types/models";
 import { day } from "./portal-shell";
@@ -129,6 +129,8 @@ export function ChatPanel({
       });
       await batch.commit();
       setText("");
+      // Tell the other side's phone (member app / trainer app notification). Best effort.
+      void portalCall("/api/push/chat", { clientId }).catch(() => undefined);
     } catch {
       setError("Message not sent. Check your internet and try again.");
     } finally {

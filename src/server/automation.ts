@@ -6,6 +6,7 @@
  */
 import { FieldValue, type DocumentData } from "firebase-admin/firestore";
 import { db, json, localDate } from "./admin";
+import { memberOwner, pushTo, type PushMessage } from "./push";
 import { sendTemplateMessage, whatsappNumber } from "./whatsapp";
 
 type Kind = "renewal" | "birthday" | "absence" | "payment_due";
@@ -24,6 +25,7 @@ type ClientRow = {
   whatsappOptIn?: boolean;
   whatsappPhone?: string;
   thumbSince?: string;
+  lastVisitDate?: string;
 };
 
 const plus = (iso: string, n: number) => {
@@ -42,6 +44,7 @@ const pretty = (iso: string) =>
 const id = (...p: string[]) => p.join("__").replace(/[^a-zA-Z0-9_-]/g, "_");
 const render = (t: string, v: Record<string, string>) =>
   t.replace(/{{\s*(\w+)\s*}}/g, (_, k: string) => v[k] ?? "");
+const first = (name: string) => name.trim().split(/\s+/)[0] || name;
 
 async function settings() {
   const s = await db().doc("settings/automation").get();
@@ -56,6 +59,7 @@ async function settings() {
     paymentDueDaysBefore: 3,
     renewalTemplate: "Hi {{name}}, your membership expires on {{expiryDate}}.",
     birthdayTemplate: "Happy Birthday {{name}}!",
+    pushInsteadOfWhatsApp: false,
     ...s.data(),
   };
 }
@@ -130,8 +134,11 @@ async function queue(
 }
 
 /**
- * Sends a queued reminder on WhatsApp when the Cloud API is on and the member agreed to
- * WhatsApp messages. Without the API the reminder stays in Message History for staff.
+ * Sends a queued reminder: first as a free app notification (member app, when the member turned
+ * notifications on and Settings → Reminders → App notifications is on), then on WhatsApp when the
+ * Cloud API is on and the member agreed to WhatsApp messages. With "Save WhatsApp: app first",
+ * a reminder the app already delivered is not sent on WhatsApp. Without either it stays in
+ * Message History for staff.
  */
 async function deliver(
   kind: Kind,
@@ -139,8 +146,21 @@ async function deliver(
   c: ClientRow,
   bodyParams: string[],
   wa: Awaited<ReturnType<typeof whatsappSettings>>,
+  app: PushMessage,
+  appFirst: boolean,
   buttonUrlParam = "",
 ) {
+  const firestore = db();
+  const reached = await pushTo([memberOwner(c.id)], app);
+  if (reached && (appFirst || !wa.live || !c.whatsappOptIn)) {
+    const now = FieldValue.serverTimestamp();
+    const patch = { status: "sent", provider: "app", sentAt: now, error: "", updatedAt: now };
+    await Promise.all([
+      firestore.doc(`${COLLECTION[kind]}/${key}`).update(patch),
+      firestore.doc(`notifications/${key}`).update(patch),
+    ]);
+    return;
+  }
   if (!wa.live || !c.whatsappOptIn) return;
   const to = whatsappNumber(c.whatsappPhone || c.phone, wa.countryCode);
   const templateName = {
@@ -162,7 +182,6 @@ async function deliver(
   const patch = result.ok
     ? { status: "sent", provider: "whatsapp", sentAt: now, error: "", updatedAt: now }
     : { status: "failed", provider: "whatsapp", error: result.error, updatedAt: now };
-  const firestore = db();
   await Promise.all([
     firestore.doc(`${COLLECTION[kind]}/${key}`).update(patch),
     firestore.doc(`notifications/${key}`).update(patch),
@@ -232,7 +251,20 @@ export async function processRenewalReminders() {
     );
     if (!queued) continue;
     sent += 1;
-    await deliver("renewal", key, c, [c.fullName, wa.gymName, pretty(m.endDate)], wa);
+    await deliver(
+      "renewal",
+      key,
+      c,
+      [c.fullName, wa.gymName, pretty(m.endDate)],
+      wa,
+      {
+        title: `Your package ends on ${pretty(m.endDate)}`,
+        body: `Hi ${first(c.fullName)}, renew at the front desk to keep training without a break.`,
+        path: "?tab=payments",
+        tag: "renewal",
+      },
+      cfg.pushInsteadOfWhatsApp === true,
+    );
   }
   return sent;
 }
@@ -262,7 +294,19 @@ export async function processBirthdayNotifications() {
     );
     if (!queued) continue;
     sent += 1;
-    await deliver("birthday", key, c, [c.fullName, wa.gymName], wa);
+    await deliver(
+      "birthday",
+      key,
+      c,
+      [c.fullName, wa.gymName],
+      wa,
+      {
+        title: `Happy birthday, ${first(c.fullName)}! 🎉`,
+        body: `Wishing you a great year ahead. From all of us at ${wa.gymName}.`,
+        tag: "birthday",
+      },
+      cfg.pushInsteadOfWhatsApp === true,
+    );
   }
   return sent;
 }
@@ -311,6 +355,13 @@ export async function processPaymentDueReminders() {
       c,
       [c.fullName, wa.gymName, amount, String(inv["invoiceNumber"] ?? ""), pretty(dueDate)],
       wa,
+      {
+        title: `₹${amount} due on ${pretty(dueDate)}`,
+        body: `Bill ${String(inv["invoiceNumber"] ?? "")}. Please pay at the front desk.`,
+        path: "?tab=payments",
+        tag: "payment",
+      },
+      cfg.pushInsteadOfWhatsApp === true,
       String(inv["publicToken"] ?? ""),
     );
   }
@@ -348,19 +399,13 @@ export async function processAbsenceNudges() {
   const wa = await whatsappSettings();
   const minDays = Math.max(2, Number(cfg.absenceDays) || 3);
   const today = localDate();
-  const [clients, plans, pts, visits] = await Promise.all([
+  // Each member's last allowed visit is kept on their record (lastVisitDate, set at punch time),
+  // so this never reads the attendance history.
+  const [clients, plans, pts] = await Promise.all([
     db().collection("clients").where("firstThumbRegistered", "==", true).get(),
     db().collection("memberships").where("status", "in", ["active", "pending"]).get(),
     db().collection("ptAssignments").where("status", "==", "active").get(),
-    db().collection("attendance").where("attendanceDate", ">=", plus(today, -180)).get(),
   ]);
-  const lastVisit = new Map<string, string>();
-  visits.docs.forEach((v) => {
-    const d = v.data();
-    if (d["accessDecision"] !== "allowed" || !d["clientId"]) return;
-    const prev = lastVisit.get(d["clientId"]);
-    if (!prev || d["attendanceDate"] > prev) lastVisit.set(d["clientId"], d["attendanceDate"]);
-  });
   const runningStart = new Map<string, string>();
   for (const doc of [...plans.docs, ...pts.docs]) {
     const d = doc.data();
@@ -373,7 +418,7 @@ export async function processAbsenceNudges() {
     const c = { id: doc.id, ...doc.data() } as ClientRow & { biometricStatus?: string };
     const planStart = runningStart.get(c.id);
     if (c.biometricStatus !== "active" || !planStart) continue;
-    const last = lastVisit.get(c.id);
+    const last = c.lastVisitDate || undefined;
     // Never visited on this plan: count from the day the plan started (or, for a thumb linked
     // from the old machine mid-plan, from the day it was linked: earlier visits aren't here).
     const from = c.thumbSince && c.thumbSince > planStart ? c.thumbSince : planStart;
@@ -391,7 +436,19 @@ export async function processAbsenceNudges() {
     );
     if (!queued) continue;
     sent += 1;
-    await deliver("absence", key, c, [c.fullName, wa.gymName, String(gap), quote], wa);
+    await deliver(
+      "absence",
+      key,
+      c,
+      [c.fullName, wa.gymName, String(gap), quote],
+      wa,
+      {
+        title: `We miss you, ${first(c.fullName)}!`,
+        body: `${gap} days since your last workout. "${quote}"`,
+        tag: "absence",
+      },
+      cfg.pushInsteadOfWhatsApp === true,
+    );
   }
   return sent;
 }
