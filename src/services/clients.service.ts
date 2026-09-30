@@ -72,6 +72,7 @@ export const mapClient = (id: string, d: DocumentData): Client => ({
   lastWhatsappMessageAt: d["lastWhatsappMessageAt"] ? toDate(d["lastWhatsappMessageAt"]) : null,
   firstThumbRegistered: Boolean(d["firstThumbRegistered"]),
   thumbSince: d["thumbSince"] ?? "",
+  lastVisitDate: d["lastVisitDate"] ?? "",
   photoUploadToken: d["photoUploadToken"] ?? "",
   enrollmentId: d["enrollmentId"] ?? null,
   deviceAccess:
@@ -259,3 +260,35 @@ export async function ensurePhotoLink(clientId: string) {
   await updateDoc(ref, { photoUploadToken: token, updatedAt: serverTimestamp() });
   return token;
 }
+
+/**
+ * Members whose thumb isn't registered yet (one condition, so no extra database index is
+ * needed); the bell keeps the ones whose joining waits for it.
+ */
+export const subscribeSetupPendingClients = (
+  ok: (items: Client[]) => void,
+  fail: (e: Error) => void,
+) =>
+  subscribeCollection(
+    COLLECTIONS.clients,
+    mapClient,
+    (items) => ok(items.filter((c) => Boolean(c.enrollmentId))),
+    fail,
+    where("firstThumbRegistered", "==", false),
+  );
+
+/** Members whose current plan ends between two dates ("YYYY-MM-DD", both included). */
+export const subscribeClientsEndingBetween = (
+  from: string,
+  to: string,
+  ok: (items: Client[]) => void,
+  fail: (e: Error) => void,
+) =>
+  subscribeCollection(
+    COLLECTIONS.clients,
+    mapClient,
+    ok,
+    fail,
+    where("currentMembership.endDate", ">=", from),
+    where("currentMembership.endDate", "<=", to),
+  );

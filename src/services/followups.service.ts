@@ -191,3 +191,17 @@ export async function syncInquiryFollowUp(inquiryId: string) {
 
 export const followUpDueToday = (x: FollowUp, today = todayISO()) =>
   x.status === "pending" && x.followUpDate <= today;
+
+/** Calls due today or earlier that are still open (open calls are loaded; the date is checked here). */
+export const subscribeDueFollowUps = (
+  today: string,
+  ok: (x: FollowUp[]) => void,
+  fail: (e: Error) => void,
+) =>
+  subscribeCollection(
+    COLLECTIONS.followups,
+    mapFollowUp,
+    (items) => ok(items.filter((f) => f.followUpDate <= today)),
+    fail,
+    where("status", "==", "pending"),
+  );

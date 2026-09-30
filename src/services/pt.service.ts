@@ -155,3 +155,16 @@ export const PT_DURATION_LABELS = {
   custom: "Custom",
 } as const;
 export const DEFAULT_PT_DAYS = { day: 1, monthly: 30, yearly: 365, custom: 30 } as const;
+
+/** PT plans running or waiting to start (not every PT plan ever sold). */
+export const subscribeOpenPtAssignments = (
+  ok: (x: PtAssignment[]) => void,
+  fail: (e: Error) => void,
+) =>
+  subscribeCollection(
+    COLLECTIONS.ptAssignments,
+    mapPtAssignment,
+    ok,
+    fail,
+    where("status", "in", ["active", "pending"]),
+  );

@@ -23,6 +23,7 @@ export const AUDIT_SKIP = new Set([
 ]);
 const NOISE = new Set([
   "updatedAt",
+  "lastVisitDate",
   "createdAt",
   "lastSeenAt",
   "lastIp",

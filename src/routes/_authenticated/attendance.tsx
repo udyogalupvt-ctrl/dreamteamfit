@@ -47,7 +47,7 @@ import {
   currentlyPresent,
 } from "@/lib/attendance-utils";
 import { formatNumber, todayISO } from "@/lib/format";
-import { subscribeAttendance } from "@/services/attendance.service";
+import { subscribeAttendanceDay, subscribeAttendanceRange } from "@/services/attendance.service";
 import {
   deviceConnection,
   machineUserNames,
@@ -76,9 +76,6 @@ export const Route = createFileRoute("/_authenticated/attendance")({
 });
 type Period = "today" | "yesterday" | "week" | "month" | "custom";
 function AttendancePage() {
-  const attendance = useLive<AttendanceEvent[]>(subscribeAttendance, [], []),
-    clients = useLive<Client[]>(subscribeClients, [], []),
-    devices = useLive<BiometricDevice[]>(subscribeDevices, [], []);
   const [manual, setManual] = useState(false),
     [simulate, setSimulate] = useState(false),
     [search, setSearch] = useState(""),
@@ -89,22 +86,7 @@ function AttendancePage() {
     [decision, setDecision] = useState("all"),
     [eventType, setEventType] = useState("all"),
     [source, setSource] = useState("all");
-  // Older punches from people not linked to a member yet were saved as "Unknown member": show
-  // the name the machine has for them (looked up only for the ones on screen, a few reads).
-  const [machineNames, setMachineNames] = useState<Record<string, string>>({});
-  const events = useMemo(
-    () =>
-      attendance.data.map((e) => {
-        if (e.clientId) return e;
-        const name = machineNames[`${e.deviceId}_${e.biometricUserId}`];
-        return name ? { ...e, clientNameSnapshot: `${name} (not linked)` } : e;
-      }),
-    [attendance.data, machineNames],
-  );
   const today = todayISO();
-  const todayEvents = events.filter((e) => e.attendanceDate === today);
-  const summary = attendanceSummary(todayEvents),
-    present = currentlyPresent(todayEvents);
   const range = useMemo<[string, string]>(() => {
     const now = new Date();
     if (period === "yesterday") {
@@ -120,12 +102,49 @@ function AttendancePage() {
     if (period === "custom") return [from, to];
     return [today, today];
   }, [period, from, to, today]);
+  // Only what is on screen: today's visits live, other dates only once they are picked, and the
+  // member list only when a dialog needs it (the free plan allows 50,000 reads a day).
+  const todayOnly = range[0] === today && range[1] === today;
+  const todayLive = useLive<AttendanceEvent[]>(
+    (ok, fail) => subscribeAttendanceDay(today, ok, fail),
+    [],
+    [today],
+  );
+  const rangeLive = useLive<AttendanceEvent[]>(
+    todayOnly ? null : (ok, fail) => subscribeAttendanceRange(range[0], range[1], ok, fail),
+    [],
+    [todayOnly, range[0], range[1]],
+  );
+  const attendance = todayOnly ? todayLive : rangeLive;
+  const clients = useLive<Client[]>(
+      manual || simulate ? subscribeClients : null,
+      [],
+      [manual || simulate],
+    ),
+    devices = useLive<BiometricDevice[]>(subscribeDevices, [], []);
+  // Older punches from people not linked to a member yet were saved as "Unknown member": show
+  // the name the machine has for them (looked up only for the ones on screen, a few reads).
+  const [machineNames, setMachineNames] = useState<Record<string, string>>({});
+  const named = useMemo(
+    () => (list: AttendanceEvent[]) =>
+      list.map((e) => {
+        if (e.clientId) return e;
+        const name = machineNames[`${e.deviceId}_${e.biometricUserId}`];
+        return name ? { ...e, clientNameSnapshot: `${name} (not linked)` } : e;
+      }),
+    [machineNames],
+  );
+  const todayEvents = useMemo(() => named(todayLive.data), [named, todayLive.data]);
+  const events = useMemo(
+    () => (todayOnly ? todayEvents : named(rangeLive.data)),
+    [todayOnly, todayEvents, named, rangeLive.data],
+  );
+  const summary = attendanceSummary(todayEvents),
+    present = currentlyPresent(todayEvents);
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     return events.filter(
       (e) =>
-        e.attendanceDate >= range[0] &&
-        e.attendanceDate <= range[1] &&
         (device === "all" || e.deviceId === device) &&
         (decision === "all" || e.accessDecision === decision) &&
         (eventType === "all" || e.eventType === eventType) &&
@@ -134,19 +153,17 @@ function AttendancePage() {
           e.clientNameSnapshot.toLowerCase().includes(q) ||
           e.biometricUserId.toLowerCase().includes(q)),
     );
-  }, [events, range, device, decision, eventType, source, search]);
+  }, [events, device, decision, eventType, source, search]);
   useEffect(() => {
     const keys = [
       ...new Set(
-        attendance.data
+        [...todayLive.data, ...(todayOnly ? [] : rangeLive.data)]
           .filter(
             (e) =>
               !e.clientId &&
               e.deviceId &&
               e.biometricUserId &&
-              e.clientNameSnapshot === "Unknown member" &&
-              (e.attendanceDate === today ||
-                (e.attendanceDate >= range[0] && e.attendanceDate <= range[1])),
+              e.clientNameSnapshot === "Unknown member",
           )
           .map((e) => `${e.deviceId}_${e.biometricUserId}`),
       ),
@@ -161,7 +178,7 @@ function AttendancePage() {
     return () => {
       live = false;
     };
-  }, [attendance.data, range, today, machineNames]);
+  }, [todayLive.data, rangeLive.data, todayOnly, machineNames]);
   // Same test as the Fingerprint Devices page: a cloud machine is online while it keeps checking
   // in. Manual / test devices never make the page say "offline".
   const machines = devices.data.filter(
@@ -263,7 +280,7 @@ function AttendancePage() {
           <TabsTrigger value="busy">Busy hours</TabsTrigger>
         </TabsList>
         <TabsContent value="busy">
-          <BusyHours events={events} />
+          <BusyHours />
         </TabsContent>
         <TabsContent value="today">
           <EventList events={todayEvents} loading={attendance.loading} title="Today's Attendance" />
@@ -509,8 +526,16 @@ function EventList({
  * Members coming in per hour over the last 30 days (allowed check-ins), so the owner can plan
  * trainer shifts, cleaning and offers for quiet hours.
  */
-function BusyHours({ events }: { events: AttendanceEvent[] }) {
-  const since = Date.now() - 30 * 86_400_000;
+function BusyHours() {
+  // Loaded only while this tab is open: 14 days of visits (about 14 × daily visits in reads).
+  const from = format(addDays(new Date(), -13), "yyyy-MM-dd");
+  const recent = useLive<AttendanceEvent[]>(
+    (ok, fail) => subscribeAttendanceRange(from, todayISO(), ok, fail),
+    [],
+    [from],
+  );
+  const events = recent.data;
+  const since = Date.now() - 14 * 86_400_000;
   const counts = new Array<number>(24).fill(0);
   for (const e of events)
     if (
@@ -535,7 +560,7 @@ function BusyHours({ events }: { events: AttendanceEvent[] }) {
   return (
     <section className="surface-card space-y-4 p-4 sm:p-5">
       <div>
-        <h2 className="text-section-title">Busiest hours · last 30 days</h2>
+        <h2 className="text-section-title">Busiest hours · last 14 days</h2>
         <p className="text-meta">
           {total} visits. Busiest at {label(peak.h)} ({peak.n} visits). Plan trainers and cleaning
           around it.

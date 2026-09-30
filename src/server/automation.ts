@@ -425,6 +425,9 @@ export async function rollPlans() {
   const now = FieldValue.serverTimestamp();
   for (const [clientId, plans] of byClient) {
     let current: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+    // Only members whose plan changed today are written (not every member every morning).
+    let changedHere = false;
+    let endedHere = false;
     for (const d of plans) {
       const m = d.data();
       const start = String(m["startDate"] ?? "");
@@ -436,11 +439,18 @@ export async function rollPlans() {
         batch.update(d.ref, { status: next, updatedAt: now });
         ops += 1;
         changed += 1;
+        changedHere = true;
+        if (next === "expired") endedHere = true;
       }
     }
-    if (!clientId) continue;
+    if (!clientId || !changedHere) continue;
     const ref = firestore.doc(`clients/${clientId}`);
     const cm = current?.data();
+    if (!current && endedHere) {
+      // Plan ended with nothing after it: the member's plan summary says so.
+      batch.set(ref, { currentMembership: { status: "expired" }, updatedAt: now }, { merge: true });
+      ops += 1;
+    }
     if (current && cm) {
       batch.set(
         ref,

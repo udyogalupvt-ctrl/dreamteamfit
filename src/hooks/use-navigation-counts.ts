@@ -1,25 +1,22 @@
 import { useMemo } from "react";
 import { useLive } from "@/hooks/use-live-query";
 import { todayISO } from "@/lib/format";
-import { subscribeInquiries } from "@/services/inquiries.service";
-import { subscribeFollowUps } from "@/services/followups.service";
+import { subscribeOpenInquiries } from "@/services/inquiries.service";
+import { subscribeDueFollowUps } from "@/services/followups.service";
 import type { FollowUp, Inquiry } from "@/types/models";
 
-/** Live sidebar counters derived only from actionable inquiry records. */
+/** Live sidebar counters: only open leads and calls due are loaded, not every lead ever. */
 export function useNavigationCounts() {
-  const inquiries = useLive<Inquiry[]>(subscribeInquiries, [], []);
-  const followUps = useLive<FollowUp[]>(subscribeFollowUps, [], []);
+  const today = todayISO();
+  const inquiries = useLive<Inquiry[]>(subscribeOpenInquiries, [], []);
+  const followUps = useLive<FollowUp[]>(
+    (ok, fail) => subscribeDueFollowUps(today, ok, fail),
+    [],
+    [today],
+  );
 
-  return useMemo(() => {
-    const actionable = inquiries.data.filter(
-      (inquiry) => inquiry.status !== "converted" && inquiry.status !== "lost",
-    );
-    const today = todayISO();
-    return {
-      inquiries: actionable.length,
-      followUps: followUps.data.filter(
-        (item) => item.status === "pending" && item.followUpDate <= today,
-      ).length,
-    };
-  }, [inquiries.data, followUps.data]);
+  return useMemo(
+    () => ({ inquiries: inquiries.data.length, followUps: followUps.data.length }),
+    [inquiries.data, followUps.data],
+  );
 }

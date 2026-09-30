@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { format, addDays } from "date-fns";
 import { useLive } from "@/hooks/use-live-query";
 import { effectiveMembershipStatus, todayISO } from "@/lib/format";
@@ -34,7 +34,7 @@ import type {
   Membership,
   WorkoutAssignment,
 } from "@/types/models";
-import { subscribeAttendance } from "@/services/attendance.service";
+import { attendanceCounts, subscribeAttendanceRange } from "@/services/attendance.service";
 import { subscribeFollowUps } from "@/services/followups.service";
 import { subscribeNotifications } from "@/services/notifications.service";
 import { EXPENSE_CATEGORIES, INQUIRY_STATUSES } from "@/types/models";
@@ -51,15 +51,33 @@ export function useReportsData(period: ReportPeriod, custom?: ReportDateRange) {
     diets = useLive<DietAssignment[]>(subscribeDietAssignments, [], []),
     expenses = useLive<Expense[]>(finance ? subscribeExpenses : null, [], [finance]),
     invoices = useLive<Invoice[]>(subscribeInvoices, [], []),
-    // Reports look further back than the other screens.
-    attendance = useLive<AttendanceEvent[]>(
-      (ok, fail) => subscribeAttendance(ok, fail, 400),
-      [],
-      [],
-    ),
     followups = useLive<FollowUp[]>(subscribeFollowUps, [], []),
     notifications = useLive<Notification[]>(subscribeNotifications, [], []);
   const range = getReportDateRange(period, custom);
+  // Visits of the chosen period only. Up to a month they are loaded; a longer period (a year is
+  // ~90,000 visits) uses counts, which cost about one read per 1,000 visits.
+  const days = Math.round((Date.parse(range.end) - Date.parse(range.start)) / 86_400_000) + 1;
+  const small = days <= 31;
+  const attendance = useLive<AttendanceEvent[]>(
+    small ? (ok, fail) => subscribeAttendanceRange(range.start, range.end, ok, fail) : null,
+    [],
+    [small, range.start, range.end],
+  );
+  const [bigVisits, setBigVisits] = useState<{
+    visits: number;
+    unique: number;
+    blocked: number | null;
+  } | null>(null);
+  useEffect(() => {
+    if (small) return;
+    let live = true;
+    void attendanceCounts(range.start, range.end)
+      .then((c) => live && setBigVisits(c))
+      .catch(() => live && setBigVisits(null));
+    return () => {
+      live = false;
+    };
+  }, [small, range.start, range.end]);
   const result = useMemo(() => {
     const inRange = (v: string) => isDateInRange(v, range);
     const expenseRows = expenses.data.filter((e) => inRange(e.date));
@@ -105,16 +123,22 @@ export function useReportsData(period: ReportPeriod, custom?: ReportDateRange) {
       rangedDiets = diets.data.filter((d) => inRange(d.assignedDate));
     const rangedInvoices = invoices.data.filter((i) => inRange(i.invoiceDate));
     const rangedAttendance = attendance.data.filter((a) => inRange(a.attendanceDate));
-    const attendanceVisits = rangedAttendance.filter(
-        (a) => a.eventType === "check_in" && a.accessDecision === "allowed",
-      ).length,
-      attendanceUnique = new Set(
-        rangedAttendance
-          .filter((a) => a.accessDecision === "allowed")
-          .map((a) => a.clientId)
-          .filter(Boolean),
-      ).size,
-      attendanceBlocked = rangedAttendance.filter((a) => a.accessDecision === "blocked").length;
+    const attendanceVisits = small
+        ? rangedAttendance.filter(
+            (a) => a.eventType === "check_in" && a.accessDecision === "allowed",
+          ).length
+        : (bigVisits?.visits ?? 0),
+      attendanceUnique = small
+        ? new Set(
+            rangedAttendance
+              .filter((a) => a.accessDecision === "allowed")
+              .map((a) => a.clientId)
+              .filter(Boolean),
+          ).size
+        : (bigVisits?.unique ?? 0),
+      attendanceBlocked = small
+        ? rangedAttendance.filter((a) => a.accessDecision === "blocked").length
+        : (bigVisits?.blocked ?? null);
     const grossSales = rangedInvoices.reduce((n, i) => n + i.total, 0),
       collected = rangedInvoices.reduce((n, i) => n + i.amountPaid, 0),
       outstanding = rangedInvoices
@@ -216,7 +240,11 @@ export function useReportsData(period: ReportPeriod, custom?: ReportDateRange) {
         metrics: [
           { id: "visits", label: "Visits", value: String(attendanceVisits) },
           { id: "unique", label: "Unique Members", value: String(attendanceUnique) },
-          { id: "blocked", label: "Blocked Attempts", value: String(attendanceBlocked) },
+          {
+            id: "blocked",
+            label: "Blocked Attempts",
+            value: attendanceBlocked === null ? "—" : String(attendanceBlocked),
+          },
         ],
         rows: rangedAttendance.map((a) => ({
           date: a.attendanceDate,

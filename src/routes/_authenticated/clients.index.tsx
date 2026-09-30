@@ -22,10 +22,10 @@ import {
 } from "@/components/ui/table";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDate, formatDateISO, normalizePhone } from "@/lib/format";
-import { daysLeftLabel, planByClient, type PlanSummary } from "@/lib/member-plans";
+import { daysLeftLabel, planByClient, plansForLists, type PlanSummary } from "@/lib/member-plans";
 import { memberIdLabel, subscribeClients } from "@/services/clients.service";
-import { subscribeMemberships } from "@/services/memberships.service";
-import { subscribePtAssignments } from "@/services/pt.service";
+import { subscribeQueuedPlans } from "@/services/memberships.service";
+import { subscribeOpenPtAssignments } from "@/services/pt.service";
 import { isSetupPending } from "@/services/enrollment.service";
 import type { Client, Membership, PtAssignment } from "@/types/models";
 
@@ -109,11 +109,12 @@ function ExpiryCell({ plan }: { plan: PlanSummary | undefined }) {
 function ClientsPage() {
   const navigate = useNavigate();
   const { data, loading, error } = useLive<Client[]>(subscribeClients, [], []);
-  const memberships = useLive<Membership[]>(subscribeMemberships, [], []);
-  const pts = useLive<PtAssignment[]>(subscribePtAssignments, [], []);
+  // Each member's current plan (on the member) + plans waiting to start: not every plan ever.
+  const queued = useLive<Membership[]>(subscribeQueuedPlans, [], []);
+  const pts = useLive<PtAssignment[]>(subscribeOpenPtAssignments, [], []);
   const plans = useMemo(
-    () => planByClient(memberships.data, pts.data),
-    [memberships.data, pts.data],
+    () => planByClient(plansForLists(data, queued.data), pts.data),
+    [data, queued.data, pts.data],
   );
   const stateOf = (c: Client) => memberState(c, plans.get(c.id));
   const [search, setSearch] = useState("");

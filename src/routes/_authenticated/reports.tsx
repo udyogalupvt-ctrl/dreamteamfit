@@ -231,12 +231,13 @@ function ReportsPage() {
         <ReportSection
           icon={CalendarCheck}
           title="Attendance"
-          empty={report.attendance.visits + report.attendance.blocked === 0}
+          empty={report.attendance.visits + (report.attendance.blocked ?? 0) === 0}
           emptyText="No attendance data in this period"
           metrics={[
             ["Allowed Visits", report.attendance.visits],
             ["Unique Members", report.attendance.unique],
-            ["Blocked Attempts", report.attendance.blocked],
+            // Longer than a month: counted, not loaded, so blocked attempts aren't split out.
+            ["Blocked Attempts", report.attendance.blocked ?? "—"],
           ]}
         />
         <section className="surface-card p-5">

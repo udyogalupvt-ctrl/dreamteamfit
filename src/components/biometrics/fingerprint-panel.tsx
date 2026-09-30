@@ -102,8 +102,9 @@ export function FingerprintPanel({
   }, [usable, deviceId]);
   useEffect(() => {
     if (pin || !client.data) return;
-    // Wait for the machine to be picked: its own user list decides which numbers are free.
-    if (usable.length && !deviceId) return;
+    // Wait for the machines to load and one to be picked: its own user list decides which
+    // numbers are free (otherwise a number the old software used could be suggested).
+    if (devices.loading || (usable.length && !deviceId)) return;
     if (client.data.biometricUserId) {
       setPin(client.data.biometricUserId);
       return;
@@ -112,7 +113,7 @@ export function FingerprintPanel({
     // usually deal with one number.
     const preferred = /^\d+$/.test(client.data.clientCode) ? client.data.clientCode : "";
     void freeMachineId(deviceId, preferred, client.data.id).then((v) => setPin((p) => p || v));
-  }, [client.data, pin, deviceId, usable.length]);
+  }, [client.data, pin, deviceId, usable.length, devices.loading]);
 
   const registered = Boolean(client.data?.firstThumbRegistered);
   useEffect(() => {

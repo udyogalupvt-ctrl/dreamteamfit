@@ -1,5 +1,36 @@
 import { effectiveMembershipStatus, formatDateISO, todayISO } from "@/lib/format";
-import type { Membership, PtAssignment } from "@/types/models";
+import type { Client, Membership, PtAssignment } from "@/types/models";
+
+/** What the lists need from a plan. */
+export type PlanRow = Pick<
+  Membership,
+  "clientId" | "packageNameSnapshot" | "startDate" | "endDate" | "status"
+>;
+
+/**
+ * The plans lists work from: each member's current (or last) plan, which the member carries, plus
+ * plans paid for and waiting to start. No need to load every plan ever sold (the free plan
+ * allows 50,000 reads a day, and a gym sells thousands of plans a year).
+ */
+export function plansForLists(
+  clients: Pick<Client, "id" | "currentMembership">[],
+  queued: PlanRow[],
+): PlanRow[] {
+  const rows: PlanRow[] = [...queued];
+  const queuedIds = new Set(queued.map((q) => ("id" in q ? String(q.id) : "")));
+  for (const c of clients) {
+    const m = c.currentMembership;
+    if (!m || (m.membershipId && queuedIds.has(m.membershipId))) continue;
+    rows.push({
+      clientId: c.id,
+      packageNameSnapshot: m.packageName,
+      startDate: m.startDate,
+      endDate: m.endDate,
+      status: m.status,
+    });
+  }
+  return rows;
+}
 
 /** The one plan a member is on (or last had), for lists: name, dates and a plain status. */
 export interface PlanSummary {
@@ -59,7 +90,7 @@ function summarize(r: Row, today: string): PlanSummary {
  * Current (or latest) plan per member from the memberships themselves, so a member waiting for
  * the first thumb still shows the plan and its end date. PT-only members show their PT plan.
  */
-export function planByClient(memberships: Membership[], pts: PtAssignment[], today = todayISO()) {
+export function planByClient(memberships: PlanRow[], pts: PtAssignment[], today = todayISO()) {
   const gym = new Map<string, Row[]>();
   const pt = new Map<string, Row[]>();
   for (const m of memberships)

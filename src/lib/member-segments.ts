@@ -1,4 +1,4 @@
-import { daysBetween, planByClient, type PlanSummary } from "@/lib/member-plans";
+import { daysBetween, planByClient, type PlanRow, type PlanSummary } from "@/lib/member-plans";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import type { AttendanceEvent, Client, Invoice, Membership, PtAssignment } from "@/types/models";
 
@@ -58,7 +58,7 @@ export interface SegmentOptions {
 /** Sorts every member into the call lists. A member can be in more than one (e.g. inactive + payment due). */
 export function buildSegments(
   clients: Client[],
-  memberships: Membership[],
+  memberships: PlanRow[],
   pts: PtAssignment[],
   attendance: AttendanceEvent[],
   invoices: Invoice[],
@@ -89,13 +89,15 @@ export function buildSegments(
     const first = c.fullName.split(" ")[0] || c.fullName;
     const running = plan && (plan.status === "active" || plan.status === "upcoming");
     if (running && plan) {
-      const last = lastVisit.get(c.id);
+      // The member's own last visit date (kept on the member) or any visit passed in.
+      const seen = lastVisit.get(c.id);
+      const last = c.lastVisitDate && (!seen || c.lastVisitDate > seen) ? c.lastVisitDate : seen;
       // Linked from the old machine mid-plan: only visits since then were recorded here.
       const from = c.thumbSince > plan.startDate ? c.thumbSince : plan.startDate;
       const since = last && last >= from ? last : from;
       const gap = daysBetween(since, today);
       // Visits can only be judged once the member can punch in (thumb) or has a recorded visit.
-      const tracked = c.firstThumbRegistered || lastVisit.has(c.id);
+      const tracked = c.firstThumbRegistered || Boolean(last);
       if (plan.status === "active" && tracked && gap >= o.absentDays)
         add({
           client: c,

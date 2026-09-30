@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { todayISO } from "@/lib/format";
 import { useNavigate } from "@tanstack/react-router";
 import {
   CalendarCheck,
@@ -34,7 +35,7 @@ import { subscribeGroupClasses } from "@/services/group-classes.service";
 import { subscribeExpenses } from "@/services/expenses.service";
 import { useAccess } from "@/hooks/use-access";
 import { subscribeInvoices } from "@/services/invoices.service";
-import { subscribeAttendance } from "@/services/attendance.service";
+import { subscribeAttendanceDay } from "@/services/attendance.service";
 import { subscribeDevices } from "@/services/biometric-devices.service";
 import { subscribeFollowUps } from "@/services/followups.service";
 import type {
@@ -76,7 +77,11 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
     [armed, finance],
   );
   const invoices = useLive<Invoice[]>(armed ? subscribeInvoices : null, [], [armed]);
-  const attendance = useLive<AttendanceEvent[]>(armed ? subscribeAttendance : null, [], [armed]);
+  const attendance = useLive<AttendanceEvent[]>(
+    armed ? (ok, fail) => subscribeAttendanceDay(todayISO(), ok, fail) : null,
+    [],
+    [armed],
+  );
   const devices = useLive<BiometricDevice[]>(armed ? subscribeDevices : null, [], [armed]);
   const followUps = useLive<FollowUp[]>(armed ? subscribeFollowUps : null, [], [armed]);
   const q = query.trim().toLowerCase();

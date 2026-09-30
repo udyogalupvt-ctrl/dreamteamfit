@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { plansForLists, type PlanRow } from "@/lib/member-plans";
 import { addDays, format, formatDistanceToNow, startOfMonth } from "date-fns";
 import {
   BadgeIndianRupee,
@@ -22,7 +23,7 @@ import { useLive } from "@/hooks/use-live-query";
 import { effectiveMembershipStatus, formatNumber, formatPrice, todayISO } from "@/lib/format";
 import { subscribeClients } from "@/services/clients.service";
 import { subscribeInquiries } from "@/services/inquiries.service";
-import { subscribeMemberships } from "@/services/memberships.service";
+import { subscribeQueuedPlans, subscribeRecentMemberships } from "@/services/memberships.service";
 import { subscribeWorkoutAssignments } from "@/services/workout-assignments.service";
 import { subscribeDietAssignments } from "@/services/diet-assignments.service";
 import { subscribeBookings } from "@/services/bookings.service";
@@ -47,7 +48,7 @@ import type {
   Membership,
   WorkoutAssignment,
 } from "@/types/models";
-import { subscribeAttendance } from "@/services/attendance.service";
+import { subscribeAttendanceDay } from "@/services/attendance.service";
 import { subscribeFollowUps } from "@/services/followups.service";
 import { subscribeAutomationActivities } from "@/services/notifications.service";
 import { attendanceSummary } from "@/lib/attendance-utils";
@@ -63,7 +64,10 @@ export function useDashboardMetrics() {
   // Staff without the finance feature never load expenses (Firestore rules would refuse).
   const finance = useAccess().can("finance");
   const clients = useLive<Client[]>(subscribeClients, [], []);
-  const memberships = useLive<Membership[]>(subscribeMemberships, [], []);
+  // Counts come from each member's current plan + plans waiting to start; the feed shows the
+  // 8 newest plans. Not every plan ever sold.
+  const queued = useLive<Membership[]>(subscribeQueuedPlans, [], []);
+  const recentPlans = useLive<Membership[]>(subscribeRecentMemberships, [], []);
   const inquiries = useLive<Inquiry[]>(subscribeInquiries, [], []);
   const workouts = useLive<WorkoutAssignment[]>(subscribeWorkoutAssignments, [], []);
   const diets = useLive<DietAssignment[]>(subscribeDietAssignments, [], []);
@@ -77,7 +81,13 @@ export function useDashboardMetrics() {
     [finance],
   );
   const invoices = useLive<Invoice[]>(subscribeInvoices, [], []);
-  const attendance = useLive<AttendanceEvent[]>(subscribeAttendance, [], []);
+  // Only today's visits are shown here.
+  const today = todayISO();
+  const attendance = useLive<AttendanceEvent[]>(
+    (ok, fail) => subscribeAttendanceDay(today, ok, fail),
+    [],
+    [today],
+  );
   const followUps = useLive<FollowUp[]>(subscribeFollowUps, [], []);
   const automationActivities = useLive<AutomationActivity[]>(subscribeAutomationActivities, [], []);
   const payments = useLive<Payment[]>(subscribePayments, [], []);
@@ -90,7 +100,7 @@ export function useDashboardMetrics() {
   const loading =
     payments.loading ||
     clients.loading ||
-    memberships.loading ||
+    queued.loading ||
     inquiries.loading ||
     workouts.loading ||
     diets.loading ||
@@ -107,7 +117,7 @@ export function useDashboardMetrics() {
     payments.error ??
     manualIncome.error ??
     clients.error ??
-    memberships.error ??
+    queued.error ??
     inquiries.error ??
     workouts.error ??
     diets.error ??
@@ -165,8 +175,8 @@ export function useDashboardMetrics() {
     const attendanceToday = attendance.data.filter((item) => item.attendanceDate === today);
     const attendanceTotals = attendanceSummary(attendanceToday);
 
-    const byClient = new Map<string, Membership[]>();
-    memberships.data.forEach((m) => {
+    const byClient = new Map<string, PlanRow[]>();
+    plansForLists(clients.data, queued.data).forEach((m) => {
       const list = byClient.get(m.clientId) ?? [];
       list.push(m);
       byClient.set(m.clientId, list);
@@ -407,7 +417,7 @@ export function useDashboardMetrics() {
         tone: "warning" as const,
         icon: UserPlus,
       })),
-      ...memberships.data.slice(0, 8).map((m) => ({
+      ...recentPlans.data.slice(0, 8).map((m) => ({
         id: `m-${m.id}`,
         title: `${clientName.get(m.clientId) ?? "Client"} started ${m.packageNameSnapshot}`,
         description: `Ends ${m.endDate}`,
@@ -506,7 +516,8 @@ export function useDashboardMetrics() {
     payments.data,
     manualIncome.data,
     clients.data,
-    memberships.data,
+    queued.data,
+    recentPlans.data,
     inquiries.data,
     workouts.data,
     diets.data,

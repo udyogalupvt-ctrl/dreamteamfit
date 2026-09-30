@@ -1,50 +1,51 @@
 import { useMemo } from "react";
 import { useLive } from "@/hooks/use-live-query";
 import { addDaysISO, todayISO } from "@/lib/format";
-import { subscribeClients } from "@/services/clients.service";
-import { isSetupPending } from "@/services/enrollment.service";
-import { subscribeFollowUps } from "@/services/followups.service";
-import { subscribeInvoices } from "@/services/invoices.service";
-import { subscribeMemberships } from "@/services/memberships.service";
+import {
+  subscribeClientsEndingBetween,
+  subscribeSetupPendingClients,
+} from "@/services/clients.service";
+import { subscribeDueFollowUps } from "@/services/followups.service";
+import { subscribeDueInvoices } from "@/services/invoices.service";
+import { subscribeQueuedPlans } from "@/services/memberships.service";
 import type { Client, FollowUp, Invoice, Membership } from "@/types/models";
 
-/** The few things the front desk must act on today. Live, from Firestore. */
+/**
+ * The few things the front desk must act on today. Live, from Firestore — and only the records
+ * that count (this runs on every page: the free plan allows 50,000 reads a day).
+ */
 export function useAttention() {
-  const clients = useLive<Client[]>(subscribeClients, [], []);
-  const followUps = useLive<FollowUp[]>(subscribeFollowUps, [], []);
-  const invoices = useLive<Invoice[]>(subscribeInvoices, [], []);
-  const memberships = useLive<Membership[]>(subscribeMemberships, [], []);
+  const today = todayISO();
+  const in7 = addDaysISO(today, 7);
+  const pendingThumb = useLive<Client[]>(subscribeSetupPendingClients, [], []);
+  const ending = useLive<Client[]>(
+    (ok, fail) => subscribeClientsEndingBetween(today, in7, ok, fail),
+    [],
+    [today, in7],
+  );
+  const queued = useLive<Membership[]>(subscribeQueuedPlans, [], []);
+  const followUps = useLive<FollowUp[]>(
+    (ok, fail) => subscribeDueFollowUps(today, ok, fail),
+    [],
+    [today],
+  );
+  const invoices = useLive<Invoice[]>(subscribeDueInvoices, [], []);
 
   return useMemo(() => {
-    const today = todayISO();
-    const in7 = addDaysISO(today, 7);
-    const thumbPending = clients.data.filter(isSetupPending).length;
-    const callsDue = followUps.data.filter(
-      (f) => f.status === "pending" && f.followUpDate <= today,
-    ).length;
+    const thumbPending = pendingThumb.data.length;
+    const callsDue = followUps.data.length;
     const dueBills = invoices.data.filter(
       (i) => i.paymentStatus !== "refunded" && i.balanceDue > 0,
     );
     // Members who already renewed (a later plan is paid for) need no call.
     const renewed = (clientId: string, end: string) =>
-      memberships.data.some(
-        (x) =>
-          x.clientId === clientId &&
-          !["cancelled", "expired"].includes(x.status) &&
-          x.endDate > end,
-      );
-    const expiringSoon = clients.data.filter((c) => {
+      queued.data.some((x) => x.clientId === clientId && x.endDate > end);
+    const expiringSoon = ending.data.filter((c) => {
       const m = c.currentMembership;
-      return (
-        m &&
-        m.status === "active" &&
-        m.endDate >= today &&
-        m.endDate <= in7 &&
-        !renewed(c.id, m.endDate)
-      );
+      return m && m.status === "active" && !renewed(c.id, m.endDate);
     }).length;
     return {
-      loading: clients.loading || followUps.loading || invoices.loading,
+      loading: pendingThumb.loading || followUps.loading || invoices.loading,
       thumbPending,
       callsDue,
       balanceDueCount: dueBills.length,
@@ -53,12 +54,13 @@ export function useAttention() {
       total: thumbPending + callsDue + dueBills.length + expiringSoon,
     };
   }, [
-    clients.data,
-    clients.loading,
+    pendingThumb.data,
+    pendingThumb.loading,
+    ending.data,
+    queued.data,
     followUps.data,
     followUps.loading,
     invoices.data,
     invoices.loading,
-    memberships.data,
   ]);
 }

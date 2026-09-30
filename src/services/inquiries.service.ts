@@ -1,4 +1,5 @@
 import {
+  where,
   writeBatch,
   doc,
   onSnapshot,
@@ -122,3 +123,16 @@ export async function updateInquiry(id: string, input: Partial<InquiryInput>) {
     await syncInquiryFollowUp(id);
   }
 }
+
+/** Leads still being worked on (not converted, not lost). */
+export const subscribeOpenInquiries = (
+  onData: (items: Inquiry[]) => void,
+  onError: (e: Error) => void,
+) =>
+  subscribeCollection(
+    COLLECTIONS.inquiries,
+    mapInquiry,
+    onData,
+    onError,
+    where("status", "not-in", ["converted", "lost"]),
+  );

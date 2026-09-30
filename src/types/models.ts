@@ -108,6 +108,8 @@ export interface Client extends BaseDoc {
   firstThumbRegistered: boolean;
   /** Day an existing machine fingerprint was linked (visits are only counted from then). */
   thumbSince: string;
+  /** Last allowed visit ("YYYY-MM-DD"), kept up to date when the member punches in. */
+  lastVisitDate: string;
   enrollmentId: string | null;
   /** Door lock state kept by the cloud: "removed" = taken off the device (plan ended / blocked). */
   deviceAccess: "on" | "removed" | null;

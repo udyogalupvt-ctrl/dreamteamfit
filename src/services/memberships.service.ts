@@ -1,4 +1,5 @@
 import {
+  limit,
   doc,
   getDocs,
   orderBy,
@@ -190,3 +191,28 @@ export async function undoLastPause(m: Membership, isCurrent: boolean) {
   await batch.commit();
   return last.previousEnd;
 }
+
+/** Plans paid for but not started yet (renewals and upgrades waiting for their date). */
+export const subscribeQueuedPlans = (ok: (items: Membership[]) => void, fail: (e: Error) => void) =>
+  subscribeCollection(
+    COLLECTIONS.memberships,
+    mapMembership,
+    ok,
+    fail,
+    where("status", "in", ["pending", "biometric_pending"]),
+  );
+
+/** The newest plans sold (the dashboard feed shows 8). */
+export const subscribeRecentMemberships = (
+  ok: (items: Membership[]) => void,
+  fail: (e: Error) => void,
+  n = 8,
+) =>
+  subscribeCollection(
+    COLLECTIONS.memberships,
+    mapMembership,
+    ok,
+    fail,
+    orderBy("createdAt", "desc"),
+    limit(n),
+  );

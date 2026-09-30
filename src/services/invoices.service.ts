@@ -275,3 +275,7 @@ export async function createInvoice(
   // No file is uploaded: the bill page builds the PDF when the member taps Download.
   return mapInvoice(invoiceRef.id, snap.data() ?? {});
 }
+
+/** Bills with money still due (a short list, not every bill ever). */
+export const subscribeDueInvoices = (ok: (v: Invoice[]) => void, fail: (e: Error) => void) =>
+  subscribeCollection(COLLECTIONS.invoices, mapInvoice, ok, fail, where("balanceDue", ">", 0));

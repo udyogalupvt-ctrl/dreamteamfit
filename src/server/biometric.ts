@@ -335,6 +335,40 @@ async function commandResults(device: Device, body: string) {
     if (!cmd) continue;
     const d = cmd.data();
     const ok = code === 0;
+    // Older push firmware takes ENROLL_FP, newer takes ENROLL_BIO. If the machine says it doesn't
+    // understand the first, ask once more in the other form: the member just presses again.
+    if (!ok && d["type"] === "enroll_fp" && [-1, -1001, -1002].includes(code) && !d["fallback"]) {
+      await cmd.ref.update({
+        status: "failed",
+        returnCode: code,
+        error: "Trying the machine's other fingerprint command…",
+        completedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      const pin = String(d["biometricUserId"] ?? "");
+      await firestore.collection("biometricCommands").add({
+        deviceId: device.id,
+        serialNumber: device.serialNumber,
+        clientId: d["clientId"] ?? "",
+        staffId: d["staffId"] ?? "",
+        enrollmentId: d["enrollmentId"] ?? null,
+        biometricUserId: pin,
+        type: "enroll_fp",
+        fallback: true,
+        door: false,
+        command: `ENROLL_BIO TYPE=1\tPIN=${pin}\tRETRY=3\tOVERWRITE=1`,
+        order: 2,
+        status: "pending",
+        cmdNo: null,
+        returnCode: null,
+        error: "",
+        sentAt: null,
+        completedAt: null,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      continue;
+    }
     const error = ok
       ? ""
       : d["type"] === "enroll_fp"
@@ -1007,6 +1041,7 @@ async function attendance(device: Device, body: string) {
   const memberships = new Map<string, Membership[]>();
   const staffByPin = new Map<string, QueryDocumentSnapshot | null>();
   const machineNames = new Map<string, string>();
+  const lastVisits = new Map<string, { ref: DocumentReference; date: string; had: string }>();
   const rows: { ref: DocumentReference; data: Row }[] = [];
   let received = 0;
   for (const raw of body.split(/\r?\n/)) {
@@ -1064,6 +1099,12 @@ async function attendance(device: Device, body: string) {
     }
     const machineName = client ? "" : (machineNames.get(pin) ?? "");
     const decision = decide(client, client ? (memberships.get(client.id) ?? []) : [], date);
+    if (client && decision.allowed) {
+      const had = String(client.data()["lastVisitDate"] ?? "");
+      const cur = lastVisits.get(client.id);
+      if (date > had && (!cur || date > cur.date))
+        lastVisits.set(client.id, { ref: client.ref, date, had });
+    }
     const reference = `adms:${device.id}:${pin}:${date}T${time}`;
     rows.push({
       ref: firestore.doc(`attendance/${reference.replace(/[^a-zA-Z0-9_-]/g, "_")}`),
@@ -1102,6 +1143,11 @@ async function attendance(device: Device, body: string) {
       writes += 1;
     });
     if (writes) await batch.commit();
+  }
+  if (lastVisits.size) {
+    const batch = firestore.batch();
+    lastVisits.forEach((v) => batch.update(v.ref, { lastVisitDate: v.date }));
+    await batch.commit();
   }
   if (rows.length)
     await firestore

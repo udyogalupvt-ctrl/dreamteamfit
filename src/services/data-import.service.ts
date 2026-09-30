@@ -112,10 +112,11 @@ export async function runImport(params: {
     const toWrite = work.filter((r) => !dropped.has(r.row));
     const optIn = params.whatsappOptIn === true;
 
-    // Latest active imported membership per client becomes the client's current membership summary.
+    // The member's latest imported plan (running, or ended) becomes their current plan summary:
+    // lists work from it instead of loading every plan. Queued (future) plans are listed as such.
     const latest = new Map<string, ValidatedRow>();
     if (type === "memberships") for (const r of work) {
-      if (r.data["status"] !== "active") continue;
+      if (!["active", "expired"].includes(String(r.data["status"]))) continue;
       const cid = String(r.data["clientId"]); const cur = latest.get(cid);
       if (!cur || String(r.data["endDate"]) > String(cur.data["endDate"])) latest.set(cid, r);
     }
@@ -152,7 +153,7 @@ export async function runImport(params: {
           if (latest.get(String(d["clientId"])) === r) {
             const client = ctx.clients.find((c) => c.id === d["clientId"]);
             if (!client?.currentMembership || client.currentMembership.endDate < end)
-              wb.update(doc(db, COLLECTIONS.clients, String(d["clientId"])), { currentMembership: { membershipId: id, packageName: d["packageNameSnapshot"], startDate: start, endDate: end, status: "active" }, updatedAt: serverTimestamp() });
+              wb.update(doc(db, COLLECTIONS.clients, String(d["clientId"])), { currentMembership: { membershipId: id, packageName: d["packageNameSnapshot"], startDate: start, endDate: end, status: d["status"] }, updatedAt: serverTimestamp() });
           }
         }
       }

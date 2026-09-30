@@ -257,9 +257,25 @@ function WhatsAppSettingsPanel() {
   const [f, setF] = useState<WhatsAppSettings>(DEFAULT_WHATSAPP_SETTINGS);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  useEffect(() => setF(live.data), [live.data]);
-  const set = <K extends keyof WhatsAppSettings>(k: K, v: WhatsAppSettings[K]) =>
+  // Fill the form once from the saved settings, keeping anything already changed here (a switch
+  // flipped before the settings arrived is never undone).
+  const filled = useRef(false);
+  const touched = useRef(new Set<keyof WhatsAppSettings>());
+  useEffect(() => {
+    if (live.loading || filled.current) return;
+    filled.current = true;
+    setF((x) => {
+      const next = { ...live.data };
+      touched.current.forEach((k) => {
+        (next as Record<string, unknown>)[k] = x[k];
+      });
+      return next;
+    });
+  }, [live.data, live.loading]);
+  const set = <K extends keyof WhatsAppSettings>(k: K, v: WhatsAppSettings[K]) => {
+    touched.current.add(k);
     setF((x) => ({ ...x, [k]: v }));
+  };
   const api = f.mode === "whatsapp";
   const save = async () => {
     // A phone number typed here would be glued in front of every member's number.
@@ -458,9 +474,25 @@ function WhatsAppSettingsPanel() {
 function ReminderSettings() {
   const live = useLive(subscribeAutomationSettings, DEFAULT_AUTOMATION_SETTINGS, []);
   const [f, setF] = useState<AutomationSettings>(DEFAULT_AUTOMATION_SETTINGS);
-  useEffect(() => setF(live.data), [live.data]);
-  const set = <K extends keyof AutomationSettings>(k: K, v: AutomationSettings[K]) =>
+  // Fill the form once from the saved settings, keeping anything already changed here (a switch
+  // flipped before the settings arrived is never undone).
+  const filled = useRef(false);
+  const touched = useRef(new Set<keyof AutomationSettings>());
+  useEffect(() => {
+    if (live.loading || filled.current) return;
+    filled.current = true;
+    setF((x) => {
+      const next = { ...live.data };
+      touched.current.forEach((k) => {
+        (next as Record<string, unknown>)[k] = x[k];
+      });
+      return next;
+    });
+  }, [live.data, live.loading]);
+  const set = <K extends keyof AutomationSettings>(k: K, v: AutomationSettings[K]) => {
+    touched.current.add(k);
     setF((x) => ({ ...x, [k]: v }));
+  };
   const save = async () => {
     try {
       await saveAutomationSettings(f);
