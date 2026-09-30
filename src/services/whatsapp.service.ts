@@ -1,11 +1,15 @@
 import {
   doc,
   getDoc,
+  limit,
   orderBy,
   runTransaction,
   serverTimestamp,
+  Timestamp,
   updateDoc,
+  where,
   type DocumentData,
+  type QueryConstraint,
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { callServer } from "@/lib/server-api";
@@ -64,17 +68,27 @@ export const mapWhatsAppMessage = (id: string, d: DocumentData): WhatsAppMessage
   updatedAt: toDate(d["updatedAt"]),
 });
 
+/**
+ * Messages, newest first — only from a date on, or only the newest few: every message ever grows
+ * by the day (free plan: 50,000 reads a day).
+ */
 export const subscribeWhatsAppMessages = (
   ok: (x: WhatsAppMessage[]) => void,
   fail: (e: Error) => void,
-) =>
-  subscribeCollection(
+  opts: { since?: Date; max?: number } = { max: 300 },
+) => {
+  const constraints: QueryConstraint[] = [];
+  if (opts.since) constraints.push(where("createdAt", ">=", Timestamp.fromDate(opts.since)));
+  constraints.push(orderBy("createdAt", "desc"));
+  if (opts.max) constraints.push(limit(opts.max));
+  return subscribeCollection(
     COLLECTIONS.whatsappMessages,
     mapWhatsAppMessage,
     ok,
     fail,
-    orderBy("createdAt", "desc"),
+    ...constraints,
   );
+};
 
 export async function sendWhatsAppMessage(input: SendInput) {
   let recipient = input.client;

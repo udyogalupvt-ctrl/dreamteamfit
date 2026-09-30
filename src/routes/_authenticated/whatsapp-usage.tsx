@@ -61,7 +61,6 @@ const SENT = new Set(["sent", "delivered", "read"]);
 
 /** How many WhatsApp messages went out, of which kind, and roughly what they cost. */
 function WhatsAppUsagePage() {
-  const messages = useLive<WhatsAppMessage[]>(subscribeWhatsAppMessages, [], []);
   const wa = useLive(subscribeWhatsAppSettings, DEFAULT_WHATSAPP_SETTINGS, []);
   const { can } = useAccess();
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -90,6 +89,13 @@ function WhatsAppUsagePage() {
     if (period === "custom") return [from, to];
     return [format(startOfMonth(now), "yyyy-MM-dd"), today];
   }, [period, from, to, today]);
+  // Only messages from the start of the chosen period (not every message ever sent).
+  const messages = useLive<WhatsAppMessage[]>(
+    (ok, fail) =>
+      subscribeWhatsAppMessages(ok, fail, { since: new Date(`${range[0]}T00:00:00+05:30`) }),
+    [],
+    [range[0]],
+  );
 
   const categoryOf = (name: string) =>
     templates.find((t) => t.name === name)?.category?.toLowerCase() ??
