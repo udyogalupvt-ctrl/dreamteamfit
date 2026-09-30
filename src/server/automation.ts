@@ -494,6 +494,28 @@ async function pruneDeviceLog() {
   return old.size;
 }
 
+/**
+ * Finished machine commands (done, failed, withdrawn) are only history: keep 30 days. Commands
+ * still waiting are never touched.
+ */
+async function pruneOldCommands() {
+  const cutoff = new Date(Date.now() - 30 * 86_400_000);
+  const old = await db()
+    .collection("biometricCommands")
+    .where("createdAt", "<", cutoff)
+    .limit(2000)
+    .get();
+  const writer = db().bulkWriter();
+  let n = 0;
+  for (const d of old.docs) {
+    if (["pending", "sent"].includes(String(d.data()["status"]))) continue;
+    void writer.delete(d.ref);
+    n += 1;
+  }
+  await writer.close();
+  return n;
+}
+
 export async function handleCron(request: Request, url: URL) {
   const secret = (process.env["CRON_SECRET"] ?? "").trim();
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`)
@@ -505,7 +527,8 @@ export async function handleCron(request: Request, url: URL) {
     const birthdays = await processBirthdayNotifications();
     const paymentsDue = await processPaymentDueReminders();
     const deviceLog = await pruneDeviceLog();
-    return json({ ok: true, plans, renewals, birthdays, paymentsDue, deviceLog });
+    const oldCommands = await pruneOldCommands();
+    return json({ ok: true, plans, renewals, birthdays, paymentsDue, deviceLog, oldCommands });
   }
   if (job === "night") return json({ ok: true, absences: await processAbsenceNudges() });
   return json({ error: "Unknown job" }, 404);

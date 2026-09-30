@@ -4,8 +4,12 @@ import {
   connectFirestoreEmulator,
   getFirestore,
   initializeFirestore,
+  clearIndexedDbPersistence,
   memoryLocalCache,
   memoryLruGarbageCollector,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  terminate,
   type Firestore,
 } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
@@ -35,13 +39,17 @@ export const app: FirebaseApp = getApps().length
 export const auth: Auth = getAuth(app);
 
 /**
- * Keep what was loaded in memory while the tab is open: going back to a list within ~30 minutes
- * only fetches what changed, instead of every member again (free plan: 50,000 reads a day).
+ * Keep a local copy of what was loaded: in the browser it survives a refresh or a new tab, so
+ * opening a list again within ~30 minutes only fetches what changed, instead of every member
+ * again (free plan: 50,000 reads a day). Erased on sign-out (see clearLocalCopy).
  */
 function makeDb(): Firestore {
   try {
+    const browser = typeof window !== "undefined" && typeof indexedDB !== "undefined";
     return initializeFirestore(app, {
-      localCache: memoryLocalCache({ garbageCollector: memoryLruGarbageCollector() }),
+      localCache: browser
+        ? persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+        : memoryLocalCache({ garbageCollector: memoryLruGarbageCollector() }),
     });
   } catch {
     // Already set up (hot reload).
@@ -49,6 +57,21 @@ function makeDb(): Firestore {
   }
 }
 export const db: Firestore = makeDb();
+
+/**
+ * Sign-out on a shared front-desk computer: erase the local copy so the next person's browser
+ * holds none of the previous login's data. The page must reload afterwards (the connection is
+ * closed to erase it).
+ */
+export async function clearLocalCopy() {
+  if (typeof window === "undefined") return;
+  try {
+    await terminate(db);
+    await clearIndexedDbPersistence(db);
+  } catch {
+    // Another tab still has it open: it is erased when the last tab closes the app.
+  }
+}
 
 // Local testing only: `VITE_USE_EMULATORS=1 npm run dev` talks to the Firebase emulators.
 if (env["VITE_USE_EMULATORS"] === "1" && !(globalThis as { __rfEmu?: boolean }).__rfEmu) {

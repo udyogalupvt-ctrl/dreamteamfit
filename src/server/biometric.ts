@@ -64,7 +64,9 @@ const lastSeenWrite = new Map<string, number>();
 
 async function findDevice(sn: string): Promise<Device | null> {
   const cached = deviceCache.get(sn);
-  if (cached && Date.now() - cached.at < 60_000) return cached.device;
+  // 3 minutes: a polling machine then costs ~480 reads a day (settings are re-read where they
+  // matter, e.g. door control when a lock-out is decided).
+  if (cached && Date.now() - cached.at < 180_000) return cached.device;
   const snap = await db().collection("biometricDevices").where("serialNumber", "==", sn).get();
   const match = snap.docs.find(
     (d) => d.data()["integrationType"] === "adms" && d.data()["status"] !== "disabled",
@@ -84,7 +86,7 @@ async function findDevice(sn: string): Promise<Device | null> {
 
 async function touchDevice(device: Device, ip: string) {
   const last = lastSeenWrite.get(device.id) ?? 0;
-  if (Date.now() - last < 60_000) return;
+  if (Date.now() - last < 120_000) return;
   lastSeenWrite.set(device.id, Date.now());
   await db()
     .doc(`biometricDevices/${device.id}`)
@@ -1209,7 +1211,13 @@ export async function handleIclock(request: Request, url: URL) {
     const logThis = !history || Date.now() - (bulkLogAt.get(`${device.id}:${table}`) ?? 0) > 60_000;
     if (history && logThis) bulkLogAt.set(`${device.id}:${table}`, Date.now());
     if (request.method === "POST" && table !== "ATTLOG" && logThis)
-      await journal({ ...base, phase: "start", bytes: body.length, kinds });
+      await journal({
+        ...base,
+        phase: "start",
+        bytes: body.length,
+        kinds,
+        query: url.search.slice(0, 200),
+      });
 
     if (endpoint === "cdata" && request.method === "GET") {
       const ref = db().doc(`biometricDevices/${device.id}`);

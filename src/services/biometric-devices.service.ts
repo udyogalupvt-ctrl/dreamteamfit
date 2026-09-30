@@ -74,8 +74,8 @@ export const mapBiometricCommand = (id: string, d: DocumentData): BiometricComma
   updatedAt: toDate(d["updatedAt"]),
 });
 
-/** ADMS devices poll every ~10 s; no contact for 3 minutes means the device is offline. */
-export const ONLINE_WINDOW_MS = 3 * 60 * 1000;
+/** ADMS devices poll every ~15 s ("last contact" is saved every 2 min); 5 minutes without = offline. */
+export const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
 export function deviceConnection(device: BiometricDevice, now = Date.now()) {
   if (device.status === "disabled") return { online: false, label: "Disabled" } as const;

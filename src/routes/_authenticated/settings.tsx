@@ -258,24 +258,20 @@ function WhatsAppSettingsPanel() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   // Fill the form once from the saved settings, keeping anything already changed here (a switch
-  // flipped before the settings arrived is never undone).
+  // flipped before the settings arrived still holds the default otherwise, so it is never undone).
   const filled = useRef(false);
-  const touched = useRef(new Set<keyof WhatsAppSettings>());
   useEffect(() => {
     if (live.loading || filled.current) return;
     filled.current = true;
     setF((x) => {
-      const next = { ...live.data };
-      touched.current.forEach((k) => {
-        (next as Record<string, unknown>)[k] = x[k];
-      });
-      return next;
+      const next: Record<string, unknown> = { ...live.data };
+      for (const k of Object.keys(x) as (keyof WhatsAppSettings)[])
+        if (JSON.stringify(x[k]) !== JSON.stringify(DEFAULT_WHATSAPP_SETTINGS[k])) next[k] = x[k];
+      return next as unknown as WhatsAppSettings;
     });
   }, [live.data, live.loading]);
-  const set = <K extends keyof WhatsAppSettings>(k: K, v: WhatsAppSettings[K]) => {
-    touched.current.add(k);
+  const set = <K extends keyof WhatsAppSettings>(k: K, v: WhatsAppSettings[K]) =>
     setF((x) => ({ ...x, [k]: v }));
-  };
   const api = f.mode === "whatsapp";
   const save = async () => {
     // A phone number typed here would be glued in front of every member's number.
@@ -475,24 +471,20 @@ function ReminderSettings() {
   const live = useLive(subscribeAutomationSettings, DEFAULT_AUTOMATION_SETTINGS, []);
   const [f, setF] = useState<AutomationSettings>(DEFAULT_AUTOMATION_SETTINGS);
   // Fill the form once from the saved settings, keeping anything already changed here (a switch
-  // flipped before the settings arrived is never undone).
+  // flipped before the settings arrived still holds the default otherwise, so it is never undone).
   const filled = useRef(false);
-  const touched = useRef(new Set<keyof AutomationSettings>());
   useEffect(() => {
     if (live.loading || filled.current) return;
     filled.current = true;
     setF((x) => {
-      const next = { ...live.data };
-      touched.current.forEach((k) => {
-        (next as Record<string, unknown>)[k] = x[k];
-      });
-      return next;
+      const next: Record<string, unknown> = { ...live.data };
+      for (const k of Object.keys(x) as (keyof AutomationSettings)[])
+        if (JSON.stringify(x[k]) !== JSON.stringify(DEFAULT_AUTOMATION_SETTINGS[k])) next[k] = x[k];
+      return next as unknown as AutomationSettings;
     });
   }, [live.data, live.loading]);
-  const set = <K extends keyof AutomationSettings>(k: K, v: AutomationSettings[K]) => {
-    touched.current.add(k);
+  const set = <K extends keyof AutomationSettings>(k: K, v: AutomationSettings[K]) =>
     setF((x) => ({ ...x, [k]: v }));
-  };
   const save = async () => {
     try {
       await saveAutomationSettings(f);

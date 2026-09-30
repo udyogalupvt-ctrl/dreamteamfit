@@ -7,7 +7,7 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth, clearLocalCopy } from "@/lib/firebase";
 import type { AppUser } from "@/types";
 
 export function mapUser(user: User | null): AppUser | null {
@@ -32,6 +32,12 @@ export async function loginWithEmail(email: string, password: string, remember: 
 
 export async function logout() {
   await signOut(auth);
+  // Erase this browser's local copy of the gym's data (shared front-desk computers), then start
+  // fresh on the login page.
+  if (typeof window !== "undefined") {
+    await clearLocalCopy();
+    window.location.assign("/login");
+  }
 }
 
 /** Human-readable messages for Firebase auth error codes. */
