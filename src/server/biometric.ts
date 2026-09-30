@@ -23,6 +23,7 @@ import {
   Timestamp,
   type DocumentReference,
   type QueryDocumentSnapshot,
+  type WriteBatch,
 } from "firebase-admin/firestore";
 import { db, localDate, text } from "./admin";
 import { systemAudit } from "./audit";
@@ -53,6 +54,8 @@ type Device = {
   serialNumber: string;
   lastDoorSyncDate: string;
   pendingMatches: boolean;
+  /** Punches up to this time (ms) are saved; re-sent older days are skipped without reads. */
+  attSeenUntil: number;
 };
 type KV = Record<string, string>;
 type Row = Record<string, unknown>;
@@ -78,6 +81,7 @@ async function findDevice(sn: string): Promise<Device | null> {
         serialNumber: sn,
         lastDoorSyncDate: String(match.data()["lastDoorSyncDate"] ?? ""),
         pendingMatches: match.data()["pendingMatches"] === true,
+        attSeenUntil: Number(match.data()["attSeenUntil"] ?? 0) || 0,
       }
     : null;
   deviceCache.set(sn, { device, at: Date.now() });
@@ -217,12 +221,15 @@ async function dailySync(device: Device) {
 async function nextCommands(device: Device) {
   const firestore = db();
   await dailySync(device);
+  // Capped, so a pile of app notes (e.g. after importing members) never makes each poll read
+  // and work through hundreds of them: they are done a few at a time, polls stay fast.
   const pending = await firestore
     .collection("biometricCommands")
     .where("status", "==", "pending")
+    .limit(100)
     .get();
   const tasks = pending.docs.filter((d) => SERVER_TASKS.has(String(d.data()["type"])));
-  if (tasks.length) await runServerTasks(tasks);
+  if (tasks.length) await runServerTasks(tasks.slice(0, 25));
   // Users uploaded faster than they could be linked: link some more on each check-in.
   if (device.pendingMatches) {
     const left = await matchPending(device).catch(() => 1);
@@ -1047,6 +1054,9 @@ async function attendance(device: Device, body: string) {
   // First thumb of a day per member (they go out and come back: later punches don't count).
   const arrivals = new Map<string, Map<string, string>>();
   const rows: { ref: DocumentReference; data: Row }[] = [];
+  const today = localDate();
+  const seenUntil = device.attSeenUntil;
+  let newest = seenUntil;
   let received = 0;
   for (const raw of body.split(/\r?\n/)) {
     const parts = raw.split("\t").map((p) => p.trim());
@@ -1057,6 +1067,10 @@ async function attendance(device: Device, body: string) {
     const [date = "", time = ""] = stamp.split(" ");
     const at = new Date(`${date}T${time.length === 5 ? `${time}:00` : time}${TZ_OFFSET}`);
     if (Number.isNaN(at.getTime()) || at.getTime() < cutoff) continue;
+    // The machine re-sends old days after it reconnects: those are already saved, so they are
+    // skipped without reading anything. Today's punches are always checked one by one.
+    if (date < today && at.getTime() <= seenUntil) continue;
+    newest = Math.max(newest, at.getTime());
     if (!clients.has(pin)) clients.set(pin, await clientForPin(pin, device));
     const client = clients.get(pin) ?? null;
     if (!client) {
@@ -1153,22 +1167,32 @@ async function attendance(device: Device, body: string) {
     });
     if (writes) await batch.commit();
   }
-  if (lastVisits.size) {
-    const batch = firestore.batch();
-    lastVisits.forEach((v) => batch.update(v.ref, { lastVisitDate: v.date }));
-    arrivals.forEach((days, clientId) =>
-      batch.set(
+  // Each member's last visit and arrival time. Written in batches under the 500-writes limit, and
+  // never allowed to fail the upload: the punches are saved already, and a failed upload is sent
+  // again by the machine every few seconds (each time re-reading everything).
+  const extras: ((b: WriteBatch) => void)[] = [];
+  lastVisits.forEach((v) => extras.push((b) => b.update(v.ref, { lastVisitDate: v.date })));
+  arrivals.forEach((days, clientId) =>
+    extras.push((b) =>
+      b.set(
         firestore.doc(`memberVisits/${clientId}`),
         { clientId, days: Object.fromEntries(days), updatedAt: FieldValue.serverTimestamp() },
         { merge: true },
       ),
-    );
-    await batch.commit();
+    ),
+  );
+  for (let i = 0; i < extras.length; i += 400) {
+    const b = firestore.batch();
+    extras.slice(i, i + 400).forEach((add) => add(b));
+    await b.commit().catch((e) => console.error("last visit update failed", String(e)));
   }
-  if (rows.length)
-    await firestore
-      .doc(`biometricDevices/${device.id}`)
-      .update({ lastSyncAt: FieldValue.serverTimestamp() });
+  if (rows.length || newest > seenUntil) {
+    await firestore.doc(`biometricDevices/${device.id}`).update({
+      lastSyncAt: FieldValue.serverTimestamp(),
+      attSeenUntil: newest,
+    });
+    device.attSeenUntil = newest;
+  }
   return received;
 }
 
