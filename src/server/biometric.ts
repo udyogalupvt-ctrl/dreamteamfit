@@ -940,6 +940,19 @@ async function forgetDeletedMember(clientId: string, pin: string, deviceId: stri
  * member or replacing a saved thumb.
  */
 /** Any member or staff thumb registration started from the app in the last 20 minutes. */
+/**
+ * Same answer as anyLiveEnrollRequest, but a "no" is remembered for 5 s: a machine sending
+ * history in 2-second batches then costs one read every few batches, not one per batch. A "yes"
+ * is never cached, so a registration that just started is always seen.
+ */
+let notRegisteringUntil = 0;
+async function registeringNow() {
+  if (Date.now() < notRegisteringUntil) return false;
+  const yes = await anyLiveEnrollRequest();
+  if (!yes) notRegisteringUntil = Date.now() + 5000;
+  return yes;
+}
+
 async function anyLiveEnrollRequest() {
   const since = Timestamp.fromMillis(Date.now() - 2 * ENROLL_REQUEST_TTL_MS);
   const snap = await db().collection("biometricCommands").where("createdAt", ">", since).get();
@@ -1142,8 +1155,15 @@ export async function handleIclock(request: Request, url: URL) {
     const base = { sn, deviceId: device.id, method: request.method, endpoint, table };
     // Uploads other than single punches are noted when they arrive, so one that never finishes
     // (too slow, too big) still shows up.
-    if (request.method === "POST" && table !== "ATTLOG")
-      await journal({ ...base, phase: "start", bytes: body.length, kinds: bodySummary(body) });
+    const kinds = bodySummary(body);
+    // Users / fingerprints (not the machine re-sending old punches or its operation history).
+    const people = (kinds["USER"] ?? 0) + (kinds["FP"] ?? 0) + (kinds["BIODATA"] ?? 0);
+    // Old history arrives every 2 s for many minutes: log it at most once a minute.
+    const history = request.method === "POST" && !people && body.length > 2000;
+    const logThis = !history || Date.now() - (bulkLogAt.get(`${device.id}:${table}`) ?? 0) > 60_000;
+    if (history && logThis) bulkLogAt.set(`${device.id}:${table}`, Date.now());
+    if (request.method === "POST" && table !== "ATTLOG" && logThis)
+      await journal({ ...base, phase: "start", bytes: body.length, kinds });
 
     if (endpoint === "cdata" && request.method === "GET") {
       const ref = db().doc(`biometricDevices/${device.id}`);
@@ -1174,10 +1194,11 @@ export async function handleIclock(request: Request, url: URL) {
       if (table === "ATTLOG") count = await attendance(device, body);
       else {
         count = body.split(/\r?\n/).filter((l) => l.trim()).length;
-        // A thumb only counts during a registration started from the app: with none running
-        // (e.g. a full "Read users" upload) there is nothing to check person by person.
-        const registering = await anyLiveEnrollRequest();
-        for (const [pin, kind] of registering ? fingerprintEvidence(body) : []) {
+        // A thumb only counts during a registration started from the app. Old operation history
+        // with no thumb records costs no database reads at all.
+        const evidence = [...fingerprintEvidence(body)];
+        const registering = evidence.length || people ? await registeringNow() : false;
+        for (const [pin, kind] of registering ? evidence : []) {
           const client = await clientForPin(pin, device);
           if (!client) {
             const staff = await staffForPin(pin, device);
@@ -1191,13 +1212,11 @@ export async function handleIclock(request: Request, url: URL) {
           await activateBiometric(client.ref, device, pin);
         }
         if (registering) await storeTemplates(body, device);
-        if (await importWindowOpen(device.id))
+        if (people && (await importWindowOpen(device.id)))
           await importDeviceData(device, machineUsers(body), fingerprintTemplates(body));
       }
-      // A machine re-sending its punch history posts every 2 s: note that at most once a minute.
-      const bulk = table === "ATTLOG" && body.length > 2000;
-      if (!bulk || Date.now() - (bulkLogAt.get(device.id) ?? 0) > 60_000) {
-        if (bulk) bulkLogAt.set(device.id, Date.now());
+      // Single punches are already saved as visits: the log keeps uploads that matter.
+      if (logThis && !(table === "ATTLOG" && !history)) {
         await journal({
           ...base,
           phase: "done",
