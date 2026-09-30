@@ -13,6 +13,10 @@ import appCss from "../styles.css?url";
 import { ThemeProvider, themeBootstrapScript } from "@/hooks/use-theme";
 import { AuthProvider } from "@/hooks/use-auth";
 import { Toaster } from "@/components/ui/sonner";
+import { startPwa } from "@/lib/pwa";
+
+// Installable app: listen for the browser's install offer and register the service worker.
+startPwa();
 
 function NotFoundComponent() {
   return (
@@ -92,6 +96,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
+      // Installable app ("Install app" on phones and computers).
+      { name: "theme-color", content: "#121110" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-title", content: "Rebuild Fitness" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black" },
       { title: "REBUILD FITNESS — Gym Management" },
       {
         name: "description",
@@ -113,7 +123,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
       },
-      { rel: "icon", href: "/favicon.png", type: "image/png" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "icon", href: "/favicon-32.png", type: "image/png", sizes: "32x32" },
+      { rel: "icon", href: "/favicon-48.png", type: "image/png", sizes: "48x48" },
+      { rel: "icon", href: "/icons/icon-192.png", type: "image/png", sizes: "192x192" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png", sizes: "180x180" },
     ],
   }),
   shellComponent: RootShell,

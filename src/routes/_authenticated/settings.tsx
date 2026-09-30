@@ -15,6 +15,7 @@ import { DataExportPanel } from "@/components/settings/data-export-panel";
 import { MemberAppBulkSend } from "@/components/settings/member-app-bulk";
 import { PageHeader } from "@/components/common/page-header";
 import { FormSection } from "@/components/common/form-section";
+import { InstallAppButton, useInstallApp } from "@/components/layout/install-app-button";
 import { Field } from "@/components/common/form-dialog";
 import { ImageUpload } from "@/components/common/image-upload";
 import { Button } from "@/components/ui/button";
@@ -97,13 +98,14 @@ function SettingsPage() {
           <DataImportWizard />
           <DataExportPanel />
         </TabsContent>
-        <TabsContent value="appearance">
+        <TabsContent value="appearance" className="space-y-4">
           <FormSection
             title="Theme"
             description="Light, dark, or follow the device. Saved on this device."
           >
             <ThemeToggle />
           </FormSection>
+          <InstallAppSection />
         </TabsContent>
       </Tabs>
       <Link
@@ -636,5 +638,19 @@ function ToggleRow({
       </span>
       <Switch checked={checked} onCheckedChange={onChange} aria-label={label} />
     </label>
+  );
+}
+
+/** "Install app" in Settings, only while this device doesn't have it installed. */
+function InstallAppSection() {
+  const app = useInstallApp();
+  if (!app.available) return null;
+  return (
+    <FormSection
+      title="Install the app"
+      description="Open REBUILD FITNESS like a normal app on this phone or computer: its own icon and window, no browser bar."
+    >
+      <InstallAppButton size="default" />
+    </FormSection>
   );
 }
