@@ -134,7 +134,7 @@ function MessageHistoryPage() {
             {rows.slice(0, shown).map((m) => {
               const st = STATUS[m.status] ?? { label: m.status, tone: "info" as const };
               return (
-                <li key={m.id} className="surface-card space-y-2 p-4">
+                <li key={m.id} className="surface-card min-w-0 space-y-2 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate font-bold">
@@ -148,7 +148,9 @@ function MessageHistoryPage() {
                     <StatusPill tone={st.tone}>{st.label}</StatusPill>
                   </div>
                   {m.messagePreview ? (
-                    <p className="line-clamp-3 whitespace-pre-line text-sm">{m.messagePreview}</p>
+                    <p className="line-clamp-3 whitespace-pre-line text-sm [overflow-wrap:anywhere]">
+                      {m.messagePreview}
+                    </p>
                   ) : null}
                   {m.status === "failed" && m.errorMessage ? (
                     <p className="text-sm text-destructive">Why: {m.errorMessage}</p>

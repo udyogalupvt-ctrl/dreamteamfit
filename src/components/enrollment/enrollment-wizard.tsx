@@ -372,6 +372,13 @@ export function EnrollmentWizard({
   );
   const paid = amountPaid ?? totals.total;
   const maxDiscount = maxDiscountFor({ gymPackage, pt });
+  // Shown while typing, and continuing is blocked until it is fixed.
+  const discountProblem =
+    discount < 0
+      ? "Discount can't be negative"
+      : maxDiscount !== null && discount > maxDiscount
+        ? `Too much: the maximum discount set in Packages is ${formatPrice(maxDiscount)}`
+        : "";
   const balanceLeft = totals.total - Math.min(paid, totals.total) > 0;
   const hasEntry = Boolean(client.fullName || client.phone || packageId || ptOn);
 
@@ -475,8 +482,7 @@ export function EnrollmentWizard({
       if (!gymPackage && !pt) e["package"] = "Pick a package first";
       if (!(paid >= 0) || paid > totals.total)
         e["amountPaid"] = `Enter 0 to ${formatPrice(totals.total)}`;
-      if (maxDiscount !== null && discount > maxDiscount)
-        e["discount"] = `At most ${formatPrice(maxDiscount)} on this package`;
+      if (discountProblem) e["discount"] = discountProblem;
       if (balanceLeft && !nextPaymentDate) e["nextPaymentDate"] = "When will the rest be paid?";
       else if (balanceLeft && nextPaymentDate < todayISO())
         e["nextPaymentDate"] = "Pick today or a later date";
@@ -1017,7 +1023,7 @@ export function EnrollmentWizard({
                   <Field
                     label="Discount ₹"
                     htmlFor="e-disc"
-                    error={errors["discount"]}
+                    error={discountProblem || errors["discount"]}
                     hint={maxDiscount !== null ? `Max ${formatPrice(maxDiscount)}` : undefined}
                   >
                     <Input

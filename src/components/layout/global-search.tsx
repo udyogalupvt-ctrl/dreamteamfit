@@ -154,7 +154,7 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
               (item) =>
                 item.invoiceNumber.toLowerCase().includes(q) ||
                 item.clientNameSnapshot.toLowerCase().includes(q) ||
-                item.clientPhoneSnapshot.includes(phone),
+                (phone.length >= 3 && normalizePhone(item.clientPhoneSnapshot).includes(phone)),
             )
             .slice(0, 5)
         : [],
@@ -255,7 +255,8 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
         <Search className="size-4 shrink-0" aria-hidden />
         {!compact ? <span>Search members, inquiries and packages…</span> : null}
       </button>
-      <CommandDialog open={open} onOpenChange={setOpen}>
+      {/* Our own matching (name, member ID, phone, bill number…): the list must not filter again. */}
+      <CommandDialog open={open} onOpenChange={setOpen} shouldFilter={false}>
         <CommandInput
           value={query}
           onValueChange={setQuery}

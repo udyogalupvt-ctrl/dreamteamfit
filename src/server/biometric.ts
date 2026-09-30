@@ -1044,6 +1044,8 @@ async function attendance(device: Device, body: string) {
   const staffByPin = new Map<string, QueryDocumentSnapshot | null>();
   const machineNames = new Map<string, string>();
   const lastVisits = new Map<string, { ref: DocumentReference; date: string; had: string }>();
+  // First thumb of a day per member (they go out and come back: later punches don't count).
+  const arrivals = new Map<string, Map<string, string>>();
   const rows: { ref: DocumentReference; data: Row }[] = [];
   let received = 0;
   for (const raw of body.split(/\r?\n/)) {
@@ -1103,6 +1105,11 @@ async function attendance(device: Device, body: string) {
     const decision = decide(client, client ? (memberships.get(client.id) ?? []) : [], date);
     if (client && decision.allowed) {
       const had = String(client.data()["lastVisitDate"] ?? "");
+      const mine = arrivals.get(client.id) ?? new Map<string, string>();
+      if (date > had && !mine.has(date)) {
+        mine.set(date, time.slice(0, 5));
+        arrivals.set(client.id, mine);
+      }
       const cur = lastVisits.get(client.id);
       if (date > had && (!cur || date > cur.date))
         lastVisits.set(client.id, { ref: client.ref, date, had });
@@ -1149,6 +1156,13 @@ async function attendance(device: Device, body: string) {
   if (lastVisits.size) {
     const batch = firestore.batch();
     lastVisits.forEach((v) => batch.update(v.ref, { lastVisitDate: v.date }));
+    arrivals.forEach((days, clientId) =>
+      batch.set(
+        firestore.doc(`memberVisits/${clientId}`),
+        { clientId, days: Object.fromEntries(days), updatedAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      ),
+    );
     await batch.commit();
   }
   if (rows.length)

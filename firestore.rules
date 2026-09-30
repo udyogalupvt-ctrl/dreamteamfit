@@ -145,6 +145,11 @@ service cloud.firestore {
       allow read: if isStaff();
       allow write: if false;
     }
+    // Each member's arrival time per day (first thumb), for the member app: staff and server.
+    match /memberVisits/{id} {
+      allow read, write: if isStaff();
+    }
+
     // Their fingerprint templates, and the ones kept for door-lock restore: server only.
     match /deviceUserTemplates/{id} {
       allow read, write: if false;

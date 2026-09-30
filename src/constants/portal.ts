@@ -155,6 +155,8 @@ export interface MemberPortalData {
   nextDueDate: string;
   /** Days with an allowed entry (YYYY-MM-DD), newest first. */
   visits: string[];
+  /** Arrival time per visited day ("HH:MM", India time): the first thumb of that day. */
+  visitTimes: Record<string, string>;
   workout: PortalWorkout | null;
   diet: PortalDiet | null;
   /** Last 14 days of ticks, newest first. */
@@ -221,6 +223,8 @@ export interface TrainerMemberDetail {
   membership: { packageName: string; endDate: string } | null;
   /** Days with an allowed entry in the last 60 days, newest first. */
   visits: string[];
+  /** Arrival time per visited day ("HH:MM"): the first thumb of that day. */
+  visitTimes: Record<string, string>;
   workout: PortalWorkout | null;
   diet: PortalDiet | null;
   logs: PortalLog[];

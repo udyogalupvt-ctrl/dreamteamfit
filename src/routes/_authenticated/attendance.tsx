@@ -279,14 +279,17 @@ function AttendancePage() {
         ))}
       </div>
       <Tabs defaultValue="today">
-        <TabsList>
-          <TabsTrigger value="today">Today</TabsTrigger>
-          <TabsTrigger value="present">Currently Present</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
-          <TabsTrigger value="access">Access Log</TabsTrigger>
-          <TabsTrigger value="staff">Staff</TabsTrigger>
-          <TabsTrigger value="busy">Busy hours</TabsTrigger>
-        </TabsList>
+        {/* Six tabs don't fit a phone: the row scrolls sideways (like Settings). */}
+        <div className="no-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <TabsList className="w-max">
+            <TabsTrigger value="today">Today</TabsTrigger>
+            <TabsTrigger value="present">Currently Present</TabsTrigger>
+            <TabsTrigger value="history">History</TabsTrigger>
+            <TabsTrigger value="access">Access Log</TabsTrigger>
+            <TabsTrigger value="staff">Staff</TabsTrigger>
+            <TabsTrigger value="busy">Busy hours</TabsTrigger>
+          </TabsList>
+        </div>
         <TabsContent value="busy">
           <BusyHours />
         </TabsContent>

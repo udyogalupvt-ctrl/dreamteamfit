@@ -6,6 +6,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   Timestamp,
   updateDoc,
   where,
@@ -158,10 +159,21 @@ export async function recordAttendance(input: {
   });
   if (created && input.client && input.decision.allowed) {
     const day = format(input.timestamp, "yyyy-MM-dd");
-    if (day > (input.client.lastVisitDate || ""))
+    // First visit of the day: the member's last visit and their arrival time (member app).
+    if (day > (input.client.lastVisitDate || "")) {
       await updateDoc(doc(db, COLLECTIONS.clients, input.client.id), { lastVisitDate: day }).catch(
         () => undefined,
       );
+      await setDoc(
+        doc(db, "memberVisits", input.client.id),
+        {
+          clientId: input.client.id,
+          days: { [day]: format(input.timestamp, "HH:mm") },
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      ).catch(() => undefined);
+    }
   }
   return { id, created };
 }

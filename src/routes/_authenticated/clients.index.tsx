@@ -286,7 +286,7 @@ function ClientsPage() {
 
           <ul className="grid gap-3 md:hidden">
             {filtered.map((c) => (
-              <li key={c.id} className="space-y-2">
+              <li key={c.id} className="min-w-0 space-y-2">
                 <Link
                   to="/clients/$clientId"
                   params={{ clientId: c.id }}

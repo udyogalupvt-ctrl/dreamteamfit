@@ -129,17 +129,42 @@ const cleanDays = (x: unknown): WorkoutDay[] =>
         .filter((d) => d.title || d.exercises.trim())
     : [];
 
-/** Days a member got in (allowed entries), newest first. */
+/**
+ * Days a member got in, newest first, with the arrival time of each (the first thumb that day:
+ * members go out and come back, so later punches don't count). Kept in one small doc per member
+ * (memberVisits/{clientId}, written at punch time), so opening the app costs one read instead of
+ * one per punch ever. A member without that doc yet gets it built once from their punches.
+ */
 async function visitDays(clientId: string, since = "") {
-  const snap = await byClient("attendance", clientId);
-  const days = new Set<string>();
-  for (const d of snap.docs) {
-    const a = d.data();
-    if (a["eventType"] !== "check_in" || a["accessDecision"] !== "allowed") continue;
-    const day = s(a["attendanceDate"]);
-    if (day && day >= since) days.add(day);
+  const ref = db().doc(`memberVisits/${clientId}`);
+  let times = ((await ref.get()).data()?.["days"] ?? null) as Record<string, string> | null;
+  if (!times) {
+    const snap = await byClient("attendance", clientId);
+    const first = new Map<string, number>();
+    for (const d of snap.docs) {
+      const a = d.data();
+      if (a["accessDecision"] !== "allowed") continue;
+      const day = s(a["attendanceDate"]);
+      const at = (a["timestamp"] as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+      if (day && at && (!first.has(day) || at < first.get(day)!)) first.set(day, at);
+    }
+    const clock = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Kolkata",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    times = Object.fromEntries([...first].map(([day, at]) => [day, clock.format(new Date(at))]));
+    await ref.set(
+      { clientId, days: times, updatedAt: FieldValue.serverTimestamp() },
+      { merge: true },
+    );
   }
-  return [...days].sort().reverse();
+  const days = Object.keys(times)
+    .filter((d) => d >= since)
+    .sort()
+    .reverse();
+  return { days, times: Object.fromEntries(days.map((d) => [d, s(times![d])])) };
 }
 
 /** The member's current workout and diet plan: gym plans as they are now, personal ones as written. */
@@ -381,7 +406,8 @@ async function memberData(clientId: string): Promise<Response> {
         .map((b) => b.dueDate)
         .filter(Boolean)
         .sort()[0] ?? "",
-    visits,
+    visits: visits.days,
+    visitTimes: visits.times,
     workout: plans.workout,
     diet: plans.diet,
     logs,
@@ -534,7 +560,8 @@ async function trainerMember(trainerId: string, clientId: string): Promise<Respo
       endDate: s(pt["endDate"]),
     },
     membership: cm ? { packageName: s(cm["packageName"]), endDate: s(cm["endDate"]) } : null,
-    visits,
+    visits: visits.days,
+    visitTimes: visits.times,
     workout: plans.workout,
     diet: plans.diet,
     logs,

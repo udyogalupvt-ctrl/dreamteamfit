@@ -72,10 +72,17 @@ function MemberCallsPage() {
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return segments[segment].filter((m) => {
+    const digits = q.replace(/\D/g, "");
+    // Typing a name or phone searches every group (each row shows its group), not just this one.
+    const pool = q ? SEGMENTS.flatMap((s) => segments[s]) : segments[segment];
+    return pool.filter((m) => {
       const st = calls.data.find((c) => c.key === callKey(m))?.status ?? "not_called";
       if (status !== "all" && st !== status) return false;
-      return !q || m.client.fullName.toLowerCase().includes(q) || m.client.phone.includes(q);
+      return (
+        !q ||
+        m.client.fullName.toLowerCase().includes(q) ||
+        (digits.length >= 3 && m.client.phone.replace(/\D/g, "").includes(digits))
+      );
     });
   }, [segments, segment, search, status, calls.data]);
 
@@ -215,7 +222,9 @@ function CallRow({ m, call }: { m: SegmentMember; call: MemberCall | undefined }
           >
             {m.client.fullName}
           </Link>
-          <p className="text-meta tabular-nums">{m.client.phone}</p>
+          <p className="text-meta tabular-nums">
+            {m.client.phone} · {SEGMENT_META[m.segment].label}
+          </p>
           <p className="mt-1 text-sm">{m.detail}</p>
         </div>
       </div>

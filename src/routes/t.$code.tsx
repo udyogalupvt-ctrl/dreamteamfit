@@ -483,7 +483,7 @@ function MemberDetail({
           </section>
           <section className="space-y-2">
             <h2 className="text-card-title">Visits (last 60 days: {detail.visits.length})</h2>
-            <VisitsCalendar visits={detail.visits} today={detail.today} />
+            <VisitsCalendar visits={detail.visits} today={detail.today} times={detail.visitTimes} />
           </section>
         </>
       ) : (

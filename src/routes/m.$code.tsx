@@ -632,7 +632,7 @@ function VisitsTab({ data }: { data: MemberPortalData }) {
           </div>
         ))}
       </div>
-      <VisitsCalendar visits={visits} today={today} />
+      <VisitsCalendar visits={visits} today={today} times={data.visitTimes} />
       <p className="text-meta text-center">
         {visits[0] ? `Last visit: ${day(visits[0])}` : "No visits recorded yet."} Visits are counted
         from the fingerprint machine.

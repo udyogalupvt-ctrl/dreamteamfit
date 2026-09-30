@@ -8,6 +8,7 @@ export const AUDIT_SKIP = new Set([
   "auditLogs",
   "memberIds",
   "attendance",
+  "memberVisits",
   "biometricCommands",
   "biometricTemplates",
   "whatsappWebhookEvents",

@@ -106,13 +106,25 @@ export interface UpgradeInput {
   credit: number;
 }
 
-/** Highest discount allowed for this checkout; null = no limit set on the packages. */
+/**
+ * Highest discount allowed for this checkout (the maximums set in Packages); null = no package
+ * here has a maximum. With a membership and PT together, each package's own maximum counts; one
+ * without a maximum can be discounted up to its price (so the other's limit still holds).
+ */
 export function maxDiscountFor(input: Pick<EnrollmentInput, "gymPackage" | "pt">) {
-  const limits = [input.gymPackage?.maxDiscount, input.pt?.pkg.maxDiscount].filter(
-    (x, i) => (i === 0 ? !!input.gymPackage : !!input.pt) && x !== undefined,
+  const parts = [
+    input.gymPackage
+      ? { limit: input.gymPackage.maxDiscount, price: input.gymPackage.price }
+      : null,
+    input.pt ? { limit: input.pt.pkg.maxDiscount, price: input.pt.pkg.price } : null,
+  ].filter((p): p is { limit: number | null; price: number } => p !== null);
+  const limited = (x: number | null | undefined): x is number =>
+    x !== null && x !== undefined && Number.isFinite(Number(x));
+  if (!parts.some((p) => limited(p.limit))) return null;
+  return parts.reduce(
+    (n, p) => n + (limited(p.limit) ? Number(p.limit) : Math.max(0, Number(p.price) || 0)),
+    0,
   );
-  if (limits.some((x) => x === null) || !limits.length) return null;
-  return limits.reduce<number>((n, x) => n + Number(x), 0);
 }
 
 export function enrollmentTotals(
