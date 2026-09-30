@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   CalendarCheck,
@@ -56,19 +56,29 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const clients = useLive<Client[]>(subscribeClients, [], []);
-  const inquiries = useLive<Inquiry[]>(subscribeInquiries, [], []);
-  const packages = useLive<GymPackage[]>(subscribePackages, [], []);
-  const workoutPlans = useLive<WorkoutPlan[]>(subscribeWorkoutPlans, [], []);
-  const dietPlans = useLive<DietPlan[]>(subscribeDietPlans, [], []);
-  const bookings = useLive<Booking[]>(subscribeBookings, [], []);
-  const classes = useLive<GroupClass[]>(subscribeGroupClasses, [], []);
+  // Nothing is loaded until search is opened the first time (then kept for this visit): the
+  // search box is on every page, and each list costs database reads (free plan: 50,000 a day).
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (open) setArmed(true);
+  }, [open]);
+  const clients = useLive<Client[]>(armed ? subscribeClients : null, [], [armed]);
+  const inquiries = useLive<Inquiry[]>(armed ? subscribeInquiries : null, [], [armed]);
+  const packages = useLive<GymPackage[]>(armed ? subscribePackages : null, [], [armed]);
+  const workoutPlans = useLive<WorkoutPlan[]>(armed ? subscribeWorkoutPlans : null, [], [armed]);
+  const dietPlans = useLive<DietPlan[]>(armed ? subscribeDietPlans : null, [], [armed]);
+  const bookings = useLive<Booking[]>(armed ? subscribeBookings : null, [], [armed]);
+  const classes = useLive<GroupClass[]>(armed ? subscribeGroupClasses : null, [], [armed]);
   const finance = useAccess().can("finance");
-  const expenses = useLive<Expense[]>(finance ? subscribeExpenses : null, [], [finance]);
-  const invoices = useLive<Invoice[]>(subscribeInvoices, [], []);
-  const attendance = useLive<AttendanceEvent[]>(subscribeAttendance, [], []);
-  const devices = useLive<BiometricDevice[]>(subscribeDevices, [], []);
-  const followUps = useLive<FollowUp[]>(subscribeFollowUps, [], []);
+  const expenses = useLive<Expense[]>(
+    armed && finance ? subscribeExpenses : null,
+    [],
+    [armed, finance],
+  );
+  const invoices = useLive<Invoice[]>(armed ? subscribeInvoices : null, [], [armed]);
+  const attendance = useLive<AttendanceEvent[]>(armed ? subscribeAttendance : null, [], [armed]);
+  const devices = useLive<BiometricDevice[]>(armed ? subscribeDevices : null, [], [armed]);
+  const followUps = useLive<FollowUp[]>(armed ? subscribeFollowUps : null, [], [armed]);
   const q = query.trim().toLowerCase();
   const phone = normalizePhone(query);
 
