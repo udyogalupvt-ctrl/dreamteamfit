@@ -75,6 +75,14 @@ export const Route = createFileRoute("/_authenticated/attendance")({
   component: AttendancePage,
 });
 type Period = "today" | "yesterday" | "week" | "month" | "custom";
+/**
+ * A punch from someone on the machine who isn't linked to a member yet: the machine let them
+ * in; the app just doesn't know them. Shown as "not linked", not as a blocked attempt.
+ */
+const notLinked = (e: AttendanceEvent) => e.accessReason === "MEMBER_NOT_FOUND";
+const accessTone = (e: AttendanceEvent) =>
+  e.accessDecision === "allowed" ? "success" : notLinked(e) ? "info" : "danger";
+const accessText = (e: AttendanceEvent) => (notLinked(e) ? "not linked" : e.accessDecision);
 function AttendancePage() {
   const [manual, setManual] = useState(false),
     [simulate, setSimulate] = useState(false),
@@ -477,8 +485,8 @@ function EventList({
                 <TableCell className="font-semibold">{e.clientNameSnapshot}</TableCell>
                 <TableCell className="font-mono">{e.biometricUserId || "—"}</TableCell>
                 <TableCell>
-                  <StatusPill tone={e.accessDecision === "allowed" ? "success" : "danger"}>
-                    {access ? e.accessDecision : EVENT_LABELS[e.eventType]}
+                  <StatusPill tone={accessTone(e)}>
+                    {access ? accessText(e) : EVENT_LABELS[e.eventType]}
                   </StatusPill>
                 </TableCell>
                 <TableCell>{e.deviceNameSnapshot}</TableCell>
@@ -486,9 +494,7 @@ function EventList({
                   {access ? (
                     ACCESS_REASON_LABELS[e.accessReason]
                   ) : (
-                    <StatusPill tone={e.accessDecision === "allowed" ? "success" : "danger"}>
-                      {e.accessDecision}
-                    </StatusPill>
+                    <StatusPill tone={accessTone(e)}>{accessText(e)}</StatusPill>
                   )}
                 </TableCell>
                 <TableCell>{e.source}</TableCell>
@@ -507,9 +513,7 @@ function EventList({
                   {format(e.timestamp, "dd MMM, hh:mm a")} · ID {e.biometricUserId || "—"}
                 </p>
               </div>
-              <StatusPill tone={e.accessDecision === "allowed" ? "success" : "danger"}>
-                {e.accessDecision}
-              </StatusPill>
+              <StatusPill tone={accessTone(e)}>{accessText(e)}</StatusPill>
             </div>
             <p className="text-meta mt-3">
               {EVENT_LABELS[e.eventType]} · {e.deviceNameSnapshot} · {e.source}
