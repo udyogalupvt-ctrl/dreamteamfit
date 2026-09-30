@@ -166,6 +166,10 @@ export const mapDeviceUser = (id: string, d: DocumentData): DeviceUser => ({
   removed: d["removed"] === true,
 });
 
+/** Everyone on every machine (for names of punches not linked to a member yet). */
+export const subscribeAllDeviceUsers = (ok: (x: DeviceUser[]) => void, fail: (e: Error) => void) =>
+  subscribeQuery(query(col(COLLECTIONS.deviceUsers)), mapDeviceUser, ok, fail);
+
 export const subscribeDeviceUsers = (
   deviceId: string,
   ok: (x: DeviceUser[]) => void,

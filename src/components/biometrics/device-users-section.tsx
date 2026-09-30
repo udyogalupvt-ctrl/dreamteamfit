@@ -60,7 +60,7 @@ export function DeviceUsersSection({ device }: { device: BiometricDevice }) {
       await readUsersFromMachine(device.id);
       toast.success("Asked the machine for its users", {
         description:
-          "The list fills in within a minute. Nothing after 2 minutes? Restart the machine once.",
+          "The list fills in over the next few minutes (about 1,000 people take 2–3 minutes).",
       });
     } catch (e) {
       toast.error(firestoreErrorMessage(e));

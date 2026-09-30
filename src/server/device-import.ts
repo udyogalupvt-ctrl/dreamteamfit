@@ -408,15 +408,13 @@ export async function handleDeviceUsers(request: Request, url: URL) {
     const batch = firestore.batch();
     batch.update(firestore.doc(`biometricDevices/${device.id}`), {
       importUntil: new Date(Date.now() + IMPORT_WINDOW_MS),
-      // The next handshake asks the machine to send its whole user list again.
-      fullUpload: true,
       importRequestedAt: FieldValue.serverTimestamp(),
       importRequestedBy: by,
       updatedAt: FieldValue.serverTimestamp(),
     });
-    // Different firmware answers different requests; each is harmless if not understood.
+    // Only the two queries: a CHECK / full re-sync also makes the machine re-send its whole
+    // punch history (tens of thousands on the gym's MB360), and it takes no new work meanwhile.
     for (const [type, cmd] of [
-      ["import_check", "CHECK"],
       ["import_users", "DATA QUERY USERINFO"],
       ["import_fp", "DATA QUERY FINGERTMP"],
     ] as const)

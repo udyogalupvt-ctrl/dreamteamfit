@@ -48,9 +48,13 @@ import {
 } from "@/lib/attendance-utils";
 import { formatNumber, todayISO } from "@/lib/format";
 import { subscribeAttendance } from "@/services/attendance.service";
-import { deviceConnection, subscribeDevices } from "@/services/biometric-devices.service";
+import {
+  deviceConnection,
+  subscribeAllDeviceUsers,
+  subscribeDevices,
+} from "@/services/biometric-devices.service";
 import { subscribeClients } from "@/services/clients.service";
-import type { AttendanceEvent, BiometricDevice, Client } from "@/types/models";
+import type { AttendanceEvent, BiometricDevice, Client, DeviceUser } from "@/types/models";
 export const Route = createFileRoute("/_authenticated/attendance")({
   head: () => ({
     meta: [
@@ -74,7 +78,8 @@ type Period = "today" | "yesterday" | "week" | "month" | "custom";
 function AttendancePage() {
   const attendance = useLive<AttendanceEvent[]>(subscribeAttendance, [], []),
     clients = useLive<Client[]>(subscribeClients, [], []),
-    devices = useLive<BiometricDevice[]>(subscribeDevices, [], []);
+    devices = useLive<BiometricDevice[]>(subscribeDevices, [], []),
+    machineUsers = useLive<DeviceUser[]>(subscribeAllDeviceUsers, [], []);
   const [manual, setManual] = useState(false),
     [simulate, setSimulate] = useState(false),
     [search, setSearch] = useState(""),
@@ -85,8 +90,18 @@ function AttendancePage() {
     [decision, setDecision] = useState("all"),
     [eventType, setEventType] = useState("all"),
     [source, setSource] = useState("all");
+  // Punches from people on the machine who aren't linked to a member yet: show the name the
+  // machine has for them instead of "Unknown member".
+  const events = useMemo(() => {
+    const names = new Map(machineUsers.data.map((u) => [`${u.deviceId}_${u.pin}`, u.name]));
+    return attendance.data.map((e) => {
+      if (e.clientId) return e;
+      const name = names.get(`${e.deviceId}_${e.biometricUserId}`);
+      return name ? { ...e, clientNameSnapshot: `${name} (not linked)` } : e;
+    });
+  }, [attendance.data, machineUsers.data]);
   const today = todayISO();
-  const todayEvents = attendance.data.filter((e) => e.attendanceDate === today);
+  const todayEvents = events.filter((e) => e.attendanceDate === today);
   const summary = attendanceSummary(todayEvents),
     present = currentlyPresent(todayEvents);
   const range = useMemo<[string, string]>(() => {
@@ -106,7 +121,7 @@ function AttendancePage() {
   }, [period, from, to, today]);
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
-    return attendance.data.filter(
+    return events.filter(
       (e) =>
         e.attendanceDate >= range[0] &&
         e.attendanceDate <= range[1] &&
@@ -118,7 +133,7 @@ function AttendancePage() {
           e.clientNameSnapshot.toLowerCase().includes(q) ||
           e.biometricUserId.toLowerCase().includes(q)),
     );
-  }, [attendance.data, range, device, decision, eventType, source, search]);
+  }, [events, range, device, decision, eventType, source, search]);
   // Same test as the Fingerprint Devices page: a cloud machine is online while it keeps checking
   // in. Manual / test devices never make the page say "offline".
   const machines = devices.data.filter(
@@ -220,7 +235,7 @@ function AttendancePage() {
           <TabsTrigger value="busy">Busy hours</TabsTrigger>
         </TabsList>
         <TabsContent value="busy">
-          <BusyHours events={attendance.data} />
+          <BusyHours events={events} />
         </TabsContent>
         <TabsContent value="today">
           <EventList events={todayEvents} loading={attendance.loading} title="Today's Attendance" />
@@ -323,7 +338,7 @@ function AttendancePage() {
         </TabsContent>
         <TabsContent value="access">
           <EventList
-            events={attendance.data}
+            events={events}
             loading={attendance.loading}
             title="Biometric Access Log"
             access
