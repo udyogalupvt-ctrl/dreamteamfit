@@ -51,7 +51,12 @@ export function useReportsData(period: ReportPeriod, custom?: ReportDateRange) {
     diets = useLive<DietAssignment[]>(subscribeDietAssignments, [], []),
     expenses = useLive<Expense[]>(finance ? subscribeExpenses : null, [], [finance]),
     invoices = useLive<Invoice[]>(subscribeInvoices, [], []),
-    attendance = useLive<AttendanceEvent[]>(subscribeAttendance, [], []),
+    // Reports look further back than the other screens.
+    attendance = useLive<AttendanceEvent[]>(
+      (ok, fail) => subscribeAttendance(ok, fail, 400),
+      [],
+      [],
+    ),
     followups = useLive<FollowUp[]>(subscribeFollowUps, [], []),
     notifications = useLive<Notification[]>(subscribeNotifications, [], []);
   const range = getReportDateRange(period, custom);

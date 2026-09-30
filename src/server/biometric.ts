@@ -59,6 +59,7 @@ type Row = Record<string, unknown>;
 
 // Warm-instance caches: a polling device costs about one device read per minute.
 const deviceCache = new Map<string, { device: Device | null; at: number }>();
+const bulkLogAt = new Map<string, number>();
 const lastSeenWrite = new Map<string, number>();
 
 async function findDevice(sn: string): Promise<Device | null> {
@@ -992,6 +993,7 @@ async function attendance(device: Device, body: string) {
   const clients = new Map<string, QueryDocumentSnapshot | null>();
   const memberships = new Map<string, Membership[]>();
   const staffByPin = new Map<string, QueryDocumentSnapshot | null>();
+  const machineNames = new Map<string, string>();
   const rows: { ref: DocumentReference; data: Row }[] = [];
   let received = 0;
   for (const raw of body.split(/\r?\n/)) {
@@ -1039,13 +1041,26 @@ async function attendance(device: Device, body: string) {
         })),
       );
     }
+    // Not linked to a member yet: keep the name the machine has for them (from "Read users").
+    if (!client && !machineNames.has(pin)) {
+      const u = await firestore
+        .doc(`deviceUsers/${device.id}_${pin.replace(/[^a-zA-Z0-9_-]/g, "_")}`)
+        .get()
+        .catch(() => null);
+      machineNames.set(pin, String(u?.data()?.["name"] ?? ""));
+    }
+    const machineName = client ? "" : (machineNames.get(pin) ?? "");
     const decision = decide(client, client ? (memberships.get(client.id) ?? []) : [], date);
     const reference = `adms:${device.id}:${pin}:${date}T${time}`;
     rows.push({
       ref: firestore.doc(`attendance/${reference.replace(/[^a-zA-Z0-9_-]/g, "_")}`),
       data: {
         clientId: client?.id ?? "",
-        clientNameSnapshot: client ? String(client.data()["fullName"] ?? "") : "Unknown member",
+        clientNameSnapshot: client
+          ? String(client.data()["fullName"] ?? "")
+          : machineName
+            ? `${machineName} (not linked)`
+            : "Unknown member",
         biometricUserId: pin,
         deviceId: device.id,
         deviceNameSnapshot: device.name,
@@ -1127,7 +1142,7 @@ export async function handleIclock(request: Request, url: URL) {
     const base = { sn, deviceId: device.id, method: request.method, endpoint, table };
     // Uploads other than single punches are noted when they arrive, so one that never finishes
     // (too slow, too big) still shows up.
-    if (request.method === "POST" && (table !== "ATTLOG" || body.length > 2000))
+    if (request.method === "POST" && table !== "ATTLOG")
       await journal({ ...base, phase: "start", bytes: body.length, kinds: bodySummary(body) });
 
     if (endpoint === "cdata" && request.method === "GET") {
@@ -1179,13 +1194,18 @@ export async function handleIclock(request: Request, url: URL) {
         if (await importWindowOpen(device.id))
           await importDeviceData(device, machineUsers(body), fingerprintTemplates(body));
       }
-      await journal({
-        ...base,
-        phase: "done",
-        bytes: body.length,
-        count,
-        ms: Date.now() - started,
-      });
+      // A machine re-sending its punch history posts every 2 s: note that at most once a minute.
+      const bulk = table === "ATTLOG" && body.length > 2000;
+      if (!bulk || Date.now() - (bulkLogAt.get(device.id) ?? 0) > 60_000) {
+        if (bulk) bulkLogAt.set(device.id, Date.now());
+        await journal({
+          ...base,
+          phase: "done",
+          bytes: body.length,
+          count,
+          ms: Date.now() - started,
+        });
+      }
       return text(`OK: ${count}`);
     }
     return text("OK");

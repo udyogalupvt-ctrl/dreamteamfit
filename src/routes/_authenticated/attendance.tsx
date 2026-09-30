@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { addDays, endOfWeek, format, startOfMonth, startOfWeek } from "date-fns";
 import {
@@ -50,11 +50,11 @@ import { formatNumber, todayISO } from "@/lib/format";
 import { subscribeAttendance } from "@/services/attendance.service";
 import {
   deviceConnection,
-  subscribeAllDeviceUsers,
+  machineUserNames,
   subscribeDevices,
 } from "@/services/biometric-devices.service";
 import { subscribeClients } from "@/services/clients.service";
-import type { AttendanceEvent, BiometricDevice, Client, DeviceUser } from "@/types/models";
+import type { AttendanceEvent, BiometricDevice, Client } from "@/types/models";
 export const Route = createFileRoute("/_authenticated/attendance")({
   head: () => ({
     meta: [
@@ -78,8 +78,7 @@ type Period = "today" | "yesterday" | "week" | "month" | "custom";
 function AttendancePage() {
   const attendance = useLive<AttendanceEvent[]>(subscribeAttendance, [], []),
     clients = useLive<Client[]>(subscribeClients, [], []),
-    devices = useLive<BiometricDevice[]>(subscribeDevices, [], []),
-    machineUsers = useLive<DeviceUser[]>(subscribeAllDeviceUsers, [], []);
+    devices = useLive<BiometricDevice[]>(subscribeDevices, [], []);
   const [manual, setManual] = useState(false),
     [simulate, setSimulate] = useState(false),
     [search, setSearch] = useState(""),
@@ -90,16 +89,18 @@ function AttendancePage() {
     [decision, setDecision] = useState("all"),
     [eventType, setEventType] = useState("all"),
     [source, setSource] = useState("all");
-  // Punches from people on the machine who aren't linked to a member yet: show the name the
-  // machine has for them instead of "Unknown member".
-  const events = useMemo(() => {
-    const names = new Map(machineUsers.data.map((u) => [`${u.deviceId}_${u.pin}`, u.name]));
-    return attendance.data.map((e) => {
-      if (e.clientId) return e;
-      const name = names.get(`${e.deviceId}_${e.biometricUserId}`);
-      return name ? { ...e, clientNameSnapshot: `${name} (not linked)` } : e;
-    });
-  }, [attendance.data, machineUsers.data]);
+  // Older punches from people not linked to a member yet were saved as "Unknown member": show
+  // the name the machine has for them (looked up only for the ones on screen, a few reads).
+  const [machineNames, setMachineNames] = useState<Record<string, string>>({});
+  const events = useMemo(
+    () =>
+      attendance.data.map((e) => {
+        if (e.clientId) return e;
+        const name = machineNames[`${e.deviceId}_${e.biometricUserId}`];
+        return name ? { ...e, clientNameSnapshot: `${name} (not linked)` } : e;
+      }),
+    [attendance.data, machineNames],
+  );
   const today = todayISO();
   const todayEvents = events.filter((e) => e.attendanceDate === today);
   const summary = attendanceSummary(todayEvents),
@@ -134,6 +135,33 @@ function AttendancePage() {
           e.biometricUserId.toLowerCase().includes(q)),
     );
   }, [events, range, device, decision, eventType, source, search]);
+  useEffect(() => {
+    const keys = [
+      ...new Set(
+        attendance.data
+          .filter(
+            (e) =>
+              !e.clientId &&
+              e.deviceId &&
+              e.biometricUserId &&
+              e.clientNameSnapshot === "Unknown member" &&
+              (e.attendanceDate === today ||
+                (e.attendanceDate >= range[0] && e.attendanceDate <= range[1])),
+          )
+          .map((e) => `${e.deviceId}_${e.biometricUserId}`),
+      ),
+    ]
+      .filter((k) => !(k in machineNames))
+      .slice(0, 60);
+    if (!keys.length) return;
+    let live = true;
+    void machineUserNames(keys).then((m) => {
+      if (live) setMachineNames((cur) => ({ ...cur, ...m }));
+    });
+    return () => {
+      live = false;
+    };
+  }, [attendance.data, range, today, machineNames]);
   // Same test as the Fingerprint Devices page: a cloud machine is online while it keeps checking
   // in. Manual / test devices never make the page say "offline".
   const machines = devices.data.filter(

@@ -1,6 +1,9 @@
 import {
   addDoc,
   doc,
+  getCountFromServer,
+  getDoc,
+  getDocs,
   orderBy,
   query,
   serverTimestamp,
@@ -166,9 +169,31 @@ export const mapDeviceUser = (id: string, d: DocumentData): DeviceUser => ({
   removed: d["removed"] === true,
 });
 
-/** Everyone on every machine (for names of punches not linked to a member yet). */
-export const subscribeAllDeviceUsers = (ok: (x: DeviceUser[]) => void, fail: (e: Error) => void) =>
-  subscribeQuery(query(col(COLLECTIONS.deviceUsers)), mapDeviceUser, ok, fail);
+/** How many people are on the machine (a count costs about 1 read per 1,000). */
+export const countDeviceUsers = async (deviceId: string) =>
+  (
+    await getCountFromServer(query(col(COLLECTIONS.deviceUsers), where("deviceId", "==", deviceId)))
+  ).data().count;
+
+/** Everyone on the machine, loaded once when asked for (a machine can hold 1,000 people). */
+export const loadDeviceUsers = async (deviceId: string) =>
+  (await getDocs(query(col(COLLECTIONS.deviceUsers), where("deviceId", "==", deviceId)))).docs
+    .map((d) => mapDeviceUser(d.id, d.data()))
+    .sort((a, b) => Number(a.pin) - Number(b.pin) || a.pin.localeCompare(b.pin));
+
+/** Names the machine has for some IDs ("<deviceId>_<pin>" → name, "" when unknown). */
+export async function machineUserNames(keys: string[]) {
+  const out: Record<string, string> = {};
+  await Promise.all(
+    keys.map(async (k) => {
+      const s = await getDoc(
+        doc(db, COLLECTIONS.deviceUsers, k.replace(/[^a-zA-Z0-9_-]/g, "_")),
+      ).catch(() => null);
+      out[k] = String(s?.data()?.["name"] ?? "");
+    }),
+  );
+  return out;
+}
 
 export const subscribeDeviceUsers = (
   deviceId: string,
