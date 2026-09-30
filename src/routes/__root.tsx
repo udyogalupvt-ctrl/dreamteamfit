@@ -36,10 +36,24 @@ function NotFoundComponent() {
   );
 }
 
+/** A tab opened before a new version went live asks for page files that no longer exist. */
+const STALE_BUILD =
+  /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i;
+
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
   useEffect(() => {
     console.error(error);
+    // Load the new version once, by itself (never in a loop: once per minute at most).
+    if (!STALE_BUILD.test(String(error?.message ?? error))) return;
+    try {
+      const last = Number(sessionStorage.getItem("rf-reloaded-at") ?? 0);
+      if (Date.now() - last < 60_000) return;
+      sessionStorage.setItem("rf-reloaded-at", String(Date.now()));
+    } catch {
+      // Storage blocked: still reload once.
+    }
+    window.location.reload();
   }, [error]);
 
   return (

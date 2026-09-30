@@ -1,6 +1,13 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
-import { connectFirestoreEmulator, getFirestore, type Firestore } from "firebase/firestore";
+import {
+  connectFirestoreEmulator,
+  getFirestore,
+  initializeFirestore,
+  memoryLocalCache,
+  memoryLruGarbageCollector,
+  type Firestore,
+} from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 import type { Analytics } from "firebase/analytics";
 
@@ -26,7 +33,22 @@ export const app: FirebaseApp = getApps().length
   : initializeApp(firebaseConfig as Record<string, string>);
 
 export const auth: Auth = getAuth(app);
-export const db: Firestore = getFirestore(app);
+
+/**
+ * Keep what was loaded in memory while the tab is open: going back to a list within ~30 minutes
+ * only fetches what changed, instead of every member again (free plan: 50,000 reads a day).
+ */
+function makeDb(): Firestore {
+  try {
+    return initializeFirestore(app, {
+      localCache: memoryLocalCache({ garbageCollector: memoryLruGarbageCollector() }),
+    });
+  } catch {
+    // Already set up (hot reload).
+    return getFirestore(app);
+  }
+}
+export const db: Firestore = makeDb();
 
 // Local testing only: `VITE_USE_EMULATORS=1 npm run dev` talks to the Firebase emulators.
 if (env["VITE_USE_EMULATORS"] === "1" && !(globalThis as { __rfEmu?: boolean }).__rfEmu) {
