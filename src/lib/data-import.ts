@@ -226,7 +226,7 @@ export function validateRows(type: ImportType, rows: RawRow[], mapping: Record<s
       const ex = ctx.memberships.find((m) => m.clientId === data["clientId"] && key(m.packageNameSnapshot) === key(String(data["packageNameSnapshot"] ?? "")) && m.startDate === data["startDate"] && m.endDate === data["endDate"]);
       if (ex) duplicate = { id: ex.id, label: `${ex.packageNameSnapshot} · ${ex.startDate} → ${ex.endDate} (${ex.status})`, incoming: `${data["packageNameSnapshot"]} · ${data["startDate"]} → ${data["endDate"]}` };
     } else if (type === "expenses") {
-      const c = (EXPENSE_CATEGORIES as readonly string[]).find((x) => key(x) === key(String(data["category"] ?? ""))); data["category"] = c ?? "Other";
+      const raw = String(data["category"] ?? "").trim(); const c = (EXPENSE_CATEGORIES as readonly string[]).find((x) => key(x) === key(raw)); data["category"] = c ?? (raw ? raw.slice(0, 40) : "Other");
       const m = (EXPENSE_PAYMENT_METHODS as readonly string[]).find((x) => key(x) === key(String(data["paymentMethod"] ?? ""))); data["paymentMethod"] = m ?? "Other";
       if (data["amount"] === 0) errors.push({ field: "Amount", reason: "Amount must be greater than zero" });
       dupKey = `${key(String(data["title"]))}|${data["date"]}|${data["amount"]}`;

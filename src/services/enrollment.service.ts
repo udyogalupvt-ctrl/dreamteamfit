@@ -36,7 +36,7 @@ import { allocatePayment } from "./finance.service";
 import { col, COLLECTIONS, toDate } from "./firestore.service";
 import { mapInvoice } from "./invoices.service";
 import { calculateEndDate } from "./memberships.service";
-import { calculateShare } from "./pt.service";
+import { calculateShare, ptPackageLabel } from "./pt.service";
 
 export const mapEnrollment = (id: string, d: DocumentData): Enrollment => ({
   id,
@@ -333,7 +333,7 @@ export async function enrollMember(input: EnrollmentInput) {
         clientId: clientRef.id,
         clientNameSnapshot: fullName,
         ptPackageId: input.pt.pkg.id,
-        ptPackageNameSnapshot: input.pt.pkg.name,
+        ptPackageNameSnapshot: ptPackageLabel(input.pt.pkg),
         trainerId: input.pt.trainer.id,
         trainerNameSnapshot: input.pt.trainer.name,
         ...share,
@@ -352,7 +352,7 @@ export async function enrollMember(input: EnrollmentInput) {
         clientId: clientRef.id,
         clientNameSnapshot: fullName,
         ptAssignmentId: ptRef.id,
-        ptPackageNameSnapshot: input.pt.pkg.name,
+        ptPackageNameSnapshot: ptPackageLabel(input.pt.pkg),
         invoiceId: invoiceRef.id,
         grossAmount: share.ptPrice,
         trainerShareAmount: share.trainerShareAmount,
@@ -380,7 +380,7 @@ export async function enrollMember(input: EnrollmentInput) {
       ...(input.pt
         ? [
             {
-              name: `PT: ${input.pt.pkg.name}`,
+              name: `PT: ${ptPackageLabel(input.pt.pkg)}`,
               description: `Personal training with ${input.pt.trainer.name}`,
               quantity: 1,
               unitPrice: input.pt.pkg.price,

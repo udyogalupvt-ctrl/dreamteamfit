@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
+import { ColorThemeSection } from "@/components/settings/color-theme-section";
 import { DataImportWizard } from "@/components/settings/data-import-wizard";
 import { DataExportPanel } from "@/components/settings/data-export-panel";
 import { MemberAppBulkSend } from "@/components/settings/member-app-bulk";
@@ -105,6 +106,7 @@ function SettingsPage() {
           >
             <ThemeToggle />
           </FormSection>
+          <ColorThemeSection />
           <InstallAppSection />
         </TabsContent>
       </Tabs>

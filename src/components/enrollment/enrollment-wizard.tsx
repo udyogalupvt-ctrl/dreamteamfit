@@ -50,6 +50,8 @@ import { subscribePackages } from "@/services/packages.service";
 import {
   calculateShare,
   PT_DURATION_LABELS,
+  PT_SCHEDULE_LABELS,
+  ptPackageLabel,
   subscribePtPackages,
   subscribeTrainers,
 } from "@/services/pt.service";
@@ -813,8 +815,8 @@ export function EnrollmentWizard({
                             .filter((p) => p.isActive)
                             .map((p) => (
                               <SelectItem key={p.id} value={p.id}>
-                                {p.name} · {PT_DURATION_LABELS[p.durationType]} ·{" "}
-                                {formatPrice(p.price)}
+                                {p.name} · {PT_SCHEDULE_LABELS[p.schedule]} ·{" "}
+                                {PT_DURATION_LABELS[p.durationType]} · {formatPrice(p.price)}
                               </SelectItem>
                             ))}
                         </SelectContent>
@@ -936,7 +938,7 @@ export function EnrollmentWizard({
                     {pt ? (
                       <li className="flex justify-between gap-3">
                         <span>
-                          PT: {pt.pkg.name} · {pt.trainer.name}
+                          PT: {ptPackageLabel(pt.pkg)} · {pt.trainer.name}
                         </span>
                         <b className="tabular-nums">{formatPrice(pt.pkg.price)}</b>
                       </li>

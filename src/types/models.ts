@@ -482,7 +482,8 @@ export const EXPENSE_CATEGORIES = [
   "Supplies",
   "Other",
 ] as const;
-export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+/** One of EXPENSE_CATEGORIES, or a custom one the gym typed ("Custom…" in the form). */
+export type ExpenseCategory = string;
 export const EXPENSE_PAYMENT_METHODS = ["Cash", "UPI", "Card", "Bank Transfer", "Other"] as const;
 export type ExpensePaymentMethod = (typeof EXPENSE_PAYMENT_METHODS)[number];
 
@@ -776,8 +777,13 @@ export interface WhatsAppSettings {
 // ---------------- PT, trainers, payments, enrollment, finance, import ----------------
 export const PT_DURATION_TYPES = ["day", "monthly", "yearly", "custom"] as const;
 export type PtDurationType = (typeof PT_DURATION_TYPES)[number];
+/** How often the member trains with the trainer (each is priced on its own). */
+export const PT_SCHEDULES = ["daily", "alternate"] as const;
+export type PtSchedule = (typeof PT_SCHEDULES)[number];
 export interface PtPackage extends BaseDoc {
   name: string;
+  /** Daily sessions, or alternate days. */
+  schedule: PtSchedule;
   durationType: PtDurationType;
   durationDays: number;
   price: number;
@@ -799,6 +805,11 @@ export interface Trainer extends BaseDoc {
   notes: string;
   /** Trainer app (/t/<code>), made by the owner. "" = no login yet. */
   portalCode: string;
+  /**
+   * Their staff (counsellor) profile, for the Calls in the trainer app. "" = the staff member
+   * with the same phone number.
+   */
+  counsellorStaffId: string;
   portalActive: boolean;
 }
 export const PT_ASSIGNMENT_STATUSES = ["pending", "active", "completed", "cancelled"] as const;

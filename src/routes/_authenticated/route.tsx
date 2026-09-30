@@ -6,6 +6,7 @@ import { NoAccessPage, NoAccessScreen } from "@/components/common/no-access";
 import { featureForPath } from "@/constants/features";
 import { AccessProvider, useAccess } from "@/hooks/use-access";
 import { useAuth } from "@/hooks/use-auth";
+import { ColorThemeSync } from "@/hooks/use-color-theme";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -40,5 +41,10 @@ function AccessGate() {
   if (access.loading) return <FullPageLoader label="Loading your access…" />;
   if (!access.active) return <NoAccessScreen />;
   const feature = featureForPath(pathname);
-  return <AppShell>{feature && !access.can(feature) ? <NoAccessPage /> : <Outlet />}</AppShell>;
+  return (
+    <AppShell>
+      <ColorThemeSync />
+      {feature && !access.can(feature) ? <NoAccessPage /> : <Outlet />}
+    </AppShell>
+  );
 }

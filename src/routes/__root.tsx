@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { ThemeProvider, themeBootstrapScript } from "@/hooks/use-theme";
+import { colorThemeBootstrapScript } from "@/lib/theme-colors";
 import { AuthProvider } from "@/hooks/use-auth";
 import { Toaster } from "@/components/ui/sonner";
 import { startPwa } from "@/lib/pwa";
@@ -151,6 +152,7 @@ function RootShell({ children }: { children: ReactNode }) {
       <head>
         <HeadContent />
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
+        <script dangerouslySetInnerHTML={{ __html: colorThemeBootstrapScript }} />
       </head>
       <body>
         {children}

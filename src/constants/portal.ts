@@ -207,6 +207,51 @@ export interface TrainerPortalData {
   templates: { workout: TrainerTemplateWorkout[]; diet: TrainerTemplateDiet[] };
 }
 
+/** Trainer app → Calls: a lead this trainer counsels (as the gym's counsellor). */
+export interface TrainerCallLead {
+  inquiryId: string;
+  name: string;
+  phone: string;
+  status: string;
+  source: string;
+  goal: string;
+  notes: string;
+  nextCallDate: string;
+  lastContactDate: string;
+  expectedJoinDate: string;
+}
+/** Trainer app → Calls: a member this trainer counselled whose package ends soon / ended. */
+export interface TrainerCallMember {
+  clientId: string;
+  name: string;
+  phone: string;
+  memberId: string;
+  packageName: string;
+  endDate: string;
+  /** ending = 15 days or less left; ended = not renewed (last 60 days). */
+  state: "ending" | "ended";
+  nextCallDate: string;
+  followUpId: string;
+}
+export interface TrainerCallsData {
+  /** false: the trainer isn't linked to a counsellor (staff) profile yet. */
+  linked: boolean;
+  counsellorName: string;
+  today: string;
+  leads: TrainerCallLead[];
+  members: TrainerCallMember[];
+}
+/** One call the trainer made (same meaning as the front desk's "Record call"). */
+export interface TrainerCallInput {
+  inquiryId: string | null;
+  clientId: string;
+  followUpId: string;
+  outcomeId: string;
+  said: string;
+  /** Joining / visiting / call-again date, when the outcome needs one. */
+  date: string;
+}
+
 /** One PT member opened in the trainer app. */
 export interface TrainerMemberDetail {
   member: {

@@ -15,6 +15,7 @@ import { col, COLLECTIONS, subscribeCollection, subscribeQuery, toDate } from ".
 export const mapPtPackage = (id: string, d: DocumentData): PtPackage => ({
   id,
   name: d["name"] ?? "",
+  schedule: d["schedule"] === "alternate" ? "alternate" : "daily",
   durationType: d["durationType"] ?? "monthly",
   durationDays: Number(d["durationDays"] ?? 0),
   price: Number(d["price"] ?? 0),
@@ -38,6 +39,7 @@ export const mapTrainer = (id: string, d: DocumentData): Trainer => ({
   notes: d["notes"] ?? "",
   portalCode: d["portalCode"] ?? "",
   portalActive: d["portalActive"] !== false,
+  counsellorStaffId: d["counsellorStaffId"] ?? "",
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -147,6 +149,11 @@ export function calculateShare(ptPrice: number, type: ShareType, value: number) 
     gymShareAmount: round(ptPrice - trainerShareAmount),
   };
 }
+
+export const PT_SCHEDULE_LABELS = { daily: "Daily", alternate: "Alternate days" } as const;
+/** "Monthly PT (Alternate days)": the name kept on the member's PT plan, bill and apps. */
+export const ptPackageLabel = (p: Pick<PtPackage, "name" | "schedule">) =>
+  `${p.name} (${PT_SCHEDULE_LABELS[p.schedule]})`;
 
 export const PT_DURATION_LABELS = {
   day: "Day",

@@ -8,7 +8,12 @@ export const expenseSchema = z
       .trim()
       .min(1, "Expense title is required")
       .max(120, "Keep the title under 120 characters"),
-    category: z.enum(EXPENSE_CATEGORIES, { message: "Category is required" }),
+    // A built-in category or a custom one typed by the gym.
+    category: z
+      .string()
+      .trim()
+      .min(1, "Choose or type a category")
+      .max(40, "Keep the category under 40 characters"),
     amount: z.coerce
       .number()
       .positive("Amount must be greater than 0")
@@ -30,6 +35,16 @@ export const expenseSchema = z
       ? { ...v, paidBy: "Gym", settled: true, settledDate: "", settledMethod: "" }
       : v,
   );
+
+/** The dropdown: built-in categories ("Other" replaced by Custom…), then custom ones used before. */
+export function expenseCategoryOptions(used: string[], current = "") {
+  const builtIn = EXPENSE_CATEGORIES.filter((c) => c !== "Other") as string[];
+  const known = new Set(builtIn.map((c) => c.toLowerCase()));
+  const custom = [...new Set([...used, current].map((c) => c.trim()).filter(Boolean))]
+    .filter((c) => !known.has(c.toLowerCase()))
+    .sort((a, b) => a.localeCompare(b));
+  return [...builtIn, ...custom];
+}
 
 /** "Gym" = paid from the gym's own cash or account. */
 export const isGym = (paidBy: string) => !paidBy.trim() || paidBy.trim().toLowerCase() === "gym";

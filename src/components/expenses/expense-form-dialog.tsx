@@ -12,20 +12,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
-import { expenseSchema, isGym, type ExpenseFormValues } from "@/lib/expense-validation";
+import {
+  expenseCategoryOptions,
+  expenseSchema,
+  isGym,
+  type ExpenseFormValues,
+} from "@/lib/expense-validation";
 import { Switch } from "@/components/ui/switch";
 import { useLive } from "@/hooks/use-live-query";
-import { subscribeExpenses } from "@/services/expenses.service";
+import { subscribeExpensesSince } from "@/services/expenses.service";
 import { subscribeStaff } from "@/services/staff.service";
 import type { Staff } from "@/types/models";
-import { todayISO } from "@/lib/format";
+import { addDaysISO, todayISO } from "@/lib/format";
 import { createExpense, updateExpense } from "@/services/expenses.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, type Expense } from "@/types/models";
+import { EXPENSE_PAYMENT_METHODS, type Expense } from "@/types/models";
+
+const CUSTOM = "__custom__";
 
 const empty: ExpenseFormValues = {
   title: "",
-  category: "Other",
+  category: "",
   amount: 0,
   paymentMethod: "Cash",
   date: "",
@@ -46,8 +53,14 @@ export function ExpenseFormDialog({
   onOpenChange: (open: boolean) => void;
   expense?: Expense | null;
 }) {
-  // Names people typed before (and staff) come back in the "Paid by" list.
-  const past = useLive<Expense[]>(subscribeExpenses, [], []);
+  // Names people typed before (and staff) come back in the "Paid by" list, and custom categories
+  // in the Category list: from the last 6 months (not every expense ever).
+  const since = addDaysISO(todayISO(), -183);
+  const past = useLive<Expense[]>(
+    open ? (ok, fail) => subscribeExpensesSince(since, ok, fail) : null,
+    [],
+    [open, since],
+  );
   const staffList = useLive<Staff[]>(subscribeStaff, [], []);
   const payers = [
     ...new Set(
@@ -58,6 +71,11 @@ export function ExpenseFormDialog({
   ];
   const { user } = useAuth();
   const [values, setValues] = useState<ExpenseFormValues>({ ...empty, date: todayISO() });
+  const [typing, setTyping] = useState(false);
+  const categories = expenseCategoryOptions(
+    past.data.map((e) => e.category),
+    typing ? "" : values.category,
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   useEffect(() => {
@@ -79,6 +97,7 @@ export function ExpenseFormDialog({
           }
         : { ...empty, date: todayISO() },
     );
+    setTyping(false);
     setErrors({});
   }, [open, expense]);
   const set = <K extends keyof ExpenseFormValues>(key: K, value: ExpenseFormValues[K]) =>
@@ -142,20 +161,35 @@ export function ExpenseFormDialog({
         </Field>
         <Field label="Category" htmlFor="expense-category" required error={errors["category"]}>
           <Select
-            value={values.category}
-            onValueChange={(v) => set("category", v as ExpenseFormValues["category"])}
+            value={typing ? CUSTOM : values.category}
+            onValueChange={(v) => {
+              setTyping(v === CUSTOM);
+              set("category", v === CUSTOM ? "" : v);
+            }}
           >
             <SelectTrigger id="expense-category">
-              <SelectValue />
+              <SelectValue placeholder="Choose a category" />
             </SelectTrigger>
             <SelectContent>
-              {EXPENSE_CATEGORIES.map((v) => (
+              {categories.map((v) => (
                 <SelectItem key={v} value={v}>
                   {v}
                 </SelectItem>
               ))}
+              <SelectItem value={CUSTOM}>Custom… (type a new one)</SelectItem>
             </SelectContent>
           </Select>
+          {typing ? (
+            <Input
+              aria-label="Custom category"
+              placeholder="e.g. Water cans"
+              className="mt-2"
+              autoFocus
+              maxLength={40}
+              value={values.category}
+              onChange={(e) => set("category", e.target.value)}
+            />
+          ) : null}
         </Field>
         <Field label="Amount" htmlFor="expense-amount" required error={errors["amount"]}>
           <Input

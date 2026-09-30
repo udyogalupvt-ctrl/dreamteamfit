@@ -82,7 +82,10 @@ export function useReportsData(period: ReportPeriod, custom?: ReportDateRange) {
     const inRange = (v: string) => isDateInRange(v, range);
     const expenseRows = expenses.data.filter((e) => inRange(e.date));
     const expenseTotal = expenseRows.reduce((n, e) => n + e.amount, 0);
-    const expenseBreakdown = EXPENSE_CATEGORIES.map((category) => ({
+    // Built-in categories plus any custom ones used in the period.
+    const expenseBreakdown = [
+      ...new Set([...EXPENSE_CATEGORIES, ...expenseRows.map((e) => e.category)]),
+    ].map((category) => ({
       category,
       amount: expenseRows.filter((e) => e.category === category).reduce((n, e) => n + e.amount, 0),
     }));

@@ -18,6 +18,7 @@ import { Field, FormDialog } from "@/components/common/form-dialog";
 import { StatusPill } from "@/components/common/status-pill";
 import { AppSetupCard, NotificationToggle } from "@/components/portal/app-setup";
 import { ChatPanel, isUnread, mapThread } from "@/components/portal/chat-panel";
+import { TrainerCalls } from "@/components/portal/trainer-calls";
 import { PlanContent, PlanHeading, WeekStrip } from "@/components/portal/plan-view";
 import {
   BottomNav,
@@ -55,7 +56,7 @@ import { portalCall, portalDb } from "@/lib/portal-firebase";
 import { cn } from "@/lib/utils";
 import { DIET_GOALS, WORKOUT_GOALS, type ChatThread, type WorkoutDay } from "@/types/models";
 
-const VIEWS = ["members", "chats"] as const;
+const VIEWS = ["members", "calls", "chats"] as const;
 type View = (typeof VIEWS)[number];
 const MEMBER_TABS = ["plan", "progress", "chat", "info"] as const;
 type MemberTab = (typeof MEMBER_TABS)[number];
@@ -126,6 +127,7 @@ function TrainerApp() {
   const unread = data.members.filter((m) => isUnread(threads.get(m.clientId) ?? null, "trainer"));
   const items: NavItem<View>[] = [
     { id: "members", label: "My members", icon: Users },
+    { id: "calls", label: "Calls", icon: Phone },
     { id: "chats", label: "Chats", icon: MessageCircle, dot: unread.length > 0 },
   ];
 
@@ -135,7 +137,13 @@ function TrainerApp() {
         gymName={data.gym.name}
         logoUrl={data.gym.logoUrl}
         title={
-          row ? row.name : view === "chats" ? "Chats" : `Hi, ${data.trainer.name.split(" ")[0]}`
+          row
+            ? row.name
+            : view === "chats"
+              ? "Chats"
+              : view === "calls"
+                ? "Calls"
+                : `Hi, ${data.trainer.name.split(" ")[0]}`
         }
         onRefresh={() => void reload()}
         refreshing={loading}
@@ -155,6 +163,8 @@ function TrainerApp() {
             }}
             onChanged={() => void reload()}
           />
+        ) : view === "calls" ? (
+          <TrainerCalls />
         ) : view === "chats" ? (
           <ChatList
             data={data}

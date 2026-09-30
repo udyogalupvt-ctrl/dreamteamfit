@@ -22,9 +22,11 @@ import {
 } from "@/components/ui/select";
 import { useLive } from "@/hooks/use-live-query";
 import { formatPrice, todayISO } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import {
   calculateShare,
   PT_DURATION_LABELS,
+  PT_SCHEDULE_LABELS,
   savePtPackage,
   saveTrainer,
   subscribePtPackages,
@@ -34,6 +36,7 @@ import {
 } from "@/services/pt.service";
 import { DurationFields } from "@/components/packages/duration-fields";
 import { firestoreErrorMessage } from "@/services/firestore.service";
+import { subscribeStaff } from "@/services/staff.service";
 import {
   PT_DURATION_TYPES,
   type PtDurationType,
@@ -119,7 +122,8 @@ export function PtPackagesSection() {
                 <div>
                   <h3 className="text-card-title">{p.name}</h3>
                   <p className="text-meta">
-                    {PT_DURATION_LABELS[p.durationType]} · {p.durationDays} days
+                    {PT_SCHEDULE_LABELS[p.schedule]} · {PT_DURATION_LABELS[p.durationType]} ·{" "}
+                    {p.durationDays} days
                   </p>
                 </div>
                 <StatusPill tone={p.isActive ? "success" : "warning"}>
@@ -163,6 +167,7 @@ function PtPackageDialog({
 }) {
   const blank: PtPackageInput = {
     name: "",
+    schedule: "daily",
     durationType: "monthly",
     durationDays: 30,
     price: 0,
@@ -221,6 +226,36 @@ function PtPackageDialog({
             onChange={(e) => setF({ ...f, name: e.target.value })}
             placeholder="e.g. Monthly PT"
           />
+        </Field>
+        <Field
+          label="Sessions"
+          htmlFor="pp-schedule"
+          required
+          className="sm:col-span-2"
+          hint="Daily and alternate days are priced separately: make one package for each."
+        >
+          <div id="pp-schedule" role="radiogroup" className="grid grid-cols-2 gap-2">
+            {(["daily", "alternate"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="radio"
+                aria-checked={f.schedule === v}
+                onClick={() => setF({ ...f, schedule: v })}
+                className={cn(
+                  "rounded-xl border p-3 text-left text-sm font-semibold transition-colors",
+                  f.schedule === v
+                    ? "border-primary bg-primary/10"
+                    : "border-border hover:bg-accent",
+                )}
+              >
+                {PT_SCHEDULE_LABELS[v]}
+                <span className="text-meta block font-normal">
+                  {v === "daily" ? "Every day with the trainer" : "Every other day"}
+                </span>
+              </button>
+            ))}
+          </div>
         </Field>
         <DurationFields
           idPrefix="pp"
@@ -382,6 +417,8 @@ export function TrainersSection() {
   );
 }
 
+const AUTO = "__auto__";
+
 function TrainerDialog({ item, onClose }: { item: Trainer | null | "new"; onClose: () => void }) {
   const blank: TrainerInput = {
     name: "",
@@ -393,7 +430,9 @@ function TrainerDialog({ item, onClose }: { item: Trainer | null | "new"; onClos
     defaultShareType: "percentage",
     defaultTrainerShare: 0,
     notes: "",
+    counsellorStaffId: "",
   };
+  const staffList = useLive(subscribeStaff, [], []);
   const [f, setF] = useState<TrainerInput>(blank);
   const [err, setErr] = useState("");
   useEffect(() => {
@@ -515,6 +554,32 @@ function TrainerDialog({ item, onClose }: { item: Trainer | null | "new"; onClos
             value={f.defaultTrainerShare}
             onChange={(e) => setF({ ...f, defaultTrainerShare: Number(e.target.value) })}
           />
+        </Field>
+        <Field
+          label="Counsellor profile (for calls in the trainer app)"
+          htmlFor="t-counsellor"
+          className="sm:col-span-2"
+          hint="Leads and members counselled by this staff profile show in the trainer's Calls. Automatic = the staff member with the same phone number."
+        >
+          <Select
+            value={f.counsellorStaffId || AUTO}
+            onValueChange={(v) => setF({ ...f, counsellorStaffId: v === AUTO ? "" : v })}
+          >
+            <SelectTrigger id="t-counsellor" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={AUTO}>Automatic (same phone number)</SelectItem>
+              {staffList.data
+                .filter((s) => s.active)
+                .map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}
+                    {s.isCounsellor ? " · counsellor" : ""}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
         </Field>
         <Field label="Notes" htmlFor="t-notes" className="sm:col-span-2">
           <Textarea

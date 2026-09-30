@@ -14,6 +14,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import { usePeriodPicker } from "@/components/dashboard/period-picker";
 import { useEnrollment } from "@/components/enrollment/enrollment-context";
 import { useQuickActions } from "@/components/layout/quick-actions";
 import { PageHeader } from "@/components/common/page-header";
@@ -53,7 +54,8 @@ function DashboardPage() {
   const { openEnrollment } = useEnrollment();
   const actions = useQuickActions();
   const attention = useAttention();
-  const { primary, stats, activity, todaySchedule, loading, error } = useDashboardMetrics();
+  const { period, picker } = usePeriodPicker();
+  const { primary, stats, activity, todaySchedule, loading, error } = useDashboardMetrics(period);
   const [moreOpen, setMoreOpen] = useState(false);
 
   const tiles: {
@@ -158,10 +160,18 @@ function DashboardPage() {
         </div>
       </section>
 
-      <section aria-label="Key numbers" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {loading
-          ? primary.map((m) => <StatCardSkeleton key={m.id} />)
-          : primary.map((metric) => <StatCard key={metric.id} metric={metric} />)}
+      <section aria-labelledby="numbers-title" className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="numbers-title" className="text-card-title">
+            Numbers · {period.label}
+          </h2>
+          {picker}
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {loading
+            ? primary.map((m) => <StatCardSkeleton key={m.id} />)
+            : primary.map((metric) => <StatCard key={metric.id} metric={metric} />)}
+        </div>
       </section>
 
       {can("memberCalls") ? <MembersAtAGlance /> : null}

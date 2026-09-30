@@ -52,7 +52,7 @@ import type {
   Membership,
   WorkoutAssignment,
 } from "@/types/models";
-import { subscribeAttendanceDay } from "@/services/attendance.service";
+import { attendanceCounts, subscribeAttendanceDay } from "@/services/attendance.service";
 import { subscribeFollowUps } from "@/services/followups.service";
 import { subscribeAutomationActivities } from "@/services/notifications.service";
 import { attendanceSummary } from "@/lib/attendance-utils";
@@ -64,8 +64,23 @@ import {
 } from "@/services/finance.service";
 import type { ManualIncome, Payment } from "@/types/models";
 
+/** The dashboard's period ("Showing: Today / Last 5 days / a date / a range"). */
+export interface DashboardPeriod {
+  from: string;
+  to: string;
+  /** "today", "last 5 days", "12 Sep 2026", "1 Sep – 15 Sep 2026"… */
+  label: string;
+  isToday: boolean;
+}
+export const TODAY_PERIOD = (): DashboardPeriod => ({
+  from: todayISO(),
+  to: todayISO(),
+  label: "today",
+  isToday: true,
+});
+
 /** Derives dashboard numbers from live Firestore data only — nothing is invented. */
-export function useDashboardMetrics() {
+export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
   // Staff without the finance feature never load expenses (Firestore rules would refuse).
   const finance = useAccess().can("finance");
   const clients = useLive<Client[]>(subscribeClients, [], []);
@@ -81,11 +96,13 @@ export function useDashboardMetrics() {
   const enrollments = useLive<ClassEnrollment[]>(subscribeClassEnrollments, [], []);
   // Money: only this month's records, the open bills and the newest bills are loaded (not every
   // bill / payment ever, which grows each month); the all-time total is added up by the database.
+  // A period before this month (a picked date / range) loads from its first day.
   const monthFrom = format(startOfMonth(new Date()), "yyyy-MM-dd");
+  const loadFrom = period.from < monthFrom ? period.from : monthFrom;
   const expenses = useLive<Expense[]>(
-    finance ? (ok, fail) => subscribeExpensesSince(monthFrom, ok, fail) : null,
+    finance ? (ok, fail) => subscribeExpensesSince(loadFrom, ok, fail) : null,
     [],
-    [finance, monthFrom],
+    [finance, loadFrom],
   );
   const expenseActivities = useLive<ExpenseActivity[]>(
     finance ? subscribeExpenseActivities : null,
@@ -95,10 +112,23 @@ export function useDashboardMetrics() {
   const invoices = useLive<Invoice[]>(subscribeRecentInvoices, [], []);
   const openInvoices = useLive<Invoice[]>(subscribeDueInvoices, [], []);
   const monthInvoices = useLive<Invoice[]>(
-    (ok, fail) => subscribeInvoicesSince(monthFrom, ok, fail),
+    (ok, fail) => subscribeInvoicesSince(loadFrom, ok, fail),
     [],
-    [monthFrom],
+    [loadFrom],
   );
+  // Visits over several days: counted by the database (about 1 read per 1,000 punches).
+  const [rangeVisits, setRangeVisits] = useState<number | null>(null);
+  useEffect(() => {
+    setRangeVisits(null);
+    if (period.isToday) return;
+    let live = true;
+    void attendanceCounts(period.from, period.to)
+      .then((v) => live && setRangeVisits(v.visits))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [period.from, period.to, period.isToday]);
   const [allTime, setAllTime] = useState<number | null>(null);
   useEffect(() => {
     let live = true;
@@ -119,14 +149,14 @@ export function useDashboardMetrics() {
   const followUps = useLive<FollowUp[]>(subscribeFollowUps, [], []);
   const automationActivities = useLive<AutomationActivity[]>(subscribeAutomationActivities, [], []);
   const payments = useLive<Payment[]>(
-    (ok, fail) => subscribePaymentsSince(monthFrom, ok, fail),
+    (ok, fail) => subscribePaymentsSince(loadFrom, ok, fail),
     [],
-    [monthFrom],
+    [loadFrom],
   );
   const manualIncome = useLive<ManualIncome[]>(
-    finance ? (ok, fail) => subscribeManualIncomeSince(monthFrom, ok, fail) : null,
+    finance ? (ok, fail) => subscribeManualIncomeSince(loadFrom, ok, fail) : null,
     [],
-    [finance, monthFrom],
+    [finance, loadFrom],
   );
 
   const loading =
@@ -196,8 +226,32 @@ export function useDashboardMetrics() {
       monthStartISO,
       today,
     );
+    // The period picked on the dashboard (today by default).
+    const periodMoney = period.isToday
+      ? todayMoney
+      : buildFinanceSummary(
+          payments.data,
+          monthInvoices.data,
+          manualIncome.data,
+          expenseRows,
+          period.from,
+          period.to,
+        );
+    const periodExpenses = expenses.data
+      .filter((item) => item.date >= period.from && item.date <= period.to)
+      .reduce((sum, item) => sum + item.amount, 0);
+    const joinedIn = (from: string, to: string) =>
+      clients.data.filter((c) => {
+        const d = format(c.createdAt, "yyyy-MM-dd");
+        return d >= from && d <= to;
+      }).length;
+    // Today keeps the month view for the "more numbers" (profit, expenses…); a picked period
+    // shows that period.
+    const statMoney = period.isToday ? monthMoney : periodMoney;
+    const statExpenses = period.isToday ? monthExpenses : periodExpenses;
+    const statLabel = period.isToday ? "this month" : period.label;
     const totalCollected = allTime;
-    const todayCollected = todayMoney.gross;
+    const todayCollected = periodMoney.gross;
     const monthCollected = monthMoney.gross;
     const outstanding = openInvoices.data
       .filter((item) => item.paymentStatus !== "refunded")
@@ -233,7 +287,9 @@ export function useDashboardMetrics() {
       }
     });
 
-    const newClients = clients.data.filter((c) => c.createdAt >= monthStart).length;
+    const newClients = period.isToday
+      ? clients.data.filter((c) => c.createdAt >= monthStart).length
+      : joinedIn(period.from, period.to);
     const withDob = clients.data.filter((c) => c.dateOfBirth);
     const birthdays = withDob.filter((c) => c.dateOfBirth!.slice(5) === today.slice(5)).length;
     const followUpsDue = followUps.data.filter(
@@ -244,9 +300,11 @@ export function useDashboardMetrics() {
     const primary: StatMetric[] = [
       {
         id: "today-collection",
-        label: "Collected today",
+        label: period.isToday ? "Collected today" : `Collected · ${period.label}`,
         value: formatPrice(todayCollected),
-        hint: "all payments received today",
+        hint: period.isToday
+          ? "all payments received today"
+          : `gym income ${formatPrice(periodMoney.gymIncome)}`,
         icon: BadgeIndianRupee,
         tone: "success",
       },
@@ -262,18 +320,27 @@ export function useDashboardMetrics() {
         id: "active",
         label: "Active members",
         value: formatNumber(active),
-        hint: `${formatNumber(newClients)} joined this month`,
+        hint: `${formatNumber(newClients)} joined ${statLabel}`,
         icon: UserRoundCheck,
         tone: "info",
       },
-      {
-        id: "attendance",
-        label: "Visits today",
-        value: formatNumber(visitsToday),
-        hint: `${attendanceTotals.present} inside now · ${attendanceTotals.blocked} blocked`,
-        icon: CalendarCheck,
-        tone: "violet",
-      },
+      period.isToday
+        ? {
+            id: "attendance",
+            label: "Visits today",
+            value: formatNumber(visitsToday),
+            hint: `${attendanceTotals.present} inside now · ${attendanceTotals.blocked} blocked`,
+            icon: CalendarCheck,
+            tone: "violet",
+          }
+        : {
+            id: "attendance",
+            label: `Punches · ${period.label}`,
+            value: rangeVisits === null ? "…" : formatNumber(rangeVisits),
+            hint: "fingerprint punches (going in again counts again)",
+            icon: CalendarCheck,
+            tone: "violet",
+          },
     ];
 
     const FINANCE_ONLY = new Set([
@@ -285,24 +352,24 @@ export function useDashboardMetrics() {
     const allStats: StatMetric[] = [
       {
         id: "profit-loss",
-        label: "Profit this month",
-        value: formatPrice(monthMoney.net),
+        label: `Profit ${statLabel}`,
+        value: formatPrice(statMoney.net),
         hint: "gym income − expenses (trainer share excluded)",
         icon: BadgeIndianRupee,
-        tone: monthMoney.net >= 0 ? "success" : "danger",
+        tone: statMoney.net >= 0 ? "success" : "danger",
       },
       {
         id: "month-expenses",
-        label: "Expenses this month",
-        value: formatPrice(monthExpenses),
-        hint: `${formatPrice(todayExpenses)} today`,
+        label: `Expenses ${statLabel}`,
+        value: formatPrice(statExpenses),
+        hint: period.isToday ? `${formatPrice(todayExpenses)} today` : "paid in this period",
         icon: ReceiptIndianRupee,
         tone: "warning",
       },
       {
         id: "trainer-payable",
-        label: "Trainer share this month",
-        value: formatPrice(monthMoney.trainerPayable),
+        label: `Trainer share ${statLabel}`,
+        value: formatPrice(statMoney.trainerPayable),
         hint: "owed to trainers from PT",
         icon: Dumbbell,
         tone: "info",
@@ -327,7 +394,7 @@ export function useDashboardMetrics() {
         id: "new-clients",
         label: "New members",
         value: formatNumber(newClients),
-        hint: "this month",
+        hint: statLabel,
         icon: UserPlus,
         tone: "primary",
       },
@@ -564,6 +631,11 @@ export function useDashboardMetrics() {
     followUps.data,
     automationActivities.data,
     finance,
+    period.from,
+    period.to,
+    period.label,
+    period.isToday,
+    rangeVisits,
   ]);
 
   return { ...result, loading, error };

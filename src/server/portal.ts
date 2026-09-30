@@ -17,6 +17,7 @@
 import { randomInt } from "node:crypto";
 import { FieldValue, type DocumentData, type DocumentSnapshot } from "firebase-admin/firestore";
 import type { DecodedIdToken } from "firebase-admin/auth";
+import { CALL_OUTCOME_OPTIONS } from "@/constants/call-outcomes";
 import { isOwnerEmail } from "@/constants/owners";
 import {
   MAX_WORKOUT_DAYS,
@@ -35,6 +36,10 @@ import {
   type PortalMembership,
   type PortalWorkout,
   type TrainerAssignInput,
+  type TrainerCallInput,
+  type TrainerCallLead,
+  type TrainerCallMember,
+  type TrainerCallsData,
   type TrainerMemberDetail,
   type TrainerMemberRow,
   type TrainerPortalData,
@@ -848,6 +853,277 @@ async function hello(url: URL) {
   });
 }
 
+// ------------------------------------------------------------------ trainer app: calls
+
+const digits10 = (p: unknown) => s(p).replace(/\D/g, "").slice(-10);
+
+/**
+ * The trainer's counsellor (staff) profile: the one the owner picked on the trainer, or else the
+ * staff member with the same phone number. Leads and members are counselled by staff profiles.
+ */
+async function trainerCounsellor(t: D) {
+  const picked = s(t["counsellorStaffId"]);
+  if (picked) {
+    const st = await db().doc(`staff/${picked}`).get();
+    if (st.exists) return { id: st.id, name: s(st.data()?.["name"]) };
+  }
+  const phone = digits10(t["phone"]);
+  if (phone.length < 10) return null;
+  // A gym has a handful of staff: one small read.
+  const staff = await db().collection("staff").get();
+  const m = staff.docs.find((d) => digits10(d.data()["phone"]) === phone);
+  return m ? { id: m.id, name: s(m.data()["name"]) } : null;
+}
+
+const inChunks = async (collection: string, field: string, ids: string[]) => {
+  const out: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+  for (let i = 0; i < ids.length; i += 30) {
+    const snap = await db()
+      .collection(collection)
+      .where(field, "in", ids.slice(i, i + 30))
+      .get();
+    out.push(...snap.docs);
+  }
+  return out;
+};
+
+/** Leads this trainer counsels, and members they counselled whose package ends soon / ended. */
+async function trainerCalls(t: D): Promise<Response> {
+  const today = localDate();
+  const who = await trainerCounsellor(t);
+  const empty: TrainerCallsData = {
+    linked: false,
+    counsellorName: "",
+    today,
+    leads: [],
+    members: [],
+  };
+  if (!who) return json(empty);
+  const [inq, plans] = await Promise.all([
+    db().collection("inquiries").where("counsellorId", "==", who.id).get(),
+    db().collection("memberships").where("counsellorId", "==", who.id).get(),
+  ]);
+  const leads: TrainerCallLead[] = inq.docs
+    .map((d) => ({ id: d.id, x: d.data() }))
+    .filter(
+      ({ x }) => !["converted", "lost"].includes(s(x["status"])) && x["convertedToClient"] !== true,
+    )
+    .map(({ id, x }) => ({
+      inquiryId: id,
+      name: s(x["name"]),
+      phone: s(x["phone"]),
+      status: s(x["status"]) || "new",
+      source: s(x["source"]),
+      goal: s(x["fitnessGoal"]),
+      notes: s(x["notes"]),
+      nextCallDate: s(x["nextFollowUpDate"]),
+      lastContactDate: s(x["lastContactDate"]),
+      expectedJoinDate: s(x["expectedJoinDate"]),
+    }))
+    .sort(
+      (a, b) =>
+        (a.nextCallDate || "9999").localeCompare(b.nextCallDate || "9999") ||
+        a.name.localeCompare(b.name),
+    );
+
+  // Members whose latest plan with this counsellor ends within 15 days or ended in the last 60.
+  const from = shiftDate(today, -60);
+  const to = shiftDate(today, 15);
+  const latest = new Map<string, D>();
+  for (const d of plans.docs) {
+    const m = d.data();
+    if (s(m["status"]) === "cancelled") continue;
+    const cur = latest.get(s(m["clientId"]));
+    if (!cur || s(m["endDate"]) > s(cur["endDate"])) latest.set(s(m["clientId"]), m);
+  }
+  const candidates = [...latest.entries()]
+    .filter(([, m]) => s(m["endDate"]) >= from && s(m["endDate"]) <= to)
+    .map(([id]) => id);
+  let members: TrainerCallMember[] = [];
+  if (candidates.length) {
+    // A renewal sold by anyone else counts too: every plan of these members is checked.
+    const [allPlans, clients, fus] = await Promise.all([
+      inChunks("memberships", "clientId", candidates),
+      db().getAll(...candidates.map((id) => db().doc(`clients/${id}`))),
+      inChunks("followups", "clientId", candidates),
+    ]);
+    const endOf = new Map<string, { end: string; name: string }>();
+    for (const d of allPlans) {
+      const m = d.data();
+      if (s(m["status"]) === "cancelled") continue;
+      const id = s(m["clientId"]);
+      const cur = endOf.get(id);
+      if (!cur || s(m["endDate"]) > cur.end)
+        endOf.set(id, { end: s(m["endDate"]), name: s(m["packageNameSnapshot"]) });
+    }
+    const nextCall = new Map<string, { date: string; id: string }>();
+    for (const f of fus) {
+      const x = f.data();
+      if (x["status"] !== "pending") continue;
+      const id = s(x["clientId"]);
+      const cur = nextCall.get(id);
+      if (!cur || s(x["followUpDate"]) < cur.date)
+        nextCall.set(id, { date: s(x["followUpDate"]), id: f.id });
+    }
+    members = clients
+      .filter((c) => c.exists)
+      .map((c) => {
+        const x = c.data() ?? {};
+        const plan = endOf.get(c.id) ?? { end: "", name: "" };
+        return {
+          clientId: c.id,
+          name: s(x["fullName"]),
+          phone: s(x["phone"]),
+          memberId: s(x["clientCode"]),
+          packageName: plan.name,
+          endDate: plan.end,
+          state: (plan.end < today ? "ended" : "ending") as TrainerCallMember["state"],
+          nextCallDate: nextCall.get(c.id)?.date ?? "",
+          followUpId: nextCall.get(c.id)?.id ?? "",
+        };
+      })
+      // Renewed since (a later plan than the window): nothing to call about.
+      .filter((m) => m.endDate >= from && m.endDate <= to)
+      .sort((a, b) =>
+        a.state !== b.state
+          ? a.state === "ending"
+            ? -1
+            : 1
+          : a.state === "ending"
+            ? a.endDate.localeCompare(b.endDate)
+            : b.endDate.localeCompare(a.endDate),
+      );
+  }
+  return json({
+    linked: true,
+    counsellorName: who.name,
+    today,
+    leads,
+    members,
+  } satisfies TrainerCallsData);
+}
+
+/** A call the trainer made: saved exactly like the front desk's "Record call". */
+async function trainerCall(trainerId: string, t: D, body: Record<string, unknown>) {
+  const input = body as Partial<TrainerCallInput>;
+  const who = await trainerCounsellor(t);
+  if (!who) return json({ error: "You are not linked to a counsellor profile yet." }, 403);
+  const inquiryId = s(input.inquiryId) || null;
+  const clientId = s(input.clientId);
+  const outcome = CALL_OUTCOME_OPTIONS.find((o) => o.id === s(input.outcomeId) && !o.convert);
+  if (!outcome || (outcome.for !== "both" && outcome.for !== (inquiryId ? "lead" : "member")))
+    return json({ error: "Pick what they said." }, 400);
+  const date = s(input.date);
+  if (outcome.date && !/^\d{4}-\d{2}-\d{2}$/.test(date))
+    return json({ error: "Pick a date." }, 400);
+  const said = s(input.said).trim().slice(0, 1000);
+  const firestore = db();
+  let name = "";
+  let phone = "";
+  if (inquiryId) {
+    const lead = (await firestore.doc(`inquiries/${inquiryId}`).get()).data();
+    if (!lead || s(lead["counsellorId"]) !== who.id)
+      return json({ error: "This lead is not yours." }, 403);
+    name = s(lead["name"]);
+    phone = s(lead["phone"]);
+  } else {
+    if (!clientId) return json({ error: "Member is required." }, 400);
+    const [c, ms] = await Promise.all([
+      firestore.doc(`clients/${clientId}`).get(),
+      firestore.collection("memberships").where("clientId", "==", clientId).get(),
+    ]);
+    if (!c.exists || !ms.docs.some((m) => s(m.data()["counsellorId"]) === who.id))
+      return json({ error: "This member is not yours." }, 403);
+    name = s(c.data()?.["fullName"]);
+    phone = s(c.data()?.["phone"]);
+  }
+  const today = localDate();
+  const by = `${s(t["name"]) || "Trainer"} (trainer)`;
+  const nextCallDate = outcome.date ? date : "";
+  const now = FieldValue.serverTimestamp();
+  const batch = firestore.batch();
+  batch.set(firestore.collection("leadLogs").doc(), {
+    inquiryId,
+    clientId,
+    customerSaid: said,
+    response: outcome.label,
+    nextAction: outcome.nextAction,
+    nextCallDate,
+    nextCallTime: nextCallDate ? "10:00" : "",
+    expectedJoinDate: outcome.date === "join" ? date : "",
+    expectedVisitDate: outcome.date === "visit" ? date : "",
+    priority: outcome.priority,
+    notes: "",
+    createdBy: by,
+    createdAt: now,
+    updatedAt: now,
+  });
+  const next = nextCallDate
+    ? {
+        clientId,
+        inquiryId,
+        clientNameSnapshot: name,
+        phoneSnapshot: phone,
+        source: inquiryId ? "inquiry" : "renewal",
+        reason: outcome.nextAction || "Follow-up call",
+        notes: said,
+        followUpDate: nextCallDate,
+        followUpTime: "10:00",
+        status: "pending",
+        priority: outcome.priority,
+        assignedTo: by,
+        lastContactDate: today,
+        nextAction: outcome.nextAction,
+        outcome: "",
+        automated: false,
+        parentFollowUpId: s(input.followUpId) || null,
+        updatedAt: now,
+      }
+    : null;
+  const done = {
+    status: "completed",
+    outcome: outcome.label,
+    lastContactDate: today,
+    updatedAt: now,
+  };
+  if (inquiryId) {
+    batch.update(firestore.doc(`inquiries/${inquiryId}`), {
+      lastContactDate: today,
+      nextFollowUpDate: nextCallDate || null,
+      expectedJoinDate: outcome.date === "join" ? date : null,
+      expectedVisitDate: outcome.date === "visit" ? date : null,
+      ...(outcome.status ? { status: outcome.status } : {}),
+      updatedAt: now,
+    });
+    // Same single follow-up per lead as the front desk (inquiry_<id>).
+    const stable = firestore.doc(`followups/inquiry_${inquiryId}`);
+    const pending = await firestore
+      .collection("followups")
+      .where("inquiryId", "==", inquiryId)
+      .get();
+    pending.docs
+      .filter((d) => d.id !== stable.id && d.data()["status"] === "pending")
+      .forEach((d) => batch.update(d.ref, done));
+    if (next) batch.set(stable, { ...next, createdAt: now }, { merge: true });
+    else if (pending.docs.some((d) => d.id === stable.id && d.data()["status"] === "pending"))
+      batch.update(stable, done);
+  } else {
+    const current = s(input.followUpId);
+    if (current) batch.set(firestore.doc(`followups/${current}`), done, { merge: true });
+    if (next) batch.set(firestore.collection("followups").doc(), { ...next, createdAt: now });
+  }
+  await batch.commit();
+  await log({
+    collection: inquiryId ? "inquiries" : "clients",
+    docId: inquiryId ?? clientId,
+    summary: `Call by trainer ${s(t["name"])}: ${outcome.label}${nextCallDate ? ` · next call ${nextCallDate}` : ""}`,
+    actorName: by,
+    clientId: inquiryId ? "" : clientId,
+    clientName: inquiryId ? "" : name,
+  });
+  return json({ ok: true, trainerId });
+}
+
 /**
  * Each member's / trainer's own installable app ("Install app" in their link): the icon on the
  * phone opens straight on their link. Same for everyone except the link, so no database read, and
@@ -914,6 +1190,13 @@ export async function handlePortal(request: Request, url: URL): Promise<Response
   if (request.method === "POST" && action === "trainer-assign")
     return trainerAssign(
       who.id,
+      (await request.json().catch(() => ({}))) as Record<string, unknown>,
+    );
+  if (request.method === "GET" && action === "trainer-calls") return trainerCalls(trainer);
+  if (request.method === "POST" && action === "trainer-call")
+    return trainerCall(
+      who.id,
+      trainer,
       (await request.json().catch(() => ({}))) as Record<string, unknown>,
     );
   return json({ error: "Not found" }, 404);

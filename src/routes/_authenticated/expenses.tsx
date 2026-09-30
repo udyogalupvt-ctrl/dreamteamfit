@@ -63,7 +63,8 @@ import { useLive } from "@/hooks/use-live-query";
 import { formatDate, formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { deleteExpense, subscribeExpenses } from "@/services/expenses.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, type Expense } from "@/types/models";
+import { expenseCategoryOptions } from "@/lib/expense-validation";
+import { EXPENSE_PAYMENT_METHODS, type Expense } from "@/types/models";
 
 export const Route = createFileRoute("/_authenticated/expenses")({
   validateSearch: z.object({ create: z.boolean().optional() }),
@@ -268,11 +269,14 @@ function ExpensesList() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All categories</SelectItem>
-              {EXPENSE_CATEGORIES.map((v) => (
+              {expenseCategoryOptions(live.data.map((e) => e.category)).map((v) => (
                 <SelectItem key={v} value={v}>
                   {v}
                 </SelectItem>
               ))}
+              {live.data.some((e) => e.category === "Other") ? (
+                <SelectItem value="Other">Other</SelectItem>
+              ) : null}
             </SelectContent>
           </Select>
           <Select value={payment} onValueChange={setPayment}>
