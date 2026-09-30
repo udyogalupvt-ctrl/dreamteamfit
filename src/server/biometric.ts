@@ -645,6 +645,30 @@ function machineUsers(body: string): MachineUser[] {
   return out;
 }
 
+/**
+ * Each machine user's own settings as the machine keeps them (access group, time slots, verify
+ * mode, validity dates…; never the password), on their "Users on this machine" record. Shows how
+ * the old software kept people out, and what the machine itself still blocks.
+ */
+async function keepMachineFields(device: Device, body: string) {
+  const writer = db().bulkWriter();
+  writer.onWriteError(() => false); // someone not in the list yet: nothing to add to
+  for (const raw of body.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!/^USER\s/i.test(line)) continue;
+    const { PASSWD: _p, PASSWORD: _q, ...fields } = parseKv(line);
+    const pin = (fields["PIN"] ?? "").trim();
+    if (!/^[A-Za-z0-9]{1,24}$/.test(pin)) continue;
+    void writer
+      .update(db().doc(`deviceUsers/${device.id}_${pin.replace(/[^a-zA-Z0-9_-]/g, "_")}`), {
+        machineFields: fields,
+        machineFieldsAt: FieldValue.serverTimestamp(),
+      })
+      .catch(() => undefined);
+  }
+  await writer.close();
+}
+
 /** Device command that puts a stored template back on the device. */
 function restoreCommand(pin: string, t: { format: "FP" | "BIODATA"; fields: KV }) {
   const f = t.fields;
@@ -1304,6 +1328,19 @@ export async function handleIclock(request: Request, url: URL) {
           await activateBiometric(client.ref, device, pin);
         }
         if (registering) await storeTemplates(body, device);
+        if (kinds["USER"]) await keepMachineFields(device, body).catch(() => undefined);
+        // The machine's own settings (what it supports, e.g. user validity dates).
+        if (table === "OPTIONS")
+          await db()
+            .doc(`biometricDevices/${device.id}`)
+            .set(
+              {
+                machineOptions: body.slice(0, 4000),
+                machineOptionsAt: FieldValue.serverTimestamp(),
+              },
+              { merge: true },
+            )
+            .catch(() => undefined);
         if (people && (await importWindowOpen(device.id)))
           await importDeviceData(device, machineUsers(body), fingerprintTemplates(body));
       }
