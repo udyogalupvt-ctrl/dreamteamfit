@@ -1153,16 +1153,11 @@ export function EnrollmentWizard({
                 <span />
               )}
               {step < PAYMENT ? (
-                <Button size="lg" onClick={() => void next()}>
+                <Button size="lg" onClick={() => next()}>
                   Next <ChevronRight aria-hidden />
                 </Button>
               ) : (
-                <Button
-                  size="lg"
-                  disabled={saving}
-                  onClick={() => void confirm()}
-                  className="min-w-0"
-                >
+                <Button size="lg" disabled={saving} onClick={() => confirm()} className="min-w-0">
                   {saving ? (
                     <Loader2 className="animate-spin" aria-hidden />
                   ) : (
@@ -1184,7 +1179,7 @@ export function EnrollmentWizard({
                 </Button>
               )}
               {step === DETAILS ? (
-                <Button size="lg" disabled={saving} onClick={() => void saveDetails()}>
+                <Button size="lg" disabled={saving} onClick={() => saveDetails()}>
                   {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Save details
                 </Button>
               ) : step === PACKAGE || step === PAYMENT ? (
@@ -1580,7 +1575,7 @@ function ShareStep({
                   : "Send the bill automatically through WhatsApp"}
           </span>
           {autoSend.kind !== "sending" && autoSend.kind !== "sent" ? (
-            <Button size="sm" onClick={() => void sendApi()}>
+            <Button size="sm" onClick={() => sendApi()}>
               <Send aria-hidden /> {autoSend.kind === "failed" ? "Retry" : "Send now"}
             </Button>
           ) : null}
@@ -1609,7 +1604,7 @@ function ShareStep({
       )}
 
       <div className="grid grid-cols-2 gap-2">
-        <Button variant="outline" disabled={pdfBusy} onClick={() => void makePdf()}>
+        <Button variant="outline" disabled={pdfBusy} onClick={() => makePdf()}>
           {pdfBusy ? <Loader2 className="animate-spin" aria-hidden /> : <Download aria-hidden />}{" "}
           Download PDF
         </Button>

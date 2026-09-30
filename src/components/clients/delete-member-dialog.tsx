@@ -55,7 +55,7 @@ export function DeleteMemberDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="destructive" disabled={!matches || busy} onClick={() => void remove()}>
+          <Button variant="destructive" disabled={!matches || busy} onClick={() => remove()}>
             {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Trash2 aria-hidden />}{" "}
             Delete forever
           </Button>

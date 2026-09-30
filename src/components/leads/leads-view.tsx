@@ -596,7 +596,7 @@ function InquiryDetailSheet({
                 variant="outline"
                 size="sm"
                 disabled={!note.trim() || saving}
-                onClick={() => void addNote()}
+                onClick={() => addNote()}
               >
                 Add note
               </Button>

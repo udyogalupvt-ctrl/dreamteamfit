@@ -193,7 +193,7 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
             <span>
               <b>{formatPrice(p.amount)}</b> · {p.method} · {formatDateISO(p.paymentDate)}{" "}
               <span className="text-meta">
-                ({p.kind === "balance" ? "balance payment" : "at checkout"} · {p.invoiceNumber})
+                ({p.kind === "refund" ? "refund given back" : p.kind === "balance" ? "balance payment" : "at checkout"} · {p.invoiceNumber || "no bill"})
               </span>
             </span>
             <span className="text-meta">

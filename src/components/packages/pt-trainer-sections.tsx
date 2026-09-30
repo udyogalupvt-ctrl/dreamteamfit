@@ -209,7 +209,7 @@ function PtPackageDialog({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => void save()}>Save</Button>
+          <Button onClick={() => save()}>Save</Button>
         </>
       }
     >
@@ -469,7 +469,7 @@ function TrainerDialog({ item, onClose }: { item: Trainer | null | "new"; onClos
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => void save()}>Save</Button>
+          <Button onClick={() => save()}>Save</Button>
         </>
       }
     >

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
+import { Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -35,17 +36,69 @@ const buttonVariants = cva(
   },
 );
 
-
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
+  extends
+    Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onClick">,
+    VariantProps<typeof buttonVariants> {
   asChild?: boolean;
+  /**
+   * An action that returns a promise (e.g. `() => save()`) keeps the button busy until it ends:
+   * a spinner in place of its icon, and a second tap does nothing (no double saves).
+   */
+  onClick?: ((event: React.MouseEvent<HTMLButtonElement>) => unknown) | undefined;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button";
+  ({ className, variant, size, asChild = false, onClick, disabled, children, ...props }, ref) => {
+    const [busy, setBusy] = React.useState(false);
+    const running = React.useRef(false);
+    const handleClick = onClick
+      ? (event: React.MouseEvent<HTMLButtonElement>) => {
+          if (running.current) {
+            event.preventDefault();
+            return;
+          }
+          const result = onClick(event);
+          if (result && typeof (result as Promise<unknown>).then === "function") {
+            running.current = true;
+            setBusy(true);
+            const done = () => {
+              running.current = false;
+              setBusy(false);
+            };
+            (result as Promise<unknown>).then(done, done);
+          }
+        }
+      : undefined;
+    if (asChild)
+      return (
+        <Slot
+          className={cn(buttonVariants({ variant, size, className }))}
+          ref={ref}
+          onClick={handleClick}
+          {...props}
+        >
+          {children}
+        </Slot>
+      );
+    // A caller that shows its own spinner disables the button itself: no second spinner then.
+    const spinner = busy && !disabled;
     return (
-      <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+      <button
+        className={cn(
+          buttonVariants({ variant, size, className }),
+          busy && "cursor-wait",
+          spinner && "[&>svg:not([data-busy])]:hidden",
+        )}
+        ref={ref}
+        onClick={handleClick}
+        disabled={disabled || busy}
+        aria-busy={busy || undefined}
+        {...props}
+      >
+        {spinner ? <Loader2 data-busy className="animate-spin" aria-hidden /> : null}
+        {children}
+      </button>
     );
   },
 );

@@ -94,7 +94,7 @@ export function TrainerCalls() {
     ) : (
       <section className="surface-card space-y-3 p-6 text-center">
         <p className="font-semibold">{error || "Couldn't load your calls."}</p>
-        <Button onClick={() => void load()}>
+        <Button onClick={() => load()}>
           <RefreshCw aria-hidden /> Try again
         </Button>
       </section>
@@ -283,7 +283,7 @@ function LogCallDialog({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={saving || !outcome} onClick={() => void save()}>
+          <Button disabled={saving || !outcome} onClick={() => save()}>
             {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Save call
           </Button>
         </>

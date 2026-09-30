@@ -305,7 +305,7 @@ function MoveDialog({ item, onClose }: { item: FollowUp | null; onClose: () => v
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={saving || !date} onClick={() => void save()}>
+          <Button disabled={saving || !date} onClick={() => save()}>
             Move call
           </Button>
         </>

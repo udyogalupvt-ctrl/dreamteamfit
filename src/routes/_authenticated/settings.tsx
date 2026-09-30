@@ -165,7 +165,7 @@ function GymSettings() {
       title="Gym details on bills"
       description="Printed on every bill and PDF, and used in WhatsApp messages."
       footer={
-        <Button disabled={saving} onClick={() => void save()}>
+        <Button disabled={saving} onClick={() => save()}>
           {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Save gym details
         </Button>
       }
@@ -336,7 +336,7 @@ function WhatsAppSettingsPanel() {
         description="Uses your WhatsApp Business number and the approved message templates. Set up once; then press Test connection."
         footer={
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" disabled={testing || !api} onClick={() => void test()}>
+            <Button variant="outline" disabled={testing || !api} onClick={() => test()}>
               {testing ? (
                 <Loader2 className="animate-spin" aria-hidden />
               ) : (
@@ -344,7 +344,7 @@ function WhatsAppSettingsPanel() {
               )}{" "}
               Test connection
             </Button>
-            <Button disabled={saving} onClick={() => void save()}>
+            <Button disabled={saving} onClick={() => save()}>
               {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Save
             </Button>
           </div>
@@ -501,7 +501,7 @@ function ReminderSettings() {
     <FormSection
       title="Automatic reminders"
       description="Checked every morning (India time). Sent on WhatsApp and as app notifications."
-      footer={<Button onClick={() => void save()}>Save reminders</Button>}
+      footer={<Button onClick={() => save()}>Save reminders</Button>}
     >
       <div className="grid gap-4">
         <ToggleRow

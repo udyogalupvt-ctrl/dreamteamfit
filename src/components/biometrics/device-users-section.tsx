@@ -176,12 +176,12 @@ export function DeviceUsersSection({ device }: { device: BiometricDevice }) {
           </div>
           <div className="flex flex-wrap gap-2">
             {count && !users ? (
-              <Button size="sm" onClick={() => void loadList()} disabled={loadingList}>
+              <Button size="sm" onClick={() => loadList()} disabled={loadingList}>
                 {loadingList ? <Loader2 className="animate-spin" aria-hidden /> : null}
                 Show people
               </Button>
             ) : null}
-            <Button size="sm" variant="outline" onClick={() => void read()} disabled={busy}>
+            <Button size="sm" variant="outline" onClick={() => read()} disabled={busy}>
               {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Download aria-hidden />}
               Read users from the machine
             </Button>
@@ -396,7 +396,7 @@ function LinkDialog({
             <Button
               variant="ghost"
               disabled={saving}
-              onClick={() => void link({}, `ID ${user.pin} unlinked`)}
+              onClick={() => link({}, `ID ${user.pin} unlinked`)}
             >
               Unlink
             </Button>

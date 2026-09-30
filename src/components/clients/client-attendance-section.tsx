@@ -77,7 +77,7 @@ export function ClientAttendanceSection({
               <Fingerprint aria-hidden /> Register thumb
             </Button>
           ) : (
-            <Button variant={blocked ? "default" : "outline"} onClick={() => void toggleEntry()}>
+            <Button variant={blocked ? "default" : "outline"} onClick={() => toggleEntry()}>
               {blocked ? "Allow entry" : "Block entry"}
             </Button>
           )}

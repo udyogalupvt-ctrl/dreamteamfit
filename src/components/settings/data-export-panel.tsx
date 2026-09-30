@@ -31,7 +31,7 @@ export function DataExportPanel() {
           <label className="grid gap-1 text-sm font-semibold">To<Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
         </> : null}
       </div>
-      <Button className="mt-4" disabled={busy} onClick={() => void run()}>{busy ? <Loader2 className="animate-spin" /> : <Download />} Export {def.label}</Button>
+      <Button className="mt-4" disabled={busy} onClick={() => run()}>{busy ? <Loader2 className="animate-spin" /> : <Download />} Export {def.label}</Button>
     </section>
   );
 }

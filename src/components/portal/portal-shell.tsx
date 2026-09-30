@@ -210,7 +210,7 @@ export function PortalError({ message, onRetry }: { message: string; onRetry: ()
         <Button onClick={onRetry}>
           <RefreshCw aria-hidden /> Try again
         </Button>
-        <Button variant="outline" onClick={() => void portalSignOut()}>
+        <Button variant="outline" onClick={() => portalSignOut()}>
           <LogOut aria-hidden /> Sign out
         </Button>
       </div>
@@ -258,7 +258,7 @@ export function PortalHeader({
           size="icon"
           aria-label="Sign out"
           // Signing out also stops this phone's notifications for this login.
-          onClick={() => void disablePush().finally(() => void portalSignOut())}
+          onClick={() => disablePush().finally(() => void portalSignOut())}
         >
           <LogOut aria-hidden />
         </Button>

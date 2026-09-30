@@ -158,7 +158,10 @@ export function ClientActivity({
     payments.data.forEach((p) =>
       add("payments", p.id, {
         at: p.createdAt,
-        title: `Payment ${formatPrice(p.amount)} by ${p.method}`,
+        title:
+          p.kind === "refund"
+            ? `Refund ${formatPrice(-p.amount)} given back by ${p.method}`
+            : `Payment ${formatPrice(p.amount)} by ${p.method}`,
         detail: `${p.invoiceNumber}${p.kind === "balance" ? " · balance" : ""}`,
         group: "money",
         actor: p.createdBy || "from records",

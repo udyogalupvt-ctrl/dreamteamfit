@@ -40,7 +40,7 @@ export function InstallAppButton({ size = "sm" }: { size?: "sm" | "default" }) {
 
   return (
     <>
-      <Button size={size} variant="outline" onClick={() => void install()} aria-label="Install app">
+      <Button size={size} variant="outline" onClick={() => install()} aria-label="Install app">
         <Download aria-hidden />
         {size === "sm" ? (
           <>

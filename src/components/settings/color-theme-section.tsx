@@ -114,7 +114,7 @@ export function ColorThemeSection() {
             Only me (this device)
           </Button>
           {owner ? (
-            <Button onClick={() => void saveForEveryone()} disabled={saving}>
+            <Button onClick={() => saveForEveryone()} disabled={saving}>
               {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Everyone (all
               logins)
             </Button>

@@ -106,7 +106,7 @@ export function IncomeSection() {
         title: p.clientNameSnapshot || "Member",
         detail: [
           p.invoiceNumber,
-          p.kind === "balance" ? "balance payment" : null,
+          p.kind === "balance" ? "balance payment" : p.kind === "refund" ? "refund given back" : null,
           p.membershipGymAmount ? `membership ${formatPrice(p.membershipGymAmount)}` : null,
           p.ptGymAmount || p.trainerShareAmount
             ? `PT gym ${formatPrice(p.ptGymAmount)} · trainer ${formatPrice(p.trainerShareAmount)}`
@@ -308,7 +308,7 @@ export function IncomeSection() {
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={() => void save()}>Save</Button>
+            <Button onClick={() => save()}>Save</Button>
           </>
         }
       >

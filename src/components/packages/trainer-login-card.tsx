@@ -131,7 +131,7 @@ export function TrainerLoginCard({ trainer }: { trainer: Trainer }) {
             <span className="text-meta">Password:</span>
             <span className="font-mono font-bold tracking-wider">{shown || "••••••"}</span>
             {!shown ? (
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run(reveal)}>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => run(reveal)}>
                 <Eye aria-hidden /> Show
               </Button>
             ) : null}

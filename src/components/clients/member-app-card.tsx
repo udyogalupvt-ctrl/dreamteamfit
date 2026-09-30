@@ -196,7 +196,7 @@ export function MemberAppCard({
               onChange={(e) => setDob(e.target.value)}
               className="flex-1"
             />
-            <Button disabled={busy || !dob} onClick={() => void saveDob()}>
+            <Button disabled={busy || !dob} onClick={() => saveDob()}>
               {busy ? <Loader2 className="animate-spin" aria-hidden /> : null} Save
             </Button>
           </div>
@@ -248,7 +248,7 @@ export function MemberAppCard({
             >
               <MessageCircle aria-hidden /> {canApi ? "Share from this phone" : "Share on WhatsApp"}
             </Button>
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => void copy()}>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => copy()}>
               <Copy aria-hidden /> Copy link
             </Button>
             {code ? (

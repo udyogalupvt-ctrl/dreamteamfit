@@ -61,10 +61,10 @@ export function PhotoLinkButtons({
   };
   return (
     <div className="flex flex-wrap gap-2">
-      <Button size="sm" onClick={() => void share()} disabled={busy}>
+      <Button size="sm" onClick={() => share()} disabled={busy}>
         <MessageCircle aria-hidden /> Send photo link on WhatsApp
       </Button>
-      <Button size="sm" variant="outline" onClick={() => void copy()}>
+      <Button size="sm" variant="outline" onClick={() => copy()}>
         <Copy aria-hidden /> Copy link
       </Button>
     </div>

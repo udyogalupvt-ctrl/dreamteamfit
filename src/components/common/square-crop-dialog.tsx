@@ -73,7 +73,7 @@ export function SquareCropDialog({
           <Button variant="outline" onClick={onCancel} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={() => void done()} disabled={busy || !area}>
+          <Button onClick={() => done()} disabled={busy || !area}>
             {busy ? <Loader2 className="animate-spin" aria-hidden /> : null} Use this photo
           </Button>
         </>

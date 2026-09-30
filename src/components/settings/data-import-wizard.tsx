@@ -766,7 +766,7 @@ export function DataImportWizard() {
               <Button variant="outline" onClick={() => setStep(6)}>
                 Back
               </Button>
-              <Button disabled={busy || toWrite === 0} onClick={() => void doImport()}>
+              <Button disabled={busy || toWrite === 0} onClick={() => doImport()}>
                 Confirm import
               </Button>
             </div>

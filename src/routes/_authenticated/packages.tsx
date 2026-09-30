@@ -226,7 +226,7 @@ function GymPackagesSection() {
                 <Button onClick={() => openEdit(viewing)}>
                   <Pencil aria-hidden /> Edit
                 </Button>
-                <Button variant="outline" onClick={() => void toggleActive(viewing).then(() => setViewing(null))}>
+                <Button variant="outline" onClick={() => toggleActive(viewing).then(() => setViewing(null))}>
                   <Power aria-hidden /> {viewing.isActive ? "Deactivate" : "Activate"}
                 </Button>
               </div>

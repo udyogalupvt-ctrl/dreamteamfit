@@ -160,7 +160,8 @@ function DayBookPage() {
       Bill: p.invoiceNumber,
       Amount: p.amount,
       "Paid by": p.method,
-      "Joining / balance": p.kind === "balance" ? "Balance" : "Payment",
+      "Joining / balance":
+        p.kind === "balance" ? "Balance" : p.kind === "refund" ? "Refund" : "Payment",
       "Collected by": p.createdBy,
       Counsellor: p.counsellorName,
     })),
@@ -358,8 +359,10 @@ function DayBookPage() {
                         </TableCell>
                         <TableCell className="font-semibold">
                           {p.clientNameSnapshot}
-                          {p.kind === "balance" ? (
-                            <span className="text-meta block font-normal">balance</span>
+                          {p.kind === "balance" || p.kind === "refund" ? (
+                            <span className="text-meta block font-normal">
+                              {p.kind === "refund" ? "refund (money given back)" : "balance"}
+                            </span>
                           ) : null}
                         </TableCell>
                         <TableCell className="hidden md:table-cell">{p.invoiceNumber}</TableCell>

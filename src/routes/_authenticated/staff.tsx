@@ -186,7 +186,7 @@ function StaffPage() {
                   >
                     <Fingerprint aria-hidden /> Thumb
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => void toggleActive(s)}>
+                  <Button size="sm" variant="ghost" onClick={() => toggleActive(s)}>
                     <Power aria-hidden /> {s.active ? "Mark as left" : "Make active"}
                   </Button>
                 </div>
@@ -282,7 +282,7 @@ function StaffDialog({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={saving} onClick={() => void save()}>
+          <Button disabled={saving} onClick={() => save()}>
             {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Save
           </Button>
         </>
@@ -434,7 +434,7 @@ function SavedPassword({ staff, email }: { staff: Staff; email: string }) {
       {password === null ? (
         <>
           <span className="font-mono font-bold">••••••</span>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void load()}>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => load()}>
             {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Eye aria-hidden />} Show
           </Button>
         </>
@@ -524,7 +524,7 @@ function LoginDialog({
           </Button>
           <Button
             disabled={saving || (!access && (!email || password.length < 6))}
-            onClick={() => void save()}
+            onClick={() => save()}
           >
             {saving ? <Loader2 className="animate-spin" aria-hidden /> : null}{" "}
             {access ? "Save" : "Create login"}
@@ -660,7 +660,7 @@ function ThumbDialog({ staff, onClose }: { staff: Staff | null; onClose: () => v
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
-          <Button disabled={busy || !usable.length || !pin} onClick={() => void start()}>
+          <Button disabled={busy || !usable.length || !pin} onClick={() => start()}>
             {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Fingerprint aria-hidden />}{" "}
             Register thumb on device
           </Button>

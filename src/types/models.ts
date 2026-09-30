@@ -844,7 +844,8 @@ export interface Payment extends BaseDoc {
   amount: number;
   method: PaymentMethod;
   paymentDate: string;
-  kind: "initial" | "balance";
+  /** refund = money given back (a negative amount; End all plans). */
+  kind: "initial" | "balance" | "refund";
   trainerShareAmount: number;
   gymAmount: number;
   membershipGymAmount: number;

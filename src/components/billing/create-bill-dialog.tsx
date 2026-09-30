@@ -169,7 +169,7 @@ export function CreateBillDialog({
             <Button variant="outline" onClick={() => setMode("choose")}>
               <ChevronLeft aria-hidden /> Back
             </Button>
-            <Button size="lg" disabled={saving} onClick={() => void submit()}>
+            <Button size="lg" disabled={saving} onClick={() => submit()}>
               {saving ? <Loader2 className="animate-spin" aria-hidden /> : null}
               Save bill · {formatPrice(Math.min(paid, totals.total))} received
             </Button>

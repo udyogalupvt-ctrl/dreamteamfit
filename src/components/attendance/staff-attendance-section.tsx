@@ -251,7 +251,7 @@ function PunchDialog({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={saving || !staffId} onClick={() => void save()}>
+          <Button disabled={saving || !staffId} onClick={() => save()}>
             {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Save
           </Button>
         </>

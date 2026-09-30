@@ -138,7 +138,7 @@ export function ExpenseFormDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={() => void submit()} disabled={saving}>
+          <Button onClick={() => submit()} disabled={saving}>
             {saving ? "Saving…" : expense ? "Save changes" : "Add expense"}
           </Button>
         </>

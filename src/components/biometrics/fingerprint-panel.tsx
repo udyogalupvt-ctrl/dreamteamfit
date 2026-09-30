@@ -239,11 +239,11 @@ export function FingerprintPanel({
 
           <div className="flex flex-wrap gap-2">
             {active ? (
-              <Button variant="outline" onClick={() => void cancel()}>
+              <Button variant="outline" onClick={() => cancel()}>
                 <X aria-hidden /> Cancel request
               </Button>
             ) : (
-              <Button size="lg" disabled={!device || busy || !pin} onClick={() => void start()}>
+              <Button size="lg" disabled={!device || busy || !pin} onClick={() => start()}>
                 {busy ? (
                   <Loader2 className="animate-spin" aria-hidden />
                 ) : phase.kind === "failed" ? (

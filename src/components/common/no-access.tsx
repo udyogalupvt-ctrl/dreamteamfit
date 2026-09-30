@@ -30,7 +30,7 @@ export function NoAccessScreen() {
         title="This login has no access"
         description={`${user?.email ?? "This account"} is not set up for this gym, or it was switched off. Ask the owner.`}
         action={
-          <Button variant="outline" onClick={() => void logout()}>
+          <Button variant="outline" onClick={() => logout()}>
             <LogOut aria-hidden /> Sign out
           </Button>
         }

@@ -135,7 +135,7 @@ export function RecordFollowUpDialog({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button size="lg" disabled={saving || !outcome} onClick={() => void save()}>
+          <Button size="lg" disabled={saving || !outcome} onClick={() => save()}>
             {saving ? <Loader2 className="animate-spin" aria-hidden /> : null}
             {outcome?.convert ? "Open joining form" : "Save call"}
           </Button>

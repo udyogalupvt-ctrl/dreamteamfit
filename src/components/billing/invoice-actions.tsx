@@ -215,7 +215,7 @@ function BalancePaymentDialog({
             disabled={
               saving || amount <= 0 || amount > invoice.balanceDue || (restLeft && !nextDate)
             }
-            onClick={() => void save()}
+            onClick={() => save()}
           >
             {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Record{" "}
             {formatPrice(amount || 0)}

@@ -82,7 +82,7 @@ export function AppSetupCard({ kind }: { kind: "member" | "trainer" }) {
             </p>
           </div>
           {status === "off" ? (
-            <Button onClick={() => void turnOn()} disabled={busy}>
+            <Button onClick={() => turnOn()} disabled={busy}>
               {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Bell aria-hidden />} Turn
               on
             </Button>
@@ -127,7 +127,7 @@ export function NotificationToggle({
         </span>
         <span className="text-meta">{WHAT[kind]}</span>
       </span>
-      <Button size="sm" variant="outline" disabled={busy} onClick={() => void flip()}>
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => flip()}>
         {busy ? <Loader2 className="animate-spin" aria-hidden /> : null}
         {status === "on" ? "Turn off" : "Turn on"}
       </Button>

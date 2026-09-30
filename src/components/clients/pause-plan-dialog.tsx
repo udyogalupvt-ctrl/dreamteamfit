@@ -70,7 +70,7 @@ export function PausePlanDialog({
           <Button variant="outline" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={() => void save()} disabled={!valid || saving}>
+          <Button onClick={() => save()} disabled={!valid || saving}>
             {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Pause{" "}
             {valid ? `${n} days` : ""}
           </Button>

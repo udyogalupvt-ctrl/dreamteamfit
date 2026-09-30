@@ -338,7 +338,7 @@ function PayDialog({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={saving || !(amount > 0)} onClick={() => void save()}>
+          <Button disabled={saving || !(amount > 0)} onClick={() => save()}>
             {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Pay{" "}
             {formatPrice(amount || 0)}
           </Button>

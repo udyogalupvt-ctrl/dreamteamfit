@@ -53,6 +53,7 @@ import { BookingFormDialog } from "@/components/scheduling/booking-form-dialog";
 import { AssignmentSection } from "@/components/clients/assignment-section";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ClientPtPlans, EndAllPlansButton } from "@/components/clients/plans-control";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -493,6 +494,9 @@ function ClientProfilePage() {
         </TabsContent>
 
         <TabsContent value="membership" className="space-y-4">
+          <div className="flex justify-end empty:hidden">
+            <EndAllPlansButton client={c} memberships={memberships.data} invoices={invoices.data} />
+          </div>
           {memberships.loading ? (
             <Shimmer className="h-32 w-full rounded-2xl" />
           ) : memberships.error ? (
@@ -578,6 +582,7 @@ function ClientProfilePage() {
               </section>
             </>
           )}
+          <ClientPtPlans client={c} />
         </TabsContent>
 
         <TabsContent value="pt">
