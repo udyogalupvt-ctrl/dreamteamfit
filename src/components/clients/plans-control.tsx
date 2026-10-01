@@ -21,7 +21,12 @@ import { effectiveMembershipStatus, formatDateISO, formatPrice, todayISO } from 
 import { subscribeDevices } from "@/services/biometric-devices.service";
 import { subscribeClientPayments } from "@/services/finance.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import { cancelPlans, restoreCancellation, splitRefund } from "@/services/plan-cancel.service";
+import {
+  cancelPlans,
+  paidForPlans,
+  restoreCancellation,
+  splitRefund,
+} from "@/services/plan-cancel.service";
 import { subscribeClientPtAssignments } from "@/services/pt.service";
 import {
   PAYMENT_METHODS,
@@ -110,18 +115,32 @@ export function CancelPlansDialog({
   const device = devices.data.find((d) => d.id === client.biometricDeviceId);
   const latestBill =
     [...invoices].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
-  const refundedBefore = pays.data.reduce((n, p) => n + Math.max(0, -p.amount), 0);
-  const paidTotal = Math.max(
-    0,
-    invoices.reduce((n, i) => n + Math.max(0, i.amountPaid), 0) - refundedBefore,
-  );
-  const amount = refund.trim() === "" ? 0 : Number(refund);
-  const parts = Number.isFinite(amount) && amount > 0 ? splitRefund(amount, plans, pts) : [];
-  const cuts = parts.filter((p) => p.trainerCut > 0);
   const count = plans.length + pts.length;
   const one = plans[0]?.packageNameSnapshot ?? pts[0]?.ptPackageNameSnapshot ?? "plan";
-  // Bills of only these plans with money still due: asked for daily unless it's dropped.
+  const these = count > 1 ? "these plans" : "this plan";
   const ids = new Set([...plans.map((m) => m.id), ...pts.map((p) => p.id)]);
+  const ofThese = (x: { membershipId: string | null; ptAssignmentId: string | null }) =>
+    (!!x.membershipId && ids.has(x.membershipId)) ||
+    (!!x.ptAssignmentId && ids.has(x.ptAssignmentId));
+  // The most that can be given back: what was paid for these plans (their bills, after any
+  // discount), less refunds already given for them. Plans whose bills aren't linked to them: what
+  // the member paid in all, less all refunds. No bills at all (e.g. from the old software): no
+  // limit to check against.
+  const paid = paidForPlans(invoices, plans, pts);
+  const theirBills = invoices.filter(ofThese);
+  const capped = invoices.length > 0;
+  const discount = theirBills.reduce((n, i) => n + Math.max(0, i.discount), 0);
+  const paidForThese = theirBills.length
+    ? [...ids].reduce((n, id) => n + (paid[id] ?? 0), 0)
+    : invoices.reduce((n, i) => n + Math.max(0, i.amountPaid), 0);
+  const refundedBefore = pays.data
+    .filter((p) => p.amount < 0 && (!theirBills.length || ofThese(p)))
+    .reduce((n, p) => n - p.amount, 0);
+  const maxRefund = Math.max(0, paidForThese - refundedBefore);
+  const amount = refund.trim() === "" ? 0 : Number(refund);
+  const parts = Number.isFinite(amount) && amount > 0 ? splitRefund(amount, plans, pts, paid) : [];
+  const cuts = parts.filter((p) => p.trainerCut > 0);
+  // Bills of only these plans with money still due: asked for daily unless it's dropped.
   const dueBills = invoices.filter(
     (i) =>
       i.balanceDue > 0 &&
@@ -135,11 +154,10 @@ export function CancelPlansDialog({
   const submit = async () => {
     if (!Number.isFinite(amount) || amount < 0)
       return setError("Enter the refund in rupees, or leave it empty.");
-    // Members without bills here (e.g. from the old software): nothing to check against.
-    if (amount > 0 && invoices.length > 0 && amount > paidTotal)
+    if (amount > 0 && capped && amount > maxRefund)
       return setError(
-        paidTotal
-          ? `More than they paid (${formatPrice(paidTotal)}).`
+        maxRefund
+          ? `More than they paid${theirBills.length ? ` for ${these}` : ""} (${formatPrice(maxRefund)}).`
           : "Everything they paid has been refunded already.",
       );
     setError("");
@@ -154,6 +172,7 @@ export function CancelPlansDialog({
         reason,
         refund: money ? amount : 0,
         refundMethod: method,
+        paid,
         closeBills: stopDue ? dueBills : [],
         by: { uid: user?.uid ?? "", name: user?.displayName || user?.email || "Staff" },
       });
@@ -230,6 +249,19 @@ export function CancelPlansDialog({
               <span className="tabular-nums">{formatPrice(p.ptPrice)}</span>
             </li>
           ))}
+          {theirBills.length ? (
+            <li className="flex justify-between gap-3 bg-muted/50 p-3">
+              <span className="min-w-0">
+                <b>Paid for {these}</b>
+                {discount ? (
+                  <span className="text-meta block">
+                    after the {formatPrice(discount)} discount on the bill
+                  </span>
+                ) : null}
+              </span>
+              <b className="tabular-nums">{formatPrice(paidForThese)}</b>
+            </li>
+          ) : null}
         </ul>
         <Field label="Reason (optional)" htmlFor="cancel-reason">
           <Input
@@ -245,7 +277,11 @@ export function CancelPlansDialog({
             <Field
               label="Refund given back ₹ (optional)"
               htmlFor="cancel-refund"
-              hint={`Empty = no refund. They paid ${formatPrice(paidTotal)} in all${refundedBefore ? ` (after ${formatPrice(refundedBefore)} already refunded)` : ""}.`}
+              hint={
+                capped
+                  ? `Empty = no refund. Up to ${formatPrice(maxRefund)}${refundedBefore ? ` (${formatPrice(refundedBefore)} already refunded)` : ""}.`
+                  : "Empty = no refund."
+              }
             >
               <Input
                 id="cancel-refund"
@@ -256,6 +292,15 @@ export function CancelPlansDialog({
                 value={refund}
                 onChange={(e) => setRefund(e.target.value)}
               />
+              {capped && maxRefund > 0 ? (
+                <button
+                  type="button"
+                  className="cursor-pointer justify-self-start text-sm font-semibold underline underline-offset-2"
+                  onClick={() => setRefund(String(maxRefund))}
+                >
+                  Give back all {formatPrice(maxRefund)}
+                </button>
+              ) : null}
             </Field>
             <Field label="Given back by" htmlFor="cancel-method">
               <Select value={method} onValueChange={(v) => setMethod(v as PaymentMethod)}>

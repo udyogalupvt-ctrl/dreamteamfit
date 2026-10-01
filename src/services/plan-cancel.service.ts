@@ -43,27 +43,60 @@ export interface RefundPart {
 }
 
 /**
- * Splits one refund over the plans by their price (so it can be shown and booked per plan), and
- * works out each refunded PT plan's trainer share cut: share × refunded part ÷ PT price.
+ * What was actually paid for each plan: its bill's payments shared out by price, so a discount or
+ * a part payment counts (₹2,500 gym + ₹12,000 PT − ₹2,500 discount, ₹12,000 paid → gym ₹2,069,
+ * PT ₹9,931). A plan without a bill here (e.g. from the old software) counts at its price.
+ */
+export function paidForPlans(
+  invoices: Pick<
+    Invoice,
+    "membershipId" | "ptAssignmentId" | "subtotal" | "amountPaid" | "membershipGross" | "ptGross"
+  >[],
+  plans: Membership[],
+  pts: PtAssignment[],
+): Record<string, number> {
+  const share = (bill: (typeof invoices)[number], gross: number) =>
+    bill.subtotal > 0
+      ? Math.round((Math.max(0, bill.amountPaid) * Math.min(gross, bill.subtotal)) / bill.subtotal)
+      : 0;
+  const paid: Record<string, number> = {};
+  for (const m of plans) {
+    const bill = invoices.find((i) => i.membershipId === m.id);
+    paid[m.id] = bill
+      ? share(bill, bill.membershipGross || m.priceSnapshot)
+      : Math.max(0, m.priceSnapshot);
+  }
+  for (const p of pts) {
+    const bill = invoices.find((i) => i.ptAssignmentId === p.id);
+    paid[p.id] = bill ? share(bill, bill.ptGross || p.ptPrice) : Math.max(0, p.ptPrice);
+  }
+  return paid;
+}
+
+/**
+ * Splits one refund over the plans by what was paid for each (so it can be shown and booked per
+ * plan), and works out each refunded PT plan's trainer share cut: share × refunded part ÷ what was
+ * paid for the PT (all of it back = all of the trainer's share back). Without `paid`, by price.
  */
 export function splitRefund(
   refund: number,
   plans: Membership[],
   pts: PtAssignment[],
+  paid?: Record<string, number>,
 ): RefundPart[] {
   const items = [
     ...plans.map((m) => ({
       kind: "gym" as const,
       id: m.id,
       name: m.packageNameSnapshot,
-      price: Math.max(0, m.priceSnapshot),
+      price: Math.max(0, paid?.[m.id] ?? m.priceSnapshot),
       pt: null as PtAssignment | null,
     })),
     ...pts.map((p) => ({
       kind: "pt" as const,
       id: p.id,
       name: p.ptPackageNameSnapshot,
-      price: Math.max(0, p.ptPrice),
+      price: Math.max(0, paid?.[p.id] ?? p.ptPrice),
       pt: p,
     })),
   ];
@@ -80,12 +113,11 @@ export function splitRefund(
           : Math.min(left, Math.round(amount / items.length));
     left -= share;
     const cut =
-      it.pt && it.pt.ptPrice > 0
+      it.pt && it.price > 0
         ? Math.min(
             Math.max(0, it.pt.trainerShareAmount),
             Math.round(
-              (Math.max(0, it.pt.trainerShareAmount) * Math.min(share, it.pt.ptPrice)) /
-                it.pt.ptPrice,
+              (Math.max(0, it.pt.trainerShareAmount) * Math.min(share, it.price)) / it.price,
             ),
           )
         : 0;
@@ -110,6 +142,8 @@ export interface CancelInput {
   /** Money given back to the member (0 = none). Needs Finance (trainer payouts). */
   refund: number;
   refundMethod: PaymentMethod;
+  /** What was paid for each plan (paidForPlans): how the refund is shared out. */
+  paid?: Record<string, number>;
   /** Bills of these plans with money still due that is not asked for any more. */
   closeBills?: Pick<Invoice, "id" | "balanceDue" | "paymentStatus" | "publicToken">[];
   by: { uid: string; name: string };
@@ -125,7 +159,7 @@ export async function cancelPlans(input: CancelInput) {
   const today = todayISO();
   const now = serverTimestamp();
   const reason = input.reason.trim().slice(0, 300);
-  const parts = splitRefund(input.refund, input.plans, input.pts);
+  const parts = splitRefund(input.refund, input.plans, input.pts, input.paid);
   const refund = parts.reduce((n, p) => n + p.amount, 0);
 
   // The trainers' payouts of refunded PT plans (read first: a batch can't read).
