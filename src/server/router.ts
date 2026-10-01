@@ -9,12 +9,13 @@ import { handleDeviceUsers } from "./device-import";
 import { handleMemberPhoto } from "./member-photo";
 import { handlePortal } from "./portal";
 import { handlePush } from "./push";
-import { json, serverHealth, text } from "./admin";
+import { json, rememberOrigin, serverHealth, text } from "./admin";
 import { handleWhatsApp } from "./whatsapp";
 
 export async function handleServerRoute(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
+  rememberOrigin(url.origin);
   try {
     if (path === "/api/health") return json(await serverHealth());
     if (/^\/iclock(\/|$)/i.test(path)) return await handleIclock(request, url);

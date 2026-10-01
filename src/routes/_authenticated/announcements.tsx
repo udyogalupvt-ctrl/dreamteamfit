@@ -42,6 +42,7 @@ import { firestoreErrorMessage } from "@/services/firestore.service";
 import {
   DEFAULT_WHATSAPP_SETTINGS,
   isWhatsAppApiLive,
+  sendsFromPhone,
   subscribeWhatsAppSettings,
 } from "@/services/whatsapp-settings.service";
 import {
@@ -104,6 +105,9 @@ function AnnouncementsPage() {
   }, [running]);
 
   const live = isWhatsAppApiLive(wa.data);
+  // From the gym's own number: no Meta charge, but sent slowly (one every few seconds).
+  const fromPhone = sendsFromPhone(wa.data);
+  const minutes = (n: number) => Math.max(1, Math.ceil((n * wa.data.phoneGapSeconds) / 60));
   const gym = business.data.businessName || "our gym";
   const { recipients, leftOut, invalid } = useMemo(
     () => buildRecipients(segments, groups, typed, clients.data, wa.data.defaultCountryCode),
@@ -170,7 +174,7 @@ function AnnouncementsPage() {
       {error ? <ErrorState error={error} title="Couldn't load members" /> : null}
       {!wa.loading && !live ? (
         <p className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm">
-          WhatsApp Cloud API is off, so announcements can't be sent.{" "}
+          Automatic WhatsApp is off, so announcements can't be sent.{" "}
           <Link to="/settings" className="font-semibold underline">
             Turn it on in Settings & WhatsApp
           </Link>
@@ -270,8 +274,9 @@ function AnnouncementsPage() {
           {recipients.length ? (
             <span className="text-muted-foreground">
               {" "}
-              · Meta charges about {money(recipients.length * rate)} (Marketing, ~{money(rate)}{" "}
-              each)
+              {fromPhone
+                ? `· from the gym's own WhatsApp number, one every ${wa.data.phoneGapSeconds} s (about ${minutes(recipients.length)} min). Keep this page open until it finishes.`
+                : `· Meta charges about ${money(recipients.length * rate)} (Marketing, ~${money(rate)} each)`}
             </span>
           ) : null}
         </p>
@@ -332,7 +337,11 @@ function AnnouncementsPage() {
         open={confirming}
         onOpenChange={setConfirming}
         title={`Send to ${people(recipients.length)}?`}
-        description={`Everyone gets it on WhatsApp now. Meta charges about ${money(recipients.length * rate)}. This can't be undone.`}
+        description={
+          fromPhone
+            ? `It goes out from the gym's WhatsApp number, slowly (about ${minutes(recipients.length)} min). Keep this page open. This can't be undone.`
+            : `Everyone gets it on WhatsApp now. Meta charges about ${money(recipients.length * rate)}. This can't be undone.`
+        }
         confirmLabel="Send now"
         typeToConfirm="SEND"
         onConfirm={() => void send()}

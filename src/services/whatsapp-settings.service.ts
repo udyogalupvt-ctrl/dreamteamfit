@@ -28,15 +28,29 @@ export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   followUpTemplate: "follow_up_message",
   memberAppTemplate: "gym_member_app",
   autoSendMemberApp: true,
+  sender: "cloud",
+  gatewayUrl: "",
+  gatewaySessionId: "",
+  gatewayPhone: "",
+  gatewayStatus: "",
+  phoneTexts: {},
+  phoneGapSeconds: 8,
 };
 
 const map = (d?: DocumentData): WhatsAppSettings => ({
   ...DEFAULT_WHATSAPP_SETTINGS,
   ...(d ?? {}),
   mode: d?.["mode"] === "whatsapp" ? "whatsapp" : "mock",
+  sender: d?.["sender"] === "phone" ? "phone" : "cloud",
+  phoneTexts: (d?.["phoneTexts"] as Record<string, string> | undefined) ?? {},
+  phoneGapSeconds: Math.min(120, Math.max(3, Number(d?.["phoneGapSeconds"] ?? 8) || 8)),
 });
 
-/** True when bills can be delivered automatically through the WhatsApp Cloud API. */
+/** Sending from the gym's own number (linked phone) rather than the Meta Cloud API. */
+export const sendsFromPhone = (s: WhatsAppSettings) =>
+  s.mode === "whatsapp" && s.sender === "phone";
+
+/** True when messages go out automatically (Meta Cloud API or the gym's own linked number). */
 export const isWhatsAppApiLive = (s: WhatsAppSettings) => s.mode === "whatsapp";
 
 export const getWhatsAppSettings = async () =>
@@ -47,9 +61,21 @@ export const subscribeWhatsAppSettings = (
   fail: (e: Error) => void,
 ) => onSnapshot(doc(db, COLLECTIONS.settings, "whatsapp"), (s) => ok(map(s.data())), fail);
 
-export const saveWhatsAppSettings = (settings: WhatsAppSettings) =>
-  setDoc(
+/**
+ * Saves what the WhatsApp form changes. The linked-phone connection (address, instance, number,
+ * state) is saved only by the server after it checked it, so a form left open never undoes it.
+ */
+export const saveWhatsAppSettings = (settings: WhatsAppSettings) => {
+  const {
+    gatewayUrl: _u,
+    gatewaySessionId: _s,
+    gatewayPhone: _p,
+    gatewayStatus: _t,
+    ...rest
+  } = settings;
+  return setDoc(
     doc(db, COLLECTIONS.settings, "whatsapp"),
-    { ...settings, updatedAt: serverTimestamp() },
+    { ...rest, updatedAt: serverTimestamp() },
     { merge: true },
   );
+};

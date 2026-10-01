@@ -657,8 +657,11 @@ export interface FollowUp extends BaseDoc {
   parentFollowUpId: string | null;
 }
 
-/** "app": delivered as a member-app notification (no WhatsApp message needed). */
-export type CommunicationProviderName = "mock" | "whatsapp" | "app";
+/**
+ * "app": delivered as a member-app notification (no WhatsApp message needed). "phone": sent from
+ * the gym's own WhatsApp number through the linked-phone gateway (no Meta charge).
+ */
+export type CommunicationProviderName = "mock" | "whatsapp" | "app" | "phone";
 export type AutomationStatus = "pending" | "queued" | "sent" | "failed" | "cancelled";
 export interface RenewalNotification extends BaseDoc {
   membershipId: string;
@@ -788,6 +791,23 @@ export interface WhatsAppSettings {
   memberAppTemplate: string;
   /** Send the member app link by itself after a member's first payment. */
   autoSendMemberApp: boolean;
+  /**
+   * Which number sends: "phone" = the gym's own WhatsApp number, linked like WhatsApp Web through
+   * an OpenWA gateway (plain text, no Meta templates); "cloud" = the Meta WhatsApp Cloud API.
+   */
+  sender: "cloud" | "phone";
+  /** OpenWA gateway address, e.g. https://wa.example.com (the API key stays on the server). */
+  gatewayUrl: string;
+  /** The gateway's session (instance) ID for the gym's number. */
+  gatewaySessionId: string;
+  /** The number the gateway reports as linked, e.g. 919666446131 (shown in Settings). */
+  gatewayPhone: string;
+  /** Last known state of the linked phone (ready, qr_ready, disconnected…), kept by the server. */
+  gatewayStatus: string;
+  /** The gym's own wording per message kind for the linked phone ("" = the default text). */
+  phoneTexts: Partial<Record<string, string>>;
+  /** Seconds between announcement messages from the linked phone (sending fast risks a ban). */
+  phoneGapSeconds: number;
 }
 
 // ---------------- PT, trainers, payments, enrollment, finance, import ----------------

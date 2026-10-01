@@ -14,6 +14,7 @@ import { ColorThemeSection } from "@/components/settings/color-theme-section";
 import { DataImportWizard } from "@/components/settings/data-import-wizard";
 import { DataExportPanel } from "@/components/settings/data-export-panel";
 import { MemberAppBulkSend } from "@/components/settings/member-app-bulk";
+import { WhatsAppGatewaySection } from "@/components/settings/whatsapp-gateway-section";
 import { PageHeader } from "@/components/common/page-header";
 import { FormSection } from "@/components/common/form-section";
 import { InstallAppButton, useInstallApp } from "@/components/layout/install-app-button";
@@ -258,6 +259,7 @@ function GymSettings() {
 
 function WhatsAppSettingsPanel() {
   const live = useLive(subscribeWhatsAppSettings, DEFAULT_WHATSAPP_SETTINGS, []);
+  const business = useLive(subscribeBusinessSettings, DEFAULT_BILLING_SETTINGS, []);
   const [f, setF] = useState<WhatsAppSettings>(DEFAULT_WHATSAPP_SETTINGS);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -277,6 +279,7 @@ function WhatsAppSettingsPanel() {
   const set = <K extends keyof WhatsAppSettings>(k: K, v: WhatsAppSettings[K]) =>
     setF((x) => ({ ...x, [k]: v }));
   const api = f.mode === "whatsapp";
+  const phone = api && f.sender === "phone";
   const save = async () => {
     // A phone number typed here would be glued in front of every member's number.
     if (!/^\d{1,3}$/.test(f.defaultCountryCode)) {
@@ -328,15 +331,17 @@ function WhatsAppSettingsPanel() {
             {api ? "Automatic sending is on" : "Manual sharing (works now)"}
           </p>
           <p className="text-muted-foreground">
-            {api
-              ? "After payment, the bill is sent from your WhatsApp Business number with a View bill button."
-              : "After payment, staff tap “Share bill on WhatsApp”. WhatsApp opens on the member's chat with the bill link typed — just press Send. Turn on the API below to send automatically."}
+            {phone
+              ? `After payment, the bill goes out from the gym's own WhatsApp number${live.data.gatewayPhone ? ` (+${live.data.gatewayPhone})` : ""} with the bill link.`
+              : api
+                ? "After payment, the bill is sent from your WhatsApp Business number with a View bill button."
+                : "After payment, staff tap “Share bill on WhatsApp”. WhatsApp opens on the member's chat with the bill link typed — just press Send. Turn on automatic sending below."}
           </p>
         </div>
       </div>
       <FormSection
-        title="WhatsApp Cloud API"
-        description="Uses your WhatsApp Business number and the approved message templates. Set up once; then press Test connection."
+        title="Automatic WhatsApp"
+        description="Bills, reminders and announcements go out by themselves: from the gym's own WhatsApp number (linked phone), or through Meta's WhatsApp Cloud API. Set up once; then press Test connection."
         footer={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" disabled={testing || !api} onClick={() => test()}>
@@ -355,13 +360,51 @@ function WhatsAppSettingsPanel() {
       >
         <div className="grid gap-4">
           <ToggleRow
-            label="Send through WhatsApp Cloud API"
+            label="Send WhatsApp messages automatically"
             hint="Off = staff share manually from their phone."
             checked={api}
             onChange={(v) => set("mode", v ? "whatsapp" : "mock")}
           />
           {api ? (
             <>
+              <fieldset className="grid gap-2">
+                <legend className="text-label mb-1">Send from</legend>
+                {(
+                  [
+                    [
+                      "phone",
+                      "The gym's own WhatsApp number (linked phone)",
+                      "The number stays on the gym's phone, linked like WhatsApp Web through a gateway (as the old software did). Plain messages with the bill link; no Meta templates or charges.",
+                    ],
+                    [
+                      "cloud",
+                      "WhatsApp Cloud API (Meta)",
+                      "Official: approved templates with a View bill button; Meta charges per message. The number can't also be used in the WhatsApp app on a phone.",
+                    ],
+                  ] as const
+                ).map(([value, label, hint]) => (
+                  <label
+                    key={value}
+                    className={cn(
+                      "flex cursor-pointer items-start gap-3 rounded-xl border p-3",
+                      f.sender === value ? "border-primary bg-primary/10" : "border-border",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="wa-sender"
+                      value={value}
+                      checked={f.sender === value}
+                      onChange={() => set("sender", value)}
+                      className="mt-1 accent-primary"
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold">{label}</span>
+                      <span className="text-meta">{hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
               <ToggleRow
                 label="Send the bill automatically after payment"
                 hint="Only to members who agreed to WhatsApp messages."
@@ -369,76 +412,78 @@ function WhatsAppSettingsPanel() {
                 onChange={(v) => set("autoSendInvoice", v)}
               />
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field
-                  label="Bill template name"
-                  htmlFor="wa-inv"
-                  hint="Body {{1}} name, {{2}} gym, {{3}} bill no., {{4}} paid, {{5}} balance · URL button …/invoice/{{1}}"
-                >
-                  <Input
-                    id="wa-inv"
-                    value={f.invoiceTemplate}
-                    onChange={(e) => set("invoiceTemplate", e.target.value.trim())}
-                  />
-                </Field>
-                <Field label="Template language" htmlFor="wa-lang" hint="e.g. en, en_US">
-                  <Input
-                    id="wa-lang"
-                    value={f.templateLanguage}
-                    onChange={(e) => set("templateLanguage", e.target.value.trim())}
-                  />
-                </Field>
-                <Field label="Renewal reminder template" htmlFor="wa-ren">
-                  <Input
-                    id="wa-ren"
-                    value={f.renewalTemplate}
-                    onChange={(e) => set("renewalTemplate", e.target.value.trim())}
-                  />
-                </Field>
-                <Field label="Payment due template" htmlFor="wa-due">
-                  <Input
-                    id="wa-due"
-                    value={f.paymentDueTemplate}
-                    onChange={(e) => set("paymentDueTemplate", e.target.value.trim())}
-                  />
-                </Field>
-                <Field label="Birthday template" htmlFor="wa-bday">
-                  <Input
-                    id="wa-bday"
-                    value={f.birthdayTemplate}
-                    onChange={(e) => set("birthdayTemplate", e.target.value.trim())}
-                  />
-                </Field>
-                <Field label="Absence nudge template" htmlFor="wa-abs">
-                  <Input
-                    id="wa-abs"
-                    value={f.absenceTemplate}
-                    onChange={(e) => set("absenceTemplate", e.target.value.trim())}
-                  />
-                </Field>
-                <Field
-                  label="Announcement template"
-                  htmlFor="wa-ann"
-                  hint="Body {{1}} name, {{2}} gym, {{3}} your message"
-                >
-                  <Input
-                    id="wa-ann"
-                    value={f.announcementTemplate}
-                    onChange={(e) => set("announcementTemplate", e.target.value.trim())}
-                  />
-                </Field>
-                <Field
-                  label="Member app template"
-                  htmlFor="wa-app"
-                  hint="Body {{1}} name, {{2}} gym · URL button …/m/{{1}}"
-                >
-                  <Input
-                    id="wa-app"
-                    value={f.memberAppTemplate}
-                    onChange={(e) => set("memberAppTemplate", e.target.value.trim())}
-                  />
-                </Field>
-              </div>
+              {phone ? null : (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field
+                    label="Bill template name"
+                    htmlFor="wa-inv"
+                    hint="Body {{1}} name, {{2}} gym, {{3}} bill no., {{4}} paid, {{5}} balance · URL button …/invoice/{{1}}"
+                  >
+                    <Input
+                      id="wa-inv"
+                      value={f.invoiceTemplate}
+                      onChange={(e) => set("invoiceTemplate", e.target.value.trim())}
+                    />
+                  </Field>
+                  <Field label="Template language" htmlFor="wa-lang" hint="e.g. en, en_US">
+                    <Input
+                      id="wa-lang"
+                      value={f.templateLanguage}
+                      onChange={(e) => set("templateLanguage", e.target.value.trim())}
+                    />
+                  </Field>
+                  <Field label="Renewal reminder template" htmlFor="wa-ren">
+                    <Input
+                      id="wa-ren"
+                      value={f.renewalTemplate}
+                      onChange={(e) => set("renewalTemplate", e.target.value.trim())}
+                    />
+                  </Field>
+                  <Field label="Payment due template" htmlFor="wa-due">
+                    <Input
+                      id="wa-due"
+                      value={f.paymentDueTemplate}
+                      onChange={(e) => set("paymentDueTemplate", e.target.value.trim())}
+                    />
+                  </Field>
+                  <Field label="Birthday template" htmlFor="wa-bday">
+                    <Input
+                      id="wa-bday"
+                      value={f.birthdayTemplate}
+                      onChange={(e) => set("birthdayTemplate", e.target.value.trim())}
+                    />
+                  </Field>
+                  <Field label="Absence nudge template" htmlFor="wa-abs">
+                    <Input
+                      id="wa-abs"
+                      value={f.absenceTemplate}
+                      onChange={(e) => set("absenceTemplate", e.target.value.trim())}
+                    />
+                  </Field>
+                  <Field
+                    label="Announcement template"
+                    htmlFor="wa-ann"
+                    hint="Body {{1}} name, {{2}} gym, {{3}} your message"
+                  >
+                    <Input
+                      id="wa-ann"
+                      value={f.announcementTemplate}
+                      onChange={(e) => set("announcementTemplate", e.target.value.trim())}
+                    />
+                  </Field>
+                  <Field
+                    label="Member app template"
+                    htmlFor="wa-app"
+                    hint="Body {{1}} name, {{2}} gym · URL button …/m/{{1}}"
+                  >
+                    <Input
+                      id="wa-app"
+                      value={f.memberAppTemplate}
+                      onChange={(e) => set("memberAppTemplate", e.target.value.trim())}
+                    />
+                  </Field>
+                </div>
+              )}
               <ToggleRow
                 label="Send the member app link after the first payment"
                 hint="Once per member, right after the bill. Password = date of birth (DDMMYYYY)."
@@ -464,11 +509,21 @@ function WhatsAppSettingsPanel() {
             />
           </Field>
           <p className="text-meta flex items-center gap-1.5">
-            <CircleAlert className="size-3.5" aria-hidden /> The access token is kept only on the
-            server (Vercel environment variables), never here.
+            <CircleAlert className="size-3.5" aria-hidden /> Tokens and keys are kept only on the
+            server, never in the browser.
           </p>
         </div>
       </FormSection>
+      {phone ? (
+        <WhatsAppGatewaySection
+          saved={live.data}
+          form={f}
+          setForm={setF}
+          gymName={business.data.businessName}
+          onSave={() => save()}
+          saving={saving}
+        />
+      ) : null}
       <MemberAppBulkSend />
     </div>
   );

@@ -143,6 +143,18 @@ export const localDate = (d = new Date()) =>
     day: "2-digit",
   }).format(d);
 
+/**
+ * The app's public address, for links inside messages (bill page, member app) and for webhooks
+ * registered elsewhere. APP_URL when set (e.g. https://app.rebuildfitness.in), else the address
+ * the latest request came in on (the Vercel domain, also for cron runs).
+ */
+let seenOrigin = "";
+export const rememberOrigin = (origin: string) => {
+  if (/^https?:\/\//.test(origin)) seenOrigin = origin;
+};
+export const appOrigin = () =>
+  (process.env["APP_URL"] ?? "").trim().replace(/\/+$/, "") || seenOrigin;
+
 export const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
