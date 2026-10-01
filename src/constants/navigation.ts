@@ -118,7 +118,7 @@ export const NAV_ITEMS: NavItem[] = [
     group: "More",
   },
 
-  { label: "Staff", to: "/staff", icon: UserCog, feature: "owner", group: "Management" },
+  { label: "Staff", to: "/staff", icon: UserCog, feature: "staff", group: "Management" },
   {
     label: "Fingerprint Devices",
     to: "/biometric-devices",
@@ -133,7 +133,13 @@ export const NAV_ITEMS: NavItem[] = [
     feature: "settings",
     group: "Management",
   },
-  { label: "Recycle Bin", to: "/recycle-bin", icon: Trash2, feature: "owner", group: "Management" },
+  {
+    label: "Recycle Bin",
+    to: "/recycle-bin",
+    icon: Trash2,
+    feature: "recycleBin",
+    group: "Management",
+  },
 ];
 
 /** Bottom bar on phones; the centre "+" button sits between these. */

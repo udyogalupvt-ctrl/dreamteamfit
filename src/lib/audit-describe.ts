@@ -36,6 +36,8 @@ const NOISE = new Set([
   "pdfUrl",
   "phoneNormalized",
   "deviceAccessChangedAt",
+  "entryChangedAt",
+  "entryChangedBy",
   "followupId",
   "publicToken",
   "lastWhatsappMessageAt",
@@ -229,6 +231,30 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
       return `Expense ${action}: ${s(d["title"])} ${money(d["amount"])}`;
     case "manualIncome":
       return `Other income ${action}: ${s(d["title"])} ${money(d["amount"])}`;
+    case "cashDays": {
+      // The doc id is the day of the cash.
+      const list = (x: D) => (Array.isArray(x["handovers"]) ? (x["handovers"] as D[]) : []);
+      const ids = (x: D) => new Set(list(x).map((h) => s(h["id"])));
+      const added = list(a).filter((h) => !ids(b).has(s(h["id"])));
+      const removed = list(b).filter((h) => !ids(a).has(s(h["id"])));
+      const lines = [
+        ...added.map(
+          (h) =>
+            `Cash handover ${money(h["amount"])}${h["to"] ? ` → ${s(h["to"])}` : ""} from the cash of ${day(d["__date"])}${s(h["givenOn"]) && h["givenOn"] !== d["__date"] ? ` (given ${day(h["givenOn"])})` : ""}`,
+        ),
+        ...removed.map(
+          (h) =>
+            `Cash handover removed: ${money(h["amount"])} from the cash of ${day(d["__date"])}`,
+        ),
+      ];
+      if (f.includes("openingOverride"))
+        lines.push(
+          a["openingOverride"] === null || a["openingOverride"] === undefined
+            ? `Opening cash of ${day(d["__date"])} cleared`
+            : `Opening cash of ${day(d["__date"])} set to ${money(a["openingOverride"])}`,
+        );
+      return lines.length ? lines.join("; ") : null;
+    }
     case "packages":
     case "ptPackages":
       return `${col === "packages" ? "Gym" : "PT"} package ${action}: ${s(d["name"])} ${money(d["price"])}${action === "updated" ? ` (${f.join(", ")})` : ""}`;
@@ -254,10 +280,12 @@ export function auditLine(col: string, docId: string, before: D | null, after: D
   const action: AuditAction = !before ? "created" : !after ? "deleted" : "updated";
   const f = action === "updated" ? changedFields(before!, after!) : [];
   if (action === "updated" && !f.length) return null;
+  // Cash days are keyed by their date: the wording needs it.
+  const dated = (x: D | null) => (col === "cashDays" ? { ...(x ?? {}), __date: docId } : (x ?? {}));
   const summary =
     col === "settings"
       ? `Settings changed (${docId}): ${f.join(", ") || action}`
-      : describe(col, action, before ?? {}, after ?? {}, f);
+      : describe(col, action, dated(before), dated(after), f);
   if (!summary) return null;
   const doc = (after ?? before ?? {}) as D;
   return {

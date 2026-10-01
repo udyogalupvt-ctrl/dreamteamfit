@@ -9,7 +9,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { isOwnerEmail } from "@/constants/owners";
 import { STAFF_FEATURES, type StaffFeature } from "@/types/models";
-import { adminAuth, db, json, requireStaff } from "./admin";
+import { adminAuth, db, json, requireFeature, requireStaff } from "./admin";
 import { readPassword, savePassword } from "./vault";
 
 const cleanFeatures = (x: unknown): StaffFeature[] =>
@@ -159,10 +159,18 @@ export async function handleStaff(request: Request, url: URL) {
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const user = await requireStaff(request);
   if (!user) return json({ error: "Sign in required." }, 401);
-  if (!isOwnerEmail(user.email))
-    return json({ error: "Only the owner can manage staff logins." }, 403);
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const action = url.pathname.replace(/^\/api\/staff\/?/, "").replace(/\/+$/, "");
+  if (!isOwnerEmail(user.email)) {
+    // A login given the Staff page may only switch a login OFF (someone marked as left).
+    const onlySwitchOff =
+      action === "update-login" &&
+      body["active"] === false &&
+      Object.keys(body).every((k) => ["staffId", "active"].includes(k));
+    if (!onlySwitchOff || !(await requireFeature(request, "staff")))
+      return json({ error: "Only the owner can manage staff logins." }, 403);
+    return updateLogin(body, user.email ?? user.uid);
+  }
   if (action === "create-login") return createLogin(body, user.email ?? "owner");
   if (action === "update-login") return updateLogin(body, user.email ?? "owner");
   if (action === "password") return showPassword(body, user.email ?? "owner");

@@ -34,7 +34,13 @@ import { deletePackage, subscribePackages, updatePackage } from "@/services/pack
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import type { GymPackage } from "@/types/models";
 
+const SECTIONS = ["gym", "pt", "trainers"] as const;
+
 export const Route = createFileRoute("/_authenticated/packages")({
+  validateSearch: (s: Record<string, unknown>): { tab?: (typeof SECTIONS)[number] } =>
+    SECTIONS.includes(s["tab"] as (typeof SECTIONS)[number])
+      ? { tab: s["tab"] as (typeof SECTIONS)[number] }
+      : {},
   head: () => ({
     meta: [
       { title: "Packages — REBUILD FITNESS" },
@@ -49,7 +55,8 @@ export const Route = createFileRoute("/_authenticated/packages")({
 type StatusFilter = "all" | "active" | "inactive";
 
 function PackagesPage() {
-  const [section, setSection] = useState<"gym" | "pt" | "trainers">("gym");
+  const { tab } = Route.useSearch();
+  const [section, setSection] = useState<"gym" | "pt" | "trainers">(tab ?? "gym");
   return (
     <div className="space-y-5">
       <Tabs value={section} onValueChange={(v) => setSection(v as typeof section)}>

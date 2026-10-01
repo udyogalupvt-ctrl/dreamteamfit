@@ -105,6 +105,13 @@ import { subscribeClientMemberships } from "@/services/memberships.service";
 import type { EnrollmentOpenOptions } from "./enrollment-context";
 
 const STEPS = ["Details", "Package", "Payment", "Share bill", "Thumb", "Done"] as const;
+/** How package types are listed when picking a gym package. */
+const PACKAGE_TYPE_ORDER: string[] = [
+  "Strength Only",
+  "Strength + Cardio",
+  "Cardio Only",
+  "Custom",
+];
 const DETAILS = 0,
   PACKAGE = 1,
   PAYMENT = 2,
@@ -295,6 +302,36 @@ export function EnrollmentWizard({
   }, [resuming, member.data]);
 
   const gymPackage = packages.data.find((p) => p.id === packageId) ?? null;
+
+  // Package type first (Strength Only, Strength + Cardio…), then only that type's packages.
+  const [pkgType, setPkgType] = useState("");
+  const activePackages = useMemo(() => packages.data.filter((p) => p.isActive), [packages.data]);
+  const pkgTypes = useMemo(() => {
+    const rank = (t: string) => {
+      const i = PACKAGE_TYPE_ORDER.indexOf(t);
+      return i === -1 ? PACKAGE_TYPE_ORDER.length : i;
+    };
+    return [...new Set(activePackages.map((p) => p.category))].sort(
+      (a, b) => rank(a) - rank(b) || a.localeCompare(b),
+    );
+  }, [activePackages]);
+  // Opens on the type of the package already picked, else the member's current plan's type, or
+  // the only type there is.
+  useEffect(() => {
+    if (pkgType || !activePackages.length) return;
+    const picked =
+      activePackages.find((p) => p.id === packageId) ??
+      activePackages.find((p) => p.name === existing?.currentMembership?.packageName);
+    if (picked) setPkgType(picked.category);
+    else if (pkgTypes.length === 1) setPkgType(pkgTypes[0]!);
+  }, [pkgType, packageId, activePackages, pkgTypes, existing]);
+  const typePackages = activePackages
+    .filter((p) => p.category === pkgType)
+    .sort((a, b) => a.durationDays - b.durationDays || a.price - b.price);
+  const choosePkgType = (type: string) => {
+    setPkgType(type);
+    if (gymPackage && gymPackage.category !== type) setPackageId("");
+  };
 
   // Renew or upgrade: an existing member's plans that are still running or already queued.
   const plans = useLive<Membership[]>(
@@ -684,7 +721,7 @@ export function EnrollmentWizard({
               ) : null}
               <section className="space-y-3">
                 <h3 className="text-card-title">Gym package</h3>
-                {packages.data.filter((p) => p.isActive).length === 0 && !packages.loading ? (
+                {activePackages.length === 0 && !packages.loading ? (
                   <p className="text-sm text-muted-foreground">
                     No active gym packages.{" "}
                     <Link to="/packages" className="underline" onClick={close}>
@@ -693,33 +730,53 @@ export function EnrollmentWizard({
                     .
                   </p>
                 ) : null}
+                {activePackages.length ? (
+                  <Field label="Package type" htmlFor="e-pkg-type">
+                    <Select value={pkgType} onValueChange={choosePkgType}>
+                      <SelectTrigger id="e-pkg-type" className="w-full sm:max-w-sm">
+                        <SelectValue placeholder="Choose the package type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {pkgTypes.map((t) => {
+                          const n = activePackages.filter((p) => p.category === t).length;
+                          return (
+                            <SelectItem key={t} value={t}>
+                              {t} · {n} package{n === 1 ? "" : "s"}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                ) : null}
+                {activePackages.length && !pkgType ? (
+                  <p className="text-meta">Choose the package type to see its packages.</p>
+                ) : null}
                 <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
-                  {packages.data
-                    .filter((p) => p.isActive)
-                    .map((p) => (
-                      <button
-                        type="button"
-                        key={p.id}
-                        onClick={() => setPackageId(packageId === p.id ? "" : p.id)}
-                        aria-pressed={packageId === p.id}
-                        className={cn(
-                          "flex items-center justify-between gap-3 rounded-xl border p-3 text-left transition-colors sm:block sm:p-4",
-                          packageId === p.id
-                            ? "border-primary bg-primary/10 ring-1 ring-primary"
-                            : "border-border hover:bg-accent",
-                        )}
-                      >
-                        <span className="min-w-0">
-                          <span className="block truncate font-bold">{p.name}</span>
-                          <span className="text-meta block">
-                            {p.category} · {p.durationDays} days
-                          </span>
+                  {typePackages.map((p) => (
+                    <button
+                      type="button"
+                      key={p.id}
+                      onClick={() => setPackageId(packageId === p.id ? "" : p.id)}
+                      aria-pressed={packageId === p.id}
+                      className={cn(
+                        "flex items-center justify-between gap-3 rounded-xl border p-3 text-left transition-colors sm:block sm:p-4",
+                        packageId === p.id
+                          ? "border-primary bg-primary/10 ring-1 ring-primary"
+                          : "border-border hover:bg-accent",
+                      )}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-bold">{p.name}</span>
+                        <span className="text-meta block">
+                          {p.category} · {p.durationDays} days
                         </span>
-                        <span className="shrink-0 text-lg font-extrabold tabular-nums sm:mt-2 sm:block">
-                          {formatPrice(p.price)}
-                        </span>
-                      </button>
-                    ))}
+                      </span>
+                      <span className="shrink-0 text-lg font-extrabold tabular-nums sm:mt-2 sm:block">
+                        {formatPrice(p.price)}
+                      </span>
+                    </button>
+                  ))}
                 </div>
                 {showChoice ? (
                   <RenewChoice

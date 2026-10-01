@@ -1,12 +1,29 @@
 import { addDaysISO } from "@/lib/format";
 import type { Expense, ManualIncome, Payment } from "@/types/models";
 
+/**
+ * One handover of a day's cash. `givenOn` is when the money actually changed hands: yesterday's
+ * cash handed over this morning is booked on yesterday (its day) and remembers it was given today.
+ */
+export interface HandoverEntry {
+  id: string;
+  amount: number;
+  to: string;
+  note: string;
+  givenOn: string;
+  /** When it was entered (ms) and by whom. */
+  at: number;
+  by: string;
+}
+
 /** What was entered by hand for one day: cash handed over to the owner, or the first opening cash. */
 export interface CashDay {
   date: string;
+  /** Total handed over out of this day's cash (sum of `handovers`). */
   handover: number;
   handoverTo: string;
   note: string;
+  handovers: HandoverEntry[];
   /** Only for the first day (or a correction): cash in the drawer at opening. */
   openingOverride: number | null;
   /**
@@ -26,9 +43,29 @@ export interface CashBookRow {
   handover: number;
   handoverTo: string;
   note: string;
+  handovers: HandoverEntry[];
   /** balance − handover = next day's opening */
   closing: number;
 }
+
+/** "₹1,000 → Owner" for each handover of a day, with the day it was given when that differs. */
+export function handoverSummary(row: Pick<CashBookRow, "date" | "handovers">) {
+  return row.handovers
+    .map(
+      (h) =>
+        `₹${h.amount.toLocaleString("en-IN")}${h.to ? ` → ${h.to}` : ""}${
+          h.givenOn && h.givenOn !== row.date ? ` (given ${shortDay(h.givenOn)})` : ""
+        }`,
+    )
+    .join(", ");
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** "2026-10-01" → "1 Oct". */
+const shortDay = (iso: string) => {
+  const [, m, d] = iso.split("-");
+  return `${Number(d)} ${MONTHS[Number(m) - 1] ?? ""}`;
+};
 
 /**
  * Daily cash register. Cash in = member payments paid in cash. Cash out =
@@ -82,6 +119,7 @@ export function buildCashBook(
       handover,
       handoverTo: day?.handoverTo ?? "",
       note: day?.note ?? "",
+      handovers: day?.handovers ?? [],
       closing,
     });
     opening = closing;

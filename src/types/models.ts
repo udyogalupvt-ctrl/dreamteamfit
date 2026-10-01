@@ -113,6 +113,9 @@ export interface Client extends BaseDoc {
   enrollmentId: string | null;
   /** Door lock state kept by the cloud: "removed" = taken off the device (plan ended / blocked). */
   deviceAccess: "on" | "removed" | null;
+  /** When staff last pressed Block entry / Allow entry, and who (to show how long the machine took). */
+  entryChangedAt: Date | null;
+  entryChangedBy: string;
   /** Private link code for the member to upload their own photo; empty once uploaded. */
   photoUploadToken: string;
   /** Member app (/m/<code>), made by the server at the first payment. "" = not made yet. */
@@ -208,6 +211,8 @@ export interface BiometricCommand extends BaseDoc {
   biometricUserId: string;
   /** Door-lock command (remove / restore on the device), not part of thumb registration. */
   door: boolean;
+  /** A removal done without a saved copy of the thumb (putting them back needs a new scan). */
+  noThumbCopy?: boolean;
   type: BiometricCommandType;
   command: string;
   order: number;
@@ -822,6 +827,13 @@ export interface Trainer extends BaseDoc {
    */
   counsellorStaffId: string;
   portalActive: boolean;
+  /**
+   * The trainer's Staff record (role "Trainer"). Name, phone and joining date come from there;
+   * "" = an older trainer not on the Staff page yet.
+   */
+  staffId: string;
+  /** Switched off for PT because they left / stopped being a trainer on the Staff page. */
+  offWithStaff: boolean;
 }
 export const PT_ASSIGNMENT_STATUSES = ["pending", "active", "completed", "cancelled"] as const;
 export type PtAssignmentStatus = (typeof PT_ASSIGNMENT_STATUSES)[number];
@@ -995,6 +1007,8 @@ export const STAFF_FEATURES = [
   "activity",
   "devices",
   "settings",
+  "staff",
+  "recycleBin",
   "deleteMembers",
   "deleteLeads",
   "deleteBills",
