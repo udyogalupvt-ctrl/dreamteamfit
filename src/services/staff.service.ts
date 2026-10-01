@@ -18,6 +18,7 @@ import { db } from "@/lib/firebase";
 import { callServer } from "@/lib/server-api";
 import type { DayMark, DayMarkDoc } from "@/lib/staff-salary";
 import type {
+  BiometricCommand,
   BiometricDevice,
   ExpensePaymentMethod,
   IncentiveType,
@@ -29,6 +30,7 @@ import type {
   StaffFeature,
   StaffPrivate,
 } from "@/types/models";
+import { mapBiometricCommand } from "./biometric-devices.service";
 import { col, COLLECTIONS, subscribeCollection, toDate } from "./firestore.service";
 
 export const mapStaff = (id: string, d: DocumentData): Staff => ({
@@ -55,6 +57,16 @@ export type StaffInput = Pick<
   Staff,
   "name" | "phone" | "role" | "joiningDate" | "active" | "isCounsellor"
 >;
+
+/** The editable part of a staff record. */
+export const staffInputOf = (s: Staff): StaffInput => ({
+  name: s.name,
+  phone: s.phone,
+  role: s.role,
+  joiningDate: s.joiningDate,
+  active: s.active,
+  isCounsellor: s.isCounsellor,
+});
 
 export async function saveStaff(input: StaffInput, id?: string) {
   const data = {
@@ -153,22 +165,37 @@ export const updateStaffLogin = (input: {
 
 // ------------------------------------------------------------------ thumb on the fingerprint device
 
-/** Staff IDs on the device start at 9001, so they never clash with member IDs. */
-export async function suggestStaffBiometricId() {
-  const [snap, onMachine] = await Promise.all([
+/**
+ * A free machine ID for a staff member (9001 and up, so it never clashes with member IDs): their
+ * own when they have one, else the next number nobody uses in the app or on this machine (the
+ * old software's users included).
+ */
+export async function freeStaffMachineId(deviceId: string, staffId: string, preferred = "") {
+  const [staffSnap, onMachine] = await Promise.all([
     getDocs(col(COLLECTIONS.staff)),
-    getDocs(col(COLLECTIONS.deviceUsers)).catch(() => null),
+    deviceId
+      ? getDocs(query(col(COLLECTIONS.deviceUsers), where("deviceId", "==", deviceId))).catch(
+          () => null,
+        )
+      : Promise.resolve(null),
   ]);
-  const max = Math.max(
-    snap.docs.reduce(
-      (n, d) => Math.max(n, Number.parseInt(String(d.data()["biometricUserId"] ?? ""), 10) || 0),
-      9000,
-    ),
-    ...(onMachine?.docs ?? [])
-      .filter((d) => d.data()["removed"] !== true)
-      .map((d) => Number(d.data()["pin"]) || 0),
+  const taken = new Set<string>();
+  staffSnap.docs.forEach((d) => {
+    const p = String(d.data()["biometricUserId"] ?? "");
+    if (p && d.id !== staffId) taken.add(p);
+  });
+  onMachine?.docs.forEach((d) => {
+    const u = d.data();
+    if (u["removed"] !== true && u["linkId"] !== staffId) taken.add(String(u["pin"] ?? ""));
+  });
+  if (preferred && !taken.has(preferred)) return preferred;
+  let next = Math.max(
+    9000,
+    ...[...taken].map(Number).filter((n) => Number.isInteger(n) && n > 9000 && n < 100000),
   );
-  return String(max + 1);
+  do next += 1;
+  while (taken.has(String(next)));
+  return String(next);
 }
 
 const deviceName = (name: string) =>
@@ -179,7 +206,11 @@ const deviceName = (name: string) =>
     .trim()
     .slice(0, 24) || "Staff";
 
-/** Sends "add user + enroll thumb" to the device for a staff member. */
+/**
+ * Sends "add user + enroll thumb" to the device for a staff member. Returns the enroll request's
+ * id, so the screen follows exactly this request. The staff member is marked registered only when
+ * the machine itself sends the thumb.
+ */
 export async function requestStaffFingerprint(staff: Staff, device: BiometricDevice, pin: string) {
   pin = pin.trim();
   if (!/^\d{1,9}$/.test(pin)) throw new Error("Biometric ID must be a number (up to 9 digits).");
@@ -193,7 +224,9 @@ export async function requestStaffFingerprint(staff: Staff, device: BiometricDev
     throw new Error(`ID ${pin} is already used on the device. Pick another number.`);
   // Someone the old software put on this machine under the same number.
   const u = (
-    await getDoc(doc(db, COLLECTIONS.deviceUsers, `${device.id}_${pin}`)).catch(() => null)
+    await getDoc(
+      doc(db, COLLECTIONS.deviceUsers, `${device.id}_${pin.replace(/[^a-zA-Z0-9_-]/g, "_")}`),
+    ).catch(() => null)
   )?.data();
   if (u && u["removed"] !== true && u["linkId"] !== staff.id)
     throw new Error(
@@ -204,8 +237,9 @@ export async function requestStaffFingerprint(staff: Staff, device: BiometricDev
   );
   const batch = writeBatch(db);
   const now = serverTimestamp();
+  // Withdraw an earlier registration still waiting (never a "staff left" door change).
   earlier.docs
-    .filter((d) => d.data()["status"] === "pending")
+    .filter((d) => d.data()["status"] === "pending" && d.data()["door"] !== true)
     .forEach((d) => batch.update(d.ref, { status: "cancelled", updatedAt: now }));
   batch.update(doc(db, COLLECTIONS.staff, staff.id), {
     biometricUserId: pin,
@@ -236,19 +270,35 @@ export async function requestStaffFingerprint(staff: Staff, device: BiometricDev
     order: 1,
     command: `DATA UPDATE USERINFO PIN=${pin}\tName=${deviceName(staff.name)}\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000100000000\tVerify=0`,
   });
-  batch.set(doc(col(COLLECTIONS.biometricCommands)), {
+  const enrollRef = doc(col(COLLECTIONS.biometricCommands));
+  batch.set(enrollRef, {
     ...base,
     type: "enroll_fp",
     order: 2,
     command: `ENROLL_FP PIN=${pin}\tFID=5\tRETRY=3\tOVERWRITE=1`,
   });
   await batch.commit();
+  return enrollRef.id;
 }
 
-/** Latest device command states for one staff member (for the live thumb panel). */
+/** Withdraws a staff thumb registration that is still waiting for the machine. */
+export async function cancelStaffFingerprintRequest(staffId: string) {
+  const snap = await getDocs(
+    query(col(COLLECTIONS.biometricCommands), where("staffId", "==", staffId)),
+  );
+  const batch = writeBatch(db);
+  snap.docs
+    .filter(
+      (d) => d.data()["door"] !== true && ["pending", "sent"].includes(String(d.data()["status"])),
+    )
+    .forEach((d) => batch.update(d.ref, { status: "cancelled", updatedAt: serverTimestamp() }));
+  await batch.commit();
+}
+
+/** Device commands for one staff member, newest first (for the live thumb panel). */
 export const subscribeStaffCommands = (
   staffId: string,
-  ok: (x: { type: string; status: string; error: string; createdAt: Date }[]) => void,
+  ok: (x: BiometricCommand[]) => void,
   fail: (e: Error) => void,
 ) =>
   onSnapshot(
@@ -256,12 +306,7 @@ export const subscribeStaffCommands = (
     (s) =>
       ok(
         s.docs
-          .map((d) => ({
-            type: String(d.data()["type"] ?? ""),
-            status: String(d.data()["status"] ?? ""),
-            error: String(d.data()["error"] ?? ""),
-            createdAt: toDate(d.data()["createdAt"]),
-          }))
+          .map((d) => mapBiometricCommand(d.id, d.data()))
           .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
       ),
     fail,

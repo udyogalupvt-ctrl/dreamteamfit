@@ -118,7 +118,8 @@ function WhatsAppUsagePage() {
         category,
         sent: sent.length,
         failed: mine.filter((m) => m.status === "failed").length,
-        cost: sent.length * rate,
+        // Sent from the gym's own number (linked phone): no Meta charge.
+        cost: sent.filter((m) => m.provider !== "phone").length * rate,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps

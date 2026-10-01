@@ -211,6 +211,8 @@ export async function restoreFromBin(
     }
     if (x["loginOn"] === true)
       await updateStaffLogin({ staffId: x["staffId"], active: true }).catch(() => undefined);
+    if (x["trainerLoginOn"] === true && typeof x["trainerId"] === "string")
+      await trainerAccess(x["trainerId"], "on").catch(() => undefined);
   }
   return items.length;
 }
@@ -415,9 +417,17 @@ export async function binTrainer(t: Trainer, by: Deleter) {
  * Someone who works here (owners only). Their login stops and their thumb leaves the machine
  * (as for "Mark as left"); attendance and salary history stay.
  */
-export async function binStaff(s: Staff, access: StaffAccess | undefined, by: Deleter) {
+export async function binStaff(
+  s: Staff,
+  access: StaffAccess | undefined,
+  by: Deleter,
+  trainer: Trainer | null = null,
+) {
   const loginOn = !!s.loginUid && access?.active === true;
   if (loginOn) await updateStaffLogin({ staffId: s.id, active: false }).catch(() => undefined);
+  // A trainer: their PT trainer profile goes with them, and their trainer app stops.
+  const trainerLoginOn = !!trainer?.portalCode && trainer.portalActive;
+  if (trainer && trainerLoginOn) await trainerAccess(trainer.id, "off").catch(() => undefined);
   if (s.active)
     await saveStaff(
       {
@@ -434,9 +444,18 @@ export async function binStaff(s: Staff, access: StaffAccess | undefined, by: De
     section: "staff",
     label: `Staff: ${s.name}`,
     detail: s.role,
-    refs: [doc(db, COLLECTIONS.staff, s.id), doc(db, COLLECTIONS.staffPrivate, s.id)],
+    refs: [
+      doc(db, COLLECTIONS.staff, s.id),
+      doc(db, COLLECTIONS.staffPrivate, s.id),
+      ...(trainer ? [doc(db, COLLECTIONS.trainers, trainer.id)] : []),
+    ],
     by,
-    extra: { staffId: s.id, wasActive: s.active, loginOn },
+    extra: {
+      staffId: s.id,
+      wasActive: s.active,
+      loginOn,
+      ...(trainer ? { trainerId: trainer.id, trainerLoginOn } : {}),
+    },
   });
 }
 

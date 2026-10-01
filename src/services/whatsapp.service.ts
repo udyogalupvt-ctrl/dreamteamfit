@@ -298,3 +298,43 @@ export async function markInvoiceShared(invoice: Pick<Invoice, "enrollmentId">) 
 export async function testWhatsAppConnection() {
   return callServer<{ configured: boolean; detail: string; warn?: boolean }>("/api/whatsapp/test");
 }
+
+// ------------------------------------------------------------------ gym's own number (linked phone)
+
+export interface GatewayState {
+  status?: string;
+  statusLabel?: string;
+  phone?: string;
+  phoneLabel?: string;
+  pushName?: string;
+  lastError?: string;
+  webhook?: string;
+}
+
+/** Saves the OpenWA gateway connection (checked by the server first). Empty key = keep the saved one. */
+export const saveWhatsAppGateway = (input: { url: string; sessionId: string; apiKey: string }) =>
+  callServer<GatewayState & { keySaved?: boolean }>("/api/whatsapp/gateway", input);
+
+/** Linked phone: its state, start it, its QR to scan, or a pairing code for a number. */
+export const whatsAppGatewayAction = (
+  action: "status" | "start" | "qr" | "pairing",
+  phone?: string,
+) =>
+  callServer<GatewayState & { qrCode?: string; note?: string; pairingCode?: string }>(
+    "/api/whatsapp/gateway-status",
+    { action, ...(phone ? { phone } : {}) },
+  );
+
+/** A test message to any number (from the gym's own WhatsApp number). */
+export async function sendWhatsAppTest(phone: string, wa: WhatsAppSettings, gymName: string) {
+  return sendWhatsAppMessage({
+    client: { id: "", fullName: "there", phone, whatsappPhone: phone, whatsappOptIn: true },
+    type: "test",
+    referenceId: `${phone.replace(/\D/g, "")}_${Date.now()}`,
+    templateName: "",
+    templateLanguage: wa.templateLanguage,
+    parameters: ["there", gymName || "our gym"],
+    messagePreview: `Test message from ${gymName || "the gym"}`,
+    provider: wa.mode,
+  });
+}

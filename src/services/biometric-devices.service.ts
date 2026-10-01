@@ -61,6 +61,7 @@ export const mapBiometricCommand = (id: string, d: DocumentData): BiometricComma
   enrollmentId: d["enrollmentId"] ?? null,
   biometricUserId: d["biometricUserId"] ?? "",
   door: d["door"] === true,
+  ...(d["noThumbCopy"] === true ? { noThumbCopy: true } : {}),
   type: d["type"] ?? "user_upsert",
   command: d["command"] ?? "",
   order: Number(d["order"] ?? 0),

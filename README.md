@@ -38,6 +38,8 @@ the `VITE_*` values (used at build time) and the server values:
 | `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID`, `WHATSAPP_GRAPH_API_VERSION` | from `.env.example` |
 | `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` | only for delivery ticks (webhook) |
 | `CRON_SECRET` | any long random text; Vercel uses it to call the daily reminder jobs |
+| `APP_URL` | optional: the app's public address for links in messages, e.g. `https://dreamteamfit.vercel.app` |
+| `OPENWA_URL`, `OPENWA_SESSION_ID`, `OPENWA_API_KEY` | optional: linked-phone gateway, when not entered in Settings → WhatsApp (see WHATSAPP_SETUP.md) |
 
 Firestore rules (free, any plan): `firebase deploy --only firestore:rules`.
 

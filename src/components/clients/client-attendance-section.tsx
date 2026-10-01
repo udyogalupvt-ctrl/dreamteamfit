@@ -13,7 +13,9 @@ import { useLive } from "@/hooks/use-live-query";
 import { ACCESS_REASON_LABELS, EVENT_LABELS } from "@/lib/attendance-utils";
 import { decideMemberAccess } from "@/services/access-decision.service";
 import { subscribeClientAttendance } from "@/services/attendance.service";
-import { updateClient } from "@/services/clients.service";
+import { setEntryBlocked } from "@/services/clients.service";
+import { EntryTimeline } from "@/components/clients/entry-timeline";
+import { useAuth } from "@/hooks/use-auth";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import type { AttendanceEvent, Client, Membership } from "@/types/models";
 
@@ -30,6 +32,8 @@ export function ClientAttendanceSection({
     [client.id],
   );
   const { resumeSetup } = useEnrollment();
+  const { user } = useAuth();
+  const by = user?.displayName || user?.email || "Staff";
   const decision = useMemo(
     () => decideMemberAccess(client, memberships, true),
     [client, memberships],
@@ -41,11 +45,11 @@ export function ClientAttendanceSection({
 
   const toggleEntry = async () => {
     try {
-      await updateClient(client.id, { biometricStatus: blocked ? "active" : "disabled" });
+      await setEntryBlocked(client.id, !blocked, by);
       toastWithUndo(
         blocked ? "Entry allowed again" : "Entry blocked for this member",
-        () => updateClient(client.id, { biometricStatus: blocked ? "disabled" : "active" }),
-        "The machine is updated at its next check-in (within a minute).",
+        () => setEntryBlocked(client.id, blocked, by),
+        "The fingerprint machine is changed at its next check-in, usually within 15–30 seconds. The exact time shows on this page.",
       );
     } catch (e) {
       toast.error(firestoreErrorMessage(e));
@@ -87,6 +91,7 @@ export function ClientAttendanceSection({
             </Button>
           )}
         </div>
+        {client.firstThumbRegistered ? <EntryTimeline client={client} /> : null}
       </section>
 
       {events.loading ? (

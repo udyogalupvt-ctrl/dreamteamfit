@@ -77,6 +77,8 @@ export const mapClient = (id: string, d: DocumentData): Client => ({
   enrollmentId: d["enrollmentId"] ?? null,
   deviceAccess:
     d["deviceAccess"] === "removed" ? "removed" : d["deviceAccess"] === "on" ? "on" : null,
+  entryChangedAt: d["entryChangedAt"] ? toDate(d["entryChangedAt"]) : null,
+  entryChangedBy: d["entryChangedBy"] ?? "",
   portalCode: d["portalCode"] ?? "",
   portalActive: d["portalActive"] !== false,
   portalSentAt: d["portalSentAt"] ? toDate(d["portalSentAt"]) : null,
@@ -248,6 +250,20 @@ export async function updateClient(id: string, input: ClientUpdateInput) {
   const patch: Record<string, unknown> = { ...input, updatedAt: serverTimestamp() };
   if (input.phone !== undefined) patch["phoneNormalized"] = normalizePhone(input.phone);
   await updateDoc(doc(db, COLLECTIONS.clients, id), patch);
+}
+
+/**
+ * Block entry / Allow entry. The fingerprint machine applies it at its next check-in (the server
+ * takes the member off the machine, or puts them back with their saved thumb); the time and who
+ * pressed it are kept so the profile can show exactly when the machine did it.
+ */
+export async function setEntryBlocked(clientId: string, block: boolean, by: string) {
+  await updateDoc(doc(db, COLLECTIONS.clients, clientId), {
+    biometricStatus: block ? "disabled" : "active",
+    entryChangedAt: serverTimestamp(),
+    entryChangedBy: by,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 /** Code for the member's photo upload link (/photo/<code>); made once, cleared after upload. */

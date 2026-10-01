@@ -67,9 +67,10 @@ service cloud.firestore {
       allow read: if isStaff();
       allow write: if can('packages');
     }
+    // Trainers are staff with the role "Trainer": the Staff page keeps their profile in step.
     match /trainers/{id} {
       allow read: if isStaff();
-      allow write: if can('packages');
+      allow write: if can('packages') || can('staff');
     }
 
     match /biometricDevices/{id} {
@@ -106,25 +107,34 @@ service cloud.firestore {
     // owner restores it or deletes it forever. Whoever may delete puts things in (under their own
     // account); a staff login reads and can undo only its own; the owner sees everything.
     // (A new entry is looked up before it's written: reading one that doesn't exist yet is fine.)
+    // A login given the Recycle Bin page sees and restores everything, like the owner.
     match /recycleBin/{id} {
       allow create: if isStaff() && request.resource.data.deletedByUid == request.auth.uid;
-      allow read: if isOwner()
+      allow read: if can('recycleBin')
         || (isStaff() && (resource == null || resource.data.deletedByUid == request.auth.uid));
-      allow update, delete: if isOwner()
+      allow update, delete: if can('recycleBin')
         || (isStaff() && resource.data.deletedByUid == request.auth.uid);
     }
     match /recycleBinItems/{id} {
       allow create: if isStaff() && request.resource.data.deletedByUid == request.auth.uid;
-      allow read: if isOwner()
+      allow read: if can('recycleBin')
         || (isStaff() && (resource == null || resource.data.deletedByUid == request.auth.uid));
-      allow delete: if isOwner()
+      allow delete: if can('recycleBin')
         || (isStaff() && resource.data.deletedByUid == request.auth.uid);
     }
 
-    // Staff: names for the counsellor list; only owners change staff; pay is finance-only.
+    // Staff: names for the counsellor list. The owner, or a login given the Staff page, adds and
+    // edits staff; only the owner links logins (loginUid / loginEmail) or deletes. Pay is
+    // finance-only (staffPrivate).
     match /staff/{id} {
       allow read: if isStaff();
-      allow write: if isOwner();
+      allow create: if isOwner()
+        || (can('staff') && request.resource.data.get('loginUid', '') == ''
+          && request.resource.data.get('loginEmail', '') == '');
+      allow update: if isOwner()
+        || (can('staff')
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['loginUid', 'loginEmail']));
+      allow delete: if isOwner();
     }
     match /staffPrivate/{id} {
       allow read, write: if isOwner() || can('finance');

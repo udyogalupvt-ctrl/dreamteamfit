@@ -176,12 +176,14 @@ async function deliver(
         language: wa.language,
         bodyParams,
         buttonUrlParam,
+        kind,
       })
     : ({ ok: false, error: "Invalid WhatsApp number.", code: "invalid_number" } as const);
   const now = FieldValue.serverTimestamp();
+  const provider = result.ok ? result.provider : "whatsapp";
   const patch = result.ok
-    ? { status: "sent", provider: "whatsapp", sentAt: now, error: "", updatedAt: now }
-    : { status: "failed", provider: "whatsapp", error: result.error, updatedAt: now };
+    ? { status: "sent", provider, sentAt: now, error: "", updatedAt: now }
+    : { status: "failed", provider, error: result.error, updatedAt: now };
   await Promise.all([
     firestore.doc(`${COLLECTION[kind]}/${key}`).update(patch),
     firestore.doc(`notifications/${key}`).update(patch),
@@ -192,7 +194,7 @@ async function deliver(
       normalizedPhone: to,
       type: kind,
       referenceId: key,
-      provider: "whatsapp",
+      provider,
       templateName,
       templateLanguage: wa.language,
       messagePreview: bodyParams.join(" · "),

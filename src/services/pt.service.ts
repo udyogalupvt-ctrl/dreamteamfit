@@ -40,6 +40,8 @@ export const mapTrainer = (id: string, d: DocumentData): Trainer => ({
   portalCode: d["portalCode"] ?? "",
   portalActive: d["portalActive"] !== false,
   counsellorStaffId: d["counsellorStaffId"] ?? "",
+  staffId: d["staffId"] ?? "",
+  offWithStaff: d["offWithStaff"] === true,
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });

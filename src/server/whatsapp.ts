@@ -9,6 +9,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { db, json, requireStaff, text } from "./admin";
+import { gatewayConfig, gatewayTest, handleGateway, sendFromPhone } from "./whatsapp-gateway";
 
 const env = (k: string, fallback = "") => (process.env[k] ?? fallback).trim();
 const config = () => ({
@@ -40,14 +41,31 @@ export function whatsappNumber(phone: string, countryCode = "91") {
   return digits.length >= 10 && digits.length <= 15 ? digits : "";
 }
 
-/** Sends an approved template. `buttonUrlParam` fills a dynamic URL button ({{1}}). */
+/**
+ * Sends a message. With the Meta Cloud API: the approved template (`buttonUrlParam` fills its URL
+ * button {{1}}). From the gym's own number (Settings → WhatsApp → linked phone): the same values
+ * as text, with the link written in (`kind` picks the wording: invoice, renewal, …).
+ */
 export async function sendTemplateMessage(input: {
   to: string;
   templateName: string;
   language: string;
   bodyParams: string[];
   buttonUrlParam?: string;
-}): Promise<{ ok: true; providerMessageId: string } | { ok: false; error: string; code: string }> {
+  kind?: string;
+}): Promise<
+  | { ok: true; providerMessageId: string; provider: "whatsapp" | "phone" }
+  | { ok: false; error: string; code: string }
+> {
+  if ((await gatewayConfig()).sender === "phone") {
+    const r = await sendFromPhone({
+      to: input.to,
+      kind: input.kind ?? "",
+      bodyParams: input.bodyParams,
+      buttonUrlParam: input.buttonUrlParam ?? "",
+    });
+    return r.ok ? { ...r, provider: "phone" } : r;
+  }
   const c = config();
   if (!c.token || !c.phoneNumberId)
     return { ok: false, error: "WhatsApp Cloud API is not connected.", code: "not_configured" };
@@ -86,7 +104,11 @@ export async function sendTemplateMessage(input: {
   if (!response.ok)
     return { ok: false, error: safeError(response.status, body), code: String(response.status) };
   const parsed = JSON.parse(body) as { messages?: Array<{ id?: string }> };
-  return { ok: true, providerMessageId: String(parsed.messages?.[0]?.id ?? "") };
+  return {
+    ok: true,
+    providerMessageId: String(parsed.messages?.[0]?.id ?? ""),
+    provider: "whatsapp",
+  };
 }
 
 /** Server-only note of Meta's delivery reports (accepted / refused), never message content. */
@@ -135,6 +157,7 @@ async function deliveryTicks(c: ReturnType<typeof config>) {
 
 async function testConnection(request: Request) {
   if (!(await requireStaff(request))) return json({ error: "Sign in required." }, 401);
+  if ((await gatewayConfig(true)).sender === "phone") return json(await gatewayTest());
   const c = config();
   if (!c.token || !c.phoneNumberId)
     return json({ configured: false, detail: "WhatsApp credentials are not set on the server." });
@@ -210,11 +233,13 @@ async function send(request: Request) {
     // The template's URL button is "https://<app>/invoice/{{1}}": the bill's secret code goes
     // in, so the member opens their bill page (view, download PDF, print).
     buttonUrlParam: String(input.buttonUrlParam ?? ""),
+    kind: String(data["type"] ?? ""),
   });
   if (!result.ok)
     return fail(result.code, result.error, result.code === "not_configured" ? 412 : 502);
   await ref.update({
     status: "sent",
+    provider: result.provider,
     providerMessageId: result.providerMessageId,
     sentAt: FieldValue.serverTimestamp(),
     errorCode: "",
@@ -340,6 +365,7 @@ async function templates(request: Request) {
 export function handleWhatsApp(request: Request, url: URL) {
   const action = url.pathname.replace(/^\/api\/whatsapp\/?/, "").replace(/\/+$/, "");
   if (action === "webhook") return webhook(request, url);
+  if (action.startsWith("gateway")) return handleGateway(request, action);
   if (action === "templates" && request.method === "GET") return templates(request);
   if (request.method !== "POST") return text("Method not allowed", 405);
   if (action === "send") return send(request);

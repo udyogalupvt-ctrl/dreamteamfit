@@ -15,16 +15,17 @@ const seenAt = () => {
   }
 };
 
-/** Menu badge (owner): things other people deleted since the owner last opened the bin. */
+/** Menu badge (owner, or a login with the Recycle Bin page): things others deleted since last opened. */
 export function useRecycleBinBadge() {
-  const { owner } = useAccess();
+  const { can } = useAccess();
   const { user } = useAuth();
+  const all = can("recycleBin");
   const live = useLive<RecycleBinEntry[]>(
-    owner && user
+    all && user
       ? (ok, fail) => subscribeRecycleBin({ owner: true, uid: user.uid }, ok, fail)
       : null,
     [],
-    [owner, user?.uid],
+    [all, user?.uid],
   );
   const [seen, setSeen] = useState(seenAt);
   useEffect(() => {

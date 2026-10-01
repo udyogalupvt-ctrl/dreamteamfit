@@ -16,7 +16,7 @@ import {
   where,
   type DocumentData,
 } from "@/lib/firestore";
-import type { CashDay } from "@/lib/cash-book";
+import type { CashDay, HandoverEntry } from "@/lib/cash-book";
 import { db } from "@/lib/firebase";
 import { todayISO } from "@/lib/format";
 import { derivePaymentStatus } from "@/lib/invoice-utils";
@@ -391,14 +391,50 @@ export function buildFinanceSummary(
 // ------------------------------------------------------------------ daily cash book
 
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
-const mapCashDay = (d: { id: string; data: () => DocumentData }): CashDay => ({
-  date: d.id,
-  handover: Number(d.data()["handover"] ?? 0),
-  handoverTo: String(d.data()["handoverTo"] ?? ""),
-  note: String(d.data()["note"] ?? ""),
-  openingOverride: num(d.data()["openingOverride"]),
-  carriedOpening: num(d.data()["carriedOpening"]),
-});
+
+/**
+ * A day's handovers. Days saved before handovers were a list hold one total: it reads as one
+ * handover given that day.
+ */
+function handoversOf(date: string, d: DocumentData): HandoverEntry[] {
+  if (Array.isArray(d["handovers"]))
+    return (d["handovers"] as DocumentData[]).map((h, i) => ({
+      id: String(h["id"] ?? i),
+      amount: Number(h["amount"] ?? 0),
+      to: String(h["to"] ?? ""),
+      note: String(h["note"] ?? ""),
+      givenOn: String(h["givenOn"] ?? date),
+      at: Number(h["at"] ?? 0),
+      by: String(h["by"] ?? ""),
+    }));
+  const amount = Number(d["handover"] ?? 0);
+  return amount > 0
+    ? [
+        {
+          id: "legacy",
+          amount,
+          to: String(d["handoverTo"] ?? ""),
+          note: String(d["note"] ?? ""),
+          givenOn: date,
+          at: 0,
+          by: String(d["updatedBy"] ?? ""),
+        },
+      ]
+    : [];
+}
+
+const mapCashDay = (d: { id: string; data: () => DocumentData }): CashDay => {
+  const handovers = handoversOf(d.id, d.data());
+  return {
+    date: d.id,
+    handover: round(handovers.reduce((n, h) => n + h.amount, 0)),
+    handoverTo: String(d.data()["handoverTo"] ?? ""),
+    note: String(d.data()["note"] ?? ""),
+    handovers,
+    openingOverride: num(d.data()["openingOverride"]),
+    carriedOpening: num(d.data()["carriedOpening"]),
+  };
+};
 
 export const subscribeCashDays = (ok: (x: CashDay[]) => void, fail: (e: Error) => void) =>
   onSnapshot(col(COLLECTIONS.cashDays), (s) => ok(s.docs.map(mapCashDay)), fail);
@@ -432,15 +468,78 @@ export async function saveCashCheckpoint(date: string, opening: number) {
   );
 }
 
-/** Saves the hand-entered part of a day: handover to the owner, and/or opening cash. */
-export async function saveCashDay(day: CashDay, by: string) {
+/** The total and the "given to" names kept beside the list (read by exports and older screens). */
+const handoverFields = (list: HandoverEntry[]) => ({
+  handovers: list,
+  handover: round(list.reduce((n, h) => n + h.amount, 0)),
+  handoverTo: [...new Set(list.map((h) => h.to).filter(Boolean))].join(", "),
+  note: list
+    .map((h) => h.note)
+    .filter(Boolean)
+    .join(" · "),
+});
+
+/**
+ * Records cash handed over out of one day's cash (`date`), e.g. yesterday's cash handed to the
+ * owner this morning: it is booked on yesterday, so yesterday's closing and today's opening go
+ * down, and it remembers it was given today. A day can have several handovers.
+ */
+export async function addHandover(
+  date: string,
+  input: { amount: number; to: string; note: string },
+  by: string,
+) {
+  const amount = round(Number(input.amount));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Pick the day of the cash.");
+  if (date > todayISO()) throw new Error("The cash of a future day can't be handed over yet.");
+  if (!(amount > 0)) throw new Error("Enter the amount handed over.");
+  const entry: HandoverEntry = {
+    id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+    amount,
+    to: input.to.trim(),
+    note: input.note.trim(),
+    givenOn: todayISO(),
+    at: Date.now(),
+    by,
+  };
+  await putHandover(date, entry, by);
+  return entry;
+}
+
+/** Saves one handover entry on a day as it is (also Undo after a removal). */
+export async function putHandover(date: string, entry: HandoverEntry, by: string) {
+  const ref = doc(db, COLLECTIONS.cashDays, date);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const list = [...handoversOf(date, snap.data() ?? {}).filter((h) => h.id !== entry.id), entry];
+    tx.set(
+      ref,
+      { ...handoverFields(list), updatedBy: by, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+  });
+}
+
+/** Takes back one handover entered by mistake. */
+export async function removeHandover(date: string, id: string, by: string) {
+  const ref = doc(db, COLLECTIONS.cashDays, date);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const list = handoversOf(date, snap.data() ?? {}).filter((h) => h.id !== id);
+    tx.set(
+      ref,
+      { ...handoverFields(list), updatedBy: by, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+  });
+}
+
+/** Cash in the drawer at the start of a day, typed by hand (null = follow the day before). */
+export async function saveOpeningCash(date: string, opening: number | null, by: string) {
   await setDoc(
-    doc(db, COLLECTIONS.cashDays, day.date),
+    doc(db, COLLECTIONS.cashDays, date),
     {
-      handover: Math.max(0, day.handover),
-      handoverTo: day.handoverTo.trim(),
-      note: day.note.trim(),
-      openingOverride: day.openingOverride,
+      openingOverride: opening === null ? null : Math.max(0, round(opening)),
       updatedBy: by,
       updatedAt: serverTimestamp(),
     },
