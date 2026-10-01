@@ -334,6 +334,7 @@ function AnnouncementsPage() {
         title={`Send to ${people(recipients.length)}?`}
         description={`Everyone gets it on WhatsApp now. Meta charges about ${money(recipients.length * rate)}. This can't be undone.`}
         confirmLabel="Send now"
+        typeToConfirm="SEND"
         onConfirm={() => void send()}
       />
     </div>

@@ -2,11 +2,13 @@ import {
   addDoc,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
   type DocumentData,
@@ -74,5 +76,11 @@ export async function deletePackage(id: string) {
       "This package is used by existing memberships. Deactivate it instead to keep history intact.",
     );
   }
-  await deleteDoc(doc(db, COLLECTIONS.packages, id));
+  const ref = doc(db, COLLECTIONS.packages, id);
+  const saved = (await getDoc(ref)).data();
+  await deleteDoc(ref);
+  /** Undo: the package comes back exactly as it was. */
+  return async () => {
+    if (saved) await setDoc(ref, saved);
+  };
 }

@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { dobPassword } from "@/constants/portal";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDate } from "@/lib/format";
+import { toastWithUndo } from "@/lib/undo-toast";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_BILLING_SETTINGS,
@@ -242,7 +243,7 @@ export function MemberAppCard({
             <Button
               size="sm"
               variant={canApi ? "outline" : "default"}
-              className={cn(!canApi && "bg-[#25D366] text-white hover:bg-[#1fb857]")}
+              className={cn(!canApi && "bg-[#128C7E] text-white hover:bg-[#0e7266]")}
               disabled={busy || !client.portalActive}
               onClick={share}
             >
@@ -273,11 +274,11 @@ export function MemberAppCard({
                   <DropdownMenuItem
                     onSelect={() =>
                       void run(async () => {
-                        await memberAppAction(client.id, client.portalActive ? "off" : "on");
-                        toast.success(
-                          client.portalActive
-                            ? "Member app switched off"
-                            : "Member app switched on",
+                        const was = client.portalActive;
+                        await memberAppAction(client.id, was ? "off" : "on");
+                        toastWithUndo(
+                          was ? "Member app switched off" : "Member app switched on",
+                          () => memberAppAction(client.id, was ? "on" : "off"),
                         );
                       })
                     }

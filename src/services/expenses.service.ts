@@ -2,6 +2,7 @@ import {
   addDoc,
   deleteDoc,
   doc,
+  getDoc,
   orderBy,
   query,
   serverTimestamp,
@@ -156,11 +157,24 @@ export async function settleExpense(
   await batch.commit();
 }
 export async function deleteExpense(item: Expense, staff: { uid: string; name: string }) {
+  const ref = doc(db, COLLECTIONS.expenses, item.id);
+  const saved = (await getDoc(ref)).data();
   const batch = writeBatch(db);
-  batch.delete(doc(db, COLLECTIONS.expenses, item.id));
+  batch.delete(ref);
   batch.set(
     doc(col(COLLECTIONS.expenseActivities)),
     activity(item.id, item.title, "deleted", staff.name),
   );
   await batch.commit();
+  /** Undo: the expense comes back exactly as it was. */
+  return async () => {
+    if (!saved) return;
+    const b = writeBatch(db);
+    b.set(ref, saved);
+    b.set(
+      doc(col(COLLECTIONS.expenseActivities)),
+      activity(item.id, item.title, "created", staff.name),
+    );
+    await b.commit();
+  };
 }

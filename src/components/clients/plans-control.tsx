@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Ban, Dumbbell, XCircle } from "lucide-react";
+import { Ban, Dumbbell, RotateCcw, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { Field, FormDialog } from "@/components/common/form-dialog";
 import { StatusPill } from "@/components/common/status-pill";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -18,8 +19,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLive } from "@/hooks/use-live-query";
 import { effectiveMembershipStatus, formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { subscribeDevices } from "@/services/biometric-devices.service";
-import { cancelPtAssignment, endAllPlans } from "@/services/end-plans.service";
+import { subscribeClientPayments } from "@/services/finance.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
+import { cancelPlans, restoreCancellation, splitRefund } from "@/services/plan-cancel.service";
 import { subscribeClientPtAssignments } from "@/services/pt.service";
 import {
   PAYMENT_METHODS,
@@ -27,6 +29,7 @@ import {
   type Client,
   type Invoice,
   type Membership,
+  type Payment,
   type PaymentMethod,
   type PtAssignment,
 } from "@/types/models";
@@ -34,6 +37,9 @@ import {
 /** A PT plan is running or waiting to start (can still be cancelled). */
 const ptOpen = (p: PtAssignment) =>
   (p.status === "active" || p.status === "pending") && p.endDate >= todayISO();
+/** A cancelled plan whose dates aren't over yet can be put back. */
+const canRestore = (p: { status: string; endDate: string }) =>
+  p.status === "cancelled" && p.endDate >= todayISO();
 const PT_LABEL: Record<string, { label: string; tone: "success" | "info" | "warning" | "danger" }> =
   {
     active: { label: "Running", tone: "success" },
@@ -42,8 +48,327 @@ const PT_LABEL: Record<string, { label: string; tone: "success" | "info" | "warn
     cancelled: { label: "Cancelled", tone: "danger" },
   };
 
-/** Plan tab: the member's PT plans next to their gym plans, each running one can be cancelled. */
-export function ClientPtPlans({ client }: { client: Client }) {
+/** "Cancelled 1 Oct 2026 · Moved to another town" under a cancelled plan. */
+export function CancelNote({ plan }: { plan: { cancelledOn?: string; cancelReason?: string } }) {
+  if (!plan.cancelledOn && !plan.cancelReason) return null;
+  return (
+    <p className="text-meta">
+      Cancelled{plan.cancelledOn ? ` ${formatDateISO(plan.cancelledOn)}` : ""}
+      {plan.cancelReason ? ` · ${plan.cancelReason}` : ""}
+    </p>
+  );
+}
+
+/**
+ * Cancelling one gym plan, one PT plan, or all of a member's plans ("End all plans"): an
+ * optional reason and refund (money given back), then Undo on the message.
+ */
+export function CancelPlansDialog({
+  client,
+  plans,
+  pts,
+  invoices,
+  all = false,
+  open,
+  onOpenChange,
+}: {
+  client: Client;
+  plans: Membership[];
+  pts: PtAssignment[];
+  invoices: Invoice[];
+  /** "End all plans & stop entry" (owner). */
+  all?: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { can } = useAccess();
+  const { user } = useAuth();
+  // Refunds change the money and trainer payouts: Finance (the owner has it).
+  const money = can("finance");
+  // Read only while the box is open (the member page keeps up to three of these closed).
+  const devices = useLive<BiometricDevice[]>(open ? subscribeDevices : null, [], [open]);
+  // Refunds already given (minus payments), so a second refund can't go past what they paid.
+  const pays = useLive<Payment[]>(
+    open ? (ok, fail) => subscribeClientPayments(client.id, ok, fail) : null,
+    [],
+    [open, client.id],
+  );
+  const [reason, setReason] = useState("");
+  const [refund, setRefund] = useState("");
+  const [method, setMethod] = useState<PaymentMethod>("Cash");
+  const [stopDue, setStopDue] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    setReason("");
+    setRefund("");
+    setMethod("Cash");
+    setStopDue(true);
+    setError("");
+  }, [open]);
+
+  const device = devices.data.find((d) => d.id === client.biometricDeviceId);
+  const latestBill =
+    [...invoices].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
+  const refundedBefore = pays.data.reduce((n, p) => n + Math.max(0, -p.amount), 0);
+  const paidTotal = Math.max(
+    0,
+    invoices.reduce((n, i) => n + Math.max(0, i.amountPaid), 0) - refundedBefore,
+  );
+  const amount = refund.trim() === "" ? 0 : Number(refund);
+  const parts = Number.isFinite(amount) && amount > 0 ? splitRefund(amount, plans, pts) : [];
+  const cuts = parts.filter((p) => p.trainerCut > 0);
+  const count = plans.length + pts.length;
+  const one = plans[0]?.packageNameSnapshot ?? pts[0]?.ptPackageNameSnapshot ?? "plan";
+  // Bills of only these plans with money still due: asked for daily unless it's dropped.
+  const ids = new Set([...plans.map((m) => m.id), ...pts.map((p) => p.id)]);
+  const dueBills = invoices.filter(
+    (i) =>
+      i.balanceDue > 0 &&
+      i.paymentStatus !== "refunded" &&
+      !!(i.membershipId || i.ptAssignmentId) &&
+      (!i.membershipId || ids.has(i.membershipId)) &&
+      (!i.ptAssignmentId || ids.has(i.ptAssignmentId)),
+  );
+  const dueTotal = dueBills.reduce((n, i) => n + i.balanceDue, 0);
+
+  const submit = async () => {
+    if (!Number.isFinite(amount) || amount < 0)
+      return setError("Enter the refund in rupees, or leave it empty.");
+    // Members without bills here (e.g. from the old software): nothing to check against.
+    if (amount > 0 && invoices.length > 0 && amount > paidTotal)
+      return setError(
+        paidTotal
+          ? `More than they paid (${formatPrice(paidTotal)}).`
+          : "Everything they paid has been refunded already.",
+      );
+    setError("");
+    try {
+      const r = await cancelPlans({
+        client,
+        plans,
+        pts,
+        latestBill: latestBill
+          ? { id: latestBill.id, invoiceNumber: latestBill.invoiceNumber }
+          : null,
+        reason,
+        refund: money ? amount : 0,
+        refundMethod: method,
+        closeBills: stopDue ? dueBills : [],
+        by: { uid: user?.uid ?? "", name: user?.displayName || user?.email || "Staff" },
+      });
+      onOpenChange(false);
+      const first = plans[0]
+        ? { kind: "gym" as const, plan: { ...plans[0], cancelId: r.cancelId } }
+        : { kind: "pt" as const, plan: { ...pts[0]!, cancelId: r.cancelId } };
+      toast.success(all ? `${r.plans} plan${r.plans === 1 ? "" : "s"} ended` : `${one} cancelled`, {
+        description:
+          [
+            r.refund ? `Refund ${formatPrice(r.refund)} recorded as money given back.` : "",
+            stopDue && dueTotal ? `${formatPrice(dueTotal)} due is no longer asked for.` : "",
+          ]
+            .filter(Boolean)
+            .join(" ") || undefined,
+        duration: 12000,
+        action: {
+          label: "Undo",
+          onClick: () =>
+            void restoreCancellation(client, first).then(
+              () => toast.success("Undone: plans are back"),
+              (e: unknown) => toast.error(firestoreErrorMessage(e)),
+            ),
+        },
+      });
+    } catch (e) {
+      setError(firestoreErrorMessage(e));
+    }
+  };
+
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={all ? "End all plans & stop entry" : `Cancel ${one}?`}
+      description={
+        all
+          ? `For a member who is leaving. Everything below is cancelled today for ${client.fullName}.`
+          : "It is marked cancelled and stays in the history. You can restore it later."
+      }
+      footer={
+        <>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Keep {count > 1 ? "plans" : "plan"}
+          </Button>
+          <Button variant="destructive" onClick={() => submit()}>
+            <Ban aria-hidden /> {all ? "End all plans" : "Cancel plan"}
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-4">
+        <ul className="divide-y divide-border rounded-xl border border-border text-sm">
+          {plans.map((m) => (
+            <li key={m.id} className="flex justify-between gap-3 p-3">
+              <span className="min-w-0">
+                <b>{m.packageNameSnapshot}</b>
+                <span className="text-meta block">
+                  {formatDateISO(m.startDate)} → {formatDateISO(m.endDate)}
+                </span>
+              </span>
+              <span className="tabular-nums">{formatPrice(m.priceSnapshot)}</span>
+            </li>
+          ))}
+          {pts.map((p) => (
+            <li key={p.id} className="flex justify-between gap-3 p-3">
+              <span className="min-w-0">
+                <b>PT: {p.ptPackageNameSnapshot}</b>
+                <span className="text-meta block">
+                  With {p.trainerNameSnapshot} · {formatDateISO(p.startDate)} →{" "}
+                  {formatDateISO(p.endDate)}
+                </span>
+              </span>
+              <span className="tabular-nums">{formatPrice(p.ptPrice)}</span>
+            </li>
+          ))}
+        </ul>
+        <Field label="Reason (optional)" htmlFor="cancel-reason">
+          <Input
+            id="cancel-reason"
+            placeholder="e.g. Moved to another town"
+            maxLength={300}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </Field>
+        {money ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label="Refund given back ₹ (optional)"
+              htmlFor="cancel-refund"
+              hint={`Empty = no refund. They paid ${formatPrice(paidTotal)} in all${refundedBefore ? ` (after ${formatPrice(refundedBefore)} already refunded)` : ""}.`}
+            >
+              <Input
+                id="cancel-refund"
+                type="number"
+                min={0}
+                inputMode="decimal"
+                placeholder="0"
+                value={refund}
+                onChange={(e) => setRefund(e.target.value)}
+              />
+            </Field>
+            <Field label="Given back by" htmlFor="cancel-method">
+              <Select value={method} onValueChange={(v) => setMethod(v as PaymentMethod)}>
+                <SelectTrigger id="cancel-method" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+        ) : null}
+        {dueTotal > 0 ? (
+          <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm">
+            <Checkbox
+              id="cancel-stop-due"
+              checked={stopDue}
+              onCheckedChange={(v) => setStopDue(v === true)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block font-semibold">
+                Stop asking for the {formatPrice(dueTotal)} still due
+              </span>
+              <span className="text-meta">
+                Bill {dueBills.map((i) => i.invoiceNumber).join(", ")} shows Closed and no more
+                balance reminders go out. Untick to keep asking for it.
+              </span>
+            </span>
+          </label>
+        ) : null}
+        {cuts.length ? (
+          <p className="rounded-xl bg-info/10 p-3 text-sm">
+            {cuts.map((c) => (
+              <span key={c.id} className="block">
+                Trainer {c.trainerName}'s share goes down by <b>{formatPrice(c.trainerCut)}</b>{" "}
+                (automatically: from their unpaid share, or off their next payout if already paid).
+              </span>
+            ))}
+          </p>
+        ) : null}
+        <p className="rounded-xl bg-muted p-3 text-sm">
+          {!client.firstThumbRegistered
+            ? "No thumb registered, so nothing changes on the fingerprint machine."
+            : device && !device.doorControl
+              ? "Door control is off on the machine: their thumb still opens the door. Turn on Door control (Fingerprint Devices), or use Block entry on the profile."
+              : "If they have no other running plan, their thumb stops opening the door within about a minute. Their fingerprint is kept: a restore or a new payment lets them in again without a new scan."}
+        </p>
+        {error ? (
+          <p role="alert" className="text-sm font-semibold text-destructive">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </FormDialog>
+  );
+}
+
+/** "Restore" on a cancelled plan: it runs again, and anything cancelled with it comes back. */
+export function RestorePlanButton({
+  client,
+  kind,
+  plan,
+}: {
+  client: Client;
+  kind: "gym" | "pt";
+  plan: Membership | PtAssignment;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!canRestore(plan)) return null;
+  const name =
+    kind === "gym"
+      ? (plan as Membership).packageNameSnapshot
+      : (plan as PtAssignment).ptPackageNameSnapshot;
+  const restore = async () => {
+    setOpen(false);
+    try {
+      const r = await restoreCancellation(client, { kind, plan });
+      toast.success(r.plans > 1 ? `${r.plans} plans restored` : `${name} restored`, {
+        description:
+          client.biometricStatus === "disabled"
+            ? "Entry is still blocked for this member: press Allow entry on the Profile."
+            : "They can come in again (the machine is updated at its next check-in).",
+      });
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    }
+  };
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <RotateCcw aria-hidden /> Restore
+      </Button>
+      <ConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={`Restore ${name}?`}
+        description={`It runs again until ${formatDateISO(plan.endDate)}.${plan.cancelId ? " Anything cancelled together with it comes back too: a refund recorded with it is removed and a balance that was dropped is asked for again." : ""}`}
+        confirmLabel="Restore"
+        cancelLabel="Keep cancelled"
+        onConfirm={() => void restore()}
+      />
+    </>
+  );
+}
+
+/** Plan tab: the member's PT plans next to their gym plans: cancel a running one, restore. */
+export function ClientPtPlans({ client, invoices }: { client: Client; invoices: Invoice[] }) {
   const pts = useLive<PtAssignment[]>(
     (ok, fail) => subscribeClientPtAssignments(client.id, ok, fail),
     [],
@@ -51,17 +376,6 @@ export function ClientPtPlans({ client }: { client: Client }) {
   );
   const [cancelling, setCancelling] = useState<PtAssignment | null>(null);
   if (!pts.data.length) return null;
-  const confirm = async () => {
-    const p = cancelling;
-    setCancelling(null);
-    if (!p) return;
-    try {
-      await cancelPtAssignment(p);
-      toast.success("PT plan cancelled", { description: p.ptPackageNameSnapshot });
-    } catch (e) {
-      toast.error(firestoreErrorMessage(e));
-    }
-  };
   return (
     <section className="surface-card overflow-hidden">
       <h2 className="text-section-title flex items-center gap-2 border-b border-border p-5">
@@ -82,10 +396,12 @@ export function ClientPtPlans({ client }: { client: Client }) {
                   With {p.trainerNameSnapshot} · {formatDateISO(p.startDate)} →{" "}
                   {formatDateISO(p.endDate)}
                 </p>
+                {p.status === "cancelled" ? <CancelNote plan={p} /> : null}
               </div>
-              <div className="flex items-center justify-between gap-3 sm:justify-end">
+              <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
                 <span className="font-semibold tabular-nums">{formatPrice(p.ptPrice)}</span>
                 <StatusPill tone={meta.tone}>{meta.label}</StatusPill>
+                <RestorePlanButton client={client} kind="pt" plan={p} />
                 {ptOpen(p) ? (
                   <Button
                     variant="ghost"
@@ -101,15 +417,13 @@ export function ClientPtPlans({ client }: { client: Client }) {
           );
         })}
       </ul>
-      <ConfirmDialog
+      <CancelPlansDialog
+        client={client}
+        plans={[]}
+        pts={cancelling ? [cancelling] : []}
+        invoices={invoices}
         open={!!cancelling}
         onOpenChange={(o) => !o && setCancelling(null)}
-        title={`Cancel ${cancelling?.ptPackageNameSnapshot ?? "PT plan"}?`}
-        description="The PT plan is marked cancelled (it stays in history). If the member has no other running plan, their thumb stops opening the door."
-        confirmLabel="Cancel PT plan"
-        cancelLabel="Keep it"
-        destructive
-        onConfirm={() => void confirm()}
       />
     </section>
   );
@@ -117,8 +431,7 @@ export function ClientPtPlans({ client }: { client: Client }) {
 
 /**
  * Owner only: "End all plans & stop entry" for a member who is leaving (moved to another town,
- * stopped…): every running / upcoming gym and PT plan is cancelled today, the door stops opening
- * for them, and money given back is recorded as a refund.
+ * stopped…): every running / upcoming gym and PT plan is cancelled today, with a refund if any.
  */
 export function EndAllPlansButton({
   client,
@@ -130,68 +443,17 @@ export function EndAllPlansButton({
   invoices: Invoice[];
 }) {
   const { owner } = useAccess();
-  const { user } = useAuth();
   const pts = useLive<PtAssignment[]>(
     (ok, fail) => subscribeClientPtAssignments(client.id, ok, fail),
     [],
     [client.id],
   );
-  const devices = useLive<BiometricDevice[]>(subscribeDevices, [], []);
   const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
-  const [refund, setRefund] = useState("");
-  const [method, setMethod] = useState<PaymentMethod>("Cash");
-  const [error, setError] = useState("");
-  useEffect(() => {
-    if (!open) return;
-    setReason("");
-    setRefund("");
-    setMethod("Cash");
-    setError("");
-  }, [open]);
-
   const plans = memberships.filter((m) =>
     ["active", "pending"].includes(effectiveMembershipStatus(m)),
   );
   const openPts = pts.data.filter(ptOpen);
   if (!owner || (!plans.length && !openPts.length)) return null;
-
-  const device = devices.data.find((d) => d.id === client.biometricDeviceId);
-  const latestBill =
-    [...invoices].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
-  const paidTotal = invoices.reduce((n, i) => n + i.amountPaid, 0);
-
-  const submit = async () => {
-    const amount = refund.trim() === "" ? 0 : Number(refund);
-    if (!Number.isFinite(amount) || amount < 0)
-      return setError("Enter the refund in rupees, or leave it empty.");
-    if (amount > paidTotal && paidTotal > 0)
-      return setError(`More than they paid (${formatPrice(paidTotal)}).`);
-    setError("");
-    try {
-      const r = await endAllPlans({
-        client,
-        plans,
-        pts: openPts,
-        latestBill: latestBill
-          ? { id: latestBill.id, invoiceNumber: latestBill.invoiceNumber }
-          : null,
-        reason,
-        refund: amount,
-        refundMethod: method,
-        by: { uid: user?.uid ?? "", name: user?.displayName || user?.email || "Owner" },
-      });
-      toast.success(`${r.plans} plan${r.plans === 1 ? "" : "s"} ended`, {
-        description: r.refund
-          ? `Refund ${formatPrice(r.refund)} recorded as money given back.`
-          : undefined,
-      });
-      setOpen(false);
-    } catch (e) {
-      setError(firestoreErrorMessage(e));
-    }
-  };
-
   return (
     <>
       <Button
@@ -201,106 +463,15 @@ export function EndAllPlansButton({
       >
         <Ban aria-hidden /> End all plans & stop entry
       </Button>
-      <FormDialog
+      <CancelPlansDialog
+        client={client}
+        plans={plans}
+        pts={openPts}
+        invoices={invoices}
+        all
         open={open}
         onOpenChange={setOpen}
-        title="End all plans & stop entry"
-        description={`For a member who is leaving. Everything below is cancelled today for ${client.fullName}.`}
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              Keep plans
-            </Button>
-            <Button variant="destructive" onClick={() => submit()}>
-              <Ban aria-hidden /> End all plans
-            </Button>
-          </>
-        }
-      >
-        <div className="grid gap-4">
-          <ul className="divide-y divide-border rounded-xl border border-border text-sm">
-            {plans.map((m) => (
-              <li key={m.id} className="flex justify-between gap-3 p-3">
-                <span className="min-w-0">
-                  <b>{m.packageNameSnapshot}</b>
-                  <span className="text-meta block">
-                    {formatDateISO(m.startDate)} → {formatDateISO(m.endDate)}
-                  </span>
-                </span>
-                <span className="tabular-nums">{formatPrice(m.priceSnapshot)}</span>
-              </li>
-            ))}
-            {openPts.map((p) => (
-              <li key={p.id} className="flex justify-between gap-3 p-3">
-                <span className="min-w-0">
-                  <b>PT: {p.ptPackageNameSnapshot}</b>
-                  <span className="text-meta block">
-                    With {p.trainerNameSnapshot} · {formatDateISO(p.startDate)} →{" "}
-                    {formatDateISO(p.endDate)}
-                  </span>
-                </span>
-                <span className="tabular-nums">{formatPrice(p.ptPrice)}</span>
-              </li>
-            ))}
-          </ul>
-          <Field
-            label="Reason"
-            htmlFor="end-reason"
-            hint="Kept with the plans and in the activity log."
-          >
-            <Input
-              id="end-reason"
-              placeholder="e.g. Moved to another town"
-              maxLength={300}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-            />
-          </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field
-              label="Refund given back ₹"
-              htmlFor="end-refund"
-              hint={`Empty = no refund. They paid ${formatPrice(paidTotal)} in all.`}
-            >
-              <Input
-                id="end-refund"
-                type="number"
-                min={0}
-                inputMode="decimal"
-                placeholder="0"
-                value={refund}
-                onChange={(e) => setRefund(e.target.value)}
-              />
-            </Field>
-            <Field label="Given back by" htmlFor="end-method">
-              <Select value={method} onValueChange={(v) => setMethod(v as PaymentMethod)}>
-                <SelectTrigger id="end-method" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PAYMENT_METHODS.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-          </div>
-          <p className="rounded-xl bg-muted p-3 text-sm">
-            {!client.firstThumbRegistered
-              ? "No thumb registered, so nothing changes on the fingerprint machine."
-              : device && !device.doorControl
-                ? "Door control is off on the machine: their thumb still opens the door. Turn on Door control (Fingerprint Devices), or use Block entry on the profile."
-                : "Their thumb stops opening the door within about a minute. Their fingerprint is kept, so if they come back and pay, they get in again without a new scan."}
-          </p>
-          {error ? (
-            <p role="alert" className="text-sm font-semibold text-destructive">
-              {error}
-            </p>
-          ) : null}
-        </div>
-      </FormDialog>
+      />
     </>
   );
 }

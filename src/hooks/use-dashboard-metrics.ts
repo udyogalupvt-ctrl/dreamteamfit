@@ -79,6 +79,10 @@ export const TODAY_PERIOD = (): DashboardPeriod => ({
   isToday: true,
 });
 
+/** " · after ₹2,000 refunded" when money was given back (Collected is after refunds). */
+const refundedNote = (m: { refunded: number }) =>
+  m.refunded > 0 ? ` · after ${formatPrice(m.refunded)} refunded` : "";
+
 /** Derives dashboard numbers from live Firestore data only — nothing is invented. */
 export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
   // Staff without the finance feature never load expenses (Firestore rules would refuse).
@@ -302,9 +306,10 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
         id: "today-collection",
         label: period.isToday ? "Collected today" : `Collected · ${period.label}`,
         value: formatPrice(todayCollected),
-        hint: period.isToday
-          ? "all payments received today"
-          : `gym income ${formatPrice(periodMoney.gymIncome)}`,
+        hint:
+          (period.isToday
+            ? "all payments received today"
+            : `gym income ${formatPrice(periodMoney.gymIncome)}`) + refundedNote(periodMoney),
         icon: BadgeIndianRupee,
         tone: "success",
       },
@@ -312,7 +317,7 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
         id: "month-collection",
         label: "This month",
         value: formatPrice(monthCollected),
-        hint: `gym income ${formatPrice(monthMoney.gymIncome)}`,
+        hint: `gym income ${formatPrice(monthMoney.gymIncome)}${refundedNote(monthMoney)}`,
         icon: BadgeIndianRupee,
         tone: "primary",
       },

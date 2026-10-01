@@ -10,6 +10,7 @@ import {
   Printer,
   Send,
 } from "lucide-react";
+import { toastWithUndo } from "@/lib/undo-toast";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +39,7 @@ import {
   subscribeBusinessSettings,
 } from "@/services/business-settings.service";
 import { downloadInvoicePdf } from "@/lib/invoice-download";
-import { recordBalancePayment } from "@/services/finance.service";
+import { recordBalancePayment, undoBalancePayment } from "@/services/finance.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { useLive } from "@/hooks/use-live-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -105,7 +106,8 @@ export function InvoiceActions({
         className={cn(!compact && "flex-1 sm:flex-none")}
         aria-label="Share bill on WhatsApp"
       >
-        <MessageCircle aria-hidden className="text-[#25D366]" /> {compact ? null : "WhatsApp"}
+        <MessageCircle aria-hidden className="text-[#128C7E] dark:text-[#25D366]" />{" "}
+        {compact ? null : "WhatsApp"}
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -177,7 +179,7 @@ function BalancePaymentDialog({
   const save = async () => {
     setSaving(true);
     try {
-      await recordBalancePayment(
+      const { paymentId } = await recordBalancePayment(
         invoice,
         amount,
         method,
@@ -187,9 +189,11 @@ function BalancePaymentDialog({
           nextPaymentDate: restLeft ? nextDate : null,
         },
       );
-      toast.success("Payment recorded", {
-        description: `${formatPrice(amount)} for ${invoice.invoiceNumber}`,
-      });
+      toastWithUndo(
+        "Payment recorded",
+        () => undoBalancePayment(paymentId),
+        `${formatPrice(amount)} for ${invoice.invoiceNumber}. Entered by mistake? Undo.`,
+      );
       onOpenChange(false);
       // The updated bill (new paid / balance) goes to the member automatically.
       void autoSendBill(invoice.id).then(toastBillSend);

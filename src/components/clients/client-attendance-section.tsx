@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { format } from "date-fns";
 import { CalendarCheck, Fingerprint, ShieldCheck, ShieldX } from "lucide-react";
 import { toast } from "sonner";
+import { toastWithUndo } from "@/lib/undo-toast";
 import { useEnrollment } from "@/components/enrollment/enrollment-context";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
@@ -41,7 +42,11 @@ export function ClientAttendanceSection({
   const toggleEntry = async () => {
     try {
       await updateClient(client.id, { biometricStatus: blocked ? "active" : "disabled" });
-      toast.success(blocked ? "Entry allowed again" : "Entry blocked for this member");
+      toastWithUndo(
+        blocked ? "Entry allowed again" : "Entry blocked for this member",
+        () => updateClient(client.id, { biometricStatus: blocked ? "disabled" : "active" }),
+        "The machine is updated at its next check-in (within a minute).",
+      );
     } catch (e) {
       toast.error(firestoreErrorMessage(e));
     }

@@ -137,14 +137,45 @@ export const ACCENTS: Record<AccentId, ReturnType<typeof palette>> = {
   ),
 };
 
-/** Light mode with the dark menu (the original look). */
+/**
+ * Light mode with the dark menu (the original look): the menu gets every dark-mode colour
+ * (styles.css .dark), not only its background, so its name, user, switches and anything added
+ * later stay readable on it.
+ */
 const DARK_MENU: Vars = {
+  "--background": "oklch(0.16 0.006 90)",
+  "--foreground": "oklch(0.965 0.004 260)",
+  "--surface": "oklch(0.205 0.007 90)",
+  "--surface-foreground": "oklch(0.965 0.004 260)",
+  "--elevated": "oklch(0.245 0.009 90)",
+  "--card": "oklch(0.205 0.007 90)",
+  "--card-foreground": "oklch(0.965 0.004 260)",
+  "--popover": "oklch(0.22 0.008 90)",
+  "--popover-foreground": "oklch(0.965 0.004 260)",
+  "--secondary": "oklch(0.27 0.011 265)",
+  "--secondary-foreground": "oklch(0.95 0.004 260)",
+  "--muted": "oklch(0.26 0.01 265)",
+  "--muted-foreground": "oklch(0.72 0.015 262)",
+  "--subtle": "oklch(0.6 0.015 262)",
+  "--destructive": "oklch(0.67 0.2 24)",
+  "--success": "oklch(0.75 0.17 152)",
+  "--warning": "oklch(0.82 0.17 75)",
+  "--info": "oklch(0.7 0.15 250)",
+  "--success-text": "oklch(0.75 0.17 152)",
+  "--warning-text": "oklch(0.82 0.17 75)",
+  "--border": "oklch(1 0 0 / 10%)",
+  "--input": "oklch(1 0 0 / 14%)",
   "--sidebar": "oklch(0.14 0.005 90)",
   "--sidebar-foreground": "oklch(0.93 0.004 260)",
   "--sidebar-accent": "oklch(0.235 0.012 90)",
   "--sidebar-accent-foreground": "oklch(0.97 0.004 260)",
   "--sidebar-border": "oklch(1 0 0 / 10%)",
+  "--elevation-1": "0 1px 2px oklch(0 0 0 / 0.4)",
+  "color-scheme": "dark",
+  color: "var(--foreground)",
 };
+/** The menus (desktop sidebar, phone drawer) carry data-app-menu. */
+const MENU = "html:not(.dark) [data-app-menu]";
 
 const isAccent = (v: unknown): v is AccentId => ACCENT_IDS.includes(v as AccentId);
 /** Anything read from storage / the database, made safe. */
@@ -169,9 +200,13 @@ const block = (selector: string, vars: Vars) =>
 
 /** The CSS that turns styles.css's yellow theme into this one ("" for the default). */
 export function colorThemeCss(t: ColorTheme) {
-  const light = { ...ACCENTS[t.light.accent].light, ...(t.light.menu === "dark" ? DARK_MENU : {}) };
   // :root first, .dark after it: in dark mode both match and the dark values win.
-  return block(":root", light) + block(".dark", ACCENTS[t.dark.accent].dark);
+  const css =
+    block(":root", ACCENTS[t.light.accent].light) + block(".dark", ACCENTS[t.dark.accent].dark);
+  // Dark menu in light mode: the light-mode colour, in its dark-background shade.
+  return t.light.menu === "dark"
+    ? css + block(MENU, { ...DARK_MENU, ...ACCENTS[t.light.accent].dark })
+    : css;
 }
 
 const STYLE_ID = "rf-color-theme";

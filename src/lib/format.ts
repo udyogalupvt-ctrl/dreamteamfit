@@ -106,6 +106,7 @@ export const INVOICE_STATUS_META: Record<InvoicePaymentStatus, { label: string; 
   partial: { label: "Partial", tone: "warning" },
   pending: { label: "Pending", tone: "danger" },
   refunded: { label: "Refunded", tone: "violet" },
+  closed: { label: "Closed", tone: "info" },
 };
 
 export function formatTime(value: string): string {

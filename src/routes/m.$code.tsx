@@ -253,7 +253,7 @@ function RenewalPopup({ data }: { data: MemberPortalData }) {
       footer={
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
           {wa ? (
-            <Button asChild className="bg-[#25D366] text-white hover:bg-[#1ebe5b]">
+            <Button asChild className="bg-[#128C7E] text-white hover:bg-[#0e7266]">
               <a href={wa} target="_blank" rel="noreferrer" onClick={close}>
                 <MessageCircle aria-hidden /> Renew on WhatsApp
               </a>
@@ -894,8 +894,10 @@ function PaymentsTab({ data }: { data: MemberPortalData }) {
                       {b.items.length ? ` · ${b.items.join(", ")}` : ""}
                     </p>
                   </div>
-                  <StatusPill tone={b.balance > 0 ? "warning" : "success"}>
-                    {b.balance > 0 ? "Part paid" : "Paid"}
+                  <StatusPill
+                    tone={b.balance > 0 ? "warning" : b.status === "closed" ? "info" : "success"}
+                  >
+                    {b.balance > 0 ? "Part paid" : b.status === "closed" ? "Closed" : "Paid"}
                   </StatusPill>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-sm">

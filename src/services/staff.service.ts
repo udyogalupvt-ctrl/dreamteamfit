@@ -385,7 +385,8 @@ export async function payStaff(input: {
     createdBy: input.by.name,
     createdAt: now,
   });
-  batch.set(doc(col(COLLECTIONS.staffPayments)), {
+  const payRef = doc(col(COLLECTIONS.staffPayments));
+  batch.set(payRef, {
     staffId: input.staff.id,
     staffNameSnapshot: input.staff.name,
     kind: input.kind,
@@ -400,6 +401,20 @@ export async function payStaff(input: {
     updatedAt: now,
   });
   await batch.commit();
+  /** Undo: the payment and its expense go away together (activity history keeps a line). */
+  return async () => {
+    const undo = writeBatch(db);
+    undo.delete(payRef);
+    undo.delete(expenseRef);
+    undo.set(doc(col(COLLECTIONS.expenseActivities)), {
+      expenseId: expenseRef.id,
+      expenseTitleSnapshot: title,
+      action: "deleted",
+      createdBy: input.by.name,
+      createdAt: serverTimestamp(),
+    });
+    await undo.commit();
+  };
 }
 
 // ------------------------------------------------------------------ day marks & paid leaves

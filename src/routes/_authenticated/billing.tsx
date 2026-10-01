@@ -114,14 +114,8 @@ function BillingPage() {
   }, [invoices.data, search, date, status]);
 
   const today = todayISO();
-  const collectedToday = buildFinanceSummary(
-    payments.data,
-    invoices.data,
-    [],
-    [],
-    today,
-    today,
-  ).gross;
+  const todayMoney = buildFinanceSummary(payments.data, invoices.data, [], [], today, today);
+  const collectedToday = todayMoney.gross;
   const collectedMonth = buildFinanceSummary(
     payments.data,
     invoices.data,
@@ -139,7 +133,9 @@ function BillingPage() {
       id: "today",
       label: "Collected today",
       value: formatPrice(collectedToday),
-      hint: "all payments received today",
+      hint: todayMoney.refunded
+        ? `after ${formatPrice(todayMoney.refunded)} refunded`
+        : "all payments received today",
       icon: CalendarDays,
       tone: "success" as const,
     },

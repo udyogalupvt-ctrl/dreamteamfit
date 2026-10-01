@@ -25,12 +25,12 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { toastWithUndo } from "@/lib/undo-toast";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { Shimmer } from "@/components/common/loading-state";
 import { StatusPill } from "@/components/common/status-pill";
-import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { FormDialog } from "@/components/common/form-dialog";
 import { ImageUpload } from "@/components/common/image-upload";
 import { ClientAvatar } from "@/components/clients/client-avatar";
@@ -53,7 +53,13 @@ import { BookingFormDialog } from "@/components/scheduling/booking-form-dialog";
 import { AssignmentSection } from "@/components/clients/assignment-section";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ClientPtPlans, EndAllPlansButton } from "@/components/clients/plans-control";
+import {
+  CancelNote,
+  CancelPlansDialog,
+  ClientPtPlans,
+  EndAllPlansButton,
+  RestorePlanButton,
+} from "@/components/clients/plans-control";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -74,11 +80,7 @@ import {
 import { toneIcon } from "@/lib/tone";
 import { cn } from "@/lib/utils";
 import { memberIdLabel, subscribeClient, updateClient } from "@/services/clients.service";
-import {
-  cancelMembership,
-  subscribeClientMemberships,
-  undoLastPause,
-} from "@/services/memberships.service";
+import { subscribeClientMemberships, undoLastPause } from "@/services/memberships.service";
 import { PausePlanDialog } from "@/components/clients/pause-plan-dialog";
 import {
   subscribeClientWorkoutAssignments,
@@ -204,18 +206,6 @@ function ClientProfilePage() {
   }));
   const current = withStatus.find((m) => m.effective === "active") ?? null;
   const upcoming = withStatus.filter((m) => m.effective === "pending");
-
-  const confirmCancel = async () => {
-    if (!cancelling) return;
-    const m = cancelling;
-    setCancelling(null);
-    try {
-      await cancelMembership(m, c.currentMembership?.membershipId);
-      toast.success("Membership cancelled", { description: m.packageNameSnapshot });
-    } catch (err) {
-      toast.error(firestoreErrorMessage(err));
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -458,7 +448,11 @@ function ClientProfilePage() {
             onClose={(item) =>
               void updateWorkoutAssignmentStatus(item.id, "cancelled").then(
                 () =>
-                  toast.success("Workout plan cancelled", { description: item.planNameSnapshot }),
+                  toastWithUndo(
+                    "Workout plan cancelled",
+                    () => updateWorkoutAssignmentStatus(item.id, item.status),
+                    item.planNameSnapshot,
+                  ),
                 (error) => toast.error(firestoreErrorMessage(error)),
               )
             }
@@ -475,7 +469,12 @@ function ClientProfilePage() {
             onAdd={() => setAddDietOpen(true)}
             onClose={(item) =>
               void updateDietAssignmentStatus(item.id, "cancelled").then(
-                () => toast.success("Diet plan cancelled", { description: item.planNameSnapshot }),
+                () =>
+                  toastWithUndo(
+                    "Diet plan cancelled",
+                    () => updateDietAssignmentStatus(item.id, item.status),
+                    item.planNameSnapshot,
+                  ),
                 (error) => toast.error(firestoreErrorMessage(error)),
               )
             }
@@ -557,14 +556,16 @@ function ClientProfilePage() {
                           {formatDateISO(m.startDate)} → {formatDateISO(m.endDate)} ·{" "}
                           {m.durationDaysSnapshot} days
                         </p>
+                        {m.status === "cancelled" ? <CancelNote plan={m} /> : null}
                       </div>
-                      <div className="flex items-center justify-between gap-3 sm:justify-end">
+                      <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
                         <span className="font-semibold tabular-nums">
                           {formatPrice(m.priceSnapshot)}
                         </span>
                         <StatusPill tone={MEMBERSHIP_STATUS_META[m.effective].tone}>
                           {MEMBERSHIP_STATUS_META[m.effective].label}
                         </StatusPill>
+                        <RestorePlanButton client={c} kind="gym" plan={m} />
                         {m.effective === "active" || m.effective === "pending" ? (
                           <Button
                             variant="ghost"
@@ -582,7 +583,7 @@ function ClientProfilePage() {
               </section>
             </>
           )}
-          <ClientPtPlans client={c} />
+          <ClientPtPlans client={c} invoices={invoices.data} />
         </TabsContent>
 
         <TabsContent value="pt">
@@ -667,15 +668,13 @@ function ClientProfilePage() {
         isCurrent={!!pausing && c.currentMembership?.membershipId === pausing.id}
         onClose={() => setPausing(null)}
       />
-      <ConfirmDialog
+      <CancelPlansDialog
+        client={c}
+        plans={cancelling ? [cancelling] : []}
+        pts={[]}
+        invoices={invoices.data}
         open={!!cancelling}
         onOpenChange={(o) => !o && setCancelling(null)}
-        title={`Cancel ${cancelling?.packageNameSnapshot ?? "membership"}?`}
-        description="The membership will be marked as cancelled. Its record stays in history."
-        confirmLabel="Cancel membership"
-        cancelLabel="Keep it"
-        destructive
-        onConfirm={() => void confirmCancel()}
       />
     </div>
   );

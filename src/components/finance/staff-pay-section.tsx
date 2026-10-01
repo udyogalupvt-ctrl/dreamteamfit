@@ -32,6 +32,7 @@ import {
   subscribeStaffPrivate,
 } from "@/services/staff.service";
 import { staffMonth, type DayMarkDoc, type StaffMonth } from "@/lib/staff-salary";
+import { toastWithUndo } from "@/lib/undo-toast";
 import {
   EXPENSE_PAYMENT_METHODS,
   type ExpensePaymentMethod,
@@ -303,7 +304,7 @@ function PayDialog({
     if (!paying || !user) return;
     setSaving(true);
     try {
-      await payStaff({
+      const undo = await payStaff({
         staff: paying.row.staff,
         kind: paying.kind,
         period: month,
@@ -314,11 +315,10 @@ function PayDialog({
         notes,
         by: { uid: user.uid, name: user.displayName || user.email || "Staff" },
       });
-      toast.success(
+      toastWithUndo(
         `${paying.kind === "salary" ? "Salary" : "Incentive"} paid to ${paying.row.staff.name}`,
-        {
-          description: `${formatPrice(amount)} · added to expenses`,
-        },
+        undo,
+        `${formatPrice(amount)} · added to expenses`,
       );
       onClose();
     } catch (e) {

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { MoreHorizontal, Package, Pencil, Plus, Power, Trash2 } from "lucide-react";
+import { toastWithUndo } from "@/lib/undo-toast";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/page-header";
 import { SearchInput } from "@/components/common/search-input";
@@ -100,8 +101,8 @@ function GymPackagesSection() {
     const target = deleting;
     setDeleting(null);
     try {
-      await deletePackage(target.id);
-      toast.success("Package deleted", { description: target.name });
+      const undo = await deletePackage(target.id);
+      toastWithUndo("Package deleted", undo, target.name);
       if (viewing?.id === target.id) setViewing(null);
     } catch (err) {
       toast.error(firestoreErrorMessage(err));
@@ -239,7 +240,7 @@ function GymPackagesSection() {
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
         title={`Delete ${deleting?.name ?? "package"}?`}
-        description="This permanently removes the package. Packages used by memberships can't be deleted — deactivate them instead."
+        description="Removes the package. You can undo it right after. Packages used by memberships can't be deleted — deactivate them instead."
         confirmLabel="Delete package"
         destructive
         onConfirm={() => void confirmDelete()}

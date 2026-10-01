@@ -1591,7 +1591,7 @@ function ShareStep({
         <>
           <Button
             size="lg"
-            className="h-14 w-full bg-[#25D366] text-base text-white hover:bg-[#1fb857]"
+            className="h-14 w-full bg-[#128C7E] text-base text-white hover:bg-[#0e7266]"
             onClick={share}
           >
             <MessageCircle aria-hidden /> Share bill on WhatsApp

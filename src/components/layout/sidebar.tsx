@@ -15,6 +15,7 @@ interface SidebarProps {
 export function DesktopSidebar({ collapsed, onToggle }: SidebarProps) {
   return (
     <aside
+      data-app-menu
       className={cn(
         "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 lg:flex",
         collapsed ? "w-[76px]" : "w-[264px]",

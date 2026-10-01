@@ -27,6 +27,9 @@ const mapMembership = (id: string, d: DocumentData): Membership => ({
   counsellorId: d["counsellorId"] ?? "",
   counsellorName: d["counsellorName"] ?? "",
   pauses: Array.isArray(d["pauses"]) ? d["pauses"] : [],
+  ...(d["cancelId"] ? { cancelId: String(d["cancelId"]) } : {}),
+  ...(d["cancelReason"] ? { cancelReason: String(d["cancelReason"]) } : {}),
+  ...(d["cancelledOn"] ? { cancelledOn: String(d["cancelledOn"]) } : {}),
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -120,21 +123,6 @@ export async function createMembership(params: {
   });
   await batch.commit();
   return ref.id;
-}
-
-export async function cancelMembership(membership: Membership, clientSummaryId?: string | null) {
-  const batch = writeBatch(db);
-  batch.update(doc(db, COLLECTIONS.memberships, membership.id), {
-    status: "cancelled",
-    updatedAt: serverTimestamp(),
-  });
-  if (clientSummaryId === membership.id) {
-    batch.update(doc(db, COLLECTIONS.clients, membership.clientId), {
-      "currentMembership.status": "cancelled",
-      updatedAt: serverTimestamp(),
-    });
-  }
-  await batch.commit();
 }
 
 /**

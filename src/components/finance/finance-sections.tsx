@@ -18,6 +18,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
+import { toastWithUndo } from "@/lib/undo-toast";
 import { cn } from "@/lib/utils";
 import {
   addManualIncome,
@@ -106,7 +107,11 @@ export function IncomeSection() {
         title: p.clientNameSnapshot || "Member",
         detail: [
           p.invoiceNumber,
-          p.kind === "balance" ? "balance payment" : p.kind === "refund" ? "refund given back" : null,
+          p.kind === "balance"
+            ? "balance payment"
+            : p.kind === "refund"
+              ? "refund given back"
+              : null,
           p.membershipGymAmount ? `membership ${formatPrice(p.membershipGymAmount)}` : null,
           p.ptGymAmount || p.trainerShareAmount
             ? `PT gym ${formatPrice(p.ptGymAmount)} · trainer ${formatPrice(p.trainerShareAmount)}`
@@ -386,7 +391,7 @@ export function PayoutsSection() {
     .reduce((a, p) => a + p.trainerShareAmount, 0);
   const mark = (p: TrainerPayout) =>
     void setPayoutStatus(p.id, "paid").then(
-      () => toast.success("Marked as paid"),
+      () => toastWithUndo("Marked as paid", () => setPayoutStatus(p.id, "pending")),
       (e) => toast.error(firestoreErrorMessage(e)),
     );
   return (
@@ -468,8 +473,9 @@ export function PayoutsSection() {
                   {p.trainerNameSnapshot} · {p.clientNameSnapshot}
                 </p>
                 <p className="text-meta">
-                  {p.ptPackageNameSnapshot} · {formatDateISO(p.paymentDate)} · PT{" "}
-                  {formatPrice(p.grossAmount)} → gym {formatPrice(p.gymShareAmount)}
+                  {p.adjustment
+                    ? `Deduction · ${p.note || "PT cancelled and refunded"} · ${formatDateISO(p.paymentDate)}`
+                    : `${p.ptPackageNameSnapshot} · ${formatDateISO(p.paymentDate)} · PT ${formatPrice(p.grossAmount)} → gym ${formatPrice(p.gymShareAmount)}`}
                 </p>
               </div>
               <div className="flex items-center gap-2">

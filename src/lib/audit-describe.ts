@@ -135,12 +135,21 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
         return `Bill ${s(d["invoiceNumber"])}: ${money(d["total"])}, paid ${money(d["amountPaid"])}`;
       if (action === "deleted")
         return `Bill deleted: ${s(d["invoiceNumber"])} (${money(d["total"])})`;
+      if (became(f, b, a, "paymentStatus", "closed"))
+        return `Bill ${s(d["invoiceNumber"])}: ${money(a["closedAmount"])} still due is no longer asked for (plan cancelled)`;
+      if (b["paymentStatus"] === "closed" && f.includes("paymentStatus"))
+        return `Bill ${s(d["invoiceNumber"])}: ${money(a["balanceDue"])} due is asked for again (plan restored)`;
       if (f.includes("amountPaid"))
         return `Bill ${s(d["invoiceNumber"])}: paid ${money(b["amountPaid"])} → ${money(a["amountPaid"])}`;
       return f.some((k) => !["paymentStatus", "balanceDue", "paymentsTracked"].includes(k))
         ? `Bill ${s(d["invoiceNumber"])} edited: ${f.join(", ")}`
         : null;
     case "payments":
+      // A refund is a payment of minus the amount given back.
+      if (Number(d["amount"]) < 0)
+        return action === "created"
+          ? `Refund ${money(-Number(d["amount"]))} given back by ${s(d["method"])}${d["note"] ? ` (${s(d["note"])})` : ""}`
+          : `Refund ${money(-Number(d["amount"]))} ${action === "deleted" ? "removed" : "edited"}`;
       if (action === "created")
         return `Payment ${money(d["amount"])} by ${s(d["method"])} (${s(d["invoiceNumber"])})`;
       if (action === "deleted")
@@ -164,7 +173,11 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
     }
     case "trainerPayouts":
       if (action === "created")
-        return `Trainer share due: ${s(d["trainerNameSnapshot"])} ${money(d["trainerShareAmount"])}`;
+        return d["adjustment"]
+          ? `Trainer deduction: ${s(d["trainerNameSnapshot"])} ${money(-Number(d["trainerShareAmount"]))} off the next payout (PT refunded)`
+          : `Trainer share due: ${s(d["trainerNameSnapshot"])} ${money(d["trainerShareAmount"])}`;
+      if (!f.includes("status") && f.includes("trainerShareAmount"))
+        return `Trainer share ${s(d["trainerNameSnapshot"])}: ${money(b["trainerShareAmount"])} → ${money(a["trainerShareAmount"])}`;
       return f.includes("status")
         ? `Trainer payout ${s(d["trainerNameSnapshot"])} ${money(d["trainerShareAmount"])}: ${s(a["status"] ?? "deleted")}`
         : null;

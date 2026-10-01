@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Plus, Check, Dumbbell, MoreHorizontal, Pencil, UserRoundX, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { toastWithUndo } from "@/lib/undo-toast";
 import { PtSessionDialog } from "@/components/scheduling/pt-session-dialog";
 import { TrainerSchedule } from "@/components/scheduling/trainer-schedule";
 import { SearchInput } from "@/components/common/search-input";
@@ -72,7 +73,9 @@ function Page() {
   const status = async (b: Booking, s: BookingStatus) => {
     try {
       await updateBookingStatus(b.id, s);
-      toast.success(`Session marked ${BOOKING_STATUS_META[s].label.toLowerCase()}`);
+      toastWithUndo(`Session marked ${BOOKING_STATUS_META[s].label.toLowerCase()}`, () =>
+        updateBookingStatus(b.id, b.status),
+      );
     } catch (e) {
       toast.error(firestoreErrorMessage(e));
     }

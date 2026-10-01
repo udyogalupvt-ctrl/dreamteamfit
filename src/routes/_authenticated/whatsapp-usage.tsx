@@ -229,7 +229,10 @@ function WhatsAppUsagePage() {
                 <TableRow key={r.type}>
                   <TableCell className="font-semibold">
                     <span className="inline-flex items-center gap-2">
-                      <MessageCircle className="size-4 shrink-0 text-[#25D366]" aria-hidden />{" "}
+                      <MessageCircle
+                        className="size-4 shrink-0 text-[#128C7E] dark:text-[#25D366]"
+                        aria-hidden
+                      />{" "}
                       {r.label}
                     </span>
                     <span className="mt-1 block sm:hidden">

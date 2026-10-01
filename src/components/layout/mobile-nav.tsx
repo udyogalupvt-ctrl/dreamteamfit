@@ -31,6 +31,7 @@ export function MobileNavDrawer() {
       </SheetTrigger>
       <SheetContent
         side="left"
+        data-app-menu
         className="flex w-[86vw] max-w-[320px] flex-col gap-0 bg-sidebar p-0"
       >
         <SheetHeader className="border-b border-sidebar-border px-4 py-4 text-left">

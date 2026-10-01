@@ -1,4 +1,5 @@
-import { Dumbbell, Fingerprint } from "lucide-react";
+import { Dumbbell, Fingerprint, RotateCcw, ShieldCheck, ShieldX } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatusPill } from "@/components/common/status-pill";
@@ -6,12 +7,15 @@ import { useEnrollment } from "@/components/enrollment/enrollment-context";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { subscribeDevices } from "@/services/biometric-devices.service";
+import { updateClient } from "@/services/clients.service";
+import { firestoreErrorMessage } from "@/services/firestore.service";
 import { subscribeClientPtAssignments } from "@/services/pt.service";
 import { subscribeClientBookings } from "@/services/bookings.service";
 import { PtSessionDialog } from "@/components/scheduling/pt-session-dialog";
 import { BOOKING_STATUS_META, formatTime } from "@/lib/format";
 import { useState } from "react";
-import { subscribeClientPayments } from "@/services/finance.service";
+import { subscribeClientPayments, undoBalancePayment } from "@/services/finance.service";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import type { BiometricDevice, Booking, Client, Payment, PtAssignment } from "@/types/models";
 
 export function ClientPtSection({ client }: { client: Client }) {
@@ -131,25 +135,51 @@ export function ClientBiometricCard({ client }: { client: Client }) {
     client.biometricStatus === "active" && client.firstThumbRegistered && (planRuns || ptRuns);
   const onMachine = client.firstThumbRegistered && client.deviceAccess !== "removed";
   const doorOff = !!device && !device.doorControl;
+  const blocked = client.biometricStatus === "disabled";
+  const setBlocked = async (block: boolean) => {
+    try {
+      await updateClient(client.id, { biometricStatus: block ? "disabled" : "active" });
+      toast.success(block ? "Entry blocked for this member" : "Entry allowed again", {
+        description: "The machine is updated at its next check-in (within a minute).",
+        duration: 10000,
+        action: {
+          label: "Undo",
+          onClick: () =>
+            void updateClient(client.id, { biometricStatus: block ? "active" : "disabled" }).then(
+              () => toast.success("Undone"),
+              (e: unknown) => toast.error(firestoreErrorMessage(e)),
+            ),
+        },
+      });
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    }
+  };
   const [label, tone, note] = !client.firstThumbRegistered
     ? ["No thumb yet", "warning", ""]
-    : entitled && onMachine
-      ? ["Can enter", "success", ptRuns && !planRuns ? "Entry through the running PT plan." : ""]
-      : entitled
-        ? ["Being added back", "warning", "Goes back on the machine at its next check-in."]
-        : !onMachine
-          ? ["Blocked on the machine", "danger", ""]
-          : doorOff
-            ? [
-                "No plan · can still enter",
-                "warning",
-                "The machine is in Attendance only mode: ended or cancelled plans are not locked out. Fingerprint Devices → the machine → turn on Door control.",
-              ]
-            : [
-                "Being removed",
-                "warning",
-                "Taken off the machine at its next check-in (within a minute).",
-              ];
+    : blocked
+      ? [
+          "Blocked by staff",
+          "danger",
+          onMachine ? "Taken off the machine at its next check-in (within a minute)." : "",
+        ]
+      : entitled && onMachine
+        ? ["Can enter", "success", ptRuns && !planRuns ? "Entry through the running PT plan." : ""]
+        : entitled
+          ? ["Being added back", "warning", "Goes back on the machine at its next check-in."]
+          : !onMachine
+            ? ["Blocked on the machine", "danger", ""]
+            : doorOff
+              ? [
+                  "No plan · can still enter",
+                  "warning",
+                  "The machine is in Attendance only mode: ended or cancelled plans are not locked out. Fingerprint Devices → the machine → turn on Door control.",
+                ]
+              : [
+                  "Being removed",
+                  "warning",
+                  "Taken off the machine at its next check-in (within a minute).",
+                ];
   return (
     <section className="surface-card p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -174,7 +204,16 @@ export function ClientBiometricCard({ client }: { client: Client }) {
         <Button className="mt-4" onClick={() => resumeSetup(client)}>
           <Fingerprint /> Register thumb
         </Button>
-      ) : null}
+      ) : (
+        <Button
+          className="mt-4"
+          variant={blocked ? "default" : "outline"}
+          onClick={() => setBlocked(!blocked)}
+        >
+          {blocked ? <ShieldCheck aria-hidden /> : <ShieldX aria-hidden />}
+          {blocked ? "Allow entry" : "Block entry"}
+        </Button>
+      )}
     </section>
   );
 }
@@ -183,7 +222,21 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
   const pays = useLive((ok, fail) => subscribeClientPayments(clientId, ok, fail), [] as Payment[], [
     clientId,
   ]);
+  const [undoing, setUndoing] = useState<Payment | null>(null);
   if (!pays.data.length) return null;
+  const undo = async () => {
+    const p = undoing;
+    setUndoing(null);
+    if (!p) return;
+    try {
+      await undoBalancePayment(p.id);
+      toast.success("Payment taken back", {
+        description: `${formatPrice(p.amount)} is due again on ${p.invoiceNumber}.`,
+      });
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    }
+  };
   return (
     <section className="surface-card overflow-hidden">
       <h3 className="text-card-title border-b border-border p-4">Payments</h3>
@@ -193,17 +246,41 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
             <span>
               <b>{formatPrice(p.amount)}</b> · {p.method} · {formatDateISO(p.paymentDate)}{" "}
               <span className="text-meta">
-                ({p.kind === "refund" ? "refund given back" : p.kind === "balance" ? "balance payment" : "at checkout"} · {p.invoiceNumber || "no bill"})
+                (
+                {p.kind === "refund"
+                  ? "refund given back"
+                  : p.kind === "balance"
+                    ? "balance payment"
+                    : "at checkout"}{" "}
+                · {p.invoiceNumber || "no bill"})
               </span>
             </span>
-            <span className="text-meta">
-              {p.ptGymAmount || p.trainerShareAmount
-                ? `PT gym ${formatPrice(p.ptGymAmount)} · trainer ${formatPrice(p.trainerShareAmount)}`
-                : `Membership ${formatPrice(p.membershipGymAmount)}`}
+            <span className="flex items-center gap-2">
+              <span className="text-meta">
+                {p.ptGymAmount || p.trainerShareAmount
+                  ? `PT gym ${formatPrice(p.ptGymAmount)} · trainer ${formatPrice(p.trainerShareAmount)}`
+                  : `Membership ${formatPrice(p.membershipGymAmount)}`}
+              </span>
+              {/* A balance payment entered by mistake can be taken back the same day. */}
+              {p.kind === "balance" && p.paymentDate === todayISO() ? (
+                <Button variant="ghost" size="sm" onClick={() => setUndoing(p)}>
+                  <RotateCcw aria-hidden /> Undo
+                </Button>
+              ) : null}
             </span>
           </li>
         ))}
       </ul>
+      <ConfirmDialog
+        open={!!undoing}
+        onOpenChange={(o) => !o && setUndoing(null)}
+        title={`Take back this ${undoing ? formatPrice(undoing.amount) : ""} payment?`}
+        description={`It is removed and bill ${undoing?.invoiceNumber ?? ""} shows the amount as due again. Use this only for a payment entered by mistake.`}
+        confirmLabel="Take back payment"
+        cancelLabel="Keep it"
+        destructive
+        onConfirm={() => void undo()}
+      />
     </section>
   );
 }

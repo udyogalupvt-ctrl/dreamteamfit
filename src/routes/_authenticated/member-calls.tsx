@@ -247,7 +247,7 @@ function CallRow({ m, call }: { m: SegmentMember; call: MemberCall | undefined }
             target="_blank"
             rel="noopener noreferrer"
           >
-            <MessageCircle aria-hidden className="text-[#25D366]" /> WhatsApp
+            <MessageCircle aria-hidden className="text-[#128C7E] dark:text-[#25D366]" /> WhatsApp
           </a>
         </Button>
         {m.segment === "expiring" || m.segment === "blacklist" ? (

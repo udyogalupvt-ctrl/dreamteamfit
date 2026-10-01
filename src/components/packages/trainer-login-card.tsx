@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAccess } from "@/hooks/use-access";
 import { useLive } from "@/hooks/use-live-query";
+import { toastWithUndo } from "@/lib/undo-toast";
 import {
   DEFAULT_BILLING_SETTINGS,
   subscribeBusinessSettings,
@@ -139,7 +140,7 @@ export function TrainerLoginCard({ trainer }: { trainer: Trainer }) {
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
-              className="bg-[#25D366] text-white hover:bg-[#1fb857]"
+              className="bg-[#128C7E] text-white hover:bg-[#0e7266]"
               disabled={busy || !trainer.portalActive}
               onClick={share}
             >
@@ -166,8 +167,11 @@ export function TrainerLoginCard({ trainer }: { trainer: Trainer }) {
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  await trainerAccess(trainer.id, trainer.portalActive ? "off" : "on");
-                  toast.success(trainer.portalActive ? "Login switched off" : "Login switched on");
+                  const was = trainer.portalActive;
+                  await trainerAccess(trainer.id, was ? "off" : "on");
+                  toastWithUndo(was ? "Login switched off" : "Login switched on", () =>
+                    trainerAccess(trainer.id, was ? "on" : "off"),
+                  );
                 })
               }
             >

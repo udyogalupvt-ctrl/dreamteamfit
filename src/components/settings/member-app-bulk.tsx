@@ -137,6 +137,7 @@ export function MemberAppBulkSend() {
         title={`Send the member app to ${groups.ready.length} members?`}
         description={`Each gets one WhatsApp message with their link (Meta charges about ₹${(groups.ready.length * UTILITY_RATE).toFixed(0)} in total).`}
         confirmLabel="Send now"
+        typeToConfirm="SEND"
         cancelLabel="Not now"
         onConfirm={() => void run()}
       />

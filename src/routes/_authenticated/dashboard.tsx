@@ -300,7 +300,7 @@ function IntegrationsCard() {
         search={{ tab: "whatsapp" }}
         className="flex items-center gap-3 rounded-xl border border-border p-3 transition-colors hover:bg-accent"
       >
-        <MessageCircle className="size-5 shrink-0 text-[#25D366]" aria-hidden />
+        <MessageCircle className="size-5 shrink-0 text-[#128C7E] dark:text-[#25D366]" aria-hidden />
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold">WhatsApp bills</span>
           <span className="text-meta">

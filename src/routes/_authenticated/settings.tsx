@@ -318,7 +318,10 @@ function WhatsAppSettingsPanel() {
         {api ? (
           <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden />
         ) : (
-          <MessageCircle className="mt-0.5 size-5 shrink-0 text-[#25D366]" aria-hidden />
+          <MessageCircle
+            className="mt-0.5 size-5 shrink-0 text-[#128C7E] dark:text-[#25D366]"
+            aria-hidden
+          />
         )}
         <div className="text-sm">
           <p className="font-semibold">

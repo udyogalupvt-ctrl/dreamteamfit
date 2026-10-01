@@ -278,6 +278,10 @@ export interface Membership extends BaseDoc {
   counsellorName: string;
   /** Pauses (member away): each one moved the end date forward by `days`. */
   pauses: MembershipPause[];
+  /** Set when cancelled: the day, why, and the id shared by everything that cancellation did. */
+  cancelledOn?: string;
+  cancelReason?: string;
+  cancelId?: string;
 }
 
 export const PAUSE_REASONS = ["Travel", "Medical", "Other"] as const;
@@ -515,7 +519,14 @@ export interface ExpenseActivity {
   createdAt: Date;
 }
 
-export const INVOICE_PAYMENT_STATUSES = ["paid", "partial", "pending", "refunded"] as const;
+/** "closed": its plan was cancelled and the balance left is not asked for any more. */
+export const INVOICE_PAYMENT_STATUSES = [
+  "paid",
+  "partial",
+  "pending",
+  "refunded",
+  "closed",
+] as const;
 export type InvoicePaymentStatus = (typeof INVOICE_PAYMENT_STATUSES)[number];
 export const PAYMENT_METHODS = ["Cash", "UPI", "Card", "Bank Transfer", "Other"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
@@ -833,6 +844,10 @@ export interface PtAssignment extends BaseDoc, ShareSnapshot {
   status: PtAssignmentStatus;
   invoiceId: string;
   enrollmentId: string | null;
+  /** Set when cancelled: the day, why, and the id shared by everything that cancellation did. */
+  cancelledOn?: string;
+  cancelReason?: string;
+  cancelId?: string;
 }
 export interface Payment extends BaseDoc {
   clientId: string;
@@ -896,6 +911,9 @@ export interface TrainerPayout extends BaseDoc {
   paymentDate: string;
   status: PayoutStatus;
   paidAt: string | null;
+  /** A minus line: a refunded PT plan's share taken off the trainer's next payout. */
+  adjustment?: boolean;
+  note?: string;
 }
 export interface ManualIncome extends BaseDoc {
   title: string;

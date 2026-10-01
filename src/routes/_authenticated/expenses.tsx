@@ -16,6 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { z } from "zod";
+import { toastWithUndo } from "@/lib/undo-toast";
 import { toast } from "sonner";
 import { IncomeSection, PayoutsSection } from "@/components/finance/finance-sections";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
@@ -168,8 +169,11 @@ function ExpensesList() {
     const item = deleting;
     setDeleting(null);
     try {
-      await deleteExpense(item, { uid: user.uid, name: user.displayName || user.email || "Staff" });
-      toast.success("Expense removed", { description: item.title });
+      const undo = await deleteExpense(item, {
+        uid: user.uid,
+        name: user.displayName || user.email || "Staff",
+      });
+      toastWithUndo("Expense removed", undo, item.title);
       if (viewing?.id === item.id) setViewing(null);
     } catch (e) {
       toast.error(firestoreErrorMessage(e));
@@ -467,7 +471,7 @@ function ExpensesList() {
         open={!!deleting}
         onOpenChange={(v) => !v && setDeleting(null)}
         title="Delete this expense?"
-        description="This permanently removes the expense. The removal remains visible in activity history."
+        description="Removes the expense (the activity history keeps a line). You can undo it right after."
         confirmLabel="Delete expense"
         destructive
         onConfirm={() => void remove()}

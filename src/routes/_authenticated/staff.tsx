@@ -31,6 +31,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { DEFAULT_STAFF_FEATURES, FEATURE_META } from "@/constants/features";
 import { useLive } from "@/hooks/use-live-query";
+import { toastWithUndo } from "@/lib/undo-toast";
 import { formatPrice, todayISO } from "@/lib/format";
 import { subscribeDevices } from "@/services/biometric-devices.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
@@ -88,8 +89,16 @@ function StaffPage() {
     try {
       await saveStaff({ ...pick(s), active: !s.active }, s.id);
       // Someone who left can't sign in any more; the door lock removes their thumb.
-      if (s.active && s.loginUid) await updateStaffLogin({ staffId: s.id, active: false });
-      toast.success(s.active ? `${s.name} marked as left` : `${s.name} is active again`);
+      const loginOff = s.active && !!s.loginUid && accessOf(s)?.active !== false;
+      if (loginOff) await updateStaffLogin({ staffId: s.id, active: false });
+      // Undo (a tap by mistake): back as they were, login on again too.
+      toastWithUndo(
+        s.active ? `${s.name} marked as left` : `${s.name} is active again`,
+        async () => {
+          await saveStaff({ ...pick(s), active: s.active }, s.id);
+          if (loginOff) await updateStaffLogin({ staffId: s.id, active: true });
+        },
+      );
     } catch (e) {
       toast.error(firestoreErrorMessage(e));
     }

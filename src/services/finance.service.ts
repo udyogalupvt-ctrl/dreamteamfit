@@ -70,6 +70,7 @@ export const mapPayout = (id: string, d: DocumentData): TrainerPayout => ({
   paymentDate: d["paymentDate"] ?? "",
   status: d["status"] ?? "pending",
   paidAt: d["paidAt"] ?? null,
+  ...(d["adjustment"] ? { adjustment: true, note: String(d["note"] ?? "") } : {}),
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -210,6 +211,7 @@ export async function recordBalancePayment(
   opts: { staffUid?: string; nextPaymentDate?: string | null } = {},
 ) {
   const ref = doc(db, COLLECTIONS.invoices, invoice.id);
+  const payRef = doc(col(COLLECTIONS.payments));
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists()) throw new Error("Invoice not found.");
@@ -233,7 +235,6 @@ export async function recordBalancePayment(
       },
       amount,
     );
-    const payRef = doc(col(COLLECTIONS.payments));
     tx.set(payRef, {
       clientId: d["clientId"],
       clientNameSnapshot: d["clientNameSnapshot"],
@@ -263,6 +264,37 @@ export async function recordBalancePayment(
     tx.update(ref, { ...patch, paymentsTracked: true });
     if (d["publicToken"]) tx.update(doc(db, COLLECTIONS.publicInvoices, d["publicToken"]), patch);
   });
+  return { paymentId: payRef.id };
+}
+
+/**
+ * Takes back a balance payment entered by mistake: the payment is removed and its bill shows the
+ * amount as due again (Undo right after saving, or "Undo" on the day's payment).
+ */
+export async function undoBalancePayment(paymentId: string) {
+  const payRef = doc(db, COLLECTIONS.payments, paymentId);
+  await runTransaction(db, async (tx) => {
+    const pay = await tx.get(payRef);
+    if (!pay.exists()) throw new Error("That payment was already removed.");
+    const p = pay.data();
+    if (p["kind"] !== "balance") throw new Error("Only a balance payment can be undone here.");
+    const invRef = doc(db, COLLECTIONS.invoices, String(p["invoiceId"]));
+    const inv = await tx.get(invRef);
+    if (!inv.exists()) throw new Error("Its bill was not found.");
+    const d = inv.data();
+    const total = Number(d["total"] ?? 0);
+    const paid = round(Math.max(0, Number(d["amountPaid"] ?? 0) - Number(p["amount"] ?? 0)));
+    const patch = {
+      amountPaid: paid,
+      balanceDue: round(total - paid),
+      paymentStatus: derivePaymentStatus(total, paid),
+      ...(d["dueDate"] ? {} : { dueDate: todayISO() }),
+      updatedAt: serverTimestamp(),
+    };
+    tx.update(invRef, patch);
+    if (d["publicToken"]) tx.update(doc(db, COLLECTIONS.publicInvoices, d["publicToken"]), patch);
+    tx.delete(payRef);
+  });
 }
 
 export interface FinanceSummary {
@@ -276,6 +308,8 @@ export interface FinanceSummary {
   gymIncome: number;
   expenses: number;
   net: number;
+  /** Money given back (refunds): already taken off gross. */
+  refunded: number;
 }
 
 /** Single source of truth: payments (+ legacy invoices without payment records) and labelled manual income. */
@@ -315,6 +349,7 @@ export function buildFinanceSummary(
     gymIncome,
     expenses: exp,
     net: round(gymIncome - exp),
+    refunded: round(-ps.reduce((n, p) => n + Math.min(0, p.amount), 0)),
   };
 }
 

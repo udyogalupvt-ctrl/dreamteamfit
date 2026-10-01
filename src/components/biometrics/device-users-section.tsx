@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import {
   DoorClosed,
   DoorOpen,
@@ -207,7 +208,11 @@ export function DeviceUsersSection({ device }: { device: BiometricDevice }) {
         {device.doorControl && notLinked.some((u) => !u.admin) ? (
           <p className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm">
             {notLinked.filter((u) => !u.admin).length} people on the machine are not linked to a
-            member or staff, so the door keeps letting them in. Link them or take them off.
+            member or staff, so the door keeps letting them in. Import your old member list (
+            <Link to="/settings" search={{ tab: "data" }} className="font-semibold underline">
+              Settings → Import / export
+            </Link>
+            ) to link them all by Member ID, or link / take them off one by one below.
           </p>
         ) : null}
 
@@ -304,9 +309,10 @@ export function DeviceUsersSection({ device }: { device: BiometricDevice }) {
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
         title={`Take ID ${removing?.pin ?? ""} off the machine?`}
-        description="They can no longer open the door. Use this for people who are not members or staff here any more."
+        description="They and their fingerprints are deleted from the machine: they can no longer open the door. Use this for people who are not members or staff here any more."
         confirmLabel="Take off"
         destructive
+        {...(removing ? { typeToConfirm: removing.pin } : {})}
         onConfirm={() => void remove()}
       />
     </div>
