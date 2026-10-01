@@ -297,8 +297,8 @@ function WhatsAppSettingsPanel() {
     setTesting(true);
     try {
       const r = await testWhatsAppConnection();
-      if (r.configured) toast.success(r.detail);
-      else toast.warning(r.detail);
+      if (r.configured && !r.warn) toast.success(r.detail);
+      else toast.warning(r.detail, { duration: 15000 });
     } catch (e) {
       toast.error("Couldn't reach the WhatsApp server", {
         description: e instanceof Error ? e.message : String(e),

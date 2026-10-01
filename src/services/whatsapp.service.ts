@@ -296,5 +296,5 @@ export async function markInvoiceShared(invoice: Pick<Invoice, "enrollmentId">) 
 }
 
 export async function testWhatsAppConnection() {
-  return callServer<{ configured: boolean; detail: string }>("/api/whatsapp/test");
+  return callServer<{ configured: boolean; detail: string; warn?: boolean }>("/api/whatsapp/test");
 }

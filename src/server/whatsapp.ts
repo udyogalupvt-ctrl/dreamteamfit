@@ -89,6 +89,50 @@ export async function sendTemplateMessage(input: {
   return { ok: true, providerMessageId: String(parsed.messages?.[0]?.id ?? "") };
 }
 
+/** Server-only note of Meta's delivery reports (accepted / refused), never message content. */
+const webhookStatus = () => db().doc("whatsappWebhookStatus/meta");
+
+/**
+ * Delivery ticks need two things on Meta's side: the business account subscribed to this app
+ * (switched on here when it isn't) and reports signed with the App secret the server has.
+ */
+async function deliveryTicks(c: ReturnType<typeof config>) {
+  const waba = env("WHATSAPP_BUSINESS_ACCOUNT_ID");
+  if (!waba) return " Delivery ticks: can't check (business account ID not set on the server).";
+  const auth = { Authorization: `Bearer ${c.token}` };
+  let note = "";
+  const list = await fetch(`${c.base}/${c.version}/${waba}/subscribed_apps`, { headers: auth });
+  const apps = list.ok
+    ? (((await list.json()) as { data?: { whatsapp_business_api_data?: { id?: string } }[] })
+        .data ?? [])
+    : null;
+  // The app the WhatsApp key belongs to (the one whose webhook was set up in Meta).
+  const me = (await fetch(`${c.base}/${c.version}/app`, { headers: auth })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)) as { id?: string } | null;
+  const mine = me?.id
+    ? !!apps?.some((a) => a.whatsapp_business_api_data?.id === me.id)
+    : !!apps?.length;
+  if (!apps) note = ` Delivery ticks: couldn't check (${list.status}).`;
+  else if (!mine) {
+    const sub = await fetch(`${c.base}/${c.version}/${waba}/subscribed_apps`, {
+      method: "POST",
+      headers: auth,
+    });
+    note = sub.ok
+      ? " Delivery ticks switched on: send a message to see them."
+      : ` Delivery ticks: couldn't switch on (${sub.status}).`;
+  } else note = " Delivery ticks: on.";
+  const st = (await webhookStatus().get()).data() ?? {};
+  const t = (v: unknown) => (v as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+  if (t(st["rejectedAt"]) > t(st["acceptedAt"]))
+    note +=
+      st["rejectedReason"] === "no-secret"
+        ? " Meta's reports are refused: the App secret isn't set on Vercel (WHATSAPP_APP_SECRET), then Redeploy."
+        : " Meta's reports are refused: the App secret on Vercel doesn't match Meta's. Copy it again (Meta → App settings → Basic → App secret) into WHATSAPP_APP_SECRET, then Redeploy.";
+  return note;
+}
+
 async function testConnection(request: Request) {
   if (!(await requireStaff(request))) return json({ error: "Sign in required." }, 401);
   const c = config();
@@ -97,11 +141,15 @@ async function testConnection(request: Request) {
   const response = await fetch(`${c.base}/${c.version}/${c.phoneNumberId}`, {
     headers: { Authorization: `Bearer ${c.token}` },
   });
-  return json(
-    response.ok
-      ? { configured: true, detail: "WhatsApp Cloud API is connected." }
-      : { configured: false, detail: safeError(response.status, await response.text()) },
-  );
+  if (!response.ok)
+    return json({ configured: false, detail: safeError(response.status, await response.text()) });
+  const ticks = await deliveryTicks(c).catch(() => " Delivery ticks: couldn't check.");
+  return json({
+    configured: true,
+    detail: `WhatsApp Cloud API is connected.${ticks}`,
+    // Something to fix for the ticks: shown as a warning, not a success.
+    warn: /couldn't|can't|refused/.test(ticks),
+  });
 }
 
 async function send(request: Request) {
@@ -204,8 +252,26 @@ async function webhook(request: Request, url: URL) {
     !env("WHATSAPP_APP_SECRET") ||
     signature.length !== expected.length ||
     !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
-  )
+  ) {
+    // Meta did call but the App secret doesn't match (or isn't set): noted for "Test connection".
+    await webhookStatus()
+      .set(
+        {
+          rejectedAt: FieldValue.serverTimestamp(),
+          rejectedReason: env("WHATSAPP_APP_SECRET") ? "signature" : "no-secret",
+          rejected: FieldValue.increment(1),
+        },
+        { merge: true },
+      )
+      .catch(() => undefined);
     return text("Invalid signature", 401);
+  }
+  await webhookStatus()
+    .set(
+      { acceptedAt: FieldValue.serverTimestamp(), accepted: FieldValue.increment(1) },
+      { merge: true },
+    )
+    .catch(() => undefined);
   const body = JSON.parse(raw.toString("utf8") || "{}") as {
     entry?: Array<{ changes?: Array<{ value?: { statuses?: Array<Record<string, unknown>> } }> }>;
   };
