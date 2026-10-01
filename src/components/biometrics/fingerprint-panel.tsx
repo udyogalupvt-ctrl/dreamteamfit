@@ -41,26 +41,35 @@ function useNow(ms = 5000) {
 
 type Phase =
   | { kind: "idle" }
-  | { kind: "waiting_device"; since: Date }
+  | { kind: "waiting_device" }
   | { kind: "place_thumb" }
-  | { kind: "confirming"; since: Date }
+  | { kind: "confirming" }
   | { kind: "failed"; message: string };
 
-function phaseOf(commands: BiometricCommand[], requestedAfter: number): Phase {
-  const enroll = commands.find(
-    (c) => c.type === "enroll_fp" && c.createdAt.getTime() >= requestedAfter,
-  );
-  if (!enroll || enroll.status === "cancelled") return { kind: "idle" };
+/**
+ * Where the registration is. The request just sent is followed by its id: comparing the
+ * server's times with this computer's clock fails when the clock is a little off. After a
+ * reload, the latest request of the last few minutes.
+ */
+function phaseOf(
+  commands: BiometricCommand[],
+  requestedAfter: number,
+  requestId: string | null,
+): Phase {
+  const enroll = requestId
+    ? commands.find((c) => c.id === requestId)
+    : commands.find((c) => c.type === "enroll_fp" && c.createdAt.getTime() >= requestedAfter);
+  if (!enroll) return requestId ? { kind: "waiting_device" } : { kind: "idle" };
+  if (enroll.status === "cancelled") return { kind: "idle" };
   if (enroll.status === "pending") {
     const upsert = commands.find(
       (c) => c.type === "user_upsert" && c.status === "failed" && c.createdAt >= enroll.createdAt,
     );
     if (upsert) return { kind: "failed", message: upsert.error };
-    return { kind: "waiting_device", since: enroll.createdAt };
+    return { kind: "waiting_device" };
   }
   if (enroll.status === "sent") return { kind: "place_thumb" };
-  if (enroll.status === "done")
-    return { kind: "confirming", since: enroll.completedAt ?? enroll.updatedAt };
+  if (enroll.status === "done") return { kind: "confirming" };
   return { kind: "failed", message: enroll.error || "The device could not capture the thumb." };
 }
 
@@ -73,7 +82,8 @@ export function FingerprintPanel({
   enrollmentId: string | null;
   onRegistered?: () => void;
 }) {
-  const now = useNow();
+  // Every second: the wait shows a live seconds count.
+  const now = useNow(1000);
   const devices = useLive<BiometricDevice[]>(subscribeDevices, [], []);
   const client = useLive<Client | null>((ok, fail) => subscribeClient(clientId, ok, fail), null, [
     clientId,
@@ -96,6 +106,7 @@ export function FingerprintPanel({
   const [note, setNote] = useState("");
   // Only commands from this session's request drive the status; old attempts stay in history.
   const [requestedAfter, setRequestedAfter] = useState(() => Date.now() - 15 * 60 * 1000);
+  const [requestId, setRequestId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!deviceId && usable[0]) setDeviceId(usable[0].id);
@@ -122,21 +133,30 @@ export function FingerprintPanel({
 
   const device = usable.find((d) => d.id === deviceId) ?? null;
   const connection = device ? deviceConnection(device, now) : null;
-  const phase = phaseOf(commands.data, requestedAfter);
+  const phase = phaseOf(commands.data, requestedAfter, requestId);
+  // When the current step began, on this computer's own clock (for the "waited" seconds).
+  const [step, setStep] = useState({ kind: phase.kind as string, at: Date.now() });
+  useEffect(() => {
+    if (step.kind !== phase.kind) setStep({ kind: phase.kind, at: Date.now() });
+  }, [phase.kind, step.kind]);
+  const stepAt = step.kind === phase.kind ? step.at : Date.now();
   const active =
     phase.kind === "waiting_device" ||
     phase.kind === "place_thumb" ||
-    (phase.kind === "confirming" && now - phase.since.getTime() < 90_000);
+    (phase.kind === "confirming" && now - stepAt < 90_000);
 
   const start = async () => {
     if (!device || !pin.trim()) return;
     setBusy(true);
     setNote("");
     try {
+      setRequestId(null);
       setRequestedAfter(Date.now() - 5000);
       const r = await requestFingerprint({ clientId, enrollmentId, device, biometricUserId: pin });
-      if (r.mode === "device") toast.success("Sent to the device", { description: r.message });
-      else {
+      if (r.mode === "device") {
+        setRequestId(r.requestId);
+        toast.success("Sent to the device", { description: r.message });
+      } else {
         setNote(r.message);
         if (r.ok) toast.success("Thumb registered");
         else toast.error("Thumb not registered", { description: r.message });
@@ -150,6 +170,7 @@ export function FingerprintPanel({
   const cancel = async () => {
     try {
       await cancelFingerprintRequest(clientId);
+      setRequestId(null);
       setRequestedAfter(Date.now());
     } catch (e) {
       toast.error(firestoreErrorMessage(e));
@@ -175,7 +196,8 @@ export function FingerprintPanel({
         <StatusPill tone="warning">Not registered</StatusPill>
       </div>
 
-      {devices.loading ? (
+      {/* Loading, or reconnecting after a dropped connection: not "no device". */}
+      {devices.loading || (devices.error && !devices.data.length) ? (
         <Loader2 className="animate-spin" aria-label="Loading devices" />
       ) : !usable.length ? (
         <div
@@ -234,7 +256,7 @@ export function FingerprintPanel({
             </p>
           ) : null}
 
-          <PhaseMessage phase={phase} now={now} />
+          <PhaseMessage phase={phase} waitedSec={Math.max(0, Math.round((now - stepAt) / 1000))} />
           {note ? <p className="rounded-lg bg-muted p-3 text-sm">{note}</p> : null}
 
           <div className="flex flex-wrap gap-2">
@@ -265,7 +287,7 @@ export function FingerprintPanel({
   );
 }
 
-function PhaseMessage({ phase, now }: { phase: Phase; now: number }) {
+function PhaseMessage({ phase, waitedSec }: { phase: Phase; waitedSec: number }) {
   if (phase.kind === "idle") return null;
   const tone =
     phase.kind === "failed"
@@ -273,10 +295,6 @@ function PhaseMessage({ phase, now }: { phase: Phase; now: number }) {
       : phase.kind === "place_thumb"
         ? "border-primary bg-primary/15"
         : "border-border bg-muted/60";
-  const waitedSec =
-    phase.kind === "waiting_device" || phase.kind === "confirming"
-      ? Math.round((now - phase.since.getTime()) / 1000)
-      : 0;
   return (
     <div role="status" className={cn("flex items-start gap-3 rounded-xl border p-4 text-sm", tone)}>
       {phase.kind === "failed" ? (
@@ -289,10 +307,15 @@ function PhaseMessage({ phase, now }: { phase: Phase; now: number }) {
       <div>
         {phase.kind === "waiting_device" ? (
           <>
-            <p className="font-semibold">Waiting for the device…</p>
+            <p className="font-semibold">
+              Sent — waiting for the machine to pick it up ({waitedSec}s)
+            </p>
             <p className="text-meta">
-              It checks for new requests every ~10 seconds.
-              {waitedSec > 45 ? " Taking longer than usual — make sure the device is online." : ""}
+              The machine checks for new requests about every 30 seconds. Ask the member to stand at
+              the machine; it beeps and asks for the thumb.
+              {waitedSec > 75
+                ? " Taking longer than usual: make sure the machine is on and connected."
+                : ""}
             </p>
           </>
         ) : phase.kind === "place_thumb" ? (

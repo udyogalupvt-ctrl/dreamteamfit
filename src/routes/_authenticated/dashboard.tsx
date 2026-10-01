@@ -291,6 +291,8 @@ function IntegrationsCard() {
     (d) => d.integrationType === "adms" && d.status !== "disabled",
   );
   const online = linked.filter((d) => deviceConnection(d).online);
+  // Still loading (or reconnecting after a dropped connection): don't say "not connected".
+  const checking = devices.loading || (!!devices.error && !devices.data.length);
   const waLive = isWhatsAppApiLive(wa.data);
   return (
     <section className="surface-card space-y-3 p-4 sm:p-5">
@@ -319,14 +321,18 @@ function IntegrationsCard() {
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold">Fingerprint device</span>
           <span className="text-meta">
-            {linked.length
-              ? `${online.length} of ${linked.length} online`
-              : "Not connected — thumbs can't be registered"}
+            {checking
+              ? "Checking…"
+              : linked.length
+                ? `${online.length} of ${linked.length} online`
+                : "Not connected — thumbs can't be registered"}
           </span>
         </span>
-        <StatusPill tone={online.length ? "success" : linked.length ? "danger" : "warning"}>
-          {online.length ? "Online" : linked.length ? "Offline" : "Set up"}
-        </StatusPill>
+        {checking ? null : (
+          <StatusPill tone={online.length ? "success" : linked.length ? "danger" : "warning"}>
+            {online.length ? "Online" : linked.length ? "Offline" : "Set up"}
+          </StatusPill>
+        )}
       </Link>
     </section>
   );

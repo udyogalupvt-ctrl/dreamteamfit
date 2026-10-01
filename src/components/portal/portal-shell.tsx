@@ -169,16 +169,35 @@ export function usePortalData<T>() {
   });
   const load = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: "" }));
-    try {
-      setState({ data: await portalCall<T>("/api/portal/me"), error: "", loading: false });
-    } catch (e) {
-      const status = (e as { status?: number }).status;
-      if (status === 401) await portalSignOut();
-      setState((s) => ({ ...s, error: (e as Error).message, loading: false }));
+    // A dropped connection or a slow server start is tried again twice before showing an error.
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        setState({ data: await portalCall<T>("/api/portal/me"), error: "", loading: false });
+        return;
+      } catch (e) {
+        const status = (e as { status?: number }).status;
+        if (status === 401) await portalSignOut();
+        const passing = !status || status >= 500;
+        if (passing && attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+          continue;
+        }
+        const message = status
+          ? (e as Error).message
+          : "No internet connection. This opens again by itself when the internet is back.";
+        setState((s) => ({ ...s, error: message, loading: false }));
+        return;
+      }
     }
   }, []);
   useEffect(() => {
     void load();
+  }, [load]);
+  // Internet back after a drop: load again by itself (no refresh needed).
+  useEffect(() => {
+    const onOnline = () => void load();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
   }, [load]);
   // Opened again from the phone's background after a while: show today's numbers.
   useEffect(() => {

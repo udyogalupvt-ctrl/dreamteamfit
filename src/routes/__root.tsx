@@ -19,6 +19,26 @@ import { startPwa } from "@/lib/pwa";
 // Installable app: listen for the browser's install offer and register the service worker.
 startPwa();
 
+/** Load the new version once, by itself (never in a loop: once per minute at most). */
+function reloadForNewVersion() {
+  try {
+    const last = Number(sessionStorage.getItem("rf-reloaded-at") ?? 0);
+    if (Date.now() - last < 60_000) return false;
+    sessionStorage.setItem("rf-reloaded-at", String(Date.now()));
+  } catch {
+    // Storage blocked: still reload once.
+  }
+  window.location.reload();
+  return true;
+}
+
+// A page file of the old version is gone after an update went live (tab left open): load the
+// new version instead of showing an error, wherever the file was asked for.
+if (typeof window !== "undefined")
+  window.addEventListener("vite:preloadError", (event) => {
+    if (reloadForNewVersion()) event.preventDefault();
+  });
+
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -43,22 +63,13 @@ function NotFoundComponent() {
 
 /** A tab opened before a new version went live asks for page files that no longer exist. */
 const STALE_BUILD =
-  /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i;
+  /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Unable to preload CSS/i;
 
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
   useEffect(() => {
     console.error(error);
-    // Load the new version once, by itself (never in a loop: once per minute at most).
-    if (!STALE_BUILD.test(String(error?.message ?? error))) return;
-    try {
-      const last = Number(sessionStorage.getItem("rf-reloaded-at") ?? 0);
-      if (Date.now() - last < 60_000) return;
-      sessionStorage.setItem("rf-reloaded-at", String(Date.now()));
-    } catch {
-      // Storage blocked: still reload once.
-    }
-    window.location.reload();
+    if (STALE_BUILD.test(String(error?.message ?? error))) reloadForNewVersion();
   }, [error]);
 
   return (

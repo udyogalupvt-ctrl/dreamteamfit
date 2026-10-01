@@ -621,7 +621,9 @@ async function assertPinFree(clientId: string, device: BiometricDevice, pin: str
 }
 
 export type FingerprintRequestResult =
-  { mode: "device"; message: string } | { mode: "adapter"; ok: boolean; message: string };
+  /** requestId: the enroll command, so the screen follows exactly this request. */
+  | { mode: "device"; message: string; requestId: string }
+  | { mode: "adapter"; ok: boolean; message: string };
 
 /**
  * Starts first-thumb registration. For cloud-connected (ADMS) devices this queues the
@@ -690,7 +692,8 @@ export async function requestFingerprint(input: {
       command: `DATA UPDATE USERINFO PIN=${pin}\tName=${deviceName(client.fullName)}\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000100000000\tVerify=0`,
     });
     // FID 5 = right thumb in the ZKTeco finger index.
-    batch.set(doc(col(COLLECTIONS.biometricCommands)), {
+    const enrollRef = doc(col(COLLECTIONS.biometricCommands));
+    batch.set(enrollRef, {
       ...base,
       type: "enroll_fp",
       order: 2,
@@ -701,6 +704,7 @@ export async function requestFingerprint(input: {
       mode: "device",
       message:
         "Sent to the device. Ask the member to place the right thumb on the scanner 3 times.",
+      requestId: enrollRef.id,
     };
   }
 

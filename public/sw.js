@@ -4,7 +4,7 @@
  * app (renewal and payment reminders, trainer chat, announcements). It never caches the app
  * itself, so every visit (and every installed window) always gets the latest version.
  */
-const CACHE = "rf-offline-v2";
+const CACHE = "rf-offline-v3";
 const OFFLINE = "/offline.html";
 
 self.addEventListener("install", (event) => {
@@ -25,10 +25,23 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Only page loads: straight to the network; the offline page only when there is no network.
+// Only page loads: straight to the network. A short blip (Wi-Fi switching, a dropped
+// connection) is tried again twice before the offline page, which then reloads by itself when
+// the internet is back.
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function loadPage(request) {
+  for (let i = 0; i < 3; i += 1) {
+    try {
+      return await fetch(request);
+    } catch {
+      if (i < 2) await wait(700 * (i + 1));
+    }
+  }
+  return (await caches.match(OFFLINE)) || Response.error();
+}
 self.addEventListener("fetch", (event) => {
   if (event.request.mode !== "navigate") return;
-  event.respondWith(fetch(event.request).catch(() => caches.match(OFFLINE)));
+  event.respondWith(loadPage(event.request));
 });
 
 // A notification from the gym's server: { title, body, url, tag }.

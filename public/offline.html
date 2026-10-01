@@ -38,8 +38,18 @@
     <main>
       <img src="/icons/icon-192.png" alt="REBUILD FITNESS" />
       <h1>No internet connection</h1>
-      <p>Check the Wi-Fi or mobile data, then try again. The fingerprint machine keeps working on its own.</p>
+      <p>Check the Wi-Fi or mobile data. This page opens again by itself as soon as the internet is back. The fingerprint machine keeps working on its own.</p>
       <button type="button" onclick="location.reload()">Try again</button>
     </main>
+    <script>
+      // Back online: reload by itself (checked every 5 seconds and when the phone says so).
+      function check() {
+        fetch("/manifest.webmanifest", { cache: "no-store" })
+          .then(function (r) { if (r.ok) location.reload(); })
+          .catch(function () {});
+      }
+      window.addEventListener("online", check);
+      setInterval(check, 5000);
+    </script>
   </body>
 </html>
