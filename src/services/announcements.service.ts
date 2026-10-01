@@ -88,10 +88,9 @@ export async function runAnnouncement(
   const [wa, business] = await Promise.all([getWhatsAppSettings(), getBusinessSettings()]);
   if (!isWhatsAppApiLive(wa))
     throw new Error("Automatic WhatsApp is off. Turn it on in Settings & WhatsApp.");
-  // From the gym's own number: one at a time with a pause (a fast burst can get a number banned).
-  const fromPhone = sendsFromPhone(wa);
-  const pause = () =>
-    new Promise((r) => setTimeout(r, wa.phoneGapSeconds * 1000 * (0.8 + Math.random() * 0.4)));
+  // A message to many people unasked is what gets a number banned: never from the gym's own one.
+  if (sendsFromPhone(wa))
+    throw new Error("Announcements aren't sent from the gym's own WhatsApp number.");
   const gym = business.businessName || "our gym";
   const message = cleanMessage(a.message);
   let next = 0;
@@ -114,13 +113,11 @@ export async function runAnnouncement(
         parameters: [firstName(r.name), gym, message],
         messagePreview: announcementText(r.name, gym, message),
         provider: wa.mode,
-      })
-        .then((r) => (fromPhone && !r.duplicate && next < a.recipients.length ? pause() : null))
-        .catch(() => undefined); // a failure is saved on that person's message record
+      }).catch(() => undefined); // a failure is saved on that person's message record
       onProgress(++done, a.recipients.length);
     }
   };
-  await Promise.all(fromPhone ? [worker()] : [worker(), worker(), worker()]);
+  await Promise.all([worker(), worker(), worker()]);
 
   // Count from the message records, so a second run (or another phone) is counted right.
   const snap = await getDocs(

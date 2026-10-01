@@ -308,6 +308,8 @@ export interface GatewayState {
   phoneLabel?: string;
   pushName?: string;
   lastError?: string;
+  /** WhatsApp's limit on the number in plain words, "" when there is none. */
+  restriction?: string;
   webhook?: string;
 }
 

@@ -1,0 +1,86 @@
+# The gym's own WhatsApp gateway (OpenWA, https://github.com/rmyndharis/OpenWA) for
+# Settings → WhatsApp → "The gym's own WhatsApp number". Runs on a small always-on server in India;
+# see README.md in this folder. Nothing listens on the internet: the app reaches the gateway only
+# through the Cloudflare Tunnel (https://wa.<your domain>), and the API port is open to this
+# server alone (for setup.sh / connect.sh).
+
+name: openwa
+
+services:
+  openwa:
+    # A tested release line: 0.23 gets that line's fixes. Change OPENWA_VERSION in .env to move on.
+    image: ghcr.io/rmyndharis/openwa:${OPENWA_VERSION:-0.23}
+    container_name: openwa
+    restart: unless-stopped
+    stop_grace_period: 45s
+    # Same hardening as OpenWA's own compose file.
+    security_opt:
+      - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 1536m
+    pids_limit: 1024
+    ports:
+      - "127.0.0.1:2785:2785"
+    volumes:
+      # The linked WhatsApp session and OpenWA's database. Never delete this volume: the phone
+      # would have to be linked again.
+      - openwa-data:/app/data
+    networks:
+      - openwa
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Kolkata
+      HOME: /tmp
+      XDG_CONFIG_HOME: /tmp/.config
+      XDG_CACHE_HOME: /tmp/.cache
+      PORT: "2785"
+      LOG_LEVEL: info
+      # whatsapp-web.js drives a real Chrome, which looks like normal WhatsApp Web
+      # (OpenWA rates it the lower ban risk of its two engines).
+      ENGINE_TYPE: whatsapp-web.js
+      # After a restart or a server reboot the phone reconnects by itself (no new QR).
+      AUTO_START_SESSIONS: "true"
+      # API only: no web dashboard on the internet. Setup is done with connect.sh on the server.
+      SERVE_DASHBOARD: "false"
+      MCP_ENABLED: "false"
+      # A typing pause before each message, like a person.
+      SIMULATE_TYPING: "true"
+      # Safety limits per day (the gym sends only bills and member app links, normally under 30
+      # a day). A bug or a mistake can never blast the number: the extra messages are refused.
+      SEND_PACING_ENABLED: "true"
+      SEND_PACING_WARMUP_SCHEDULE: ${DAILY_LIMIT:-60,80,100}
+      SEND_PACING_COLD_DAILY_CAP: ${NEW_CHATS_DAILY_LIMIT:-40,50,60}
+      # After 5 failed sends in a row (usually WhatsApp refusing), pause 15 minutes.
+      SEND_PACING_BREAKER_THRESHOLD: "5"
+      SEND_PACING_BREAKER_COOLDOWN_MS: "900000"
+      WEBHOOK_TIMEOUT: "10000"
+      WEBHOOK_RETRY_DELAY: "5000"
+
+  tunnel:
+    # Cloudflare Tunnel: gives the gateway an https address without opening any port.
+    image: cloudflare/cloudflared:latest
+    container_name: openwa-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Put the Cloudflare tunnel token in .env}
+    networks:
+      - openwa
+    depends_on:
+      - openwa
+
+volumes:
+  openwa-data:
+
+networks:
+  openwa:

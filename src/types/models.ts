@@ -806,8 +806,8 @@ export interface WhatsAppSettings {
   gatewayStatus: string;
   /** The gym's own wording per message kind for the linked phone ("" = the default text). */
   phoneTexts: Partial<Record<string, string>>;
-  /** Seconds between announcement messages from the linked phone (sending fast risks a ban). */
-  phoneGapSeconds: number;
+  /** WhatsApp's own limit on the linked number (e.g. tos_block), "" when none; kept by the server. */
+  gatewayRestriction: string;
 }
 
 // ---------------- PT, trainers, payments, enrollment, finance, import ----------------
