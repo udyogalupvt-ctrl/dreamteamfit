@@ -65,11 +65,11 @@ function NotFoundComponent() {
 const STALE_BUILD =
   /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Unable to preload CSS/i;
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   const router = useRouter();
   useEffect(() => {
     console.error(error);
-    if (STALE_BUILD.test(String(error?.message ?? error))) reloadForNewVersion();
+    if (STALE_BUILD.test(String((error as Error | undefined)?.message ?? error))) reloadForNewVersion();
   }, [error]);
 
   return (
