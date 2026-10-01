@@ -39,6 +39,7 @@ import {
   subscribeWhatsAppSettings,
 } from "@/services/whatsapp-settings.service";
 import type { BiometricDevice } from "@/types/models";
+import type { StatMetric } from "@/types";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
@@ -57,7 +58,7 @@ function DashboardPage() {
   const actions = useQuickActions();
   const attention = useAttention();
   const { period, picker } = usePeriodPicker();
-  const { primary, stats, activity, todaySchedule, lists, loading, error } =
+  const { primary, stats, activity, todaySchedule, lists, allTime, loading, error } =
     useDashboardMetrics(period);
   const [moreOpen, setMoreOpen] = useState(false);
   // Tapping a number card opens the list behind it (payments, members, visits).
@@ -176,26 +177,15 @@ function DashboardPage() {
           {loading
             ? primary.map((m) => <StatCardSkeleton key={m.id} />)
             : primary.map((metric) => (
-                <button
-                  key={metric.id}
-                  type="button"
-                  aria-label={`${metric.label}: ${metric.value}. See the list`}
-                  onClick={() => setCard(metric.id as NumberCard)}
-                  className="min-w-0 cursor-pointer rounded-xl text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                >
-                  <StatCard metric={metric} className="h-full">
-                    <span className="mt-2 flex items-center gap-0.5 text-xs font-semibold text-muted-foreground">
-                      See the list <ChevronRight className="size-3.5" aria-hidden />
-                    </span>
-                  </StatCard>
-                </button>
+                <NumberCardButton key={metric.id} metric={metric} onOpen={setCard} />
               ))}
         </div>
         <NumberDetails
           card={card}
-          title={primary.find((m) => m.id === card)?.label ?? ""}
+          title={[...primary, ...stats].find((m) => m.id === card)?.label ?? ""}
           period={period}
           lists={lists}
+          allTime={allTime}
           onClose={() => setCard(null)}
         />
       </section>
@@ -247,7 +237,7 @@ function DashboardPage() {
         <CollapsibleContent className="mt-4 space-y-4">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {stats.map((metric) => (
-              <StatCard key={metric.id} metric={metric} />
+              <NumberCardButton key={metric.id} metric={metric} onOpen={setCard} />
             ))}
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
@@ -306,6 +296,30 @@ function DashboardPage() {
         </CollapsibleContent>
       </Collapsible>
     </div>
+  );
+}
+
+/** A number card that opens the list behind it (payments, members, visits…). */
+function NumberCardButton({
+  metric,
+  onOpen,
+}: {
+  metric: StatMetric;
+  onOpen: (id: NumberCard) => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={`${metric.label}: ${metric.value}. See the list`}
+      onClick={() => onOpen(metric.id)}
+      className="min-w-0 cursor-pointer rounded-xl text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+    >
+      <StatCard metric={metric} className="h-full">
+        <span className="mt-2 flex items-center gap-0.5 text-xs font-semibold text-muted-foreground">
+          See the list <ChevronRight className="size-3.5" aria-hidden />
+        </span>
+      </StatCard>
+    </button>
   );
 }
 

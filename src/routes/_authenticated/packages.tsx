@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { MoreHorizontal, Package, Pencil, Plus, Power, Trash2 } from "lucide-react";
-import { toastWithUndo } from "@/lib/undo-toast";
+import { useBin } from "@/hooks/use-bin";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/page-header";
 import { SearchInput } from "@/components/common/search-input";
@@ -96,17 +96,14 @@ function GymPackagesSection() {
       toast.error(firestoreErrorMessage(err));
     }
   };
+  // Delete (owner, or a login given "Packages, trainers & plans" delete): into the Recycle Bin.
+  const bin = useBin();
   const confirmDelete = async () => {
     if (!deleting) return;
     const target = deleting;
     setDeleting(null);
-    try {
-      const undo = await deletePackage(target.id);
-      toastWithUndo("Package deleted", undo, target.name);
+    if (await bin.remove(`Package ${target.name}`, (by) => deletePackage(target, by)))
       if (viewing?.id === target.id) setViewing(null);
-    } catch (err) {
-      toast.error(firestoreErrorMessage(err));
-    }
   };
 
   return (
@@ -183,7 +180,7 @@ function GymPackagesSection() {
                   onView={() => setViewing(p)}
                   onEdit={() => openEdit(p)}
                   onToggle={() => void toggleActive(p)}
-                  onDelete={() => setDeleting(p)}
+                  onDelete={bin.canDelete("packages") ? () => setDeleting(p) : undefined}
                 />
               </div>
               <p className="mt-3 line-clamp-2 min-h-10 text-sm text-muted-foreground">
@@ -240,7 +237,7 @@ function GymPackagesSection() {
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
         title={`Delete ${deleting?.name ?? "package"}?`}
-        description="Removes the package. You can undo it right after. Packages used by memberships can't be deleted — deactivate them instead."
+        description="It waits in the Recycle Bin, where it can be restored. Packages used by memberships can't be deleted — deactivate them instead."
         confirmLabel="Delete package"
         destructive
         onConfirm={() => void confirmDelete()}
@@ -260,7 +257,7 @@ function PackageActions({
   onView: () => void;
   onEdit: () => void;
   onToggle: () => void;
-  onDelete: () => void;
+  onDelete?: (() => void) | undefined;
 }) {
   return (
     <DropdownMenu>
@@ -279,13 +276,17 @@ function PackageActions({
         <DropdownMenuItem onSelect={onToggle}>
           <Power aria-hidden /> {pkg.isActive ? "Deactivate" : "Activate"}
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onSelect={onDelete}
-          className="text-destructive focus:bg-destructive/10 focus:text-destructive"
-        >
-          <Trash2 aria-hidden /> Delete
-        </DropdownMenuItem>
+        {onDelete ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={onDelete}
+              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+            >
+              <Trash2 aria-hidden /> Delete
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

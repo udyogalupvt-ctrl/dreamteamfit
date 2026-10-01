@@ -1,11 +1,10 @@
 import {
   addDoc,
-  deleteDoc,
   doc,
-  getDoc,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
   writeBatch,
@@ -15,6 +14,7 @@ import { db } from "@/lib/firebase";
 import { expenseSchema, type ExpenseFormValues } from "@/lib/expense-validation";
 import type { Expense, ExpenseActivity, ExpenseActivityAction } from "@/types/models";
 import { col, COLLECTIONS, subscribeCollection, subscribeQuery, toDate } from "./firestore.service";
+import { binExpense, type Deleter } from "./recycle-bin.service";
 
 export const mapExpense = (id: string, d: DocumentData): Expense => ({
   id,
@@ -156,25 +156,12 @@ export async function settleExpense(
   );
   await batch.commit();
 }
-export async function deleteExpense(item: Expense, staff: { uid: string; name: string }) {
-  const ref = doc(db, COLLECTIONS.expenses, item.id);
-  const saved = (await getDoc(ref)).data();
-  const batch = writeBatch(db);
-  batch.delete(ref);
-  batch.set(
+/** Delete = into the Recycle Bin (restorable), with a "removed" line in the expense history. */
+export async function deleteExpense(item: Expense, by: Deleter) {
+  const binId = await binExpense(item, by);
+  await setDoc(
     doc(col(COLLECTIONS.expenseActivities)),
-    activity(item.id, item.title, "deleted", staff.name),
+    activity(item.id, item.title, "deleted", by.name),
   );
-  await batch.commit();
-  /** Undo: the expense comes back exactly as it was. */
-  return async () => {
-    if (!saved) return;
-    const b = writeBatch(db);
-    b.set(ref, saved);
-    b.set(
-      doc(col(COLLECTIONS.expenseActivities)),
-      activity(item.id, item.title, "created", staff.name),
-    );
-    await b.commit();
-  };
+  return binId;
 }

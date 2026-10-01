@@ -1,4 +1,5 @@
-import { setDoc, getDoc, addDoc, deleteDoc, doc, getDocs, limit, orderBy, query, serverTimestamp, updateDoc, where, type DocumentData } from "@/lib/firestore";
+import { addDoc, doc, getDocs, limit, orderBy, query, serverTimestamp, updateDoc, where, type DocumentData } from "@/lib/firestore";
+import { binSimple, type Deleter } from "./recycle-bin.service";
 import { db } from "@/lib/firebase";
 import { workoutPlanSchema } from "@/lib/plan-validation";
 import type { WorkoutDay, WorkoutPlan } from "@/types/models";
@@ -11,4 +12,4 @@ const mapPlan = (id: string, d: DocumentData): WorkoutPlan => ({ id, name: d["na
 export const subscribeWorkoutPlans = (onData: (v: WorkoutPlan[]) => void, onError: (e: Error) => void) => subscribeCollection(COLLECTIONS.workoutPlans, mapPlan, onData, onError, orderBy("createdAt", "desc"));
 export async function createWorkoutPlan(input: WorkoutPlanInput) { const safe = workoutPlanSchema.parse(input); return (await addDoc(col(COLLECTIONS.workoutPlans), { ...safe, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })).id; }
 export async function updateWorkoutPlan(id: string, input: Partial<WorkoutPlanInput>) { const safe = workoutPlanSchema.partial().parse(input); await updateDoc(doc(db, COLLECTIONS.workoutPlans, id), { ...safe, updatedAt: serverTimestamp() }); }
-export async function deleteWorkoutPlan(id: string) { const used = await getDocs(query(col(COLLECTIONS.workoutAssignments), where("workoutPlanId", "==", id), limit(1))); if (!used.empty) throw new Error("This workout plan has assignment history. Deactivate it instead."); const ref = doc(db, COLLECTIONS.workoutPlans, id); const saved = (await getDoc(ref)).data(); await deleteDoc(ref); /** Undo: the plan comes back exactly as it was. */ return async () => { if (saved) await setDoc(ref, saved); }; }
+export async function deleteWorkoutPlan({ id, name }: { id: string; name: string }, by: Deleter) { const used = await getDocs(query(col(COLLECTIONS.workoutAssignments), where("workoutPlanId", "==", id), limit(1))); if (!used.empty) throw new Error("This workout plan has assignment history. Deactivate it instead."); /** Into the Recycle Bin (restorable). */ return binSimple(COLLECTIONS.workoutPlans, id, `Workout plan: ${name}`, by); }

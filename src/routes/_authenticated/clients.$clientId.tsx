@@ -161,7 +161,7 @@ function ClientProfilePage() {
   const { openEnrollment, resumeSetup } = useEnrollment();
   const [tab, setTab] = useState("overview");
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const { can } = useAccess();
+  const { can, canDelete } = useAccess();
   const [addWorkoutOpen, setAddWorkoutOpen] = useState(false);
   const [addDietOpen, setAddDietOpen] = useState(false);
   const [addBookingOpen, setAddBookingOpen] = useState(false);
@@ -240,7 +240,7 @@ function ClientProfilePage() {
                 <DropdownMenuItem onSelect={() => setEditOpen(true)}>
                   <Pencil aria-hidden /> Edit details only
                 </DropdownMenuItem>
-                {can("deleteMembers") ? (
+                {canDelete("members") ? (
                   <DropdownMenuItem
                     onSelect={() => setDeleteOpen(true)}
                     className="text-destructive focus:text-destructive"

@@ -20,7 +20,15 @@ import {
 } from "lucide-react";
 import { useAccess } from "@/hooks/use-access";
 import { useLive } from "@/hooks/use-live-query";
-import { effectiveMembershipStatus, formatNumber, formatPrice, todayISO } from "@/lib/format";
+import {
+  effectiveMembershipStatus,
+  formatDate,
+  formatDateISO,
+  formatNumber,
+  formatPrice,
+  formatTime,
+  todayISO,
+} from "@/lib/format";
 import { subscribeClients } from "@/services/clients.service";
 import { subscribeInquiries } from "@/services/inquiries.service";
 import { subscribeQueuedPlans, subscribeRecentMemberships } from "@/services/memberships.service";
@@ -91,6 +99,25 @@ export interface MoneyRow {
   kind: "initial" | "balance" | "refund" | "bill";
   bill: string;
 }
+/** One line of a "more numbers" card's list. */
+export interface DetailRow {
+  id: string;
+  title: string;
+  sub: string;
+  right?: string;
+  /** Shown in red (money going out). */
+  minus?: boolean;
+  /** Tapping the line opens this member. */
+  clientId?: string;
+}
+/** The list behind one of the "more numbers" cards. */
+export interface DetailList {
+  summary: string;
+  rows: DetailRow[];
+  /** Totals by kind, e.g. expenses by category. */
+  chips?: [string, string][];
+}
+
 /** A member with a running plan, for the "Active members" list. */
 export interface ActiveRow {
   clientId: string;
@@ -103,6 +130,29 @@ export interface ActiveRow {
 /** " · after ₹2,000 refunded" when money was given back (Collected is after refunds). */
 const refundedNote = (m: { refunded: number }) =>
   m.refunded > 0 ? ` · after ${formatPrice(m.refunded)} refunded` : "";
+
+/**
+ * A one-off database sum that failed (a dropped connection right after sign-in, the database
+ * busy) is tried again by itself: 2 s, 5 s, 15 s, 30 s, 60 s. It used to stay on "…" until a
+ * refresh. Returns a stop function for the effect cleanup.
+ */
+function loadWithRetry<T>(load: () => Promise<T>, done: (v: T) => void) {
+  let live = true;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const attempt = (tries: number) =>
+    void load().then(
+      (v) => live && done(v),
+      () => {
+        if (live && tries < 5)
+          timer = setTimeout(() => attempt(tries + 1), [2000, 5000, 15000, 30000, 60000][tries]);
+      },
+    );
+  attempt(0);
+  return () => {
+    live = false;
+    clearTimeout(timer);
+  };
+}
 
 /** Derives dashboard numbers from live Firestore data only — nothing is invented. */
 export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
@@ -146,24 +196,13 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
   useEffect(() => {
     setRangeVisits(null);
     if (period.isToday) return;
-    let live = true;
-    void attendanceCounts(period.from, period.to)
-      .then((v) => live && setRangeVisits(v.visits))
-      .catch(() => undefined);
-    return () => {
-      live = false;
-    };
+    return loadWithRetry(
+      () => attendanceCounts(period.from, period.to),
+      (v) => setRangeVisits(v.visits),
+    );
   }, [period.from, period.to, period.isToday]);
   const [allTime, setAllTime] = useState<number | null>(null);
-  useEffect(() => {
-    let live = true;
-    void allTimeCollected()
-      .then((v) => live && setAllTime(v))
-      .catch(() => undefined);
-    return () => {
-      live = false;
-    };
-  }, []);
+  useEffect(() => loadWithRetry(allTimeCollected, setAllTime), []);
   // Only today's visits are shown here.
   const today = todayISO();
   const attendance = useLive<AttendanceEvent[]>(
@@ -298,6 +337,8 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
     let expiringIn7Days = 0;
     const clientById = new Map(clients.data.map((c) => [c.id, c]));
     const activeRows: ActiveRow[] = [];
+    const renewalRows: ActiveRow[] = [];
+    const expiredRows: ActiveRow[] = [];
     byClient.forEach((list, clientId) => {
       const statuses = list.map((m) => ({ m, s: effectiveMembershipStatus(m) }));
       const current = statuses.find((x) => x.s === "active");
@@ -311,7 +352,10 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
           plan: current.m.packageNameSnapshot,
           endDate: current.m.endDate,
         });
-        if (current.m.endDate <= in7) renewals += 1;
+        if (current.m.endDate <= in7) {
+          renewals += 1;
+          renewalRows.push(activeRows[activeRows.length - 1]!);
+        }
         if (current.m.endDate === today) expiringToday += 1;
         if (current.m.endDate === in7) expiringIn7Days += 1;
       } else if (
@@ -319,6 +363,17 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
         statuses.some((x) => x.s === "expired")
       ) {
         expired += 1;
+        const last = statuses
+          .filter((x) => x.s === "expired")
+          .sort((a, b) => b.m.endDate.localeCompare(a.m.endDate))[0]!.m;
+        const c = clientById.get(clientId);
+        expiredRows.push({
+          clientId,
+          name: c?.fullName ?? "",
+          code: c?.clientCode ?? "",
+          plan: last.packageNameSnapshot,
+          endDate: last.endDate,
+        });
       }
     });
 
@@ -689,8 +744,236 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
           (a, b) => a.endDate.localeCompare(b.endDate) || a.name.localeCompare(b.name),
         ),
         visitsToday: attendanceToday,
+        more: moreLists(),
       },
     };
+
+    /** The lists behind the "more numbers" cards, from what is already loaded. */
+    function moreLists(): Record<string, DetailList> {
+      const from = period.isToday ? monthStartISO : period.from;
+      const to = period.isToday ? today : period.to;
+      const signed = (n: number) => (n < 0 ? `−${formatPrice(-n)}` : formatPrice(n));
+      const count = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+      const memberRow = (r: ActiveRow, sub: string, right?: string): DetailRow => ({
+        id: r.clientId,
+        title: r.name || "Member",
+        sub,
+        ...(right ? { right } : {}),
+        clientId: r.clientId,
+      });
+      const spent = expenses.data
+        .filter((e) => e.date >= from && e.date <= to)
+        .sort((a, b) => b.date.localeCompare(a.date));
+      const byCategory = new Map<string, number>();
+      spent.forEach((e) =>
+        byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + e.amount),
+      );
+      const shares = payments.data
+        .filter((p) => p.paymentDate >= from && p.paymentDate <= to && p.trainerShareAmount !== 0)
+        .sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
+      const due = openInvoices.data
+        .filter((i) => i.paymentStatus !== "refunded" && i.balanceDue > 0)
+        .sort((a, b) => (a.dueDate || "9").localeCompare(b.dueDate || "9"));
+      const joined = clients.data
+        .filter((c) => {
+          const d = format(c.createdAt, "yyyy-MM-dd");
+          return d >= from && d <= to;
+        })
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      const calls = followUps.data
+        .filter((f) => f.status === "pending" && f.followUpDate <= today)
+        .sort((a, b) => a.followUpDate.localeCompare(b.followUpDate));
+      const pt = bookings.data
+        .filter((b) => b.bookingType === "pt" && b.status === "scheduled" && b.date === today)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime));
+      const classById = new Map(classes.data.map((g) => [g.id, g]));
+      const enrolled = enrollments.data.filter((e) => e.status === "enrolled");
+      const bdays = withDob.filter((c) => c.dateOfBirth!.slice(5) === today.slice(5));
+      const plansOn = [
+        ...workouts.data
+          .filter((w) => w.status === "active")
+          .map((w) => ({
+            id: w.id,
+            clientId: w.clientId,
+            kind: "Workout",
+            name: w.planNameSnapshot,
+          })),
+        ...diets.data
+          .filter((x) => x.status === "active")
+          .map((x) => ({ id: x.id, clientId: x.clientId, kind: "Diet", name: x.planNameSnapshot })),
+      ];
+      return {
+        "profit-loss": {
+          summary: `${signed(statMoney.net)} profit ${statLabel}`,
+          rows: [
+            {
+              id: "in",
+              title: "Collected",
+              sub: "all payments received",
+              right: signed(statMoney.gross),
+            },
+            {
+              id: "trainer",
+              title: "Trainer share",
+              sub: "owed to trainers from PT, not the gym's money",
+              right: signed(-statMoney.trainerPayable),
+              minus: true,
+            },
+            ...(statMoney.manualIncome
+              ? [
+                  {
+                    id: "other",
+                    title: "Other income",
+                    sub: "entered by hand",
+                    right: signed(statMoney.manualIncome),
+                  },
+                ]
+              : []),
+            {
+              id: "out",
+              title: "Expenses",
+              sub: count(spent.length, "expense"),
+              right: signed(-statExpenses),
+              minus: true,
+            },
+            {
+              id: "net",
+              title: "Profit",
+              sub: "gym income − expenses",
+              right: signed(statMoney.net),
+            },
+          ],
+        },
+        "month-expenses": {
+          summary: `${formatPrice(statExpenses)} · ${count(spent.length, "expense")} ${statLabel}`,
+          chips: [...byCategory.entries()]
+            .sort((a, b) => b[1] - a[1])
+            .map(([k, v]): [string, string] => [k, formatPrice(v)]),
+          rows: spent.map((e) => ({
+            id: e.id,
+            title: e.title,
+            sub: `${formatDateISO(e.date)} · ${e.category} · ${e.paymentMethod}`,
+            right: formatPrice(e.amount),
+          })),
+        },
+        "trainer-payable": {
+          summary: `${signed(statMoney.trainerPayable)} owed to trainers ${statLabel}`,
+          rows: shares.map((p) => ({
+            id: p.id,
+            title: p.clientNameSnapshot || "Member",
+            sub: `${formatDateISO(p.paymentDate)}${p.invoiceNumber ? ` · ${p.invoiceNumber}` : ""}${p.kind === "refund" ? " · refund" : ""}`,
+            right: signed(p.trainerShareAmount),
+            minus: p.trainerShareAmount < 0,
+            clientId: p.clientId,
+          })),
+        },
+        outstanding: {
+          summary: `${formatPrice(outstanding)} on ${count(due.length, "bill")}`,
+          rows: due.map((i) => ({
+            id: i.id,
+            title: i.clientNameSnapshot || "Member",
+            sub: `${i.invoiceNumber}${i.dueDate ? ` · next payment ${formatDateISO(i.dueDate)}` : ""}`,
+            right: formatPrice(i.balanceDue),
+            clientId: i.clientId,
+          })),
+        },
+        "new-clients": {
+          summary: `${count(joined.length, "member")} joined ${statLabel}`,
+          rows: joined.map((c) => ({
+            id: c.id,
+            title: c.fullName,
+            sub: `${c.clientCode ? `ID ${c.clientCode} · ` : ""}joined ${formatDate(c.createdAt)}`,
+            clientId: c.id,
+          })),
+        },
+        expired: {
+          summary: `${count(expiredRows.length, "member")} with no running plan · latest first`,
+          rows: expiredRows
+            .sort((a, b) => b.endDate.localeCompare(a.endDate))
+            .map((r) =>
+              memberRow(
+                r,
+                `${r.code ? `ID ${r.code} · ` : ""}${r.plan} ended ${formatDateISO(r.endDate)}`,
+              ),
+            ),
+        },
+        renewals: {
+          summary: `${count(renewalRows.length, "plan")} ending in the next 7 days`,
+          rows: renewalRows
+            .sort((a, b) => a.endDate.localeCompare(b.endDate))
+            .map((r) =>
+              memberRow(
+                r,
+                `${r.code ? `ID ${r.code} · ` : ""}${r.plan}`,
+                `Ends ${formatDateISO(r.endDate)}`,
+              ),
+            ),
+        },
+        "follow-ups": {
+          summary: `${count(calls.length, "call")} due today or overdue`,
+          rows: calls.map((f) => ({
+            id: f.id,
+            title: f.clientNameSnapshot || "Lead",
+            sub: `${formatDateISO(f.followUpDate)}${f.followUpTime ? ` ${formatTime(f.followUpTime)}` : ""}${f.reason ? ` · ${f.reason}` : ""}`,
+            ...(f.clientId ? { clientId: f.clientId } : {}),
+          })),
+        },
+        "pt-today": {
+          summary: `${count(pt.length, "PT session")} today`,
+          rows: pt.map((b) => ({
+            id: b.id,
+            title: b.clientNameSnapshot || "Member",
+            sub: `${formatTime(b.startTime)} · with ${b.trainerNameSnapshot || "trainer"}`,
+            ...(b.clientId ? { clientId: b.clientId } : {}),
+          })),
+        },
+        "group-booked": {
+          summary: count(enrolled.length, "class booking"),
+          rows: enrolled.map((e) => {
+            const g = classById.get(e.groupClassId);
+            return {
+              id: e.id,
+              title: e.clientNameSnapshot || "Member",
+              sub: g ? `${g.name} · ${formatDateISO(g.date)} ${formatTime(g.startTime)}` : "Class",
+              clientId: e.clientId,
+            };
+          }),
+        },
+        "today-schedule": {
+          summary: `${count(todaySchedule.length, "booking")} and classes today`,
+          rows: todaySchedule.map((x) => ({
+            id: x.id,
+            title: x.title,
+            sub: x.detail,
+            right: formatTime(x.time),
+          })),
+        },
+        birthdays: {
+          summary: bdays.length
+            ? `${count(bdays.length, "birthday")} today: send wishes`
+            : "No birthdays today",
+          rows: bdays.map((c) => {
+            const age = Number(today.slice(0, 4)) - Number(c.dateOfBirth!.slice(0, 4));
+            return {
+              id: c.id,
+              title: c.fullName,
+              sub: `${c.clientCode ? `ID ${c.clientCode} · ` : ""}${c.phone}`,
+              ...(age > 0 && age < 120 ? { right: `turns ${age}` } : {}),
+              clientId: c.id,
+            };
+          }),
+        },
+        plans: {
+          summary: `${count(plansOn.length, "plan")} given and running`,
+          rows: plansOn.map((x) => ({
+            id: x.id,
+            title: clientById.get(x.clientId)?.fullName ?? "Member",
+            sub: `${x.kind} · ${x.name}`,
+            clientId: x.clientId,
+          })),
+        },
+      };
+    }
   }, [
     payments.data,
     manualIncome.data,
@@ -720,5 +1003,5 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
     rangeVisits,
   ]);
 
-  return { ...result, loading, error };
+  return { ...result, allTime, loading, error };
 }

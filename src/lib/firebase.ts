@@ -12,8 +12,6 @@ import {
   terminate,
   type Firestore,
 } from "firebase/firestore";
-import { getStorage, type FirebaseStorage } from "firebase/storage";
-import type { Analytics } from "firebase/analytics";
 
 /** Single source of Firebase config — every value comes from Vite env vars. */
 const env = import.meta.env;
@@ -79,15 +77,5 @@ if (env["VITE_USE_EMULATORS"] === "1" && !(globalThis as { __rfEmu?: boolean }).
   connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
   connectFirestoreEmulator(db, "127.0.0.1", 8080);
 }
-export const storage: FirebaseStorage = getStorage(app);
-
-/** Analytics only runs in supported browsers; resolves null elsewhere (SSR, blocked). */
-let analyticsPromise: Promise<Analytics | null> | null = null;
-export function getAnalyticsInstance(): Promise<Analytics | null> {
-  if (typeof window === "undefined" || !firebaseConfig.measurementId) return Promise.resolve(null);
-  analyticsPromise ??= import("firebase/analytics").then(async (m) =>
-    (await m.isSupported()) ? m.getAnalytics(app) : null,
-  );
-  return analyticsPromise;
-}
-export const analytics = getAnalyticsInstance();
+// No Firebase file storage (photos go to Cloudinary) and no Google Analytics: neither is used,
+// and each added download and network calls to every page load.

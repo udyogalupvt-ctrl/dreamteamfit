@@ -711,7 +711,14 @@ async function memberAccess(request: Request, body: Record<string, unknown>) {
   const snap = await ref.get();
   const c = snap.data();
   if (action === "delete") {
-    await deleteMemberApp(clientId, s(c?.["portalUid"]));
+    // Deleted for good from the Recycle Bin: the member record is only in the bin by then.
+    const binned = c
+      ? null
+      : (
+          await db().collection("recycleBinItems").where("docId", "==", clientId).limit(5).get()
+        ).docs.find((d) => d.data()["collection"] === "clients");
+    const uid = s(c?.["portalUid"] ?? (binned?.data()["data"] as D | undefined)?.["portalUid"]);
+    await deleteMemberApp(clientId, uid);
     return json({ ok: true });
   }
   if (!c) return json({ error: "Member not found." }, 404);

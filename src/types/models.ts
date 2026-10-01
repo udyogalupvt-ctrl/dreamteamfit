@@ -996,8 +996,41 @@ export const STAFF_FEATURES = [
   "devices",
   "settings",
   "deleteMembers",
+  "deleteLeads",
+  "deleteBills",
+  "deletePackages",
+  "deleteExpenses",
 ] as const;
 export type StaffFeature = (typeof STAFF_FEATURES)[number];
+
+/** Sections whose things can be deleted (into the Recycle Bin). Staff: owners only. */
+export const DELETE_SECTIONS = [
+  "members",
+  "leads",
+  "bills",
+  "packages",
+  "expenses",
+  "staff",
+] as const;
+export type DeleteSection = (typeof DELETE_SECTIONS)[number];
+
+/** Something deleted, waiting in the Recycle Bin (its records are kept as recycleBinItems). */
+export interface RecycleBinEntry {
+  id: string;
+  section: DeleteSection;
+  /** What it was, e.g. "Lead: Ravi Kumar" or "Bill RF-2026-000012". */
+  label: string;
+  detail: string;
+  /** How many records went with it (the thing itself and what belonged to it). */
+  count: number;
+  deletedBy: string;
+  deletedByUid: string;
+  /** "Owner", "Manager", "Staff": shown so the owner knows who did it. */
+  deletedByRole: string;
+  deletedAt: Date;
+  /** Extra things to put back on restore (e.g. leads to re-link, a login to switch on). */
+  extra: Record<string, unknown>;
+}
 
 /** A person who works at the gym (front desk, counsellor, manager, cleaner…). */
 export interface Staff extends BaseDoc {

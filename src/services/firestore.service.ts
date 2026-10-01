@@ -62,6 +62,9 @@ export const COLLECTIONS = {
   cashDays: "cashDays",
   staffDayMarks: "staffDayMarks",
   staffPayroll: "staffPayroll",
+  /** Deleted records wait here until the owner restores them or deletes them for good. */
+  recycleBin: "recycleBin",
+  recycleBinItems: "recycleBinItems",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { format } from "date-fns";
 import { ChevronRight, Loader2, Search } from "lucide-react";
@@ -12,15 +12,24 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useLive } from "@/hooks/use-live-query";
-import type { ActiveRow, DashboardPeriod, MoneyRow } from "@/hooks/use-dashboard-metrics";
+import type {
+  ActiveRow,
+  DashboardPeriod,
+  DetailList,
+  MoneyRow,
+} from "@/hooks/use-dashboard-metrics";
 import { attendanceSummary } from "@/lib/attendance-utils";
 import { formatDateISO, formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { subscribeAttendanceRange } from "@/services/attendance.service";
+import { collectedByMonth } from "@/services/finance.service";
 import type { AttendanceEvent } from "@/types/models";
 
-/** The four number cards on the dashboard; tapping one opens its list here. */
-export type NumberCard = "today-collection" | "month-collection" | "active" | "attendance";
+/**
+ * A dashboard number card (its metric id); tapping one opens its list here: the four main cards
+ * and every card under "more numbers".
+ */
+export type NumberCard = string;
 
 const KIND: Record<MoneyRow["kind"], string> = {
   initial: "Paid on bill",
@@ -36,6 +45,7 @@ export function NumberDetails({
   title,
   period,
   lists,
+  allTime = null,
   onClose,
 }: {
   card: NumberCard | null;
@@ -47,7 +57,10 @@ export function NumberDetails({
     month: MoneyRow[];
     active: ActiveRow[];
     visitsToday: AttendanceEvent[];
+    more: Record<string, DetailList>;
   };
+  /** All-time total (the "Total collected" card's value), for its by-month list. */
+  allTime?: number | null;
   onClose: () => void;
 }) {
   const navigate = useNavigate();
@@ -71,6 +84,10 @@ export function NumberDetails({
           <ActiveList title={title} rows={lists.active} goTo={goTo} />
         ) : card === "attendance" ? (
           <VisitList title={title} period={period} today={lists.visitsToday} goTo={goTo} />
+        ) : card === "collection" ? (
+          <ByMonthList title={title} allTime={allTime} />
+        ) : card && lists.more[card] ? (
+          <DetailListView title={title} list={lists.more[card]} goTo={goTo} />
         ) : null}
       </SheetContent>
     </Sheet>
@@ -299,6 +316,113 @@ function VisitList({
           </ul>
         ) : (
           <Empty text="No visits in this period." />
+        )}
+      </div>
+    </>
+  );
+}
+
+/** Any "more numbers" card: its summary, totals by kind, and the lines behind it. */
+function DetailListView({
+  title,
+  list,
+  goTo,
+}: {
+  title: string;
+  list: DetailList;
+  goTo: (clientId: string) => void;
+}) {
+  return (
+    <>
+      <Head title={title} summary={list.summary} />
+      {list.chips?.length ? (
+        <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3 sm:px-5">
+          {list.chips.map(([k, v]) => (
+            <span key={k} className="rounded-lg bg-muted px-2.5 py-1 text-sm">
+              {k} <b className="tabular-nums">{v}</b>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {list.rows.length ? (
+          <ul className="divide-y divide-border">
+            {list.rows.map((r) => (
+              <Row key={r.id} onClick={r.clientId ? () => goTo(r.clientId!) : undefined}>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">{r.title}</span>
+                  {r.sub ? <span className="text-meta block">{r.sub}</span> : null}
+                </span>
+                {r.right ? (
+                  <span
+                    className={cn(
+                      "shrink-0 text-right font-semibold tabular-nums",
+                      r.minus && "text-destructive",
+                    )}
+                  >
+                    {r.right}
+                  </span>
+                ) : null}
+              </Row>
+            ))}
+          </ul>
+        ) : (
+          <Empty text="Nothing here right now." />
+        )}
+      </div>
+    </>
+  );
+}
+
+/** Total collected: month by month for the last 6 months (read when opened), then the rest. */
+function ByMonthList({ title, allTime }: { title: string; allTime: number | null }) {
+  const [months, setMonths] = useState<{ month: string; total: number }[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let live = true;
+    collectedByMonth(6).then(
+      (m) => live && setMonths(m),
+      () => live && setFailed(true),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
+  const lastYear = months?.reduce((n, m) => n + m.total, 0) ?? 0;
+  const older = allTime !== null && months ? allTime - lastYear : null;
+  return (
+    <>
+      <Head
+        title={title}
+        summary={`${allTime === null ? "…" : money(allTime)} in all · month by month`}
+      />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {failed ? (
+          <Empty text="Couldn't add the months up. Try again in a moment." />
+        ) : !months ? (
+          <div className="grid place-items-center p-8">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label="Loading" />
+          </div>
+        ) : (
+          <ul className="divide-y divide-border">
+            {months.map((m) => (
+              <Row key={m.month}>
+                <span className="min-w-0 flex-1 font-semibold">
+                  {format(new Date(`${m.month}-01T00:00:00`), "MMMM yyyy")}
+                </span>
+                <span className="shrink-0 font-semibold tabular-nums">{money(m.total)}</span>
+              </Row>
+            ))}
+            {older !== null && Math.abs(older) >= 1 ? (
+              <Row>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">Before that</span>
+                  <span className="text-meta">older payments and bills from the old software</span>
+                </span>
+                <span className="shrink-0 font-semibold tabular-nums">{money(older)}</span>
+              </Row>
+            ) : null}
+          </ul>
         )}
       </div>
     </>

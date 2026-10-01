@@ -8,9 +8,11 @@ import {
   Phone,
   Plus,
   RotateCcw,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { SearchInput } from "@/components/common/search-input";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
@@ -26,8 +28,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useBin } from "@/hooks/use-bin";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatTime, normalizePhone, todayISO } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -35,6 +39,7 @@ import { subscribeClients } from "@/services/clients.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { rescheduleFollowUp, subscribeFollowUps } from "@/services/followups.service";
 import { subscribeInquiries } from "@/services/inquiries.service";
+import { binFollowUp } from "@/services/recycle-bin.service";
 import type { Client, FollowUp, Inquiry } from "@/types/models";
 
 type Filter = "due" | "tomorrow" | "week" | "later" | "completed";
@@ -57,6 +62,8 @@ export function FollowUpsView() {
   const [creating, setCreating] = useState(false);
   const [recording, setRecording] = useState<FollowUp | null>(null);
   const [moving, setMoving] = useState<FollowUp | null>(null);
+  const bin = useBin();
+  const [deleting, setDeleting] = useState<FollowUp | null>(null);
 
   const today = todayISO();
   const tomorrow = format(addDays(new Date(), 1), "yyyy-MM-dd");
@@ -123,6 +130,17 @@ export function FollowUpsView() {
               <UserRound aria-hidden /> Open member
             </Link>
           </DropdownMenuItem>
+        ) : null}
+        {bin.canDelete("leads") ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onSelect={() => setDeleting(x)}
+            >
+              <Trash2 aria-hidden /> Delete
+            </DropdownMenuItem>
+          </>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -263,6 +281,19 @@ export function FollowUpsView() {
         onConvert={() => recording && convert(recording)}
       />
       <MoveDialog item={moving} onClose={() => setMoving(null)} />
+      <ConfirmDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        title={`Delete this follow-up for ${deleting?.clientNameSnapshot ?? ""}?`}
+        description="It waits in the Recycle Bin, where it can be restored."
+        confirmLabel="Delete follow-up"
+        destructive
+        onConfirm={() => {
+          const f = deleting;
+          setDeleting(null);
+          if (f) void bin.remove("Follow-up", (by) => binFollowUp(f, by));
+        }}
+      />
     </div>
   );
 }

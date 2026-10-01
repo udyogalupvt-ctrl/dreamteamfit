@@ -16,8 +16,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { z } from "zod";
-import { toastWithUndo } from "@/lib/undo-toast";
-import { toast } from "sonner";
 import { IncomeSection, PayoutsSection } from "@/components/finance/finance-sections";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -60,10 +58,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth } from "@/hooks/use-auth";
+import { useBin } from "@/hooks/use-bin";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDate, formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { deleteExpense, subscribeExpenses } from "@/services/expenses.service";
-import { firestoreErrorMessage } from "@/services/firestore.service";
 import { expenseCategoryOptions } from "@/lib/expense-validation";
 import { EXPENSE_PAYMENT_METHODS, type Expense } from "@/types/models";
 
@@ -164,20 +162,14 @@ function ExpensesList() {
         (!q || [e.title, e.category, e.notes].some((v) => v.toLowerCase().includes(q))),
     );
   }, [live.data, search, date, category, payment]);
+  // Delete (owner, or a login given "Expenses" delete): into the Recycle Bin.
+  const bin = useBin();
   const remove = async () => {
     if (!deleting || !user) return;
     const item = deleting;
     setDeleting(null);
-    try {
-      const undo = await deleteExpense(item, {
-        uid: user.uid,
-        name: user.displayName || user.email || "Staff",
-      });
-      toastWithUndo("Expense removed", undo, item.title);
+    if (await bin.remove(`Expense ${item.title}`, (by) => deleteExpense(item, by)))
       if (viewing?.id === item.id) setViewing(null);
-    } catch (e) {
-      toast.error(firestoreErrorMessage(e));
-    }
   };
   const cards = [
     {
@@ -365,7 +357,7 @@ function ExpensesList() {
                             setEditing(e);
                             setOpen(true);
                           }}
-                          remove={() => setDeleting(e)}
+                          remove={bin.canDelete("expenses") ? () => setDeleting(e) : undefined}
                           settle={() => setSettling(e)}
                         />
                       </TableCell>
@@ -391,7 +383,7 @@ function ExpensesList() {
                         setEditing(e);
                         setOpen(true);
                       }}
-                      remove={() => setDeleting(e)}
+                      remove={bin.canDelete("expenses") ? () => setDeleting(e) : undefined}
                       settle={() => setSettling(e)}
                     />
                   </div>
@@ -471,7 +463,7 @@ function ExpensesList() {
         open={!!deleting}
         onOpenChange={(v) => !v && setDeleting(null)}
         title="Delete this expense?"
-        description="Removes the expense (the activity history keeps a line). You can undo it right after."
+        description="It waits in the Recycle Bin, where it can be restored."
         confirmLabel="Delete expense"
         destructive
         onConfirm={() => void remove()}
@@ -489,7 +481,8 @@ function Actions({
   item: Expense;
   view: () => void;
   edit: () => void;
-  remove: () => void;
+  /** Only when this login may delete expenses. */
+  remove?: (() => void) | undefined;
   settle: () => void;
 }) {
   return (
@@ -511,10 +504,14 @@ function Actions({
             <HandCoins /> Paid back to {item.paidBy}
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={remove} className="text-destructive focus:text-destructive">
-          <Trash2 /> Delete
-        </DropdownMenuItem>
+        {remove ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={remove} className="text-destructive focus:text-destructive">
+              <Trash2 /> Delete
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

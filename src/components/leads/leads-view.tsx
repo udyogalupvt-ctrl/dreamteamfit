@@ -8,10 +8,12 @@ import {
   Pencil,
   Phone,
   Plus,
+  Trash2,
   UserCheck,
   UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { SearchInput } from "@/components/common/search-input";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
@@ -37,8 +39,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useBin } from "@/hooks/use-bin";
+import { binLead } from "@/services/recycle-bin.service";
 import {
   Sheet,
   SheetContent,
@@ -92,6 +97,9 @@ export function LeadsView({
   const [viewingId, setViewingId] = useState<string | null>(null);
   const { openEnrollment } = useEnrollment();
   const [recording, setRecording] = useState<Inquiry | null>(null);
+  // Delete (owner, or a login given "Leads & follow-ups" delete): into the Recycle Bin.
+  const bin = useBin();
+  const [deleting, setDeleting] = useState<Inquiry | null>(null);
   const setConverting = (i: Inquiry) =>
     openEnrollment({
       inquiryId: i.id,
@@ -186,6 +194,17 @@ export function LeadsView({
             <UserPlus aria-hidden /> Convert to member
           </DropdownMenuItem>
         )}
+        {bin.canDelete("leads") ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onSelect={() => setDeleting(i)}
+            >
+              <Trash2 aria-hidden /> Delete
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -431,6 +450,20 @@ export function LeadsView({
         }
         onClose={() => setRecording(null)}
         onConvert={() => recording && setConverting(recording)}
+      />
+
+      <ConfirmDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        title={`Delete lead ${deleting?.name ?? ""}?`}
+        description="Its calls and follow-ups go with it. It waits in the Recycle Bin, where it can be restored."
+        confirmLabel="Delete lead"
+        destructive
+        onConfirm={() => {
+          const lead = deleting;
+          setDeleting(null);
+          if (lead) void bin.remove(`Lead ${lead.name}`, (by) => binLead(lead, by));
+        }}
       />
     </div>
   );

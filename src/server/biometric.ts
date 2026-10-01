@@ -43,7 +43,7 @@ const ENROLL_REQUEST_TTL_MS = 10 * 60 * 1000;
 /** Seconds between device polls. Each poll costs ~1 Firestore read (free plan: 50,000/day). */
 const POLL_DELAY_SECONDS = 15;
 /** App-side notes handled here on the server, never sent to a device. */
-const SERVER_TASKS = new Set(["door_check", "forget", "staff_off", "photo_sync"]);
+const SERVER_TASKS = new Set(["door_check", "forget", "bin_off", "staff_off", "photo_sync"]);
 /** Machine requests that expire if the machine doesn't pick them up in time. */
 const STALE_WHEN_LATE = new Set(["user_upsert", "import_check", "import_users", "import_fp"]);
 const STALE_AFTER_MS = 30 * 60 * 1000;
@@ -182,6 +182,12 @@ async function runServerTasks(tasks: QueryDocumentSnapshot[]) {
         );
       else if (d["type"] === "forget")
         await forgetDeletedMember(
+          String(d["clientId"]),
+          String(d["biometricUserId"] ?? ""),
+          String(d["deviceId"] ?? ""),
+        );
+      else if (d["type"] === "bin_off")
+        await removeFromDevice(
           String(d["clientId"]),
           String(d["biometricUserId"] ?? ""),
           String(d["deviceId"] ?? ""),
@@ -957,6 +963,38 @@ async function removeStaffFromDevice(staffId: string, pin: string, deviceId: str
 }
 
 /** A deleted member is removed from the device and their stored fingerprint is erased. */
+/**
+ * A member moved to the Recycle Bin: off the machine (the door stops opening for them), but their
+ * saved fingerprint and machine link are kept, so a restore lets them in again without a new scan.
+ */
+async function removeFromDevice(clientId: string, pin: string, deviceId: string) {
+  const firestore = db();
+  const device = deviceId
+    ? (await firestore.doc(`biometricDevices/${deviceId}`).get()).data()
+    : null;
+  if (!pin || device?.["integrationType"] !== "adms") return;
+  const now = FieldValue.serverTimestamp();
+  await firestore.collection("biometricCommands").add({
+    deviceId,
+    serialNumber: String(device["serialNumber"] ?? ""),
+    clientId,
+    enrollmentId: null,
+    biometricUserId: pin,
+    status: "pending",
+    door: true,
+    type: "delete_user",
+    order: 1,
+    command: `DATA DELETE USERINFO PIN=${pin}`,
+    cmdNo: null,
+    returnCode: null,
+    error: "",
+    sentAt: null,
+    completedAt: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 async function forgetDeletedMember(clientId: string, pin: string, deviceId: string) {
   const firestore = db();
   const device = deviceId

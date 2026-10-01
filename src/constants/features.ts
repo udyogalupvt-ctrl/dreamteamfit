@@ -1,4 +1,4 @@
-import type { StaffFeature } from "@/types/models";
+import type { DeleteSection, StaffFeature } from "@/types/models";
 
 /** What each switch on the staff login screen allows, in plain words. */
 export const FEATURE_META: Record<StaffFeature, { label: string; hint: string }> = {
@@ -28,7 +28,32 @@ export const FEATURE_META: Record<StaffFeature, { label: string; hint: string }>
   activity: { label: "Activity log", hint: "Who did what" },
   devices: { label: "Fingerprint devices", hint: "Add and set up devices" },
   settings: { label: "Settings & WhatsApp", hint: "Gym details, WhatsApp, reminders" },
-  deleteMembers: { label: "Delete members", hint: "Remove a member completely" },
+  deleteMembers: { label: "Members", hint: "Members with their plans, bills and visits" },
+  deleteLeads: { label: "Leads & follow-ups", hint: "Leads, their calls and follow-ups" },
+  deleteBills: { label: "Bills", hint: "Bills with their payments" },
+  deletePackages: {
+    label: "Packages, trainers & plans",
+    hint: "Gym / PT packages, trainers, workout and diet plans",
+  },
+  deleteExpenses: { label: "Expenses", hint: "Expenses and their payments" },
+};
+
+/** Delete rights (each section): only the owner by default, granted per login on the Staff page. */
+export const DELETE_FEATURES: StaffFeature[] = [
+  "deleteMembers",
+  "deleteLeads",
+  "deleteBills",
+  "deletePackages",
+  "deleteExpenses",
+];
+/** Which delete right covers a section. Staff (people who work here): owners only. */
+export const DELETE_FEATURE_OF: Record<DeleteSection, StaffFeature | "owner"> = {
+  members: "deleteMembers",
+  leads: "deleteLeads",
+  bills: "deleteBills",
+  packages: "deletePackages",
+  expenses: "deleteExpenses",
+  staff: "owner",
 };
 
 /** Features a new front-desk login starts with. */
@@ -68,6 +93,7 @@ const PAGE_FEATURES: [prefix: string, feature: StaffFeature | "owner"][] = [
   ["/settings", "settings"],
   ["/whatsapp-usage", "settings"],
   ["/staff", "owner"],
+  ["/recycle-bin", "owner"],
 ];
 
 export function featureForPath(pathname: string): StaffFeature | "owner" | null {

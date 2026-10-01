@@ -1,15 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Loader2, Trash2 } from "lucide-react";
-import { toast } from "sonner";
-import { Field, FormDialog } from "@/components/common/form-dialog";
+import { Trash2 } from "lucide-react";
+import { FormDialog } from "@/components/common/form-dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { firestoreErrorMessage } from "@/services/firestore.service";
-import { deleteMemberCompletely } from "@/services/member-delete.service";
+import { useBin } from "@/hooks/use-bin";
+import { binMember } from "@/services/recycle-bin.service";
 import type { Client } from "@/types/models";
 
+/** Delete a member: into the Recycle Bin with everything that belongs to them (restorable). */
 export function DeleteMemberDialog({
   client,
   open,
@@ -20,54 +19,40 @@ export function DeleteMemberDialog({
   onOpenChange: (v: boolean) => void;
 }) {
   const navigate = useNavigate();
-  const [typed, setTyped] = useState("");
+  const bin = useBin();
   const [keepAccounts, setKeepAccounts] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const matches = typed.trim().toLowerCase() === client.fullName.trim().toLowerCase();
 
   const remove = async () => {
-    setBusy(true);
-    try {
-      const r = await deleteMemberCompletely(client, { keepAccounts });
-      toast.success(`${client.fullName} deleted`, {
-        description: `${r.records} records removed${r.keptAccounts ? " · bills & payments kept" : ""}. The deletion stays in the activity log.`,
-      });
-      onOpenChange(false);
-      void navigate({ to: "/clients" });
-    } catch (e) {
-      toast.error("Couldn't delete the member", { description: firestoreErrorMessage(e) });
-    } finally {
-      setBusy(false);
-    }
+    const ok = await bin.remove(client.fullName, (by) => binMember(client, { keepAccounts }, by));
+    if (!ok) return;
+    onOpenChange(false);
+    void navigate({ to: "/clients" });
   };
 
   return (
     <FormDialog
       open={open}
-      onOpenChange={(o) => {
-        if (!o) setTyped("");
-        onOpenChange(o);
-      }}
+      onOpenChange={onOpenChange}
       title={`Delete ${client.fullName}?`}
-      description="This removes the member completely and can't be undone."
+      description="They go to the Recycle Bin with everything that belongs to them, and can be restored from there."
       footer={
         <>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button variant="destructive" disabled={!matches || busy} onClick={() => remove()}>
-            {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Trash2 aria-hidden />}{" "}
-            Delete forever
+          <Button variant="destructive" onClick={() => remove()}>
+            <Trash2 aria-hidden /> Delete member
           </Button>
         </>
       }
     >
       <div className="space-y-4 text-sm">
         <ul className="list-disc space-y-1 pl-5">
-          <li>Profile, plans, PT, visits, calls, bookings and messages are deleted.</li>
-          <li>Their member app stops working; its chat and daily ticks are deleted.</li>
-          <li>They are removed from the fingerprint device and their saved thumb is erased.</li>
-          <li>The activity log keeps a permanent “Member deleted” line with who did it.</li>
+          <li>Profile, plans, PT, visits, calls, bookings and messages leave every list.</li>
+          <li>Their thumb stops opening the door; their member app stops working.</li>
+          <li>
+            Restore brings everything back, and their thumb works again without a new scan.
+          </li>
         </ul>
         <label className="flex items-start gap-3 rounded-xl border border-border p-3">
           <Checkbox
@@ -82,14 +67,6 @@ export function DeleteMemberDialog({
             </span>
           </span>
         </label>
-        <Field label={`Type “${client.fullName}” to confirm`} htmlFor="del-name">
-          <Input
-            id="del-name"
-            autoComplete="off"
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-          />
-        </Field>
       </div>
     </FormDialog>
   );

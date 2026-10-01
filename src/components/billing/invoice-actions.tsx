@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   Printer,
   Send,
+  Trash2,
 } from "lucide-react";
 import { toastWithUndo } from "@/lib/undo-toast";
 import { toast } from "sonner";
@@ -18,9 +19,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { FormDialog, Field } from "@/components/common/form-dialog";
+import { useBin } from "@/hooks/use-bin";
+import { binBill } from "@/services/recycle-bin.service";
 import { getInvoicePublicUrl } from "@/lib/invoice-utils";
 import { manualWhatsAppUrl } from "@/lib/invoice-share";
 import { formatPrice } from "@/lib/format";
@@ -55,6 +60,9 @@ export function InvoiceActions({
   const business = useLive(subscribeBusinessSettings, DEFAULT_BILLING_SETTINGS, []);
   const [paying, setPaying] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Delete (owner, or a login given "Bills" delete): into the Recycle Bin.
+  const bin = useBin();
+  const [deleting, setDeleting] = useState(false);
   const url = getInvoicePublicUrl(invoice);
   const due = invoice.balanceDue > 0 && invoice.paymentStatus !== "refunded";
 
@@ -146,9 +154,32 @@ export function InvoiceActions({
           <DropdownMenuItem onSelect={() => window.open(url, "_blank", "noopener,noreferrer")}>
             <Printer aria-hidden /> Print
           </DropdownMenuItem>
+          {bin.canDelete("bills") ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={() => setDeleting(true)}
+              >
+                <Trash2 aria-hidden /> Delete bill
+              </DropdownMenuItem>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
       <BalancePaymentDialog invoice={invoice} open={paying} onOpenChange={setPaying} />
+      <ConfirmDialog
+        open={deleting}
+        onOpenChange={setDeleting}
+        title={`Delete bill ${invoice.invoiceNumber}?`}
+        description={`Its payments${invoice.amountPaid ? ` (${formatPrice(invoice.amountPaid)})` : ""} and the trainer's share from it go with it, so Collected and the Day Book drop by them. The plans on it stay: cancel them on the member's Plan tab if needed. It waits in the Recycle Bin, where it can be restored.`}
+        confirmLabel="Delete bill"
+        destructive
+        onConfirm={() => {
+          setDeleting(false);
+          void bin.remove(`Bill ${invoice.invoiceNumber}`, (by) => binBill(invoice, by));
+        }}
+      />
     </div>
   );
 }

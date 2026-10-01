@@ -3,6 +3,7 @@ import {
   doc,
   documentId,
   getAggregateFromServer,
+  getCountFromServer,
   getDocs,
   onSnapshot,
   orderBy,
@@ -138,18 +139,52 @@ export const subscribeManualIncomeSince = (
  * imported without payment records count their paid amount.
  */
 export async function allTimeCollected() {
+  // A sum over filtered bills needs a database index the gym's project doesn't have (it failed
+  // there, leaving "Total collected" on "…"): counts and an unfiltered sum need none.
   const [payments, bills, tracked] = await Promise.all([
     getAggregateFromServer(col(COLLECTIONS.payments), { total: sum("amount") }),
-    getAggregateFromServer(col(COLLECTIONS.invoices), { paid: sum("amountPaid") }),
-    getAggregateFromServer(query(col(COLLECTIONS.invoices), where("paymentsTracked", "==", true)), {
-      paid: sum("amountPaid"),
-    }),
+    getCountFromServer(col(COLLECTIONS.invoices)),
+    getCountFromServer(query(col(COLLECTIONS.invoices), where("paymentsTracked", "==", true))),
   ]);
-  return round(
-    Number(payments.data().total ?? 0) +
-      Number(bills.data().paid ?? 0) -
-      Number(tracked.data().paid ?? 0),
+  const paid = Number(payments.data().total ?? 0);
+  const all = bills.data().count;
+  const withPayments = tracked.data().count;
+  // Usually every bill has its payments recorded: the payments are the whole story.
+  if (all === withPayments) return round(paid);
+  // Bills paid before payments were recorded (old data) count what they say was paid.
+  const paidOn = (docs: { data: () => DocumentData }[]) =>
+    docs.reduce(
+      (n, d) => n + (d.data()["paymentsTracked"] ? 0 : Number(d.data()["amountPaid"] ?? 0)),
+      0,
+    );
+  const old = await getDocs(
+    query(col(COLLECTIONS.invoices), where("paymentsTracked", "==", false)),
   );
+  if (old.size + withPayments >= all) return round(paid + paidOn(old.docs));
+  // Some are older still (no such field at all): read the bills once to find them.
+  return round(paid + paidOn((await getDocs(col(COLLECTIONS.invoices))).docs));
+}
+
+/**
+ * Money collected in each of the last `months` months (refunds taken off), newest first. The
+ * payments are read once and added up here: a database sum per month would need an index the
+ * gym's project doesn't have.
+ */
+export async function collectedByMonth(months = 6) {
+  const now = new Date();
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const from = iso(new Date(now.getFullYear(), now.getMonth() - (months - 1), 1));
+  const snap = await getDocs(query(col(COLLECTIONS.payments), where("paymentDate", ">=", from)));
+  const byMonth = new Map<string, number>();
+  snap.docs.forEach((d) => {
+    const m = String(d.data()["paymentDate"] ?? "").slice(0, 7);
+    byMonth.set(m, (byMonth.get(m) ?? 0) + Number(d.data()["amount"] ?? 0));
+  });
+  return Array.from({ length: months }, (_, i) => {
+    const month = iso(new Date(now.getFullYear(), now.getMonth() - i, 1)).slice(0, 7);
+    return { month, total: round(byMonth.get(month) ?? 0) };
+  });
 }
 
 export const subscribeManualIncome = (ok: (x: ManualIncome[]) => void, fail: (e: Error) => void) =>

@@ -9,9 +9,11 @@ import {
   Pencil,
   Plus,
   Power,
+  Trash2,
   UserCog,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { Field, FormDialog } from "@/components/common/form-dialog";
@@ -29,9 +31,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { DEFAULT_STAFF_FEATURES, FEATURE_META } from "@/constants/features";
+import { DEFAULT_STAFF_FEATURES, DELETE_FEATURES, FEATURE_META } from "@/constants/features";
+import { useBin } from "@/hooks/use-bin";
 import { useLive } from "@/hooks/use-live-query";
 import { toastWithUndo } from "@/lib/undo-toast";
+import { binStaff } from "@/services/recycle-bin.service";
 import { formatPrice, todayISO } from "@/lib/format";
 import { subscribeDevices } from "@/services/biometric-devices.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
@@ -83,6 +87,9 @@ function StaffPage() {
     setLogin(s);
   }, [loginNext, staff.data]);
   const accessOf = (s: Staff) => access.data.find((a) => a.uid === s.loginUid);
+  // Delete (owners only): into the Recycle Bin; login off and thumb off the machine.
+  const bin = useBin();
+  const [deleting, setDeleting] = useState<Staff | null>(null);
   const payOf = (s: Staff) => pay.data.find((p) => p.staffId === s.id);
 
   const toggleActive = async (s: Staff) => {
@@ -198,6 +205,17 @@ function StaffPage() {
                   <Button size="sm" variant="ghost" onClick={() => toggleActive(s)}>
                     <Power aria-hidden /> {s.active ? "Mark as left" : "Make active"}
                   </Button>
+                  {bin.canDelete("staff") ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      aria-label={`Delete ${s.name}`}
+                      onClick={() => setDeleting(s)}
+                    >
+                      <Trash2 aria-hidden />
+                    </Button>
+                  ) : null}
                 </div>
               </article>
             );
@@ -213,6 +231,19 @@ function StaffPage() {
       <ThumbDialog
         staff={thumb ? (staff.data.find((s) => s.id === thumb.id) ?? thumb) : null}
         onClose={() => setThumb(null)}
+      />
+      <ConfirmDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        title={`Delete ${deleting?.name ?? ""}?`}
+        description="Their login stops and their thumb leaves the fingerprint machine. Attendance and salary history stay. They wait in the Recycle Bin, where they can be restored (register their thumb again then)."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => {
+          const s = deleting;
+          setDeleting(null);
+          if (s) void bin.remove(s.name, (by) => binStaff(s, accessOf(s), by));
+        }}
       />
     </div>
   );
@@ -585,7 +616,7 @@ function LoginDialog({
         {!admin ? (
           <fieldset className="grid gap-2">
             <legend className="text-label mb-1">Features this login can use</legend>
-            {STAFF_FEATURES.map((f) => (
+            {STAFF_FEATURES.filter((f) => !DELETE_FEATURES.includes(f)).map((f) => (
               <label
                 key={f}
                 className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:bg-accent"
@@ -604,6 +635,39 @@ function LoginDialog({
             ))}
           </fieldset>
         ) : null}
+        {/* Delete rights: only the owner by default, not part of "All features". */}
+        <fieldset className="grid gap-2">
+          <legend className="text-label mb-1">Can delete (it goes to the Recycle Bin)</legend>
+          <p className="text-meta -mt-1">
+            Off for everyone but you unless you tick it. You see who deleted what in the Recycle
+            Bin, and can put it back.
+          </p>
+          <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-3 hover:bg-accent">
+            <Checkbox
+              checked={DELETE_FEATURES.every((f) => features.includes(f))}
+              onCheckedChange={(v) => DELETE_FEATURES.forEach((f) => toggle(f, v === true))}
+              aria-label="Delete in every section"
+            />
+            <span className="text-sm font-semibold">Every section</span>
+          </label>
+          {DELETE_FEATURES.map((f) => (
+            <label
+              key={f}
+              className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:bg-accent"
+            >
+              <Checkbox
+                checked={features.includes(f)}
+                onCheckedChange={(v) => toggle(f, v === true)}
+                aria-label={`Delete ${FEATURE_META[f].label}`}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="block text-sm font-semibold">{FEATURE_META[f].label}</span>
+                <span className="text-meta">{FEATURE_META[f].hint}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
       </div>
     </FormDialog>
   );

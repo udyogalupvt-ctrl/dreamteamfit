@@ -17,6 +17,7 @@ import {
   ReceiptIndianRupee,
   Salad,
   Settings,
+  Trash2,
   UserCog,
   UserPlus,
   Users,
@@ -132,6 +133,7 @@ export const NAV_ITEMS: NavItem[] = [
     feature: "settings",
     group: "Management",
   },
+  { label: "Recycle Bin", to: "/recycle-bin", icon: Trash2, feature: "owner", group: "Management" },
 ];
 
 /** Bottom bar on phones; the centre "+" button sits between these. */

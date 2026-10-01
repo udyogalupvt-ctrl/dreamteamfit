@@ -1,14 +1,11 @@
 import {
   addDoc,
-  deleteDoc,
   doc,
-  getDoc,
   getDocs,
   limit,
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
   updateDoc,
   where,
   type DocumentData,
@@ -16,6 +13,7 @@ import {
 import { db } from "@/lib/firebase";
 import type { GymPackage } from "@/types/models";
 import { col, COLLECTIONS, subscribeCollection, toDate } from "./firestore.service";
+import { binSimple, type Deleter } from "./recycle-bin.service";
 
 export type PackageInput = Pick<
   GymPackage,
@@ -70,17 +68,12 @@ export async function isPackageInUse(id: string) {
   return !snap.empty;
 }
 
-export async function deletePackage(id: string) {
-  if (await isPackageInUse(id)) {
+/** Into the Recycle Bin (restorable); not when memberships use it (deactivate it instead). */
+export async function deletePackage(pkg: { id: string; name: string }, by: Deleter) {
+  if (await isPackageInUse(pkg.id)) {
     throw new Error(
       "This package is used by existing memberships. Deactivate it instead to keep history intact.",
     );
   }
-  const ref = doc(db, COLLECTIONS.packages, id);
-  const saved = (await getDoc(ref)).data();
-  await deleteDoc(ref);
-  /** Undo: the package comes back exactly as it was. */
-  return async () => {
-    if (saved) await setDoc(ref, saved);
-  };
+  return binSimple(COLLECTIONS.packages, pkg.id, `Package: ${pkg.name}`, by);
 }

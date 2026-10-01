@@ -3,7 +3,8 @@ import { isOwnerEmail } from "@/constants/owners";
 import { useAuth } from "@/hooks/use-auth";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "@/lib/firestore";
-import type { StaffAccess, StaffFeature } from "@/types/models";
+import { DELETE_FEATURE_OF } from "@/constants/features";
+import type { DeleteSection, StaffAccess, StaffFeature } from "@/types/models";
 
 interface AccessValue {
   loading: boolean;
@@ -15,6 +16,13 @@ interface AccessValue {
   active: boolean;
   staffId: string;
   can: (feature: StaffFeature | "owner") => boolean;
+  /**
+   * May delete in this section (into the Recycle Bin). Only the owner by default: a staff login
+   * needs the section's delete right granted on the Staff page (not included in "All features").
+   */
+  canDelete: (section: DeleteSection) => boolean;
+  /** "Owner" / "Manager" / "Staff", for the Recycle Bin's "deleted by" stamp. */
+  role: string;
 }
 
 const AccessContext = createContext<AccessValue | null>(null);
@@ -28,12 +36,15 @@ export function AccessProvider({ children }: { children: ReactNode }) {
     access: null,
   });
 
+  // A dropped connection must not leave a staff login looking switched off: listen again.
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (owner || !user) {
       setState({ loading: false, access: null });
       return;
     }
-    return onSnapshot(
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = onSnapshot(
       doc(db, "staffAccess", user.uid),
       (snap) => {
         const d = snap.data();
@@ -54,9 +65,16 @@ export function AccessProvider({ children }: { children: ReactNode }) {
             : null,
         });
       },
-      () => setState({ loading: false, access: null }),
+      () => {
+        setState((s) => (s.access ? s : { loading: false, access: null }));
+        timer = setTimeout(() => setRetry((n) => n + 1), 5000);
+      },
     );
-  }, [owner, user]);
+    return () => {
+      clearTimeout(timer);
+      stop();
+    };
+  }, [owner, user, retry]);
 
   const value = useMemo<AccessValue>(() => {
     const a = state.access;
@@ -69,6 +87,11 @@ export function AccessProvider({ children }: { children: ReactNode }) {
       active,
       staffId: a?.staffId ?? "",
       can: (f) => (f === "owner" ? owner : admin || (active && !!a?.permissions.includes(f))),
+      canDelete: (section) => {
+        const f = DELETE_FEATURE_OF[section];
+        return owner || (f !== "owner" && active && !!a?.permissions.includes(f));
+      },
+      role: owner ? "Owner" : admin ? "Manager" : "Staff",
     };
   }, [owner, state]);
 

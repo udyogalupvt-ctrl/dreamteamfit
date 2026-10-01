@@ -99,7 +99,26 @@ service cloud.firestore {
       allow create: if isStaff();
       allow read: if can('finance') || can('packages');
       allow update: if can('finance');
-      allow delete: if can('finance') || can('deleteMembers');
+      allow delete: if can('finance') || can('deleteMembers') || can('deleteBills');
+    }
+
+    // Recycle Bin: what was deleted waits here, stamped with who deleted it and when, until the
+    // owner restores it or deletes it forever. Whoever may delete puts things in (under their own
+    // account); a staff login reads and can undo only its own; the owner sees everything.
+    // (A new entry is looked up before it's written: reading one that doesn't exist yet is fine.)
+    match /recycleBin/{id} {
+      allow create: if isStaff() && request.resource.data.deletedByUid == request.auth.uid;
+      allow read: if isOwner()
+        || (isStaff() && (resource == null || resource.data.deletedByUid == request.auth.uid));
+      allow update, delete: if isOwner()
+        || (isStaff() && resource.data.deletedByUid == request.auth.uid);
+    }
+    match /recycleBinItems/{id} {
+      allow create: if isStaff() && request.resource.data.deletedByUid == request.auth.uid;
+      allow read: if isOwner()
+        || (isStaff() && (resource == null || resource.data.deletedByUid == request.auth.uid));
+      allow delete: if isOwner()
+        || (isStaff() && resource.data.deletedByUid == request.auth.uid);
     }
 
     // Staff: names for the counsellor list; only owners change staff; pay is finance-only.

@@ -61,8 +61,16 @@ function actor() {
 
 type Extra = { ref: DocumentReference; data: D };
 
-/** Log lines and door notes for a set of writes whose "before" state is known. */
-function sideWrites(ops: { op: Op; before: D | null }[]): Extra[] {
+/** A batch that also files a Recycle Bin entry: its deletes are "moved to the bin", not gone. */
+const fillsBin = (ops: Op[]) =>
+  ops.some((o) => o.kind === "set" && collectionOf(o.ref) === "recycleBin");
+
+/**
+ * Log lines and door notes for a set of writes whose "before" state is known. `binned`: the
+ * deletes go to the Recycle Bin, so a member leaves the fingerprint machine but their saved
+ * fingerprint is kept for a restore ("bin_off"); deleting for good erases it ("forget").
+ */
+function sideWrites(ops: { op: Op; before: D | null }[], binned = false): Extra[] {
   const out: Extra[] = [];
   const logs = fs.collection(db, "auditLogs");
   const commands = fs.collection(db, "biometricCommands");
@@ -131,7 +139,7 @@ function sideWrites(ops: { op: Op; before: D | null }[]): Extra[] {
         note("photo_sync", op.ref.id);
       if (!after && before["biometricUserId"])
         note(
-          "forget",
+          binned ? "bin_off" : "forget",
           op.ref.id,
           String(before["biometricUserId"]),
           String(before["biometricDeviceId"] ?? ""),
@@ -184,18 +192,20 @@ async function commitWithLog(ops: Op[], apply: (b: WriteBatch) => void) {
     // Big batches: still log each member deletion by name, the rest as one line.
     const members = ops.filter((o) => collectionOf(o.ref) === "clients");
     const befores = await Promise.all(members.map(beforeOf));
-    sideWrites(members.map((op, i) => ({ op, before: befores[i] ?? null }))).forEach((x) =>
-      batch.set(x.ref, x.data),
-    );
+    sideWrites(
+      members.map((op, i) => ({ op, before: befores[i] ?? null })),
+      fillsBin(ops),
+    ).forEach((x) => batch.set(x.ref, x.data));
     const log = bulkLine(ops.filter((o) => collectionOf(o.ref) !== "clients"));
     // The bulk line goes in a separate write when the batch is already at Firestore's limit.
     if (ops.length + members.length + 2 <= 500) batch.set(log.ref, log.data);
     else await fs.setDoc(log.ref, log.data);
   } else {
     const befores = await Promise.all(ops.map(beforeOf));
-    sideWrites(ops.map((op, i) => ({ op, before: befores[i] ?? null }))).forEach((x) =>
-      batch.set(x.ref, x.data),
-    );
+    sideWrites(
+      ops.map((op, i) => ({ op, before: befores[i] ?? null })),
+      fillsBin(ops),
+    ).forEach((x) => batch.set(x.ref, x.data));
   }
   await batch.commit();
 }

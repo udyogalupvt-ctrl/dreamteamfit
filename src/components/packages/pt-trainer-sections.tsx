@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Dumbbell, Pencil, Plus, Power, UserRound } from "lucide-react";
+import { Dumbbell, Pencil, Plus, Power, Trash2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { PageHeader } from "@/components/common/page-header";
 import { SearchInput } from "@/components/common/search-input";
 import { EmptyState } from "@/components/common/empty-state";
@@ -20,8 +21,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useBin } from "@/hooks/use-bin";
 import { useLive } from "@/hooks/use-live-query";
 import { formatPrice, todayISO } from "@/lib/format";
+import { binTrainer } from "@/services/recycle-bin.service";
 import { cn } from "@/lib/utils";
 import {
   calculateShare,
@@ -304,6 +307,9 @@ export function TrainersSection() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
   const [editing, setEditing] = useState<Trainer | null | "new">(null);
+  // Delete (owner, or a login given "Packages, trainers & plans" delete): into the Recycle Bin.
+  const bin = useBin();
+  const [deleting, setDeleting] = useState<Trainer | null>(null);
   const rows = live.data.filter(
     (t) =>
       (status === "all" || t.status === status) &&
@@ -406,6 +412,17 @@ export function TrainersSection() {
                   <Button size="sm" variant="outline" onClick={() => toggle(t)}>
                     <Power /> {t.status === "active" ? "Deactivate" : "Activate"}
                   </Button>
+                  {bin.canDelete("packages") ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      aria-label={`Delete ${t.name}`}
+                      onClick={() => setDeleting(t)}
+                    >
+                      <Trash2 />
+                    </Button>
+                  ) : null}
                 </div>
               </article>
             );
@@ -413,6 +430,19 @@ export function TrainersSection() {
         </div>
       )}
       <TrainerDialog item={editing} onClose={() => setEditing(null)} />
+      <ConfirmDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        title={`Delete trainer ${deleting?.name ?? ""}?`}
+        description="Their trainer app stops working. Their PT plans and payouts stay as they are. The trainer waits in the Recycle Bin, where they can be restored."
+        confirmLabel="Delete trainer"
+        destructive
+        onConfirm={() => {
+          const t = deleting;
+          setDeleting(null);
+          if (t) void bin.remove(`Trainer ${t.name}`, (by) => binTrainer(t, by));
+        }}
+      />
     </div>
   );
 }

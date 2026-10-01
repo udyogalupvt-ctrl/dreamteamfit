@@ -21,6 +21,8 @@ export const AUDIT_SKIP = new Set([
   "publicInvoices",
   "expenseActivities",
   "importBatches",
+  // The Recycle Bin's copies of deleted records (the bin entry itself is logged).
+  "recycleBinItems",
 ]);
 const NOISE = new Set([
   "updatedAt",
@@ -234,6 +236,13 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
       return `Trainer ${action}: ${s(d["name"])}${action === "updated" ? ` (${f.join(", ")})` : ""}`;
     case "biometricDevices":
       return `Fingerprint device ${action}: ${s(d["name"])}${action === "updated" ? ` (${f.join(", ")})` : ""}`;
+    case "recycleBin":
+      if (action === "created") return `Moved to Recycle Bin: ${s(d["label"])}`;
+      if (action === "deleted")
+        return b["restoredBy"]
+          ? `Restored from Recycle Bin: ${s(d["label"])}`
+          : `Deleted forever from Recycle Bin: ${s(d["label"])}`;
+      return null;
     default:
       return `${col} ${action}${action === "updated" ? `: ${f.join(", ")}` : ""}`;
   }
