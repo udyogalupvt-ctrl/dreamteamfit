@@ -822,6 +822,11 @@ export interface Trainer extends BaseDoc {
    */
   counsellorStaffId: string;
   portalActive: boolean;
+  /**
+   * The Staff page entry (role "Trainer") this trainer comes from: their name, phone and active /
+   * left are set there, the PT share and the rest here. "" = an older trainer added only here.
+   */
+  staffId: string;
 }
 export const PT_ASSIGNMENT_STATUSES = ["pending", "active", "completed", "cancelled"] as const;
 export type PtAssignmentStatus = (typeof PT_ASSIGNMENT_STATUSES)[number];

@@ -31,15 +31,18 @@ import {
   PT_DURATION_LABELS,
   PT_SCHEDULE_LABELS,
   savePtPackage,
+  saveStaffTrainerProfile,
   saveTrainer,
   subscribePtPackages,
   subscribeTrainers,
+  syncStaffTrainers,
   type PtPackageInput,
   type TrainerInput,
 } from "@/services/pt.service";
 import { DurationFields } from "@/components/packages/duration-fields";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import { subscribeStaff } from "@/services/staff.service";
+import { useAccess } from "@/hooks/use-access";
+import { saveStaff, subscribeStaff } from "@/services/staff.service";
 import {
   PT_DURATION_TYPES,
   type PtDurationType,
@@ -304,6 +307,14 @@ function PtPackageDialog({
 
 export function TrainersSection() {
   const live = useLive(subscribeTrainers, [], []);
+  // Trainers are added once, on the Staff page (role "Trainer"); their profile here follows it.
+  const staff = useLive(subscribeStaff, [], []);
+  const { can, owner } = useAccess();
+  const mayWrite = can("packages");
+  useEffect(() => {
+    if (!mayWrite || live.loading || staff.loading) return;
+    void syncStaffTrainers(staff.data, live.data).catch(() => undefined);
+  }, [mayWrite, staff.data, live.data, live.loading, staff.loading]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
   const [editing, setEditing] = useState<Trainer | null | "new">(null);
@@ -329,12 +340,14 @@ export function TrainersSection() {
     <div className="space-y-5">
       <PageHeader
         title="Trainers"
-        description="Trainer profiles and default PT share (percentage or fixed)."
+        description="Everyone on the Staff page with the role Trainer is here. Set their PT share (percentage or fixed) and the rest here."
         breadcrumbs={crumbs}
         actions={
-          <Button onClick={() => setEditing("new")}>
-            <Plus /> New trainer
-          </Button>
+          owner ? (
+            <Button onClick={() => setEditing("new")}>
+              <Plus /> New trainer
+            </Button>
+          ) : null
         }
       />
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_200px]">
@@ -365,9 +378,11 @@ export function TrainersSection() {
           title="No trainers"
           description="Add trainers to assign PT and track payouts."
           action={
-            <Button onClick={() => setEditing("new")}>
-              <Plus /> New trainer
-            </Button>
+            owner ? (
+              <Button onClick={() => setEditing("new")}>
+                <Plus /> New trainer
+              </Button>
+            ) : undefined
           }
         />
       ) : (
@@ -390,9 +405,14 @@ export function TrainersSection() {
                     </p>
                   </div>
                   <StatusPill tone={t.status === "active" ? "success" : "warning"}>
-                    {t.status}
+                    {t.staffId ? (t.status === "active" ? "active" : "left") : t.status}
                   </StatusPill>
                 </div>
+                {!t.defaultTrainerShare ? (
+                  <p className="mt-3">
+                    <StatusPill tone="warning">Set PT share</StatusPill>
+                  </p>
+                ) : null}
                 <p className="mt-3 text-sm">
                   Share:{" "}
                   <b>
@@ -409,10 +429,13 @@ export function TrainersSection() {
                   <Button size="sm" variant="outline" onClick={() => setEditing(t)}>
                     <Pencil /> Edit
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => toggle(t)}>
-                    <Power /> {t.status === "active" ? "Deactivate" : "Activate"}
-                  </Button>
-                  {bin.canDelete("packages") ? (
+                  {/* From the Staff page: active / left and deleting are done there. */}
+                  {t.staffId ? null : (
+                    <Button size="sm" variant="outline" onClick={() => toggle(t)}>
+                      <Power /> {t.status === "active" ? "Deactivate" : "Activate"}
+                    </Button>
+                  )}
+                  {!t.staffId && bin.canDelete("packages") ? (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -461,8 +484,11 @@ function TrainerDialog({ item, onClose }: { item: Trainer | null | "new"; onClos
     defaultTrainerShare: 0,
     notes: "",
     counsellorStaffId: "",
+    staffId: "",
   };
   const staffList = useLive(subscribeStaff, [], []);
+  // Linked to the Staff page: name, phone and active / left are changed there.
+  const fromStaff = item && item !== "new" && !!item.staffId;
   const [f, setF] = useState<TrainerInput>(blank);
   const [err, setErr] = useState("");
   useEffect(() => {
@@ -479,11 +505,31 @@ function TrainerDialog({ item, onClose }: { item: Trainer | null | "new"; onClos
     )
       return setErr("Share percentage must be 0–100");
     try {
-      await saveTrainer(
-        { ...f, name: f.name.trim() },
-        item && item !== "new" ? item.id : undefined,
-      );
-      toast.success("Trainer saved");
+      if (item === "new") {
+        // Added once: on the Staff page (role Trainer) and here, with the PT share.
+        const joiningDate = f.joiningDate || todayISO();
+        const staffId = await saveStaff({
+          name: f.name.trim(),
+          phone: f.phone.trim(),
+          role: "Trainer",
+          joiningDate,
+          active: true,
+          isCounsellor: false,
+        });
+        await saveStaffTrainerProfile(
+          { id: staffId, name: f.name.trim(), phone: f.phone.trim(), joiningDate },
+          {
+            specialization: f.specialization,
+            defaultShareType: f.defaultShareType,
+            defaultTrainerShare: f.defaultTrainerShare,
+            notes: f.notes,
+          },
+        );
+        toast.success("Trainer added", { description: "Also on the Staff page (role Trainer)." });
+      } else {
+        await saveTrainer({ ...f, name: f.name.trim() }, item ? item.id : undefined);
+        toast.success("Trainer saved");
+      }
       onClose();
     } catch (e) {
       toast.error(firestoreErrorMessage(e));
@@ -509,20 +555,29 @@ function TrainerDialog({ item, onClose }: { item: Trainer | null | "new"; onClos
             {err}
           </p>
         ) : null}
-        <Field label="Name" htmlFor="t-name" required>
-          <Input
-            id="t-name"
-            value={f.name}
-            onChange={(e) => setF({ ...f, name: e.target.value })}
-          />
-        </Field>
-        <Field label="Phone" htmlFor="t-phone">
-          <Input
-            id="t-phone"
-            value={f.phone}
-            onChange={(e) => setF({ ...f, phone: e.target.value })}
-          />
-        </Field>
+        {fromStaff ? (
+          <p className="rounded-xl bg-muted p-3 text-sm sm:col-span-2">
+            <b>{f.name}</b> · {f.phone || "no phone"}. Name, phone and active / left are changed on
+            the Staff page; the PT share and the rest here.
+          </p>
+        ) : (
+          <>
+            <Field label="Name" htmlFor="t-name" required>
+              <Input
+                id="t-name"
+                value={f.name}
+                onChange={(e) => setF({ ...f, name: e.target.value })}
+              />
+            </Field>
+            <Field label="Phone" htmlFor="t-phone">
+              <Input
+                id="t-phone"
+                value={f.phone}
+                onChange={(e) => setF({ ...f, phone: e.target.value })}
+              />
+            </Field>
+          </>
+        )}
         <Field label="Email" htmlFor="t-email">
           <Input
             id="t-email"
@@ -545,20 +600,22 @@ function TrainerDialog({ item, onClose }: { item: Trainer | null | "new"; onClos
             onChange={(e) => setF({ ...f, joiningDate: e.target.value })}
           />
         </Field>
-        <Field label="Status" htmlFor="t-status">
-          <Select
-            value={f.status}
-            onValueChange={(v) => setF({ ...f, status: v as Trainer["status"] })}
-          >
-            <SelectTrigger id="t-status" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="inactive">Inactive</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
+        {fromStaff || item === "new" ? null : (
+          <Field label="Status" htmlFor="t-status">
+            <Select
+              value={f.status}
+              onValueChange={(v) => setF({ ...f, status: v as Trainer["status"] })}
+            >
+              <SelectTrigger id="t-status" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+        )}
         <Field label="Default share type" htmlFor="t-stype">
           <Select
             value={f.defaultShareType}
@@ -585,32 +642,34 @@ function TrainerDialog({ item, onClose }: { item: Trainer | null | "new"; onClos
             onChange={(e) => setF({ ...f, defaultTrainerShare: Number(e.target.value) })}
           />
         </Field>
-        <Field
-          label="Counsellor profile (for calls in the trainer app)"
-          htmlFor="t-counsellor"
-          className="sm:col-span-2"
-          hint="Leads and members counselled by this staff profile show in the trainer's Calls. Automatic = the staff member with the same phone number."
-        >
-          <Select
-            value={f.counsellorStaffId || AUTO}
-            onValueChange={(v) => setF({ ...f, counsellorStaffId: v === AUTO ? "" : v })}
+        {fromStaff || item === "new" ? null : (
+          <Field
+            label="Counsellor profile (for calls in the trainer app)"
+            htmlFor="t-counsellor"
+            className="sm:col-span-2"
+            hint="Leads and members counselled by this staff profile show in the trainer's Calls. Automatic = the staff member with the same phone number."
           >
-            <SelectTrigger id="t-counsellor" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={AUTO}>Automatic (same phone number)</SelectItem>
-              {staffList.data
-                .filter((s) => s.active)
-                .map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                    {s.isCounsellor ? " · counsellor" : ""}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        </Field>
+            <Select
+              value={f.counsellorStaffId || AUTO}
+              onValueChange={(v) => setF({ ...f, counsellorStaffId: v === AUTO ? "" : v })}
+            >
+              <SelectTrigger id="t-counsellor" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={AUTO}>Automatic (same phone number)</SelectItem>
+                {staffList.data
+                  .filter((s) => s.active)
+                  .map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                      {s.isCounsellor ? " · counsellor" : ""}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        )}
         <Field label="Notes" htmlFor="t-notes" className="sm:col-span-2">
           <Textarea
             id="t-notes"
