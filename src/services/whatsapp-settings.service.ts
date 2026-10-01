@@ -34,7 +34,7 @@ export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   gatewayPhone: "",
   gatewayStatus: "",
   phoneTexts: {},
-  phoneGapSeconds: 8,
+  gatewayRestriction: "",
 };
 
 const map = (d?: DocumentData): WhatsAppSettings => ({
@@ -43,7 +43,7 @@ const map = (d?: DocumentData): WhatsAppSettings => ({
   mode: d?.["mode"] === "whatsapp" ? "whatsapp" : "mock",
   sender: d?.["sender"] === "phone" ? "phone" : "cloud",
   phoneTexts: (d?.["phoneTexts"] as Record<string, string> | undefined) ?? {},
-  phoneGapSeconds: Math.min(120, Math.max(3, Number(d?.["phoneGapSeconds"] ?? 8) || 8)),
+  gatewayRestriction: String(d?.["gatewayRestriction"] ?? ""),
 });
 
 /** Sending from the gym's own number (linked phone) rather than the Meta Cloud API. */
@@ -71,6 +71,7 @@ export const saveWhatsAppSettings = (settings: WhatsAppSettings) => {
     gatewaySessionId: _s,
     gatewayPhone: _p,
     gatewayStatus: _t,
+    gatewayRestriction: _r,
     ...rest
   } = settings;
   return setDoc(

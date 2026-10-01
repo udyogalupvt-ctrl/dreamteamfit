@@ -10,7 +10,7 @@ template permissions. Test sends of `hello_world` and `order_confirmed` were acc
 | --- | --- | --- | --- |
 | **Cloud API + Coexistence (recommended)** | Yes, in the **WhatsApp Business** app | Official, no ban risk from the app | Meta's per-message charge |
 | Cloud API, number only on the API | No | Official | Meta's per-message charge |
-| Linked phone (OpenWA gateway, like the old software) | Yes | **Unofficial (WhatsApp Web automation): WhatsApp can restrict or ban the number** | Gateway server only |
+| Linked phone (own OpenWA gateway, like the old software) | Yes | **Unofficial (WhatsApp Web automation): WhatsApp can restrict or ban the number.** Kept low by sending only bills and member app links | Gateway server only |
 
 **Coexistence** (Meta, official, available in India): the gym keeps using its number in the
 WhatsApp Business app and the same number sends through the Cloud API. Needs:
@@ -26,11 +26,17 @@ code change: in Vercel set `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUN
 `WHATSAPP_ACCESS_TOKEN` (a permanent system-user token with access to that account), Redeploy,
 create the 6 templates below in that account, then *Settings → WhatsApp → Test connection*.
 
-**Linked phone (OpenWA)**: *Settings → WhatsApp → Send from → The gym's own WhatsApp number*.
-Enter the gateway address, instance ID and token (kept on the server only), Save connection,
-Show QR, scan it on the gym's phone (*WhatsApp → Linked devices → Link a device*), Send test.
-Messages are plain text with the bill / app link (wording editable there); announcements go one
-every few seconds. Use only if the risk above is acceptable.
+**Linked phone (OpenWA)**: set up the gym's own gateway server first:
+[deploy/openwa/README.md](deploy/openwa/README.md) (step by step, about an hour). Then
+*Settings → WhatsApp → Send from → The gym's own WhatsApp number*: enter the gateway address,
+instance ID and token (kept on the server only), Save connection, Start, Show QR, scan it on the
+gym's phone (*WhatsApp → Linked devices → Link a device*), Send test.
+
+From the gym's own number the app sends **only the bill after payment and the member app link**
+(plain text with the link; wording editable there). Renewal / balance-due / birthday /
+missed-workout reminders go as free app notifications instead, and Announcements are not sent:
+messages to many people unasked are what WhatsApp blocks numbers for. The server refuses anything
+else, and pauses sending by itself if WhatsApp limits the number.
 
 There are two ways a bill reaches the member. Both send the **bill page** (not a PDF file):
 the member opens it and can view, download the PDF, or print.

@@ -13,11 +13,17 @@
  * OPENWA_URL / OPENWA_SESSION_ID / OPENWA_API_KEY on Vercel are used when Settings has none.
  *
  * Note: this is WhatsApp Web automation, not Meta's official API. WhatsApp can restrict a number
- * that sends a lot of messages quickly, so announcements are sent slowly from the browser.
+ * that messages many people unasked, so only bills and member app links go from it (phoneMaySend),
+ * and sending pauses by itself while WhatsApp has restricted the number.
  */
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
-import { PHONE_TEXT_LINKS, renderPhoneText } from "@/lib/whatsapp-texts";
+import {
+  PHONE_TEXT_LINKS,
+  phoneMaySend,
+  renderPhoneText,
+  type PhoneTextKind,
+} from "@/lib/whatsapp-texts";
 import { appOrigin, db, json, requireFeature, text } from "./admin";
 
 const secretRef = () => db().doc("serverSecrets/whatsappGateway");
@@ -31,6 +37,8 @@ export interface GatewayConfig {
   apiKey: string;
   texts: Record<string, string>;
   webhookSecret: string;
+  /** WhatsApp's own limit on the number (e.g. tos_block), "" when there is none. */
+  restriction: string;
 }
 
 // A warm server instance re-reads the settings at most every 30 s (each send would cost 2 reads).
@@ -47,6 +55,7 @@ export async function gatewayConfig(fresh = false): Promise<GatewayConfig> {
     apiKey: String(k["apiKey"] ?? "") || env("OPENWA_API_KEY"),
     texts: (s["phoneTexts"] as Record<string, string> | undefined) ?? {},
     webhookSecret: String(k["webhookSecret"] ?? ""),
+    restriction: String(s["gatewayRestriction"] ?? ""),
   };
   cached = { at: Date.now(), value };
   return value;
@@ -58,13 +67,14 @@ type Session = {
   phone?: string | null;
   pushName?: string | null;
   lastError?: string | null;
+  restriction?: { kind?: string; code?: string; expiresAt?: string | null } | null;
 };
 
 /** One call to the gateway. Never throws: a dead or slow gateway is a plain "ok: false". */
 async function call<T>(
   g: Pick<GatewayConfig, "url" | "apiKey">,
   path: string,
-  init: { method?: string; body?: unknown } = {},
+  init: { method?: string; body?: unknown; timeoutMs?: number } = {},
 ): Promise<{ ok: true; data: T } | { ok: false; status: number; error: string }> {
   try {
     const response = await fetch(`${g.url}/api${path}`, {
@@ -74,7 +84,7 @@ async function call<T>(
         ...(init.body === undefined ? {} : { "Content-Type": "application/json" }),
       },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(init.timeoutMs ?? 25_000),
     });
     const raw = await response.text();
     let data: unknown = {};
@@ -121,8 +131,8 @@ function plainError(status: number, data: unknown) {
 const sessionPath = (g: GatewayConfig) => `/sessions/${encodeURIComponent(g.sessionId)}`;
 
 /** Where a message's link goes: the bill page or the member app. */
-function linkFor(kind: string, param: string) {
-  const target = PHONE_TEXT_LINKS[kind as keyof typeof PHONE_TEXT_LINKS];
+function linkFor(kind: PhoneTextKind, param: string) {
+  const target = PHONE_TEXT_LINKS[kind];
   if (!param || !target) return "";
   return `${appOrigin()}/${target === "invoice" ? "invoice" : "m"}/${encodeURIComponent(param)}`;
 }
@@ -134,12 +144,25 @@ export async function sendFromPhone(input: {
   bodyParams: string[];
   buttonUrlParam?: string;
 }): Promise<{ ok: true; providerMessageId: string } | { ok: false; error: string; code: string }> {
+  if (!phoneMaySend(input.kind))
+    return {
+      ok: false,
+      error:
+        "Only bills and member app links are sent from the gym's own WhatsApp number (keeps the number safe).",
+      code: "phone_not_allowed",
+    };
   const g = await gatewayConfig();
   if (!g.url || !g.sessionId || !g.apiKey)
     return {
       ok: false,
       error: "The gym's WhatsApp number is not connected yet (Settings → WhatsApp).",
       code: "not_configured",
+    };
+  if (g.restriction)
+    return {
+      ok: false,
+      error: `WhatsApp has limited the gym's number (${restrictionWords(g.restriction)}). Sending is paused; see Settings → WhatsApp.`,
+      code: "phone_restricted",
     };
   const message = renderPhoneText(
     input.kind,
@@ -159,6 +182,14 @@ export async function sendFromPhone(input: {
 const prettyPhone = (p: string) =>
   /^91\d{10}$/.test(p) ? `+91 ${p.slice(2, 7)} ${p.slice(7)}` : p ? `+${p}` : "";
 
+/** WhatsApp's limits on a linked number, in plain words. */
+function restrictionWords(kind: string) {
+  if (kind === "tos_block") return "WhatsApp refused it for breaking its terms";
+  if (kind === "proxy_block") return "WhatsApp refused the server's internet address";
+  if (kind === "reachout_timelock") return "new chats are blocked for a while";
+  return kind;
+}
+
 const STATUS_WORDS: Record<string, string> = {
   ready: "Connected",
   qr_ready: "Waiting for the QR to be scanned",
@@ -176,11 +207,14 @@ export async function gatewaySession(g: GatewayConfig) {
   if (!r.ok) return { ok: false as const, error: r.error };
   const status = String(r.data.status ?? "unknown");
   const phone = String(r.data.phone ?? "");
+  const restriction = String(r.data.restriction?.kind ?? "");
+  if (restriction !== g.restriction) cached = null;
   await settingsRef()
     .set(
       {
         gatewayPhone: phone,
         gatewayStatus: status,
+        gatewayRestriction: restriction,
         gatewayCheckedAt: FieldValue.serverTimestamp(),
       },
       { merge: true },
@@ -194,6 +228,7 @@ export async function gatewaySession(g: GatewayConfig) {
     phoneLabel: prettyPhone(phone),
     pushName: String(r.data.pushName ?? ""),
     lastError: String(r.data.lastError ?? ""),
+    restriction: restriction ? restrictionWords(restriction) : "",
   };
 }
 
@@ -207,6 +242,11 @@ export async function gatewayTest() {
     };
   const s = await gatewaySession(g);
   if (!s.ok) return { configured: false, detail: s.error };
+  if (s.restriction)
+    return {
+      configured: false,
+      detail: `WhatsApp has limited the gym's number: ${s.restriction}. Nothing is sent from it until that ends.`,
+    };
   return s.status === "ready"
     ? {
         configured: true,
@@ -233,7 +273,13 @@ async function registerWebhook(g: GatewayConfig) {
   }
   const body = {
     url,
-    events: ["message.ack", "message.failed", "session.status", "session.disconnected"],
+    events: [
+      "message.ack",
+      "message.failed",
+      "session.status",
+      "session.disconnected",
+      "session.restriction",
+    ],
     secret,
   };
   const list = await call<{ id: string; url: string }[]>(g, `${sessionPath(g)}/webhooks`);
@@ -299,9 +345,26 @@ async function connectionAction(request: Request) {
   if (!g.url || !g.sessionId || !g.apiKey)
     return json({ error: "Save the gateway connection first." }, 400);
   if (action === "start") {
-    const r = await call<Session>(g, `${sessionPath(g)}/start`, { method: "POST" });
-    // "Already started" is fine: the status below says where it is.
-    if (!r.ok && r.status !== 400) return json({ error: r.error }, 502);
+    // The gateway answers once WhatsApp Web has loaded (QR ready), which can take a while on a
+    // first start. 30 s, plus the status call below, stays inside Vercel's 60 s; the start
+    // carries on there, and the status below (and Check) shows where it is.
+    const r = await call<Session>(g, `${sessionPath(g)}/start`, {
+      method: "POST",
+      timeoutMs: 30_000,
+    });
+    // "Already started" (400) and still starting (no answer yet) are fine.
+    if (!r.ok && r.status !== 400 && r.status !== 0)
+      return json(
+        {
+          error:
+            r.status === 504
+              ? "The gateway couldn't open WhatsApp Web in time. Check that its server is online, then press Start again."
+              : r.status >= 500
+                ? "The gateway couldn't start WhatsApp. Press Start again in a minute."
+                : r.error,
+        },
+        502,
+      );
   }
   if (action === "qr") {
     const r = await call<{ qrCode?: string; status?: string }>(g, `${sessionPath(g)}/qr`);
@@ -375,6 +438,16 @@ async function webhook(request: Request) {
           : {}),
       });
     });
+  } else if (body.event === "session.restriction") {
+    // WhatsApp limited (or freed) the number: sending pauses until it lifts.
+    await settingsRef().set(
+      {
+        gatewayRestriction: data["active"] === true ? String(data["kind"] ?? "restricted") : "",
+        gatewayCheckedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    cached = null;
   } else if (body.event === "session.status" || body.event === "session.disconnected") {
     const status =
       body.event === "session.disconnected" ? "disconnected" : String(data["status"] ?? "");

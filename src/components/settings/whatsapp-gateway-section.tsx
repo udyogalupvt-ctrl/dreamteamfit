@@ -7,8 +7,10 @@ import {
   QrCode,
   RefreshCcw,
   Send,
+  ShieldCheck,
   Smartphone,
   TriangleAlert,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Field } from "@/components/common/form-dialog";
@@ -23,6 +25,7 @@ import {
   PHONE_TEXT_FIELDS,
   PHONE_TEXT_KINDS,
   PHONE_TEXT_LABELS,
+  PHONE_TEXT_LINKS,
   renderPhoneText,
   type PhoneTextKind,
 } from "@/lib/whatsapp-texts";
@@ -47,18 +50,22 @@ const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "info"> = {
 /** Example values shown under each message text. */
 const SAMPLE: Record<PhoneTextKind, string[]> = {
   invoice: ["Ravi Kumar", "REBUILD FITNESS", "RF-2026-000123", "4,000", "1,500"],
-  payment_due: ["Ravi Kumar", "REBUILD FITNESS", "1,500", "RF-2026-000123", "5 Oct 2026"],
-  renewal: ["Ravi Kumar", "REBUILD FITNESS", "23 Oct 2026"],
-  birthday: ["Ravi Kumar", "REBUILD FITNESS"],
-  absence: ["Ravi Kumar", "REBUILD FITNESS", "3", "The only bad workout is the one you skipped."],
-  announcement: ["Ravi", "REBUILD FITNESS", "The gym is closed this Sunday for maintenance."],
   member_app: ["Ravi Kumar", "REBUILD FITNESS"],
   test: ["there", "REBUILD FITNESS"],
 };
+const SAMPLE_LINK = { invoice: "https://…/invoice/9f2c…", member_app: "https://…/m/abcd1234" };
+
+/** What the gym's number sends, and what goes another way (shown in Settings). */
+const SENDS = ["Bill after each payment", "Member app link after the first payment"];
+const NOT_SENT = [
+  "Reminders (renewal, balance due, birthday, missed workout): free app notifications instead",
+  "Announcements to many members",
+];
 
 /**
  * Sending from the gym's own WhatsApp number: the number stays on the gym's phone and is linked
- * to an OpenWA gateway like WhatsApp Web (what the old software's "WhatsApp instance" was).
+ * to an OpenWA gateway like WhatsApp Web (what the old software's "WhatsApp instance" was). Only
+ * bills and member app links go from it (src/lib/whatsapp-texts.ts).
  */
 export function WhatsAppGatewaySection({
   saved,
@@ -73,7 +80,7 @@ export function WhatsAppGatewaySection({
   form: WhatsAppSettings;
   setForm: (f: WhatsAppSettings) => void;
   gymName: string;
-  /** Saves the message texts and announcement speed (with the rest of the WhatsApp settings). */
+  /** Saves the message texts (with the rest of the WhatsApp settings). */
   onSave: () => void;
   saving: boolean;
 }) {
@@ -117,14 +124,20 @@ export function WhatsAppGatewaySection({
       setQr({ image: r.qrCode ?? "", note: r.note ?? "" });
     });
   const status = state?.status ?? saved.gatewayStatus;
+  // WhatsApp's limit on the number: the server pauses sending until it ends.
+  const restricted = state?.restriction ?? saved.gatewayRestriction;
   const phoneLabel = state?.phoneLabel || (saved.gatewayPhone ? `+${saved.gatewayPhone}` : "");
 
-  // While the QR is shown, check every 5 s whether the phone has scanned it.
+  // While the QR is shown, every 5 s: take WhatsApp's newest QR (it changes about every 20 s, an
+  // old one can't be scanned), and once there is none, check whether the phone got linked.
+  const showing = Boolean(qr?.image);
   useEffect(() => {
-    if (!qr?.image) return;
+    if (!showing) return;
     const t = setInterval(() => {
-      void whatsAppGatewayAction("status")
-        .then((r) => {
+      void whatsAppGatewayAction("qr")
+        .then(async (q) => {
+          if (q.qrCode) return setQr({ image: q.qrCode, note: "" });
+          const r = await whatsAppGatewayAction("status");
           setState(r);
           if (r.status === "ready") {
             setQr(null);
@@ -134,7 +147,7 @@ export function WhatsAppGatewaySection({
         .catch(() => undefined);
     }, 5000);
     return () => clearInterval(t);
-  }, [qr?.image]);
+  }, [showing]);
 
   const texts = form.phoneTexts ?? {};
   const setText = (k: PhoneTextKind, v: string) =>
@@ -143,21 +156,45 @@ export function WhatsAppGatewaySection({
   return (
     <FormSection
       title="Gym's own WhatsApp number (linked phone)"
-      description="Messages go out from the gym's WhatsApp number, which stays on the gym's phone. The number is linked to a WhatsApp gateway (OpenWA) like WhatsApp Web, the same way the old software did."
+      description="Messages go out from the gym's WhatsApp number, which stays on the gym's phone. The number is linked to the gym's own WhatsApp gateway (OpenWA) like WhatsApp Web, the same way the old software did."
       footer={
         <Button disabled={saving} onClick={onSave}>
-          {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Save texts &amp; speed
+          {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Save texts
         </Button>
       }
     >
       <div className="grid gap-5">
+        <div className="grid gap-3 rounded-xl border border-border p-3 text-sm sm:grid-cols-2">
+          <div>
+            <p className="mb-1.5 flex items-center gap-1.5 font-semibold">
+              <ShieldCheck className="size-4 text-success" aria-hidden /> Sent from this number
+            </p>
+            <ul className="space-y-1">
+              {SENDS.map((x) => (
+                <li key={x} className="flex items-start gap-1.5">
+                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" aria-hidden /> {x}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="mb-1.5 font-semibold">Never sent from it</p>
+            <ul className="space-y-1">
+              {NOT_SENT.map((x) => (
+                <li key={x} className="flex items-start gap-1.5 text-muted-foreground">
+                  <XCircle className="mt-0.5 size-4 shrink-0" aria-hidden /> {x}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
         <div className="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm">
           <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
           <p>
-            This is WhatsApp Web, not Meta&apos;s official API. Keep the gym&apos;s phone charged
-            and on the internet. WhatsApp can block a number that sends many messages quickly, so
-            announcements go out slowly, one every few seconds. Message only members who agreed to
-            WhatsApp.
+            This is WhatsApp Web, not Meta&apos;s official API, so WhatsApp could still limit the
+            number. Sending only what a member expects right after paying keeps that risk low. Keep
+            the gym&apos;s phone using WhatsApp normally: linked devices log out if the phone is off
+            for about 14 days.
           </p>
         </div>
 
@@ -243,6 +280,16 @@ export function WhatsAppGatewaySection({
                 {state?.statusLabel ?? (status === "ready" ? "Connected" : status || "Not checked")}
               </StatusPill>
             </div>
+            {restricted ? (
+              <p
+                role="alert"
+                className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm"
+              >
+                <b>WhatsApp has limited this number</b>
+                {state?.restriction ? `: ${state.restriction}` : ""}. Nothing is sent from it until
+                that ends. Use the number normally on the phone and don&apos;t link it again.
+              </p>
+            ) : null}
             {state?.webhook && state.webhook !== "on" ? (
               <p className="text-meta">Delivery ticks: {state.webhook}</p>
             ) : null}
@@ -320,10 +367,10 @@ export function WhatsAppGatewaySection({
                   </p>
                 ) : null}
               </div>
-            ) : (
+            ) : restricted ? null : (
               <p className="flex items-center gap-1.5 text-sm text-success">
-                <CheckCircle2 className="size-4" aria-hidden /> Linked. Bills and reminders go out
-                from this number.
+                <CheckCircle2 className="size-4" aria-hidden /> Linked. Bills and member app links
+                go out from this number.
               </p>
             )}
             <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
@@ -357,22 +404,6 @@ export function WhatsAppGatewaySection({
           </div>
         ) : null}
 
-        <Field
-          label="Seconds between announcement messages"
-          htmlFor="gw-gap"
-          className="sm:max-w-xs"
-          hint="Slower is safer for the number. 8 seconds = about 450 messages an hour."
-        >
-          <Input
-            id="gw-gap"
-            type="number"
-            min={3}
-            max={120}
-            value={form.phoneGapSeconds}
-            onChange={(e) => setForm({ ...form, phoneGapSeconds: Number(e.target.value) || 8 })}
-          />
-        </Field>
-
         <Collapsible>
           <CollapsibleTrigger asChild>
             <Button variant="outline" className="justify-between">
@@ -382,20 +413,14 @@ export function WhatsAppGatewaySection({
           <CollapsibleContent className="mt-3 grid gap-4">
             <p className="text-meta">
               What each message says. Words in braces are filled in for each member; {"{link}"} is
-              the bill page or the member app. Press Save texts &amp; speed below.
+              the bill page or the member app. Press Save texts below.
             </p>
             {PHONE_TEXT_KINDS.map((k) => {
               const value = texts[k] ?? "";
-              const preview = renderPhoneText(
-                k,
-                SAMPLE[k],
-                k === "member_app"
-                  ? "https://…/m/abcd1234"
-                  : k === "invoice" || k === "payment_due"
-                    ? "https://…/invoice/9f2c…"
-                    : "",
-                { [k]: value },
-              );
+              const link = PHONE_TEXT_LINKS[k];
+              const preview = renderPhoneText(k, SAMPLE[k], link ? SAMPLE_LINK[link] : "", {
+                [k]: value,
+              });
               return (
                 <div key={k} className="grid gap-2 rounded-xl border border-border p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -416,10 +441,7 @@ export function WhatsAppGatewaySection({
                   />
                   <p className="text-meta">
                     Fills in:{" "}
-                    {[
-                      ...PHONE_TEXT_FIELDS[k],
-                      ...(k in { invoice: 1, payment_due: 1, member_app: 1 } ? ["link"] : []),
-                    ]
+                    {[...PHONE_TEXT_FIELDS[k], ...(link ? ["link"] : [])]
                       .map((f) => `{${f}}`)
                       .join(" ")}
                   </p>

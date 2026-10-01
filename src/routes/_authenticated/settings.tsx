@@ -341,7 +341,7 @@ function WhatsAppSettingsPanel() {
       </div>
       <FormSection
         title="Automatic WhatsApp"
-        description="Bills, reminders and announcements go out by themselves: from the gym's own WhatsApp number (linked phone), or through Meta's WhatsApp Cloud API. Set up once; then press Test connection."
+        description="Bills and member app links go out by themselves: from the gym's own WhatsApp number (linked phone), or through Meta's WhatsApp Cloud API (which can also send reminders and announcements). Set up once; then press Test connection."
         footer={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" disabled={testing || !api} onClick={() => test()}>
@@ -374,7 +374,7 @@ function WhatsAppSettingsPanel() {
                     [
                       "phone",
                       "The gym's own WhatsApp number (linked phone)",
-                      "The number stays on the gym's phone, linked like WhatsApp Web through a gateway (as the old software did). Plain messages with the bill link; no Meta templates or charges.",
+                      "The number stays on the gym's phone, linked like WhatsApp Web through the gym's own gateway (as the old software did). Sends only bills and member app links, to keep the number safe; reminders go as app notifications. No Meta charges.",
                     ],
                     [
                       "cloud",
@@ -558,7 +558,7 @@ function ReminderSettings() {
   return (
     <FormSection
       title="Automatic reminders"
-      description="Checked every morning (India time). Sent on WhatsApp and as app notifications."
+      description="Checked every morning (India time). Sent as app notifications, and on WhatsApp when it uses Meta's Cloud API (never from the gym's own number)."
       footer={<Button onClick={() => save()}>Save reminders</Button>}
     >
       <div className="grid gap-4">

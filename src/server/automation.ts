@@ -71,7 +71,9 @@ async function whatsappSettings() {
   const s = ws.data() ?? {};
   return {
     gymName: String(bs.data()?.["businessName"] || "REBUILD FITNESS"),
-    live: s["mode"] === "whatsapp",
+    // Reminders never go from the gym's own number (only bills and app links do, phoneMaySend):
+    // then they go as app notifications, or wait in Message History for staff.
+    live: s["mode"] === "whatsapp" && s["sender"] !== "phone",
     countryCode: String(s["defaultCountryCode"] ?? "91"),
     language: String(s["templateLanguage"] ?? "en"),
     renewalTemplate: String(s["renewalTemplate"] ?? "gym_membership_expiry"),
