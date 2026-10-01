@@ -68,6 +68,7 @@ const NOT_SENT = [
  * bills and member app links go from it (src/lib/whatsapp-texts.ts).
  */
 export function WhatsAppGatewaySection({
+  active,
   saved,
   form,
   setForm,
@@ -75,6 +76,8 @@ export function WhatsAppGatewaySection({
   onSave,
   saving,
 }: {
+  /** Chosen in Send from. When not, it can be linked and tested, but sends nothing else. */
+  active: boolean;
   /** The settings as saved (connection state comes from the server). */
   saved: WhatsAppSettings;
   form: WhatsAppSettings;
@@ -164,6 +167,13 @@ export function WhatsAppGatewaySection({
       }
     >
       <div className="grid gap-5">
+        {active ? null : (
+          <p className="rounded-xl border border-info/40 bg-info/10 p-3 text-sm">
+            <b>Not in use yet.</b> Bills go through the WhatsApp Cloud API (Meta). You can link and
+            test the gym&apos;s number here first: only Send test goes from it. To use it, choose it
+            in <b>Send from</b> above and Save.
+          </p>
+        )}
         <div className="grid gap-3 rounded-xl border border-border p-3 text-sm sm:grid-cols-2">
           <div>
             <p className="mb-1.5 flex items-center gap-1.5 font-semibold">
@@ -369,8 +379,10 @@ export function WhatsAppGatewaySection({
               </div>
             ) : restricted ? null : (
               <p className="flex items-center gap-1.5 text-sm text-success">
-                <CheckCircle2 className="size-4" aria-hidden /> Linked. Bills and member app links
-                go out from this number.
+                <CheckCircle2 className="size-4" aria-hidden />{" "}
+                {active
+                  ? "Linked. Bills and member app links go out from this number."
+                  : "Linked. Only tests go from it until you choose it in Send from."}
               </p>
             )}
             <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
@@ -386,7 +398,7 @@ export function WhatsAppGatewaySection({
                 disabled={!!busy || testPhone.replace(/\D/g, "").length < 10}
                 onClick={() =>
                   run("test", async () => {
-                    await sendWhatsAppTest(testPhone, form, gymName);
+                    await sendWhatsAppTest(testPhone, form, gymName, "phone");
                     toast.success("Test message sent", {
                       description: "It should arrive on that WhatsApp in a few seconds.",
                     });

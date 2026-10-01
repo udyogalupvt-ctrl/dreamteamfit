@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# One-time setup of the gym's WhatsApp gateway on a fresh Ubuntu 22.04 / 24.04 server (as root):
-#   bash /opt/openwa/setup.sh
+# One-time setup of the gym's WhatsApp gateway on a fresh Ubuntu 22.04 / 24.04 server:
+#   sudo bash /opt/openwa/setup.sh
 # Safe to run again (it keeps .env and the linked phone). See README.md in this folder.
 set -euo pipefail
 
@@ -12,10 +12,17 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+# Oracle Cloud's Ubuntu images come with their own firewall rules (only SSH in) that the server
+# needs to boot; Oracle warns that UFW breaks them. There, those rules are kept as they are.
+on_oracle() {
+  grep -qi oraclecloud /sys/class/dmi/id/chassis_asset_tag 2>/dev/null ||
+    grep -q InstanceServices <<<"$(iptables -S 2>/dev/null || true)"
+}
+
 echo "== 1/5 System updates and tools"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
-apt-get install -y -q ca-certificates curl python3 ufw fail2ban unattended-upgrades
+apt-get install -y -q ca-certificates curl python3 fail2ban unattended-upgrades
 # Security updates install by themselves every day.
 cat >/etc/apt/apt.conf.d/20auto-upgrades <<'EOF'
 APT::Periodic::Update-Package-Lists "1";
@@ -24,11 +31,16 @@ EOF
 systemctl enable --now fail2ban >/dev/null 2>&1 || true
 
 echo "== 2/5 Firewall: only SSH comes in (the gateway is reached through Cloudflare)"
-ufw default deny incoming >/dev/null
-ufw default allow outgoing >/dev/null
-ufw allow OpenSSH >/dev/null
-ufw --force enable >/dev/null
-ufw status | head -5
+if on_oracle; then
+  echo "Oracle Cloud: its own firewall already lets only SSH in (UFW is not used there)."
+else
+  apt-get install -y -q ufw
+  ufw default deny incoming >/dev/null
+  ufw default allow outgoing >/dev/null
+  ufw allow OpenSSH >/dev/null
+  ufw --force enable >/dev/null
+  ufw status | head -5
+fi
 
 echo "== 3/5 Docker"
 if ! command -v docker >/dev/null 2>&1; then

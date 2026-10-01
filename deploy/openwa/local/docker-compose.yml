@@ -1,0 +1,30 @@
+# Try the gym's WhatsApp gateway on your own computer (Docker Desktop) before setting up the
+# server: see README.md in this folder. The gateway is the same as on the server (same settings
+# and safety limits); a free Cloudflare "quick tunnel" gives it a temporary https address so the
+# live app can reach it. Nothing here is meant to run for long.
+
+name: openwa-local
+
+services:
+  openwa:
+    extends:
+      file: ../docker-compose.yml
+      service: openwa
+    container_name: openwa-local
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: openwa-local-tunnel
+    restart: unless-stopped
+    # A random https://….trycloudflare.com address, new on each start (no Cloudflare account).
+    command: tunnel --no-autoupdate --url http://openwa:2785
+    networks:
+      - openwa
+    depends_on:
+      - openwa
+
+volumes:
+  openwa-data:
+
+networks:
+  openwa:

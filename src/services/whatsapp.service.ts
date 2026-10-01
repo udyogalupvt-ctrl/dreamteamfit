@@ -40,6 +40,8 @@ type SendInput = {
   buttonUrlParam?: string;
   messagePreview: string;
   provider: CommunicationProviderName;
+  /** A test from the gym's own number while Send from is still the Cloud API. */
+  via?: "phone";
 };
 
 const safeId = (x: string) => x.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -161,6 +163,7 @@ export async function sendWhatsAppMessage(input: SendInput) {
       messageId: id,
       parameters: input.parameters ?? [],
       buttonUrlParam: input.buttonUrlParam ?? "",
+      ...(input.via ? { via: input.via } : {}),
     });
     return { duplicate: false, messageId: id };
   } catch (error) {
@@ -327,8 +330,16 @@ export const whatsAppGatewayAction = (
     { action, ...(phone ? { phone } : {}) },
   );
 
-/** A test message to any number (from the gym's own WhatsApp number). */
-export async function sendWhatsAppTest(phone: string, wa: WhatsAppSettings, gymName: string) {
+/**
+ * A test message to any number, from the chosen sender; via "phone": from the gym's own number
+ * even while Send from is still the Cloud API (to try it before switching).
+ */
+export async function sendWhatsAppTest(
+  phone: string,
+  wa: WhatsAppSettings,
+  gymName: string,
+  via?: "phone",
+) {
   return sendWhatsAppMessage({
     client: { id: "", fullName: "there", phone, whatsappPhone: phone, whatsappOptIn: true },
     type: "test",
@@ -338,5 +349,6 @@ export async function sendWhatsAppTest(phone: string, wa: WhatsAppSettings, gymN
     parameters: ["there", gymName || "our gym"],
     messagePreview: `Test message from ${gymName || "the gym"}`,
     provider: wa.mode,
+    ...(via ? { via } : {}),
   });
 }

@@ -53,11 +53,13 @@ export async function sendTemplateMessage(input: {
   bodyParams: string[];
   buttonUrlParam?: string;
   kind?: string;
+  /** "phone": from the gym's own number even while Send from is the Cloud API (Settings test). */
+  via?: "phone";
 }): Promise<
   | { ok: true; providerMessageId: string; provider: "whatsapp" | "phone" }
   | { ok: false; error: string; code: string }
 > {
-  if ((await gatewayConfig()).sender === "phone") {
+  if (input.via === "phone" || (await gatewayConfig()).sender === "phone") {
     const r = await sendFromPhone({
       to: input.to,
       kind: input.kind ?? "",
@@ -181,6 +183,7 @@ async function send(request: Request) {
     messageId?: string;
     parameters?: unknown[];
     buttonUrlParam?: string;
+    via?: string;
   };
   const messageId = String(input.messageId ?? "");
   if (!messageId) return json({ error: "Message ID is required." }, 400);
@@ -234,6 +237,8 @@ async function send(request: Request) {
     // in, so the member opens their bill page (view, download PDF, print).
     buttonUrlParam: String(input.buttonUrlParam ?? ""),
     kind: String(data["type"] ?? ""),
+    // Only a test may try the gym's own number before it is chosen in Send from.
+    ...(input.via === "phone" && String(data["type"]) === "test" ? { via: "phone" as const } : {}),
   });
   if (!result.ok)
     return fail(result.code, result.error, result.code === "not_configured" ? 412 : 502);

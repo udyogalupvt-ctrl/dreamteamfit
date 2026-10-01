@@ -73,7 +73,8 @@ services:
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Put the Cloudflare tunnel token in .env}
+      # Set by setup.sh in .env (also lets local/docker-compose.yml reuse this file).
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     networks:
       - openwa
     depends_on:

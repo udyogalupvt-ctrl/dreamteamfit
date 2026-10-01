@@ -19,6 +19,7 @@ import { sendMemberAppWhatsApp } from "@/services/whatsapp.service";
 import {
   DEFAULT_WHATSAPP_SETTINGS,
   isWhatsAppApiLive,
+  sendsFromPhone,
   subscribeWhatsAppSettings,
 } from "@/services/whatsapp-settings.service";
 import type { Client, Membership } from "@/types/models";
@@ -55,7 +56,10 @@ export function MemberAppBulkSend() {
     };
   }, [clients.data, memberships.data]);
 
-  const live = isWhatsAppApiLive(wa.data) && !!wa.data.memberAppTemplate;
+  // Never from the gym's own number: one message to many members at once is what WhatsApp bans
+  // numbers for. Members still get it with their next payment (the payment's share step).
+  const fromPhone = sendsFromPhone(wa.data);
+  const live = isWhatsAppApiLive(wa.data) && !!wa.data.memberAppTemplate && !fromPhone;
   const run = async () => {
     setConfirm(false);
     stop.current = false;
@@ -125,7 +129,13 @@ export function MemberAppBulkSend() {
             <Send aria-hidden /> Send to {groups.ready.length} members
           </Button>
         )}
-        {!live ? (
+        {fromPhone ? (
+          <p className="text-meta">
+            Not sent from the gym&apos;s own WhatsApp number: a message to many members at once is
+            what gets a number blocked. Each member gets the link after their next payment, or use
+            Share on WhatsApp on their profile.
+          </p>
+        ) : !live ? (
           <p className="text-meta">
             Turn on the WhatsApp Cloud API and add the member app template above first.
           </p>

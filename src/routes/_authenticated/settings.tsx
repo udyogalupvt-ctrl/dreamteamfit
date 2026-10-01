@@ -514,8 +514,10 @@ function WhatsAppSettingsPanel() {
           </p>
         </div>
       </FormSection>
-      {phone ? (
+      {/* Shown also while the Cloud API sends: link and test the gym's number before switching. */}
+      {api ? (
         <WhatsAppGatewaySection
+          active={phone}
           saved={live.data}
           form={f}
           setForm={setF}
