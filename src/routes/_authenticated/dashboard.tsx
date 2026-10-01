@@ -6,6 +6,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   CalendarClock,
   ChevronDown,
+  ChevronRight,
   CreditCard,
   Fingerprint,
   MessageCircle,
@@ -14,6 +15,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import { NumberDetails, type NumberCard } from "@/components/dashboard/number-details";
 import { usePeriodPicker } from "@/components/dashboard/period-picker";
 import { useEnrollment } from "@/components/enrollment/enrollment-context";
 import { useQuickActions } from "@/components/layout/quick-actions";
@@ -55,8 +57,11 @@ function DashboardPage() {
   const actions = useQuickActions();
   const attention = useAttention();
   const { period, picker } = usePeriodPicker();
-  const { primary, stats, activity, todaySchedule, loading, error } = useDashboardMetrics(period);
+  const { primary, stats, activity, todaySchedule, lists, loading, error } =
+    useDashboardMetrics(period);
   const [moreOpen, setMoreOpen] = useState(false);
+  // Tapping a number card opens the list behind it (payments, members, visits).
+  const [card, setCard] = useState<NumberCard | null>(null);
 
   const tiles: {
     id: string;
@@ -170,8 +175,29 @@ function DashboardPage() {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {loading
             ? primary.map((m) => <StatCardSkeleton key={m.id} />)
-            : primary.map((metric) => <StatCard key={metric.id} metric={metric} />)}
+            : primary.map((metric) => (
+                <button
+                  key={metric.id}
+                  type="button"
+                  aria-label={`${metric.label}: ${metric.value}. See the list`}
+                  onClick={() => setCard(metric.id as NumberCard)}
+                  className="min-w-0 cursor-pointer rounded-xl text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  <StatCard metric={metric} className="h-full">
+                    <span className="mt-2 flex items-center gap-0.5 text-xs font-semibold text-muted-foreground">
+                      See the list <ChevronRight className="size-3.5" aria-hidden />
+                    </span>
+                  </StatCard>
+                </button>
+              ))}
         </div>
+        <NumberDetails
+          card={card}
+          title={primary.find((m) => m.id === card)?.label ?? ""}
+          period={period}
+          lists={lists}
+          onClose={() => setCard(null)}
+        />
       </section>
 
       {can("memberCalls") ? <MembersAtAGlance /> : null}

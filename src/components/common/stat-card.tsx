@@ -1,9 +1,19 @@
+import type { ReactNode } from "react";
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toneBar, toneIcon } from "@/lib/tone";
 import type { StatMetric } from "@/types";
 
-export function StatCard({ metric, className }: { metric: StatMetric; className?: string }) {
+export function StatCard({
+  metric,
+  className,
+  children,
+}: {
+  metric: StatMetric;
+  className?: string;
+  /** Extra line at the bottom (e.g. "See the list"). */
+  children?: ReactNode;
+}) {
   const { label, value, delta, hint, icon: Icon, tone } = metric;
   const DeltaIcon =
     delta?.direction === "up" ? ArrowUpRight : delta?.direction === "down" ? ArrowDownRight : Minus;
@@ -49,6 +59,7 @@ export function StatCard({ metric, className }: { metric: StatMetric; className?
         ) : null}
         {hint ? <span className="text-meta line-clamp-2">{hint}</span> : null}
       </div>
+      {children}
     </article>
   );
 }

@@ -79,6 +79,27 @@ export const TODAY_PERIOD = (): DashboardPeriod => ({
   isToday: true,
 });
 
+/** One line of a money list: a payment (or an old bill paid before payments were recorded). */
+export interface MoneyRow {
+  id: string;
+  clientId: string;
+  name: string;
+  date: string;
+  at: Date;
+  amount: number;
+  method: string;
+  kind: "initial" | "balance" | "refund" | "bill";
+  bill: string;
+}
+/** A member with a running plan, for the "Active members" list. */
+export interface ActiveRow {
+  clientId: string;
+  name: string;
+  code: string;
+  plan: string;
+  endDate: string;
+}
+
 /** " · after ₹2,000 refunded" when money was given back (Collected is after refunds). */
 const refundedNote = (m: { refunded: number }) =>
   m.refunded > 0 ? ` · after ${formatPrice(m.refunded)} refunded` : "";
@@ -275,11 +296,21 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
     let renewals = 0;
     let expiringToday = 0;
     let expiringIn7Days = 0;
-    byClient.forEach((list) => {
+    const clientById = new Map(clients.data.map((c) => [c.id, c]));
+    const activeRows: ActiveRow[] = [];
+    byClient.forEach((list, clientId) => {
       const statuses = list.map((m) => ({ m, s: effectiveMembershipStatus(m) }));
       const current = statuses.find((x) => x.s === "active");
       if (current) {
         active += 1;
+        const c = clientById.get(clientId);
+        activeRows.push({
+          clientId,
+          name: c?.fullName ?? "",
+          code: c?.clientCode ?? "",
+          plan: current.m.packageNameSnapshot,
+          endDate: current.m.endDate,
+        });
         if (current.m.endDate <= in7) renewals += 1;
         if (current.m.endDate === today) expiringToday += 1;
         if (current.m.endDate === in7) expiringIn7Days += 1;
@@ -606,6 +637,43 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
         })),
     ].sort((a, b) => a.time.localeCompare(b.time));
 
+    // What the money cards add up (same records as Collected): newest first.
+    const moneyRows = (from: string, to: string): MoneyRow[] =>
+      [
+        ...payments.data
+          .filter((p) => p.paymentDate >= from && p.paymentDate <= to)
+          .map((p) => ({
+            id: p.id,
+            clientId: p.clientId,
+            name: p.clientNameSnapshot,
+            date: p.paymentDate,
+            at: p.createdAt,
+            amount: p.amount,
+            method: p.method,
+            kind: p.kind,
+            bill: p.invoiceNumber,
+          })),
+        ...monthInvoices.data
+          .filter(
+            (i) =>
+              !i.paymentsTracked &&
+              i.amountPaid > 0 &&
+              i.invoiceDate >= from &&
+              i.invoiceDate <= to,
+          )
+          .map((i) => ({
+            id: `bill-${i.id}`,
+            clientId: i.clientId,
+            name: i.clientNameSnapshot,
+            date: i.invoiceDate,
+            at: i.createdAt,
+            amount: i.amountPaid,
+            method: i.paymentMethod,
+            kind: "bill" as const,
+            bill: i.invoiceNumber,
+          })),
+      ].sort((a, b) => b.date.localeCompare(a.date) || b.at.getTime() - a.at.getTime());
+
     return {
       primary,
       stats,
@@ -613,6 +681,15 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
       activity,
       todaySchedule,
       retention: { expiringToday, expiringIn7Days, expired, birthdays },
+      // The lists behind the four number cards (tap a card to see them).
+      lists: {
+        period: moneyRows(period.from, period.to),
+        month: moneyRows(monthStartISO, today),
+        active: activeRows.sort(
+          (a, b) => a.endDate.localeCompare(b.endDate) || a.name.localeCompare(b.name),
+        ),
+        visitsToday: attendanceToday,
+      },
     };
   }, [
     payments.data,
