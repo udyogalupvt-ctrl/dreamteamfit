@@ -11,20 +11,22 @@ import { restoreBinById, type Deleter } from "@/services/recycle-bin.service";
  */
 export function useBin() {
   const { user } = useAuth();
-  const { owner, role, canDelete } = useAccess();
+  const { role, canDelete, can } = useAccess();
   const by: Deleter = {
     uid: user?.uid ?? "",
     name: user?.displayName || user?.email || "Staff",
     role,
   };
-  const viewer = { owner, uid: user?.uid ?? "" };
+  const viewer = { owner: can("recycleBin"), uid: user?.uid ?? "" };
   const remove = async (what: string, move: (by: Deleter) => Promise<string>) => {
     try {
       const binId = await move(by);
       toastWithUndo(
         `${what} moved to the Recycle Bin`,
         () => restoreBinById(binId, by, viewer),
-        owner ? "Restore it any time from the Recycle Bin." : "The owner can restore it.",
+        can("recycleBin")
+          ? "Restore it any time from the Recycle Bin."
+          : "The owner can restore it.",
       );
       return true;
     } catch (e) {

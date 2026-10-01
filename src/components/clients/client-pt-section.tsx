@@ -7,7 +7,10 @@ import { useEnrollment } from "@/components/enrollment/enrollment-context";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { subscribeDevices } from "@/services/biometric-devices.service";
-import { updateClient } from "@/services/clients.service";
+import { setEntryBlocked } from "@/services/clients.service";
+import { EntryTimeline } from "@/components/clients/entry-timeline";
+import { toastWithUndo } from "@/lib/undo-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { subscribeClientPtAssignments } from "@/services/pt.service";
 import { subscribeClientBookings } from "@/services/bookings.service";
@@ -118,6 +121,8 @@ export function ClientPtSection({ client }: { client: Client }) {
  */
 export function ClientBiometricCard({ client }: { client: Client }) {
   const { resumeSetup } = useEnrollment();
+  const { user } = useAuth();
+  const by = user?.displayName || user?.email || "Staff";
   const pts = useLive(
     (ok, fail) => subscribeClientPtAssignments(client.id, ok, fail),
     [] as PtAssignment[],
@@ -138,19 +143,12 @@ export function ClientBiometricCard({ client }: { client: Client }) {
   const blocked = client.biometricStatus === "disabled";
   const setBlocked = async (block: boolean) => {
     try {
-      await updateClient(client.id, { biometricStatus: block ? "disabled" : "active" });
-      toast.success(block ? "Entry blocked for this member" : "Entry allowed again", {
-        description: "The machine is updated at its next check-in (within a minute).",
-        duration: 10000,
-        action: {
-          label: "Undo",
-          onClick: () =>
-            void updateClient(client.id, { biometricStatus: block ? "active" : "disabled" }).then(
-              () => toast.success("Undone"),
-              (e: unknown) => toast.error(firestoreErrorMessage(e)),
-            ),
-        },
-      });
+      await setEntryBlocked(client.id, block, by);
+      toastWithUndo(
+        block ? "Entry blocked for this member" : "Entry allowed again",
+        () => setEntryBlocked(client.id, !block, by),
+        "The fingerprint machine is changed at its next check-in, usually within 15–30 seconds. The exact time shows on this page.",
+      );
     } catch (e) {
       toast.error(firestoreErrorMessage(e));
     }
@@ -161,12 +159,16 @@ export function ClientBiometricCard({ client }: { client: Client }) {
       ? [
           "Blocked by staff",
           "danger",
-          onMachine ? "Taken off the machine at its next check-in (within a minute)." : "",
+          onMachine ? "Taken off the machine at its next check-in (usually within 15–30 s)." : "",
         ]
       : entitled && onMachine
         ? ["Can enter", "success", ptRuns && !planRuns ? "Entry through the running PT plan." : ""]
         : entitled
-          ? ["Being added back", "warning", "Goes back on the machine at its next check-in."]
+          ? [
+              "Being added back",
+              "warning",
+              "Goes back on the machine at its next check-in (usually within 15–30 s).",
+            ]
           : !onMachine
             ? ["Blocked on the machine", "danger", ""]
             : doorOff
@@ -178,7 +180,7 @@ export function ClientBiometricCard({ client }: { client: Client }) {
               : [
                   "Being removed",
                   "warning",
-                  "Taken off the machine at its next check-in (within a minute).",
+                  "Taken off the machine at its next check-in (usually within 15–30 s).",
                 ];
   return (
     <section className="surface-card p-5">
@@ -200,6 +202,7 @@ export function ClientBiometricCard({ client }: { client: Client }) {
         ))}
       </dl>
       {note ? <p className="text-meta mt-3">{note}</p> : null}
+      {client.firstThumbRegistered ? <EntryTimeline client={client} /> : null}
       {!client.firstThumbRegistered ? (
         <Button className="mt-4" onClick={() => resumeSetup(client)}>
           <Fingerprint /> Register thumb

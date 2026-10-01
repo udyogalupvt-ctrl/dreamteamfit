@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   Eye,
   Fingerprint,
@@ -9,11 +9,15 @@ import {
   Pencil,
   Plus,
   Power,
+  Smartphone,
   Trash2,
   UserCog,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import { StaffDialog } from "@/components/staff/staff-dialog";
+import { StaffThumbDialog } from "@/components/staff/staff-thumb-dialog";
+import { TrainerAppDialog } from "@/components/staff/trainer-app-dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { Field, FormDialog } from "@/components/common/form-dialog";
@@ -32,32 +36,26 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { DEFAULT_STAFF_FEATURES, DELETE_FEATURES, FEATURE_META } from "@/constants/features";
+import { useAccess } from "@/hooks/use-access";
 import { useBin } from "@/hooks/use-bin";
+import { useStaffTrainers } from "@/hooks/use-staff-trainers";
 import { useLive } from "@/hooks/use-live-query";
 import { toastWithUndo } from "@/lib/undo-toast";
 import { binStaff } from "@/services/recycle-bin.service";
-import { formatPrice, todayISO } from "@/lib/format";
-import { subscribeDevices } from "@/services/biometric-devices.service";
+import { isLoginRole, isTrainerRole, trainerOfStaff } from "@/services/staff-trainers.service";
+import { formatPrice } from "@/lib/format";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { staffSavedPassword, whatsAppShareUrl } from "@/services/portal.service";
 import {
   createStaffLogin,
-  getStaffPrivate,
-  requestStaffFingerprint,
   saveStaff,
-  saveStaffPrivate,
-  subscribeStaff,
+  staffInputOf,
   subscribeStaffAccess,
-  subscribeStaffCommands,
   subscribeStaffPrivate,
-  suggestStaffBiometricId,
   updateStaffLogin,
-  type StaffInput,
 } from "@/services/staff.service";
 import {
   STAFF_FEATURES,
-  type BiometricDevice,
-  type IncentiveType,
   type Staff,
   type StaffAccess,
   type StaffFeature,
@@ -69,16 +67,18 @@ export const Route = createFileRoute("/_authenticated/staff")({
   component: StaffPage,
 });
 
-const ROLES = ["Front desk", "Counsellor", "Manager", "Trainer", "Cleaner", "Other"];
-
 function StaffPage() {
-  const staff = useLive<Staff[]>(subscribeStaff, [], []);
+  const { staff, trainers } = useStaffTrainers();
   const access = useLive<StaffAccess[]>(subscribeStaffAccess, [], []);
-  const pay = useLive<StaffPrivate[]>(subscribeStaffPrivate, [], []);
+  const { owner, can } = useAccess();
+  const finance = can("finance");
+  const pay = useLive<StaffPrivate[]>(finance ? subscribeStaffPrivate : null, [], [finance]);
+  const navigate = useNavigate();
   const [editing, setEditing] = useState<Staff | "new" | null>(null);
   const [login, setLogin] = useState<Staff | null>(null);
   const [thumb, setThumb] = useState<Staff | null>(null);
-  // A new front-desk / counsellor / manager goes straight to "Create login" once saved.
+  const [trainerApp, setTrainerApp] = useState<string | null>(null);
+  // A new front desk / manager goes straight to "Create login" once saved.
   const [loginNext, setLoginNext] = useState<string | null>(null);
   useEffect(() => {
     const s = loginNext ? staff.data.find((x) => x.id === loginNext) : undefined;
@@ -91,20 +91,22 @@ function StaffPage() {
   const bin = useBin();
   const [deleting, setDeleting] = useState<Staff | null>(null);
   const payOf = (s: Staff) => pay.data.find((p) => p.staffId === s.id);
+  const appTrainer = trainerApp ? (trainers.data.find((t) => t.id === trainerApp) ?? null) : null;
 
   const toggleActive = async (s: Staff) => {
     try {
-      await saveStaff({ ...pick(s), active: !s.active }, s.id);
+      await saveStaff({ ...staffInputOf(s), active: !s.active }, s.id);
       // Someone who left can't sign in any more; the door lock removes their thumb.
       const loginOff = s.active && !!s.loginUid && accessOf(s)?.active !== false;
       if (loginOff) await updateStaffLogin({ staffId: s.id, active: false });
-      // Undo (a tap by mistake): back as they were, login on again too.
+      // Undo (a tap by mistake): back as they were, login on again too (owner).
       toastWithUndo(
         s.active ? `${s.name} marked as left` : `${s.name} is active again`,
         async () => {
-          await saveStaff({ ...pick(s), active: s.active }, s.id);
-          if (loginOff) await updateStaffLogin({ staffId: s.id, active: true });
+          await saveStaff({ ...staffInputOf(s), active: s.active }, s.id);
+          if (loginOff && owner) await updateStaffLogin({ staffId: s.id, active: true });
         },
+        s.active && isTrainerRole(s.role) ? "They no longer take PT members." : undefined,
       );
     } catch (e) {
       toast.error(firestoreErrorMessage(e));
@@ -115,7 +117,7 @@ function StaffPage() {
     <div className="space-y-6">
       <PageHeader
         title="Staff"
-        description="Everyone who works here: logins and what they can use, counsellors, pay and thumb."
+        description="Everyone who works here, made once: front desk and managers get a gym login, trainers get the trainer app and appear in Packages & Trainers."
         breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Staff" }]}
         actions={
           <Button onClick={() => setEditing("new")}>
@@ -131,7 +133,7 @@ function StaffPage() {
         <EmptyState
           icon={UserCog}
           title="No staff yet"
-          description="Add your front desk, counsellors and managers. Then give each one a login."
+          description="Add your front desk, managers and trainers. Front desk and managers then get a login."
           action={
             <Button onClick={() => setEditing("new")}>
               <Plus aria-hidden /> Add staff
@@ -143,6 +145,9 @@ function StaffPage() {
           {staff.data.map((s) => {
             const a = accessOf(s);
             const p = payOf(s);
+            const trainer = isTrainerRole(s.role) ? trainerOfStaff(s, trainers.data) : null;
+            // Gym logins are for the front desk and managers (and anyone who already has one).
+            const loginButton = owner && (isLoginRole(s.role) || !!a);
             return (
               <article key={s.id} className="surface-card flex flex-col gap-3 p-5">
                 <div className="flex items-start justify-between gap-2">
@@ -161,12 +166,29 @@ function StaffPage() {
                   {a ? (
                     <StatusPill tone={a.active ? "success" : "danger"}>
                       {a.active
-                        ? `Login · ${a.admin ? "all features" : `${a.permissions.length} features`}`
+                        ? `Login · ${a.admin ? "all pages" : `${a.permissions.length} features`}`
                         : "Login off"}
                     </StatusPill>
-                  ) : (
+                  ) : isLoginRole(s.role) ? (
                     <StatusPill tone="warning">No login</StatusPill>
-                  )}
+                  ) : null}
+                  {isTrainerRole(s.role) ? (
+                    <StatusPill
+                      tone={
+                        !trainer?.portalCode
+                          ? "warning"
+                          : trainer.portalActive
+                            ? "success"
+                            : "danger"
+                      }
+                    >
+                      {!trainer?.portalCode
+                        ? "No trainer app"
+                        : trainer.portalActive
+                          ? "Trainer app on"
+                          : "Trainer app off"}
+                    </StatusPill>
+                  ) : null}
                   <StatusPill tone={s.firstThumbRegistered ? "success" : "warning"}>
                     {s.firstThumbRegistered ? `Thumb · ID ${s.biometricUserId}` : "Thumb pending"}
                   </StatusPill>
@@ -181,19 +203,51 @@ function StaffPage() {
                         : ""}
                   </p>
                 ) : null}
+                {trainer ? (
+                  <p className="text-meta">
+                    PT share:{" "}
+                    {trainer.defaultTrainerShare > 0
+                      ? trainer.defaultShareType === "percentage"
+                        ? `${trainer.defaultTrainerShare}%`
+                        : formatPrice(trainer.defaultTrainerShare)
+                      : "not set"}{" "}
+                    ·{" "}
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() =>
+                        void navigate({ to: "/packages", search: { tab: "trainers" } })
+                      }
+                    >
+                      Packages &amp; Trainers
+                    </button>
+                  </p>
+                ) : null}
                 {s.loginEmail ? <p className="text-meta truncate">{s.loginEmail}</p> : null}
                 <div className="mt-auto flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => setEditing(s)}>
                     <Pencil aria-hidden /> Edit
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setLogin(s)}
-                    disabled={!s.active}
-                  >
-                    <KeyRound aria-hidden /> {a ? "Login & features" : "Create login"}
-                  </Button>
+                  {loginButton ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setLogin(s)}
+                      disabled={!s.active}
+                    >
+                      <KeyRound aria-hidden /> {a ? "Login & features" : "Create login"}
+                    </Button>
+                  ) : null}
+                  {trainer ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setTrainerApp(trainer.id)}
+                      disabled={!s.active}
+                    >
+                      <Smartphone aria-hidden /> Trainer app
+                    </Button>
+                  ) : null}
                   <Button
                     size="sm"
                     variant="outline"
@@ -222,216 +276,40 @@ function StaffPage() {
           })}
         </div>
       )}
-      <StaffDialog item={editing} onClose={() => setEditing(null)} onCreated={setLoginNext} />
+      <StaffDialog
+        item={editing}
+        onClose={() => setEditing(null)}
+        onCreated={(id, role) => {
+          if (owner && isLoginRole(role)) setLoginNext(id);
+        }}
+      />
       <LoginDialog
         staff={login}
         access={login ? accessOf(login) : undefined}
         onClose={() => setLogin(null)}
       />
-      <ThumbDialog
+      <StaffThumbDialog
         staff={thumb ? (staff.data.find((s) => s.id === thumb.id) ?? thumb) : null}
         onClose={() => setThumb(null)}
       />
+      <TrainerAppDialog trainer={appTrainer} onClose={() => setTrainerApp(null)} />
       <ConfirmDialog
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
         title={`Delete ${deleting?.name ?? ""}?`}
-        description="Their login stops and their thumb leaves the fingerprint machine. Attendance and salary history stay. They wait in the Recycle Bin, where they can be restored (register their thumb again then)."
+        description="Their login (and trainer app) stops and their thumb leaves the fingerprint machine. Attendance, salary and PT history stay. They wait in the Recycle Bin, where they can be restored (register their thumb again then)."
         confirmLabel="Delete"
         destructive
         onConfirm={() => {
           const s = deleting;
           setDeleting(null);
-          if (s) void bin.remove(s.name, (by) => binStaff(s, accessOf(s), by));
+          if (s)
+            void bin.remove(s.name, (by) =>
+              binStaff(s, accessOf(s), by, trainerOfStaff(s, trainers.data)),
+            );
         }}
       />
     </div>
-  );
-}
-
-const pick = (s: Staff): StaffInput => ({
-  name: s.name,
-  phone: s.phone,
-  role: s.role,
-  joiningDate: s.joiningDate,
-  active: s.active,
-  isCounsellor: s.isCounsellor,
-});
-
-/** Roles that usually sign in to the app; saving a new one opens "Create login" next. */
-const LOGIN_ROLES = ["Front desk", "Counsellor", "Manager"];
-
-function StaffDialog({
-  item,
-  onClose,
-  onCreated,
-}: {
-  item: Staff | "new" | null;
-  onClose: () => void;
-  onCreated: (staffId: string) => void;
-}) {
-  const blank: StaffInput = {
-    name: "",
-    phone: "",
-    role: "Front desk",
-    joiningDate: todayISO(),
-    active: true,
-    isCounsellor: false,
-  };
-  const [f, setF] = useState<StaffInput>(blank);
-  const [p, setP] = useState<Omit<StaffPrivate, "staffId">>({
-    monthlySalary: 0,
-    incentiveType: "none",
-    incentiveValue: 0,
-  });
-  const [err, setErr] = useState("");
-  const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    if (!item) return;
-    setErr("");
-    setF(item === "new" ? blank : pick(item));
-    setP({ monthlySalary: 0, incentiveType: "none", incentiveValue: 0 });
-    if (item !== "new") void getStaffPrivate(item.id).then((x) => setP(x));
-  }, [item]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const save = async () => {
-    if (f.name.trim().length < 2) return setErr("Enter the staff member's name.");
-    if (p.incentiveType === "percentage" && (p.incentiveValue < 0 || p.incentiveValue > 100))
-      return setErr("Incentive percentage must be 0–100.");
-    setSaving(true);
-    try {
-      const id = await saveStaff(f, item && item !== "new" ? item.id : undefined);
-      await saveStaffPrivate({ staffId: id, ...p });
-      toast.success("Staff saved");
-      onClose();
-      if (item === "new" && LOGIN_ROLES.includes(f.role)) onCreated(id);
-    } catch (e) {
-      toast.error(firestoreErrorMessage(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <FormDialog
-      open={!!item}
-      onOpenChange={(o) => !o && onClose()}
-      title={item === "new" ? "Add staff" : "Edit staff"}
-      footer={
-        <>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button disabled={saving} onClick={() => save()}>
-            {saving ? <Loader2 className="animate-spin" aria-hidden /> : null} Save
-          </Button>
-        </>
-      }
-    >
-      <div className="grid gap-4 sm:grid-cols-2">
-        {err ? (
-          <p role="alert" className="text-sm text-destructive sm:col-span-2">
-            {err}
-          </p>
-        ) : null}
-        <Field label="Name" htmlFor="st-name" required>
-          <Input
-            id="st-name"
-            value={f.name}
-            onChange={(e) => setF({ ...f, name: e.target.value })}
-          />
-        </Field>
-        <Field label="Phone" htmlFor="st-phone">
-          <Input
-            id="st-phone"
-            type="tel"
-            value={f.phone}
-            onChange={(e) => setF({ ...f, phone: e.target.value })}
-          />
-        </Field>
-        <Field label="Role" htmlFor="st-role">
-          <Select
-            value={ROLES.includes(f.role) ? f.role : "Other"}
-            onValueChange={(v) =>
-              setF({ ...f, role: v, isCounsellor: f.isCounsellor || v === "Counsellor" })
-            }
-          >
-            <SelectTrigger id="st-role" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ROLES.map((r) => (
-                <SelectItem key={r} value={r}>
-                  {r}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Joining date" htmlFor="st-join">
-          <Input
-            id="st-join"
-            type="date"
-            value={f.joiningDate}
-            onChange={(e) => setF({ ...f, joiningDate: e.target.value })}
-          />
-        </Field>
-        <label className="flex items-center justify-between gap-3 rounded-lg border border-border p-3 sm:col-span-2">
-          <span>
-            <span className="block text-sm font-semibold">Counsellor</span>
-            <span className="text-meta">
-              Shown in the Counsellor list when a member joins or renews.
-            </span>
-          </span>
-          <Switch
-            checked={f.isCounsellor}
-            onCheckedChange={(v) => setF({ ...f, isCounsellor: v })}
-            aria-label="Counsellor"
-          />
-        </label>
-        <Field label="Monthly salary ₹" htmlFor="st-salary">
-          <Input
-            id="st-salary"
-            type="number"
-            min={0}
-            inputMode="numeric"
-            value={p.monthlySalary}
-            onChange={(e) => setP({ ...p, monthlySalary: Number(e.target.value) })}
-          />
-        </Field>
-        <Field label="Incentive" htmlFor="st-inc-type">
-          <Select
-            value={p.incentiveType}
-            onValueChange={(v) => setP({ ...p, incentiveType: v as IncentiveType })}
-          >
-            <SelectTrigger id="st-inc-type" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No incentive</SelectItem>
-              <SelectItem value="percentage">% of money collected</SelectItem>
-              <SelectItem value="fixed">₹ per joining / renewal</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-        {p.incentiveType !== "none" ? (
-          <Field
-            label={p.incentiveType === "percentage" ? "Incentive %" : "Incentive ₹ per joining"}
-            htmlFor="st-inc"
-            hint="Counted on members where this person is the counsellor."
-          >
-            <Input
-              id="st-inc"
-              type="number"
-              min={0}
-              inputMode="decimal"
-              value={p.incentiveValue}
-              onChange={(e) => setP({ ...p, incentiveValue: Number(e.target.value) })}
-            />
-          </Field>
-        ) : null}
-      </div>
-    </FormDialog>
   );
 }
 
@@ -493,6 +371,9 @@ function SavedPassword({ staff, email }: { staff: Staff; email: string }) {
     </div>
   );
 }
+
+/** Every page a login can be given (delete rights are separate). */
+const PAGE_FEATURES = STAFF_FEATURES.filter((f) => !DELETE_FEATURES.includes(f));
 
 function LoginDialog({
   staff,
@@ -556,7 +437,7 @@ function LoginDialog({
       open={!!staff}
       onOpenChange={(o) => !o && onClose()}
       title={access ? `Login · ${staff?.name ?? ""}` : `Create login · ${staff?.name ?? ""}`}
-      description="Tick what this person can use. The owner always has everything."
+      description="Gym logins are for the front desk and managers. Tick the pages this person can use, or give all pages. The owner always has everything."
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
@@ -608,15 +489,26 @@ function LoginDialog({
         ) : null}
         <label className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
           <span>
-            <span className="block text-sm font-semibold">All features (manager)</span>
-            <span className="text-meta">Everything except creating logins.</span>
+            <span className="block text-sm font-semibold">All pages (full access)</span>
+            <span className="text-meta">
+              Every page, Staff and Recycle Bin included. Making logins stays with you, and deleting
+              only where you tick it below.
+            </span>
           </span>
-          <Switch checked={admin} onCheckedChange={setAdmin} aria-label="All features" />
+          <Switch checked={admin} onCheckedChange={setAdmin} aria-label="All pages" />
         </label>
         {!admin ? (
           <fieldset className="grid gap-2">
-            <legend className="text-label mb-1">Features this login can use</legend>
-            {STAFF_FEATURES.filter((f) => !DELETE_FEATURES.includes(f)).map((f) => (
+            <legend className="text-label mb-1">Pages this login can use</legend>
+            <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-border p-3 hover:bg-accent">
+              <Checkbox
+                checked={PAGE_FEATURES.every((f) => features.includes(f))}
+                onCheckedChange={(v) => PAGE_FEATURES.forEach((f) => toggle(f, v === true))}
+                aria-label="Tick every page"
+              />
+              <span className="text-sm font-semibold">Tick every page</span>
+            </label>
+            {PAGE_FEATURES.map((f) => (
               <label
                 key={f}
                 className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:bg-accent"
@@ -669,119 +561,6 @@ function LoginDialog({
           ))}
         </fieldset>
       </div>
-    </FormDialog>
-  );
-}
-
-function ThumbDialog({ staff, onClose }: { staff: Staff | null; onClose: () => void }) {
-  const devices = useLive<BiometricDevice[]>(subscribeDevices, [], []);
-  const usable = useMemo(
-    () => devices.data.filter((d) => d.integrationType === "adms" && d.status !== "disabled"),
-    [devices.data],
-  );
-  const [deviceId, setDeviceId] = useState("");
-  const [pin, setPin] = useState("");
-  const [busy, setBusy] = useState(false);
-  const cmds = useLive<{ type: string; status: string; error: string; createdAt: Date }[]>(
-    staff ? (ok, fail) => subscribeStaffCommands(staff.id, ok, fail) : null,
-    [],
-    [staff?.id],
-  );
-  useEffect(() => {
-    if (!staff) return;
-    setDeviceId(staff.biometricDeviceId || "");
-    if (staff.biometricUserId) setPin(staff.biometricUserId);
-    else void suggestStaffBiometricId().then(setPin);
-  }, [staff?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!deviceId && usable[0]) setDeviceId(usable[0].id);
-  }, [usable, deviceId]);
-
-  const enroll = cmds.data.find((c) => c.type === "enroll_fp");
-  const state = staff?.firstThumbRegistered
-    ? "Thumb registered. Punches now count as staff attendance."
-    : enroll?.status === "pending"
-      ? "Waiting for the device…"
-      : enroll?.status === "sent"
-        ? "Place the right thumb on the scanner 3 times, lifting it between presses."
-        : enroll?.status === "failed"
-          ? enroll.error || "The device could not capture the thumb. Try again."
-          : "";
-
-  const start = async () => {
-    const device = usable.find((d) => d.id === deviceId);
-    if (!staff || !device) return;
-    setBusy(true);
-    try {
-      await requestStaffFingerprint(staff, device, pin);
-      toast.success("Sent to the device");
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <FormDialog
-      open={!!staff}
-      onOpenChange={(o) => !o && onClose()}
-      title={`Thumb · ${staff?.name ?? ""}`}
-      description="Staff use the same fingerprint device. Their punches are staff attendance and always open the door."
-      footer={
-        <>
-          <Button variant="outline" onClick={onClose}>
-            Close
-          </Button>
-          <Button disabled={busy || !usable.length || !pin} onClick={() => start()}>
-            {busy ? <Loader2 className="animate-spin" aria-hidden /> : <Fingerprint aria-hidden />}{" "}
-            Register thumb on device
-          </Button>
-        </>
-      }
-    >
-      {!usable.length ? (
-        <p className="text-sm text-muted-foreground">
-          No fingerprint device is connected yet. Add one in Fingerprint Devices.
-        </p>
-      ) : (
-        <div className="grid gap-4">
-          <Field label="Device" htmlFor="th-dev">
-            <Select value={deviceId} onValueChange={setDeviceId}>
-              <SelectTrigger id="th-dev" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {usable.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    {d.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field
-            label="ID on the device"
-            htmlFor="th-pin"
-            hint="Staff IDs start at 9001 so they never clash with members."
-          >
-            <Input
-              id="th-pin"
-              inputMode="numeric"
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
-            />
-          </Field>
-          {state ? (
-            <p
-              role="status"
-              className="rounded-lg border border-border bg-muted/40 p-3 text-sm font-medium"
-            >
-              {state}
-            </p>
-          ) : null}
-        </div>
-      )}
     </FormDialog>
   );
 }

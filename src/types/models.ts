@@ -113,6 +113,9 @@ export interface Client extends BaseDoc {
   enrollmentId: string | null;
   /** Door lock state kept by the cloud: "removed" = taken off the device (plan ended / blocked). */
   deviceAccess: "on" | "removed" | null;
+  /** When staff last pressed Block entry / Allow entry, and who (to show how long the machine took). */
+  entryChangedAt: Date | null;
+  entryChangedBy: string;
   /** Private link code for the member to upload their own photo; empty once uploaded. */
   photoUploadToken: string;
   /** Member app (/m/<code>), made by the server at the first payment. "" = not made yet. */
@@ -208,6 +211,8 @@ export interface BiometricCommand extends BaseDoc {
   biometricUserId: string;
   /** Door-lock command (remove / restore on the device), not part of thumb registration. */
   door: boolean;
+  /** A removal done without a saved copy of the thumb (putting them back needs a new scan). */
+  noThumbCopy?: boolean;
   type: BiometricCommandType;
   command: string;
   order: number;
@@ -652,8 +657,11 @@ export interface FollowUp extends BaseDoc {
   parentFollowUpId: string | null;
 }
 
-/** "app": delivered as a member-app notification (no WhatsApp message needed). */
-export type CommunicationProviderName = "mock" | "whatsapp" | "app";
+/**
+ * "app": delivered as a member-app notification (no WhatsApp message needed). "phone": sent from
+ * the gym's own WhatsApp number through the linked-phone gateway (no Meta charge).
+ */
+export type CommunicationProviderName = "mock" | "whatsapp" | "app" | "phone";
 export type AutomationStatus = "pending" | "queued" | "sent" | "failed" | "cancelled";
 export interface RenewalNotification extends BaseDoc {
   membershipId: string;
@@ -783,6 +791,23 @@ export interface WhatsAppSettings {
   memberAppTemplate: string;
   /** Send the member app link by itself after a member's first payment. */
   autoSendMemberApp: boolean;
+  /**
+   * Which number sends: "phone" = the gym's own WhatsApp number, linked like WhatsApp Web through
+   * an OpenWA gateway (plain text, no Meta templates); "cloud" = the Meta WhatsApp Cloud API.
+   */
+  sender: "cloud" | "phone";
+  /** OpenWA gateway address, e.g. https://wa.example.com (the API key stays on the server). */
+  gatewayUrl: string;
+  /** The gateway's session (instance) ID for the gym's number. */
+  gatewaySessionId: string;
+  /** The number the gateway reports as linked, e.g. 919666446131 (shown in Settings). */
+  gatewayPhone: string;
+  /** Last known state of the linked phone (ready, qr_ready, disconnected…), kept by the server. */
+  gatewayStatus: string;
+  /** The gym's own wording per message kind for the linked phone ("" = the default text). */
+  phoneTexts: Partial<Record<string, string>>;
+  /** Seconds between announcement messages from the linked phone (sending fast risks a ban). */
+  phoneGapSeconds: number;
 }
 
 // ---------------- PT, trainers, payments, enrollment, finance, import ----------------
@@ -823,10 +848,12 @@ export interface Trainer extends BaseDoc {
   counsellorStaffId: string;
   portalActive: boolean;
   /**
-   * The Staff page entry (role "Trainer") this trainer comes from: their name, phone and active /
-   * left are set there, the PT share and the rest here. "" = an older trainer added only here.
+   * The trainer's Staff record (role "Trainer"). Name, phone and joining date come from there;
+   * "" = an older trainer not on the Staff page yet.
    */
   staffId: string;
+  /** Switched off for PT because they left / stopped being a trainer on the Staff page. */
+  offWithStaff: boolean;
 }
 export const PT_ASSIGNMENT_STATUSES = ["pending", "active", "completed", "cancelled"] as const;
 export type PtAssignmentStatus = (typeof PT_ASSIGNMENT_STATUSES)[number];
@@ -1000,6 +1027,8 @@ export const STAFF_FEATURES = [
   "activity",
   "devices",
   "settings",
+  "staff",
+  "recycleBin",
   "deleteMembers",
   "deleteLeads",
   "deleteBills",

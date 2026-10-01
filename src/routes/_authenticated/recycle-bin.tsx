@@ -47,12 +47,14 @@ const SECTIONS: Record<DeleteSection, { label: string; icon: LucideIcon }> = {
 
 function RecycleBinPage() {
   const { user } = useAuth();
-  const { owner, role } = useAccess();
-  const viewer = { owner, uid: user?.uid ?? "" };
+  const { owner, role, can } = useAccess();
+  // The owner, and logins given the Recycle Bin page, see and restore everything deleted.
+  const all = can("recycleBin");
+  const viewer = { owner: all, uid: user?.uid ?? "" };
   const live = useLive<RecycleBinEntry[]>(
     user ? (ok, fail) => subscribeRecycleBin(viewer, ok, fail) : null,
     [],
-    [owner, user?.uid],
+    [all, user?.uid],
   );
   const [section, setSection] = useState<DeleteSection | "all">("all");
   const [search, setSearch] = useState("");

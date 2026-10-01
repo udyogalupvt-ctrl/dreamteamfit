@@ -236,6 +236,15 @@ async function nextCommands(device: Device) {
     .get();
   const tasks = pending.docs.filter((d) => SERVER_TASKS.has(String(d.data()["type"])));
   if (tasks.length) await runServerTasks(tasks.slice(0, 25));
+  // What those tasks decided (e.g. "take this member off the machine") goes out in this same
+  // check-in, not the next one: Block entry reaches the door one poll (~15 s) sooner.
+  const queue = tasks.length
+    ? await firestore
+        .collection("biometricCommands")
+        .where("status", "==", "pending")
+        .limit(100)
+        .get()
+    : pending;
   // Users uploaded faster than they could be linked: link some more on each check-in.
   if (device.pendingMatches) {
     const left = await matchPending(device).catch(() => 1);
@@ -243,7 +252,7 @@ async function nextCommands(device: Device) {
   }
   // "Read users" pressed several times: the machine is asked once (repeats are withdrawn).
   const asked = new Set<string>();
-  const repeats = pending.docs.filter((d) => {
+  const repeats = queue.docs.filter((d) => {
     const x = d.data();
     if (x["deviceId"] !== device.id || !String(x["type"]).startsWith("import_")) return false;
     const key = String(x["command"]);
@@ -259,7 +268,7 @@ async function nextCommands(device: Device) {
     await b.commit();
   }
   const withdrawn = new Set(repeats.map((d) => d.id));
-  const mine = pending.docs
+  const mine = queue.docs
     .filter(
       (d) =>
         d.data()["deviceId"] === device.id &&
@@ -396,6 +405,12 @@ async function commandResults(device: Device, body: string) {
       completedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+    // The machine answered the request for a thumb copy: a Block entry waiting for it goes on
+    // now (even when no thumb came), instead of at the next day's check.
+    if (d["type"] === "query_fp" && d["clientId"])
+      await syncDoorAccess(String(d["clientId"])).catch((e) =>
+        console.error("door check after thumb copy failed", String(e)),
+      );
     if (!ok && d["enrollmentId"])
       await firestore
         .doc(`enrollments/${String(d["enrollmentId"])}`)
@@ -408,6 +423,7 @@ async function commandResults(device: Device, body: string) {
         deviceId: device.id,
         serialNumber: device.serialNumber,
         clientId: d["clientId"] ?? "",
+        staffId: d["staffId"] ?? "",
         enrollmentId: d["enrollmentId"] ?? null,
         biometricUserId: d["biometricUserId"] ?? "",
         type: "query_fp",
@@ -438,7 +454,9 @@ async function activateBiometric(clientRef: DocumentReference, device: Device, p
     const client = await tx.get(clientRef);
     if (!client.exists) return null;
     const c = client.data() ?? {};
-    if (c["firstThumbRegistered"] === true && c["biometricStatus"] === "active") return null;
+    // Already registered: a thumb sent now is the copy the door lock asked for (e.g. after Block
+    // entry), not a new registration. It must never switch a staff block back to "can enter".
+    if (c["firstThumbRegistered"] === true && c["biometricStatus"] !== "not_enrolled") return null;
     const [enrollments, memberships, ptList] = await Promise.all([
       tx.get(firestore.collection("enrollments").where("clientId", "==", client.id)),
       tx.get(firestore.collection("memberships").where("clientId", "==", client.id)),
@@ -449,7 +467,8 @@ async function activateBiometric(clientRef: DocumentReference, device: Device, p
     const clientPatch: Row = {
       biometricUserId: pin,
       biometricDeviceId: device.id,
-      biometricStatus: "active",
+      // Blocked by staff stays blocked, even while a thumb is being registered.
+      biometricStatus: c["biometricStatus"] === "disabled" ? "disabled" : "active",
       firstThumbRegistered: true,
       status: "active",
       updatedAt: now,
@@ -801,27 +820,42 @@ async function applyDoorAccess(clientId: string, c: Row, allowed: boolean) {
     systemAudit({ collection: "clients", docId: clientId, clientId, clientName: name, summary });
 
   if (!allowed) {
-    // Never take anyone off the machine before their fingerprint is saved here, so a renewal
-    // can always put them back without a new scan. Ask the machine for it first; the lock-out
-    // follows as soon as it arrives (storeTemplates).
+    // Take nobody off the machine before their fingerprint is saved here, so a renewal can put
+    // them back without a new scan: ask the machine for it first; the lock-out follows as soon as
+    // it arrives (storeTemplates). But when staff pressed Block entry and the machine answered
+    // without sending it (some machines can't), the block goes ahead anyway: keeping the door
+    // shut matters more, and Allow entry then asks for a new scan.
     const saved = (await firestore.doc(`biometricTemplates/${clientId}`).get()).data();
     if (!Object.keys((saved?.["fingers"] ?? {}) as object).length) {
       const since = Date.now() - 2 * ENROLL_REQUEST_TTL_MS;
-      const asked = cmds.docs.some(
+      const asked = cmds.docs.filter(
         (d) => d.data()["type"] === "query_fp" && createdMs(d.data()) > since,
       );
-      if (!asked)
-        // Not a door change: just a request for the fingerprint.
-        await firestore.collection("biometricCommands").add({
-          ...base,
-          door: false,
-          type: "query_fp",
-          order: 1,
-          command: `DATA QUERY FINGERTMP PIN=${pin}`,
-        });
-      return "none";
+      const waiting = asked.some((d) => ["pending", "sent"].includes(String(d.data()["status"])));
+      const answered = asked.some((d) => ["done", "failed"].includes(String(d.data()["status"])));
+      const blockedByStaff = c["biometricStatus"] === "disabled";
+      if (!(blockedByStaff && answered && !waiting)) {
+        if (!asked.length)
+          // Not a door change: just a request for the fingerprint.
+          await firestore.collection("biometricCommands").add({
+            ...base,
+            door: false,
+            type: "query_fp",
+            order: 1,
+            command: `DATA QUERY FINGERTMP PIN=${pin}`,
+          });
+        return "none";
+      }
     }
-    add("delete_user", 1, `DATA DELETE USERINFO PIN=${pin}`);
+    const noCopy = !Object.keys((saved?.["fingers"] ?? {}) as object).length;
+    batch.set(firestore.collection("biometricCommands").doc(), {
+      ...base,
+      type: "delete_user",
+      order: 1,
+      command: `DATA DELETE USERINFO PIN=${pin}`,
+      // Blocked without a saved thumb: Allow entry will need a new scan.
+      ...(noCopy ? { noThumbCopy: true } : {}),
+    });
     batch.update(ref, { deviceAccess: "removed", deviceAccessChangedAt: now });
     await batch.commit();
     await log("Removed from the door device (no running plan, or entry blocked)");

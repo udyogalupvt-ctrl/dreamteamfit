@@ -4,14 +4,12 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
   updateDoc,
   where,
   type DocumentData,
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
-import { todayISO } from "@/lib/format";
-import type { PtAssignment, PtPackage, ShareType, Staff, Trainer } from "@/types/models";
+import type { PtAssignment, PtPackage, ShareType, Trainer } from "@/types/models";
 import { col, COLLECTIONS, subscribeCollection, subscribeQuery, toDate } from "./firestore.service";
 
 export const mapPtPackage = (id: string, d: DocumentData): PtPackage => ({
@@ -43,6 +41,7 @@ export const mapTrainer = (id: string, d: DocumentData): Trainer => ({
   portalActive: d["portalActive"] !== false,
   counsellorStaffId: d["counsellorStaffId"] ?? "",
   staffId: d["staffId"] ?? "",
+  offWithStaff: d["offWithStaff"] === true,
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -118,94 +117,6 @@ export async function savePtPackage(input: PtPackageInput, id?: string) {
     })
   ).id;
 }
-/** A staff member with the role "Trainer" is a trainer (Packages & Trainers lists them). */
-export const isTrainerRole = (role: string) => role.trim().toLowerCase() === "trainer";
-const last10 = (phone: string) => phone.replace(/\D/g, "").slice(-10);
-/** The trainer profile made for a staff member (a fixed id, so it is never made twice). */
-export const staffTrainerId = (staffId: string) => `staff_${staffId}`;
-
-/**
- * Keeps the trainers in step with the Staff page, so a trainer is added once (on Staff, role
- * "Trainer"): each such staff member has a trainer profile (made when missing; one added here
- * before is matched by phone, then by name), with the name, phone and active / left from Staff.
- * The PT share and the rest stay as set on the trainer. Someone whose role is no longer Trainer
- * keeps their profile for history, inactive. Writes only what changed.
- */
-export async function syncStaffTrainers(staff: Staff[], trainers: Trainer[]) {
-  const byStaff = new Map(trainers.filter((t) => t.staffId).map((t) => [t.staffId, t]));
-  const unlinked = trainers.filter((t) => !t.staffId);
-  for (const s of staff) {
-    let t = byStaff.get(s.id);
-    if (!isTrainerRole(s.role)) {
-      if (t && t.status !== "inactive")
-        await updateDoc(doc(db, COLLECTIONS.trainers, t.id), {
-          status: "inactive",
-          updatedAt: serverTimestamp(),
-        });
-      continue;
-    }
-    if (!t) {
-      t =
-        unlinked.find((x) => last10(x.phone) && last10(x.phone) === last10(s.phone)) ??
-        unlinked.find((x) => x.name.trim().toLowerCase() === s.name.trim().toLowerCase());
-      if (t) unlinked.splice(unlinked.indexOf(t), 1);
-    }
-    const fromStaff = {
-      staffId: s.id,
-      counsellorStaffId: s.id,
-      name: s.name,
-      phone: s.phone,
-      status: s.active ? "active" : "inactive",
-    };
-    if (!t)
-      await setDoc(
-        doc(db, COLLECTIONS.trainers, staffTrainerId(s.id)),
-        {
-          ...fromStaff,
-          email: "",
-          specialization: "",
-          joiningDate: s.joiningDate || todayISO(),
-          defaultShareType: "percentage",
-          defaultTrainerShare: 0,
-          notes: "",
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      );
-    else if (
-      Object.entries(fromStaff).some(([k, v]) => (t as unknown as Record<string, unknown>)[k] !== v)
-    )
-      await updateDoc(doc(db, COLLECTIONS.trainers, t.id), {
-        ...fromStaff,
-        updatedAt: serverTimestamp(),
-      });
-  }
-}
-
-/** The trainer profile of a staff member just added as a trainer (PT share and the rest). */
-export async function saveStaffTrainerProfile(
-  staff: { id: string; name: string; phone: string; joiningDate: string },
-  profile: Pick<Trainer, "specialization" | "defaultShareType" | "defaultTrainerShare" | "notes">,
-) {
-  await setDoc(
-    doc(db, COLLECTIONS.trainers, staffTrainerId(staff.id)),
-    {
-      ...profile,
-      staffId: staff.id,
-      counsellorStaffId: staff.id,
-      name: staff.name,
-      phone: staff.phone,
-      email: "",
-      joiningDate: staff.joiningDate,
-      status: "active",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true },
-  );
-}
-
 export async function saveTrainer(raw: TrainerInput, id?: string) {
   // A form opened before the owner made the trainer's login must not wipe it.
   const {

@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { Dumbbell, Pencil, Plus, Power, Trash2, UserRound } from "lucide-react";
+import {
+  Dumbbell,
+  Pencil,
+  Plus,
+  Power,
+  Smartphone,
+  Trash2,
+  UserPlus,
+  UserRound,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "@tanstack/react-router";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
@@ -21,7 +30,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { StaffDialog } from "@/components/staff/staff-dialog";
+import { TrainerAppDialog } from "@/components/staff/trainer-app-dialog";
+import { useAccess } from "@/hooks/use-access";
 import { useBin } from "@/hooks/use-bin";
+import { useStaffTrainers } from "@/hooks/use-staff-trainers";
 import { useLive } from "@/hooks/use-live-query";
 import { formatPrice, todayISO } from "@/lib/format";
 import { binTrainer } from "@/services/recycle-bin.service";
@@ -31,23 +44,21 @@ import {
   PT_DURATION_LABELS,
   PT_SCHEDULE_LABELS,
   savePtPackage,
-  saveStaffTrainerProfile,
   saveTrainer,
   subscribePtPackages,
-  subscribeTrainers,
-  syncStaffTrainers,
   type PtPackageInput,
   type TrainerInput,
 } from "@/services/pt.service";
 import { DurationFields } from "@/components/packages/duration-fields";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import { useAccess } from "@/hooks/use-access";
-import { saveStaff, subscribeStaff } from "@/services/staff.service";
+import { staffOfTrainer } from "@/services/staff-trainers.service";
+import { saveStaff } from "@/services/staff.service";
 import {
   PT_DURATION_TYPES,
   type PtDurationType,
   type PtPackage,
   type ShareType,
+  type Staff,
   type Trainer,
 } from "@/types/models";
 
@@ -306,19 +317,23 @@ function PtPackageDialog({
 }
 
 export function TrainersSection() {
-  const live = useLive(subscribeTrainers, [], []);
-  // Trainers are added once, on the Staff page (role "Trainer"); their profile here follows it.
-  const staff = useLive(subscribeStaff, [], []);
-  const { can, owner } = useAccess();
-  const mayWrite = can("packages");
-  useEffect(() => {
-    if (!mayWrite || live.loading || staff.loading) return;
-    void syncStaffTrainers(staff.data, live.data).catch(() => undefined);
-  }, [mayWrite, staff.data, live.data, live.loading, staff.loading]);
+  // Trainers are made once, on the Staff page (role "Trainer"); this keeps their PT profiles in step.
+  const { staff, trainers: live } = useStaffTrainers();
+  const { can } = useAccess();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | "active" | "inactive">("all");
-  const [editing, setEditing] = useState<Trainer | null | "new">(null);
-  // Delete (owner, or a login given "Packages, trainers & plans" delete): into the Recycle Bin.
+  const [editing, setEditing] = useState<Trainer | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [app, setApp] = useState<string | null>(null);
+  // A trainer just added: open their PT share as soon as their profile appears.
+  const [shareNext, setShareNext] = useState<string | null>(null);
+  useEffect(() => {
+    const t = shareNext ? live.data.find((x) => x.staffId === shareNext) : undefined;
+    if (!t) return;
+    setShareNext(null);
+    setEditing(t);
+  }, [shareNext, live.data]);
+  // Delete (only trainers not on the Staff page; staff trainers are deleted on the Staff page).
   const bin = useBin();
   const [deleting, setDeleting] = useState<Trainer | null>(null);
   const rows = live.data.filter(
@@ -328,23 +343,40 @@ export function TrainersSection() {
         v.toLowerCase().includes(search.toLowerCase()),
       ),
   );
+  const appTrainer = app ? (live.data.find((t) => t.id === app) ?? null) : null;
   const toggle = (t: Trainer) =>
     void saveTrainer(
-      { ...strip(t), status: t.status === "active" ? "inactive" : "active" },
+      { ...strip(t), status: t.status === "active" ? "inactive" : "active", offWithStaff: false },
       t.id,
     ).then(
-      () => toast.success("Trainer updated"),
+      () => toast.success(t.status === "active" ? "No PT for this trainer now" : "Takes PT again"),
       (e) => toast.error(firestoreErrorMessage(e)),
     );
+  const addToStaff = async (t: Trainer) => {
+    try {
+      const id = await saveStaff({
+        name: t.name,
+        phone: t.phone,
+        role: "Trainer",
+        joiningDate: t.joiningDate || todayISO(),
+        active: t.status === "active",
+        isCounsellor: false,
+      });
+      await saveTrainer({ ...strip(t), staffId: id, counsellorStaffId: id }, t.id);
+      toast.success(`${t.name} added to Staff`);
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    }
+  };
   return (
     <div className="space-y-5">
       <PageHeader
         title="Trainers"
-        description="Everyone on the Staff page with the role Trainer is here. Set their PT share (percentage or fixed) and the rest here."
+        description="Trainers are added once, on the Staff page (role: Trainer). Here you set each one's PT share and trainer app login."
         breadcrumbs={crumbs}
         actions={
-          owner ? (
-            <Button onClick={() => setEditing("new")}>
+          can("staff") ? (
+            <Button onClick={() => setAdding(true)}>
               <Plus /> New trainer
             </Button>
           ) : null
@@ -363,12 +395,12 @@ export function TrainersSection() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="inactive">Inactive</SelectItem>
+            <SelectItem value="active">Taking PT</SelectItem>
+            <SelectItem value="inactive">Not taking PT</SelectItem>
           </SelectContent>
         </Select>
       </div>
-      {live.loading ? (
+      {live.loading || staff.loading ? (
         <LoadingRows rows={3} />
       ) : live.error ? (
         <ErrorState error={live.error} />
@@ -376,10 +408,10 @@ export function TrainersSection() {
         <EmptyState
           icon={UserRound}
           title="No trainers"
-          description="Add trainers to assign PT and track payouts."
+          description="Add a staff member with the role Trainer: they appear here to set their PT share."
           action={
-            owner ? (
-              <Button onClick={() => setEditing("new")}>
+            can("staff") ? (
+              <Button onClick={() => setAdding(true)}>
                 <Plus /> New trainer
               </Button>
             ) : undefined
@@ -388,9 +420,11 @@ export function TrainersSection() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {rows.map((t) => {
+            const person = staffOfTrainer(t, staff.data);
             const ex = calculateShare(5000, t.defaultShareType, t.defaultTrainerShare);
+            const shareSet = t.defaultTrainerShare > 0;
             return (
-              <article key={t.id} className="surface-card p-5">
+              <article key={t.id} className="surface-card flex flex-col gap-3 p-5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <Link
@@ -401,41 +435,69 @@ export function TrainersSection() {
                       {t.name}
                     </Link>
                     <p className="text-meta">
-                      {t.specialization || "Trainer"} · {t.phone}
+                      {t.specialization || "Trainer"} · {t.phone || "no phone"}
                     </p>
                   </div>
                   <StatusPill tone={t.status === "active" ? "success" : "warning"}>
-                    {t.staffId ? (t.status === "active" ? "active" : "left") : t.status}
+                    {t.status === "active"
+                      ? "Takes PT"
+                      : person && !person.active
+                        ? "Left"
+                        : "No PT"}
                   </StatusPill>
                 </div>
-                {!t.defaultTrainerShare ? (
-                  <p className="mt-3">
-                    <StatusPill tone="warning">Set PT share</StatusPill>
-                  </p>
-                ) : null}
-                <p className="mt-3 text-sm">
-                  Share:{" "}
-                  <b>
-                    {t.defaultShareType === "percentage"
-                      ? `${t.defaultTrainerShare}%`
-                      : formatPrice(t.defaultTrainerShare)}
-                  </b>
-                </p>
-                <p className="text-meta">
-                  On ₹5,000 PT: trainer {formatPrice(ex.trainerShareAmount)} · gym{" "}
-                  {formatPrice(ex.gymShareAmount)}
-                </p>
-                <div className="mt-3 flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setEditing(t)}>
-                    <Pencil /> Edit
-                  </Button>
-                  {/* From the Staff page: active / left and deleting are done there. */}
-                  {t.staffId ? null : (
-                    <Button size="sm" variant="outline" onClick={() => toggle(t)}>
-                      <Power /> {t.status === "active" ? "Deactivate" : "Activate"}
-                    </Button>
+                <div className="flex flex-wrap gap-1.5">
+                  {person ? (
+                    <StatusPill tone="info">Staff · {person.role || "Trainer"}</StatusPill>
+                  ) : (
+                    <StatusPill tone="warning">Not on the Staff page</StatusPill>
                   )}
-                  {!t.staffId && bin.canDelete("packages") ? (
+                  <StatusPill
+                    tone={!t.portalCode ? "warning" : t.portalActive ? "success" : "danger"}
+                  >
+                    {!t.portalCode ? "No trainer app" : t.portalActive ? "App on" : "App off"}
+                  </StatusPill>
+                </div>
+                {shareSet ? (
+                  <div>
+                    <p className="text-sm">
+                      PT share:{" "}
+                      <b>
+                        {t.defaultShareType === "percentage"
+                          ? `${t.defaultTrainerShare}%`
+                          : formatPrice(t.defaultTrainerShare)}
+                      </b>
+                    </p>
+                    <p className="text-meta">
+                      On ₹5,000 PT: trainer {formatPrice(ex.trainerShareAmount)} · gym{" "}
+                      {formatPrice(ex.gymShareAmount)}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-warning/40 bg-warning/10 p-2 text-sm">
+                    PT share not set yet: the trainer gets nothing from PT until you set it.
+                  </p>
+                )}
+                <div className="mt-auto flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant={shareSet ? "outline" : "default"}
+                    onClick={() => setEditing(t)}
+                  >
+                    <Pencil /> PT share
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setApp(t.id)}>
+                    <Smartphone /> Trainer app
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => toggle(t)}>
+                    <Power /> {t.status === "active" ? "Stop PT" : "Take PT"}
+                  </Button>
+                  {!person && can("staff") ? (
+                    <Button size="sm" variant="ghost" onClick={() => void addToStaff(t)}>
+                      <UserPlus /> Add to Staff
+                    </Button>
+                  ) : null}
+                  {!person && bin.canDelete("packages") ? (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -452,7 +514,18 @@ export function TrainersSection() {
           })}
         </div>
       )}
-      <TrainerDialog item={editing} onClose={() => setEditing(null)} />
+      <TrainerDialog
+        item={editing}
+        staff={editing ? staffOfTrainer(editing, staff.data) : null}
+        onClose={() => setEditing(null)}
+      />
+      <StaffDialog
+        item={adding ? "new" : null}
+        presetRole="Trainer"
+        onClose={() => setAdding(false)}
+        onCreated={(id) => setShareNext(id)}
+      />
+      <TrainerAppDialog trainer={appTrainer} onClose={() => setApp(null)} />
       <ConfirmDialog
         open={!!deleting}
         onOpenChange={(o) => !o && setDeleting(null)}
@@ -470,66 +543,38 @@ export function TrainersSection() {
   );
 }
 
-const AUTO = "__auto__";
-
-function TrainerDialog({ item, onClose }: { item: Trainer | null | "new"; onClose: () => void }) {
-  const blank: TrainerInput = {
-    name: "",
-    phone: "",
-    email: "",
-    specialization: "",
-    joiningDate: todayISO(),
-    status: "active",
-    defaultShareType: "percentage",
-    defaultTrainerShare: 0,
-    notes: "",
-    counsellorStaffId: "",
-    staffId: "",
-  };
-  const staffList = useLive(subscribeStaff, [], []);
-  // Linked to the Staff page: name, phone and active / left are changed there.
-  const fromStaff = item && item !== "new" && !!item.staffId;
-  const [f, setF] = useState<TrainerInput>(blank);
+/**
+ * A trainer's PT share and details. For a trainer on the Staff page, name, phone and joining
+ * date come from there (edited on the Staff page); only PT things are set here.
+ */
+function TrainerDialog({
+  item,
+  staff,
+  onClose,
+}: {
+  item: Trainer | null;
+  staff: Staff | null;
+  onClose: () => void;
+}) {
+  const [f, setF] = useState<TrainerInput | null>(null);
   const [err, setErr] = useState("");
   useEffect(() => {
     if (item) {
-      setF(item === "new" ? blank : strip(item));
+      setF(strip(item));
       setErr("");
     }
-  }, [item]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [item]);
   const save = async () => {
-    if (f.name.trim().length < 2) return setErr("Name is required");
+    if (!item || !f) return;
+    if (!staff && f.name.trim().length < 2) return setErr("Name is required");
     if (
       f.defaultTrainerShare < 0 ||
       (f.defaultShareType === "percentage" && f.defaultTrainerShare > 100)
     )
       return setErr("Share percentage must be 0–100");
     try {
-      if (item === "new") {
-        // Added once: on the Staff page (role Trainer) and here, with the PT share.
-        const joiningDate = f.joiningDate || todayISO();
-        const staffId = await saveStaff({
-          name: f.name.trim(),
-          phone: f.phone.trim(),
-          role: "Trainer",
-          joiningDate,
-          active: true,
-          isCounsellor: false,
-        });
-        await saveStaffTrainerProfile(
-          { id: staffId, name: f.name.trim(), phone: f.phone.trim(), joiningDate },
-          {
-            specialization: f.specialization,
-            defaultShareType: f.defaultShareType,
-            defaultTrainerShare: f.defaultTrainerShare,
-            notes: f.notes,
-          },
-        );
-        toast.success("Trainer added", { description: "Also on the Staff page (role Trainer)." });
-      } else {
-        await saveTrainer({ ...f, name: f.name.trim() }, item ? item.id : undefined);
-        toast.success("Trainer saved");
-      }
+      await saveTrainer({ ...f, name: f.name.trim() }, item.id);
+      toast.success("Trainer saved");
       onClose();
     } catch (e) {
       toast.error(firestoreErrorMessage(e));
@@ -539,7 +584,12 @@ function TrainerDialog({ item, onClose }: { item: Trainer | null | "new"; onClos
     <FormDialog
       open={!!item}
       onOpenChange={(o) => !o && onClose()}
-      title={item === "new" ? "New trainer" : "Edit trainer"}
+      title={`PT share · ${item?.name ?? ""}`}
+      description={
+        staff
+          ? "Name, phone and joining date come from the Staff page."
+          : "This trainer is not on the Staff page yet."
+      }
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
@@ -549,135 +599,85 @@ function TrainerDialog({ item, onClose }: { item: Trainer | null | "new"; onClos
         </>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-2">
-        {err ? (
-          <p role="alert" className="text-sm text-destructive sm:col-span-2">
-            {err}
-          </p>
-        ) : null}
-        {fromStaff ? (
-          <p className="rounded-xl bg-muted p-3 text-sm sm:col-span-2">
-            <b>{f.name}</b> · {f.phone || "no phone"}. Name, phone and active / left are changed on
-            the Staff page; the PT share and the rest here.
-          </p>
-        ) : (
-          <>
-            <Field label="Name" htmlFor="t-name" required>
-              <Input
-                id="t-name"
-                value={f.name}
-                onChange={(e) => setF({ ...f, name: e.target.value })}
-              />
-            </Field>
-            <Field label="Phone" htmlFor="t-phone">
-              <Input
-                id="t-phone"
-                value={f.phone}
-                onChange={(e) => setF({ ...f, phone: e.target.value })}
-              />
-            </Field>
-          </>
-        )}
-        <Field label="Email" htmlFor="t-email">
-          <Input
-            id="t-email"
-            value={f.email}
-            onChange={(e) => setF({ ...f, email: e.target.value })}
-          />
-        </Field>
-        <Field label="Specialization" htmlFor="t-spec">
-          <Input
-            id="t-spec"
-            value={f.specialization}
-            onChange={(e) => setF({ ...f, specialization: e.target.value })}
-          />
-        </Field>
-        <Field label="Joining date" htmlFor="t-join">
-          <Input
-            id="t-join"
-            type="date"
-            value={f.joiningDate}
-            onChange={(e) => setF({ ...f, joiningDate: e.target.value })}
-          />
-        </Field>
-        {fromStaff || item === "new" ? null : (
-          <Field label="Status" htmlFor="t-status">
+      {f ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {err ? (
+            <p role="alert" className="text-sm text-destructive sm:col-span-2">
+              {err}
+            </p>
+          ) : null}
+          {staff ? null : (
+            <>
+              <Field label="Name" htmlFor="t-name" required>
+                <Input
+                  id="t-name"
+                  value={f.name}
+                  onChange={(e) => setF({ ...f, name: e.target.value })}
+                />
+              </Field>
+              <Field label="Phone" htmlFor="t-phone">
+                <Input
+                  id="t-phone"
+                  value={f.phone}
+                  onChange={(e) => setF({ ...f, phone: e.target.value })}
+                />
+              </Field>
+            </>
+          )}
+          <Field label="Share type" htmlFor="t-stype">
             <Select
-              value={f.status}
-              onValueChange={(v) => setF({ ...f, status: v as Trainer["status"] })}
+              value={f.defaultShareType}
+              onValueChange={(v) => setF({ ...f, defaultShareType: v as ShareType })}
             >
-              <SelectTrigger id="t-status" className="w-full">
+              <SelectTrigger id="t-stype" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
+                <SelectItem value="percentage">Percentage of the PT price</SelectItem>
+                <SelectItem value="fixed">Fixed ₹ per PT plan</SelectItem>
               </SelectContent>
             </Select>
           </Field>
-        )}
-        <Field label="Default share type" htmlFor="t-stype">
-          <Select
-            value={f.defaultShareType}
-            onValueChange={(v) => setF({ ...f, defaultShareType: v as ShareType })}
-          >
-            <SelectTrigger id="t-stype" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="percentage">Percentage</SelectItem>
-              <SelectItem value="fixed">Fixed amount</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field
-          label={f.defaultShareType === "percentage" ? "Trainer share %" : "Trainer share ₹"}
-          htmlFor="t-sval"
-        >
-          <Input
-            id="t-sval"
-            type="number"
-            min={0}
-            value={f.defaultTrainerShare}
-            onChange={(e) => setF({ ...f, defaultTrainerShare: Number(e.target.value) })}
-          />
-        </Field>
-        {fromStaff || item === "new" ? null : (
           <Field
-            label="Counsellor profile (for calls in the trainer app)"
-            htmlFor="t-counsellor"
-            className="sm:col-span-2"
-            hint="Leads and members counselled by this staff profile show in the trainer's Calls. Automatic = the staff member with the same phone number."
+            label={f.defaultShareType === "percentage" ? "Trainer share %" : "Trainer share ₹"}
+            htmlFor="t-sval"
+            hint={(() => {
+              const ex = calculateShare(5000, f.defaultShareType, f.defaultTrainerShare);
+              return `On ₹5,000 PT: trainer ${formatPrice(ex.trainerShareAmount)}, gym ${formatPrice(ex.gymShareAmount)}`;
+            })()}
           >
-            <Select
-              value={f.counsellorStaffId || AUTO}
-              onValueChange={(v) => setF({ ...f, counsellorStaffId: v === AUTO ? "" : v })}
-            >
-              <SelectTrigger id="t-counsellor" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={AUTO}>Automatic (same phone number)</SelectItem>
-                {staffList.data
-                  .filter((s) => s.active)
-                  .map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                      {s.isCounsellor ? " · counsellor" : ""}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+            <Input
+              id="t-sval"
+              type="number"
+              min={0}
+              value={f.defaultTrainerShare}
+              onChange={(e) => setF({ ...f, defaultTrainerShare: Number(e.target.value) })}
+            />
           </Field>
-        )}
-        <Field label="Notes" htmlFor="t-notes" className="sm:col-span-2">
-          <Textarea
-            id="t-notes"
-            value={f.notes}
-            onChange={(e) => setF({ ...f, notes: e.target.value })}
-          />
-        </Field>
-      </div>
+          <Field label="Specialization" htmlFor="t-spec">
+            <Input
+              id="t-spec"
+              value={f.specialization}
+              placeholder="e.g. Strength, weight loss"
+              onChange={(e) => setF({ ...f, specialization: e.target.value })}
+            />
+          </Field>
+          <Field label="Email" htmlFor="t-email">
+            <Input
+              id="t-email"
+              value={f.email}
+              onChange={(e) => setF({ ...f, email: e.target.value })}
+            />
+          </Field>
+          <Field label="Notes" htmlFor="t-notes" className="sm:col-span-2">
+            <Textarea
+              id="t-notes"
+              value={f.notes}
+              onChange={(e) => setF({ ...f, notes: e.target.value })}
+            />
+          </Field>
+        </div>
+      ) : null}
     </FormDialog>
   );
 }

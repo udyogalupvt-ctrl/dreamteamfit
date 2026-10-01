@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { StatusPill } from "@/components/common/status-pill";
 import { ExpenseFormDialog } from "@/components/expenses/expense-form-dialog";
 import { SettleDialog } from "@/components/expenses/settle-dialog";
-import { emptyRow, HandoverDialog } from "@/components/finance/cash-book-section";
+import { HandoverDialog } from "@/components/finance/cash-book-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -29,7 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useLive } from "@/hooks/use-live-query";
-import { buildCashBook, type CashBookRow, type CashDay } from "@/lib/cash-book";
+import { buildCashBook, handoverSummary, type CashDay } from "@/lib/cash-book";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { subscribeExpensesSince, subscribeExpensesSettledSince } from "@/services/expenses.service";
 import {
@@ -70,7 +70,8 @@ function DayBookPage() {
   }, []);
   const [adding, setAdding] = useState(add === "expense");
   const [settling, setSettling] = useState<Expense | null>(null);
-  const [handover, setHandover] = useState<CashBookRow | null>(null);
+  // The handover window, open on one day's cash; `drawer` = ask for the morning's drawer cash too.
+  const [handover, setHandover] = useState<{ date: string; drawer: boolean } | null>(null);
 
   const [start, end] = useMemo<[string, string]>(() => {
     const now = new Date();
@@ -185,6 +186,7 @@ function DayBookPage() {
       Balance: r.balance,
       Handover: r.handover,
       "Handed to": r.handoverTo,
+      "Handover details": handoverSummary(r),
       Closing: r.closing,
     })),
   });
@@ -310,9 +312,7 @@ function DayBookPage() {
           <button
             type="button"
             className="surface-card p-4 text-left ring-1 ring-destructive/50"
-            onClick={() =>
-              setHandover(book.find((r) => r.date === today) ?? emptyRow(today, cashNow))
-            }
+            onClick={() => setHandover({ date: today, drawer: true })}
           >
             <p className="text-meta">Cash in hand now</p>
             <p className="text-stat tabular-nums text-destructive">{formatPrice(cashNow)}</p>
@@ -448,11 +448,9 @@ function DayBookPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() =>
-                  setHandover(book.find((r) => r.date === today) ?? emptyRow(today, cashNow))
-                }
+                onClick={() => setHandover({ date: today, drawer: false })}
               >
-                <HandCoins aria-hidden /> Today&apos;s handover
+                <HandCoins aria-hidden /> Record handover
               </Button>
             </div>
             {cashRows.length ? (
@@ -488,12 +486,14 @@ function DayBookPage() {
                           {formatPrice(r.balance)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {r.handover
-                            ? `${formatPrice(r.handover)}${r.handoverTo ? ` → ${r.handoverTo}` : ""}`
-                            : "—"}
+                          {r.handovers.length ? handoverSummary(r) : "—"}
                         </TableCell>
                         <TableCell>
-                          <Button size="sm" variant="ghost" onClick={() => setHandover(r)}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setHandover({ date: r.date, drawer: false })}
+                          >
                             Handover
                           </Button>
                         </TableCell>
@@ -504,7 +504,7 @@ function DayBookPage() {
               </div>
             ) : (
               <p className="text-meta p-4">
-                No cash entries in this period. Set the opening cash with Today&apos;s handover.
+                No cash entries in this period. Set the opening cash with Record handover.
               </p>
             )}
           </section>
@@ -513,7 +513,9 @@ function DayBookPage() {
       <ExpenseFormDialog open={adding} onOpenChange={setAdding} />
       <SettleDialog expense={settling} onClose={() => setSettling(null)} />
       <HandoverDialog
-        row={handover}
+        date={handover?.date ?? null}
+        showOpening={handover?.drawer ?? false}
+        book={book}
         people={staff.data.map((s) => s.name)}
         onClose={() => setHandover(null)}
       />

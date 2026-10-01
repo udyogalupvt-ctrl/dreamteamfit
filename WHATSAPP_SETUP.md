@@ -4,6 +4,34 @@ Account checked on 24 Sep 2026: number **+91 79896 17553 (Dream Team Services)**
 CONNECTED, quality GREEN, business verified, permanent system-user token with messaging and
 template permissions. Test sends of `hello_world` and `order_confirmed` were accepted by Meta.
 
+## 0. Which number sends (read first)
+
+| Way | Number stays in the WhatsApp app on the phone? | Risk | Cost |
+| --- | --- | --- | --- |
+| **Cloud API + Coexistence (recommended)** | Yes, in the **WhatsApp Business** app | Official, no ban risk from the app | Meta's per-message charge |
+| Cloud API, number only on the API | No | Official | Meta's per-message charge |
+| Linked phone (OpenWA gateway, like the old software) | Yes | **Unofficial (WhatsApp Web automation): WhatsApp can restrict or ban the number** | Gateway server only |
+
+**Coexistence** (Meta, official, available in India): the gym keeps using its number in the
+WhatsApp Business app and the same number sends through the Cloud API. Needs:
+
+- the number on the **WhatsApp Business** app (not ordinary WhatsApp), version 2.24.17 or newer,
+  used there for at least 7 days;
+- onboarding through Meta's Embedded Signup by a Meta **Tech Provider / Solution Partner** (e.g.
+  Interakt, AiSensy, Wati): the gym scans a QR / taps "Connect" in the WhatsApp Business app;
+- the gym opens the WhatsApp Business app regularly (Meta disconnects it after long disuse).
+
+When the number is on a WhatsApp Business Account the gym owns, switch the app to it without any
+code change: in Vercel set `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID` and
+`WHATSAPP_ACCESS_TOKEN` (a permanent system-user token with access to that account), Redeploy,
+create the 6 templates below in that account, then *Settings → WhatsApp → Test connection*.
+
+**Linked phone (OpenWA)**: *Settings → WhatsApp → Send from → The gym's own WhatsApp number*.
+Enter the gateway address, instance ID and token (kept on the server only), Save connection,
+Show QR, scan it on the gym's phone (*WhatsApp → Linked devices → Link a device*), Send test.
+Messages are plain text with the bill / app link (wording editable there); announcements go one
+every few seconds. Use only if the risk above is acceptable.
+
 There are two ways a bill reaches the member. Both send the **bill page** (not a PDF file):
 the member opens it and can view, download the PDF, or print.
 
