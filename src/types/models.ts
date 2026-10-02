@@ -118,6 +118,13 @@ export interface Client extends BaseDoc {
   entryChangedBy: string;
   /** Private link code for the member to upload their own photo; empty once uploaded. */
   photoUploadToken: string;
+  /**
+   * Day they first joined the gym ("YYYY-MM-DD"); "" = the day they were added here. Set from the
+   * old software for members who moved over. Read it with joinedOnOf().
+   */
+  joinedOn: string;
+  /** Their member ID in the old software (like "RFM0000001"), "" when none: links the Backup data. */
+  oldMemberId: string;
   /** Member app (/m/<code>), made by the server at the first payment. "" = not made yet. */
   portalCode: string;
   /** False = switched off by staff (the member can't sign in). */
@@ -287,6 +294,8 @@ export interface Membership extends BaseDoc {
   cancelledOn?: string;
   cancelReason?: string;
   cancelId?: string;
+  /** Moved over from the old gym software: sold and paid there, not a sale here. */
+  paidInOldSoftware?: boolean;
 }
 
 export const PAUSE_REASONS = ["Travel", "Medical", "Other"] as const;
@@ -1029,6 +1038,7 @@ export const STAFF_FEATURES = [
   "settings",
   "staff",
   "recycleBin",
+  "backup",
   "deleteMembers",
   "deleteLeads",
   "deleteBills",

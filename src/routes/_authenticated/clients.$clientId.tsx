@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { PhotoLinkButtons } from "@/components/clients/photo-link-button";
 import { MemberAppCard } from "@/components/clients/member-app-card";
+import { OldHistoryCard } from "@/components/clients/old-history-card";
 import { useAccess } from "@/hooks/use-access";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
@@ -72,10 +73,10 @@ import {
   MEMBERSHIP_STATUS_META,
   SOURCE_LABELS,
   effectiveMembershipStatus,
-  formatDate,
   formatDateISO,
   formatPrice,
   INVOICE_STATUS_META,
+  joinedOnOf,
 } from "@/lib/format";
 import { toneIcon } from "@/lib/tone";
 import { cn } from "@/lib/utils";
@@ -329,7 +330,7 @@ function ClientProfilePage() {
                 <span className="truncate">{c.email}</span>
               </a>
             ) : null}
-            <span>Joined {formatDate(c.createdAt)}</span>
+            <span>Joined {formatDateISO(joinedOnOf(c))}</span>
           </div>
         </div>
         <div className="rounded-xl border border-border bg-muted/40 p-4 sm:min-w-56">
@@ -435,6 +436,7 @@ function ClientProfilePage() {
               />
             </dl>
           </section>
+          <OldHistoryCard client={c} className="lg:col-span-2" />
         </TabsContent>
 
         <TabsContent value="workout">
@@ -584,6 +586,7 @@ function ClientProfilePage() {
             </>
           )}
           <ClientPtPlans client={c} invoices={invoices.data} />
+          <OldHistoryCard client={c} />
         </TabsContent>
 
         <TabsContent value="pt">

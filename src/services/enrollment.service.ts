@@ -96,6 +96,12 @@ export interface EnrollmentInput {
    * a normal joining / renewal (a renewal simply starts after the running plan).
    */
   upgrade: UpgradeInput | null;
+  /**
+   * A member moving from the old software whose plan was paid there: no money is taken or
+   * counted today (no payment, no day-book entry, no trainer payout). Only a balance still owed
+   * gets a bill, to collect later as usual.
+   */
+  oldSoftware?: { balance: number } | null;
 }
 
 export interface UpgradeInput {
@@ -157,14 +163,23 @@ export function enrollmentTotals(
  */
 export async function enrollMember(input: EnrollmentInput) {
   if (!input.gymPackage && !input.pt) throw new Error("Select a gym package or a PT package.");
-  const totals = enrollmentTotals(input);
-  if (input.amountPaid > totals.total) throw new Error("Amount paid cannot exceed the total.");
+  const old = input.oldSoftware ?? null;
+  if (old && input.existingClient)
+    throw new Error(
+      "Paid in the old software is only for a member joining here for the first time.",
+    );
+  const oldBalance = old ? Math.max(0, Math.round(old.balance || 0)) : 0;
+  const totals = enrollmentTotals(old ? { ...input, discount: 0, amountPaid: 0 } : input);
+  if (!old && input.amountPaid > totals.total)
+    throw new Error("Amount paid cannot exceed the total.");
   const maxDiscount = maxDiscountFor(input);
-  if (maxDiscount !== null && input.discount > maxDiscount)
+  if (!old && maxDiscount !== null && input.discount > maxDiscount)
     throw new Error(
       `Discount can be at most ₹${maxDiscount.toLocaleString("en-IN")} on this package.`,
     );
-  const balanceLeft = totals.total - Math.min(input.amountPaid, totals.total) > 0;
+  const balanceLeft = old
+    ? oldBalance > 0
+    : totals.total - Math.min(input.amountPaid, totals.total) > 0;
   if (balanceLeft && !input.nextPaymentDate)
     throw new Error("Pick the date the member will pay the balance.");
   const dueDate = balanceLeft && input.nextPaymentDate ? input.nextPaymentDate : todayISO();
@@ -206,10 +221,11 @@ export async function enrollMember(input: EnrollmentInput) {
     : doc(col(COLLECTIONS.clients));
   const membershipRef = input.gymPackage ? doc(col(COLLECTIONS.memberships)) : null;
   const ptRef = input.pt ? doc(col(COLLECTIONS.ptAssignments)) : null;
-  const invoiceRef = doc(col(COLLECTIONS.invoices));
-  const paymentRef = totals.amountPaid > 0 ? doc(col(COLLECTIONS.payments)) : null;
+  // Paid in the old software: a bill only for a balance still owed.
+  const invoiceRef = !old || oldBalance > 0 ? doc(col(COLLECTIONS.invoices)) : null;
+  const paymentRef = !old && totals.amountPaid > 0 ? doc(col(COLLECTIONS.payments)) : null;
   const enrollmentRef = doc(col(COLLECTIONS.enrollments));
-  const payoutRef = input.pt ? doc(col(COLLECTIONS.trainerPayouts)) : null;
+  const payoutRef = input.pt && !old ? doc(col(COLLECTIONS.trainerPayouts)) : null;
   const token = createPublicToken();
   const counterRef = doc(db, COLLECTIONS.settings, "counters");
   const inquiryRef = input.inquiryId ? doc(db, COLLECTIONS.inquiries, input.inquiryId) : null;
@@ -258,7 +274,8 @@ export async function enrollMember(input: EnrollmentInput) {
     const c = counter.data() ?? {};
     const year = new Date(`${today}T00:00:00`).getFullYear();
     const invKey = `invoiceSeq${year}`;
-    const invSeq = Number(c[invKey] ?? 0) + 1;
+    // No bill (paid in the old software): no bill number is used up.
+    const invSeq = Number(c[invKey] ?? 0) + (invoiceRef ? 1 : 0);
     const invoiceNumber = `${input.settings.invoicePrefix}-${year}-${String(invSeq).padStart(6, "0")}`;
     const counterPatch: Record<string, unknown> = {
       [invKey]: invSeq,
@@ -320,8 +337,9 @@ export async function enrollMember(input: EnrollmentInput) {
         startDate: input.startDate,
         endDate,
         status: membershipStatus,
-        invoiceId: invoiceRef.id,
+        invoiceId: invoiceRef?.id ?? "",
         enrollmentId: enrollmentRef.id,
+        ...(old ? { paidInOldSoftware: true } : {}),
         ...counsellor,
         createdAt: now,
         updatedAt: now,
@@ -340,20 +358,23 @@ export async function enrollMember(input: EnrollmentInput) {
         startDate: input.startDate,
         endDate: calculateEndDate(input.startDate, input.pt.pkg.durationDays),
         status: input.startDate > today ? "pending" : "active",
-        invoiceId: invoiceRef.id,
+        invoiceId: invoiceRef?.id ?? "",
         enrollmentId: enrollmentRef.id,
+        ...(old ? { paidInOldSoftware: true } : {}),
         ...counsellor,
         createdAt: now,
         updatedAt: now,
       });
-      tx.set(payoutRef!, {
+    }
+    if (payoutRef && ptRef && input.pt && share) {
+      tx.set(payoutRef, {
         trainerId: input.pt.trainer.id,
         trainerNameSnapshot: input.pt.trainer.name,
         clientId: clientRef.id,
         clientNameSnapshot: fullName,
         ptAssignmentId: ptRef.id,
         ptPackageNameSnapshot: ptPackageLabel(input.pt.pkg),
-        invoiceId: invoiceRef.id,
+        invoiceId: invoiceRef?.id ?? "",
         grossAmount: share.ptPrice,
         trainerShareAmount: share.trainerShareAmount,
         gymShareAmount: share.gymShareAmount,
@@ -364,91 +385,125 @@ export async function enrollMember(input: EnrollmentInput) {
         updatedAt: now,
       });
     }
-    const items = [
-      ...(input.gymPackage
-        ? [
-            {
-              name: input.gymPackage.name,
-              description: `Gym membership · ${input.gymPackage.durationDays} days`,
-              quantity: 1,
-              unitPrice: input.gymPackage.price,
-              total: input.gymPackage.price,
-              packageId: input.gymPackage.id,
-            },
-          ]
-        : []),
-      ...(input.pt
-        ? [
-            {
-              name: `PT: ${ptPackageLabel(input.pt.pkg)}`,
-              description: `Personal training with ${input.pt.trainer.name}`,
-              quantity: 1,
-              unitPrice: input.pt.pkg.price,
-              total: input.pt.pkg.price,
-              packageId: null,
-            },
-          ]
-        : []),
-    ];
-    const { share: _s, ...money } = totals;
-    const breakdown = {
-      membershipGross: input.gymPackage?.price ?? 0,
-      ptGross: input.pt?.pkg.price ?? 0,
-      trainerShareTotal: share?.trainerShareAmount ?? 0,
-    };
+    const planName = [input.gymPackage?.name, input.pt ? `PT: ${ptPackageLabel(input.pt.pkg)}` : ""]
+      .filter(Boolean)
+      .join(" + ");
+    const items = old
+      ? [
+          {
+            name: `Balance from the old software · ${planName}`,
+            description: "Plan paid in the old software; this part was still due",
+            quantity: 1,
+            unitPrice: oldBalance,
+            total: oldBalance,
+            packageId: null,
+          },
+        ]
+      : [
+          ...(input.gymPackage
+            ? [
+                {
+                  name: input.gymPackage.name,
+                  description: `Gym membership · ${input.gymPackage.durationDays} days`,
+                  quantity: 1,
+                  unitPrice: input.gymPackage.price,
+                  total: input.gymPackage.price,
+                  packageId: input.gymPackage.id,
+                },
+              ]
+            : []),
+          ...(input.pt
+            ? [
+                {
+                  name: `PT: ${ptPackageLabel(input.pt.pkg)}`,
+                  description: `Personal training with ${input.pt.trainer.name}`,
+                  quantity: 1,
+                  unitPrice: input.pt.pkg.price,
+                  total: input.pt.pkg.price,
+                  packageId: null,
+                },
+              ]
+            : []),
+        ];
+    const { share: _s, upgradeCredit: _u, ...plainMoney } = totals;
+    const money = old
+      ? {
+          subtotal: oldBalance,
+          discount: 0,
+          tax: 0,
+          total: oldBalance,
+          amountPaid: 0,
+          balanceDue: oldBalance,
+          upgradeCredit: 0,
+        }
+      : { ...plainMoney, upgradeCredit: totals.upgradeCredit };
+    const breakdown = old
+      ? {
+          membershipGross: input.gymPackage ? oldBalance : 0,
+          ptGross: input.gymPackage ? 0 : oldBalance,
+          trainerShareTotal: 0,
+        }
+      : {
+          membershipGross: input.gymPackage?.price ?? 0,
+          ptGross: input.pt?.pkg.price ?? 0,
+          trainerShareTotal: share?.trainerShareAmount ?? 0,
+        };
     const paymentStatus = derivePaymentStatus(money.total, money.amountPaid);
-    tx.set(invoiceRef, {
-      invoiceNumber,
-      clientId: clientRef.id,
-      clientNameSnapshot: fullName,
-      clientPhoneSnapshot: phone,
-      clientEmailSnapshot: email,
-      membershipId: membershipRef?.id ?? null,
-      packageId: input.gymPackage?.id ?? null,
-      ptAssignmentId: ptRef?.id ?? null,
-      paymentId: paymentRef?.id ?? null,
-      enrollmentId: enrollmentRef.id,
-      items,
-      ...money,
-      ...breakdown,
-      paymentsTracked: true,
-      paymentStatus,
-      paymentMethod: input.method,
-      invoiceDate: today,
-      dueDate,
-      notes: [
-        input.upgrade
-          ? `Upgrade from ${input.upgrade.fromPackage}: ₹${input.upgrade.credit.toLocaleString("en-IN")} credit for ${input.upgrade.unusedDays} unused days`
-          : "",
-        input.notes,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-      ...counsellor,
-      pdfUrl: "",
-      publicToken: token,
-      createdBy: input.staff.name,
-      createdByUid: input.staff.uid,
-      createdAt: now,
-      updatedAt: now,
-    });
-    tx.set(doc(db, COLLECTIONS.publicInvoices, token), {
-      publicToken: token,
-      invoiceNumber,
-      clientName: fullName,
-      clientPhone: phone,
-      clientEmail: email,
-      items,
-      ...money,
-      paymentStatus,
-      paymentMethod: input.method,
-      invoiceDate: today,
-      dueDate,
-      pdfUrl: "",
-      business: input.settings,
-      updatedAt: now,
-    });
-    if (paymentRef) {
+    if (invoiceRef)
+      tx.set(invoiceRef, {
+        invoiceNumber,
+        clientId: clientRef.id,
+        clientNameSnapshot: fullName,
+        clientPhoneSnapshot: phone,
+        clientEmailSnapshot: email,
+        membershipId: membershipRef?.id ?? null,
+        packageId: input.gymPackage?.id ?? null,
+        ptAssignmentId: ptRef?.id ?? null,
+        paymentId: paymentRef?.id ?? null,
+        enrollmentId: enrollmentRef.id,
+        items,
+        ...money,
+        ...breakdown,
+        paymentsTracked: true,
+        paymentStatus,
+        paymentMethod: input.method,
+        invoiceDate: today,
+        dueDate,
+        notes: [
+          input.upgrade
+            ? `Upgrade from ${input.upgrade.fromPackage}: ₹${input.upgrade.credit.toLocaleString("en-IN")} credit for ${input.upgrade.unusedDays} unused days`
+            : "",
+          old ? "Moved from the old software (plan paid there)" : "",
+          input.notes,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        ...counsellor,
+        pdfUrl: "",
+        publicToken: token,
+        createdBy: input.staff.name,
+        createdByUid: input.staff.uid,
+        createdAt: now,
+        updatedAt: now,
+      });
+    if (invoiceRef)
+      tx.set(doc(db, COLLECTIONS.publicInvoices, token), {
+        publicToken: token,
+        invoiceNumber,
+        clientName: fullName,
+        clientPhone: phone,
+        clientEmail: email,
+        items,
+        ...money,
+        paymentStatus,
+        paymentMethod: input.method,
+        invoiceDate: today,
+        dueDate,
+        pdfUrl: "",
+        business: input.settings,
+        updatedAt: now,
+      });
+    if (paymentRef && invoiceRef) {
       tx.set(paymentRef, {
         clientId: clientRef.id,
         clientNameSnapshot: fullName,
@@ -474,9 +529,10 @@ export async function enrollMember(input: EnrollmentInput) {
       status: needsBiometric ? "biometric_pending" : "active",
       membershipId: membershipRef?.id ?? null,
       ptAssignmentId: ptRef?.id ?? null,
-      invoiceId: invoiceRef.id,
+      invoiceId: invoiceRef?.id ?? "",
       paymentId: paymentRef?.id ?? null,
-      paymentStatus,
+      paymentStatus: invoiceRef ? paymentStatus : "paid",
+      ...(old ? { paidInOldSoftware: true } : {}),
       biometricDeviceId: input.existingClient?.biometricDeviceId ?? "",
       biometricUserId: input.existingClient?.biometricUserId ?? "",
       firstThumbRegistered: !needsBiometric,
@@ -518,8 +574,9 @@ export async function enrollMember(input: EnrollmentInput) {
   if (input.inquiryId)
     await closeOpenFollowUps("inquiryId", input.inquiryId, "Joined").catch(() => undefined);
 
-  const invSnap = await getDoc(invoiceRef);
-  const invoice = mapInvoice(invoiceRef.id, invSnap.data() ?? {});
+  const invoice = invoiceRef
+    ? mapInvoice(invoiceRef.id, (await getDoc(invoiceRef)).data() ?? {})
+    : null;
   // No file upload here: confirming a payment never waits on a PDF.
   return {
     clientId: clientRef.id,

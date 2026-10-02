@@ -859,6 +859,44 @@ function PaymentsTab({ data }: { data: MemberPortalData }) {
         )}
       </section>
 
+      {data.oldHistory?.plans.length ? (
+        <section className="surface-card overflow-hidden">
+          <div className="border-b border-border p-4">
+            <h2 className="text-card-title">Earlier packages</h2>
+            <p className="text-meta">
+              From the gym's old software · member since {day(data.oldHistory.joinedOn)}
+            </p>
+            {data.oldHistory.plans.some((p) => p.balance > 0) ? (
+              <p className="text-meta mt-1">
+                Balances here are as they were in the old software. What you owe now is under Bills
+                below.
+              </p>
+            ) : null}
+          </div>
+          <ul className="divide-y divide-border">
+            {data.oldHistory.plans.map((p, i) => (
+              <li key={i} className="space-y-1 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold">{p.name}</p>
+                    <p className="text-meta">
+                      {day(p.start)} → {day(p.end)}
+                      {p.bill ? ` · bill no. ${p.bill}` : ""}
+                    </p>
+                  </div>
+                  <span className="shrink-0 font-semibold tabular-nums">{rupees(p.amount)}</span>
+                </div>
+                <p className="text-meta tabular-nums">
+                  {p.discount ? `${rupees(p.price)} less ${rupees(p.discount)} · ` : ""}
+                  Paid {rupees(p.paid)}
+                  {p.balance > 0 ? ` · balance ${rupees(p.balance)}` : ""}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {data.pt.length ? (
         <section className="surface-card overflow-hidden">
           <h2 className="text-card-title border-b border-border p-4">Personal training</h2>

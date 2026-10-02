@@ -31,6 +31,8 @@ export type ClientInput = Pick<
   | "source"
   | "notes"
   | "status"
+  | "joinedOn"
+  | "oldMemberId"
 >;
 export type ClientUpdateInput = Partial<
   ClientInput &
@@ -79,6 +81,8 @@ export const mapClient = (id: string, d: DocumentData): Client => ({
     d["deviceAccess"] === "removed" ? "removed" : d["deviceAccess"] === "on" ? "on" : null,
   entryChangedAt: d["entryChangedAt"] ? toDate(d["entryChangedAt"]) : null,
   entryChangedBy: d["entryChangedBy"] ?? "",
+  joinedOn: typeof d["joinedOn"] === "string" ? d["joinedOn"] : "",
+  oldMemberId: d["oldMemberId"] ?? "",
   portalCode: d["portalCode"] ?? "",
   portalActive: d["portalActive"] !== false,
   portalSentAt: d["portalSentAt"] ? toDate(d["portalSentAt"]) : null,

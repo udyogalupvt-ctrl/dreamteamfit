@@ -46,6 +46,7 @@ import {
 } from "@/constants/portal";
 import type { WorkoutDay } from "@/types/models";
 import { adminAuth, db, json, localDate, requireFeature } from "./admin";
+import { oldHistoryFor } from "./old-data";
 import { readPassword, savePassword } from "./vault";
 
 type D = DocumentData;
@@ -309,16 +310,18 @@ async function memberData(clientId: string): Promise<Response> {
   if (c["portalActive"] === false)
     return json({ error: "Your member app is switched off. Please contact the gym." }, 403);
   const today = localDate();
-  const [gym, memberships, invoices, payments, pts, visits, plans, logs] = await Promise.all([
-    gymInfo(),
-    byClient("memberships", clientId),
-    byClient("invoices", clientId),
-    byClient("payments", clientId),
-    byClient("ptAssignments", clientId),
-    visitDays(clientId),
-    currentPlans(clientId),
-    recentLogs(clientId, today),
-  ]);
+  const [gym, memberships, invoices, payments, pts, visits, plans, logs, oldHistory] =
+    await Promise.all([
+      gymInfo(),
+      byClient("memberships", clientId),
+      byClient("invoices", clientId),
+      byClient("payments", clientId),
+      byClient("ptAssignments", clientId),
+      visitDays(clientId),
+      currentPlans(clientId),
+      recentLogs(clientId, today),
+      oldHistoryFor(c).catch(() => null),
+    ]);
 
   const plansList: PortalMembership[] = memberships.docs
     .map((d) => {
@@ -385,10 +388,12 @@ async function memberData(clientId: string): Promise<Response> {
       gender: s(c["gender"]),
       address: s(c["address"]),
       emergencyContact: s(c["emergencyContact"]),
-      joinedOn: (() => {
-        const at = (c["createdAt"] as { toDate?: () => Date } | undefined)?.toDate?.();
-        return at ? localDate(at) : "";
-      })(),
+      joinedOn:
+        (typeof c["joinedOn"] === "string" && c["joinedOn"]) ||
+        (() => {
+          const at = (c["createdAt"] as { toDate?: () => Date } | undefined)?.toDate?.();
+          return at ? localDate(at) : "";
+        })(),
     },
     today,
     current:
@@ -419,6 +424,7 @@ async function memberData(clientId: string): Promise<Response> {
     diet: plans.diet,
     logs,
     trainer: livePt?.trainerId ? { id: livePt.trainerId, name: livePt.trainerName } : null,
+    oldHistory,
   };
   return json(data);
 }

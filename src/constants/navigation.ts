@@ -18,6 +18,7 @@ import {
   Salad,
   Settings,
   Trash2,
+  ArchiveRestore,
   UserCog,
   UserPlus,
   Users,
@@ -138,6 +139,13 @@ export const NAV_ITEMS: NavItem[] = [
     to: "/recycle-bin",
     icon: Trash2,
     feature: "recycleBin",
+    group: "Management",
+  },
+  {
+    label: "Backup",
+    to: "/backup",
+    icon: ArchiveRestore,
+    feature: "backup",
     group: "Management",
   },
 ];

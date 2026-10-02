@@ -178,7 +178,7 @@ export async function runImport(params: {
 }
 
 function pickFields(type: ImportType, d: Record<string, unknown>) {
-  if (type === "clients") return { fullName: d["fullName"], phone: d["phone"], phoneNormalized: d["phoneNormalized"], email: d["email"], dateOfBirth: d["dateOfBirth"] || null, gender: d["gender"], address: d["address"], emergencyContact: d["emergencyContact"], notes: d["notes"] };
+  if (type === "clients") return { fullName: d["fullName"], phone: d["phone"], phoneNormalized: d["phoneNormalized"], email: d["email"], dateOfBirth: d["dateOfBirth"] || null, gender: d["gender"], address: d["address"], emergencyContact: d["emergencyContact"], notes: d["notes"], joinedOn: d["joinedOn"] || "" };
   if (type === "packages") return { name: d["name"], durationDays: d["durationDays"], price: d["price"], category: d["category"], description: d["description"] };
   if (type === "trainers") return { name: d["name"], phone: d["phone"], email: d["email"], specialization: d["specialization"], joiningDate: d["joiningDate"] || todayISO() };
   if (type === "expenses") return { title: d["title"], amount: d["amount"], date: d["date"], category: d["category"], paymentMethod: d["paymentMethod"], notes: d["notes"] };
