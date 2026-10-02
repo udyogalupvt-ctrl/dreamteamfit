@@ -26,7 +26,15 @@ code change: in Vercel set `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUN
 `WHATSAPP_ACCESS_TOKEN` (a permanent system-user token with access to that account), Redeploy,
 create the 6 templates below in that account, then *Settings → WhatsApp → Test connection*.
 
-**Linked phone (OpenWA)**: set up the gym's own gateway server first:
+**Linked phone (OpenWA) on the gym PC (easiest, no server)**: *Settings → WhatsApp → Send
+automatically → Send from → The gym's own WhatsApp number → Save*, then in **Run it on the gym
+PC**: install Docker Desktop on the gym PC once, download the setup file and double-click it there.
+The box turns *Gym PC online* (it reports in every 10 minutes and whenever its address changes);
+then *Show QR*, scan it on the gym's phone, *Send test*. It starts with the PC by itself; messages
+go out while the PC is on (otherwise the send fails with "The gym PC … is off": press Retry later).
+*New setup key* stops an old setup file and the PC using it.
+
+**Linked phone (OpenWA) on a server (always on)**: set up the gym's own gateway server first:
 [deploy/openwa/README.md](deploy/openwa/README.md) (step by step, about an hour). Then
 *Settings → WhatsApp → Send from → The gym's own WhatsApp number*: enter the gateway address,
 instance ID and token (kept on the server only), Save connection, Start, Show QR, scan it on the

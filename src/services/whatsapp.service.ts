@@ -330,6 +330,12 @@ export const whatsAppGatewayAction = (
     { action, ...(phone ? { phone } : {}) },
   );
 
+/** The gym PC's setup key (for its setup file); reset = a new one, the old file stops working. */
+export const gymPcSetupKey = (reset = false) =>
+  callServer<{ key: string }>("/api/whatsapp/gateway-status", {
+    action: reset ? "pc-key-reset" : "pc-key",
+  });
+
 /**
  * A test message to any number, from the chosen sender; via "phone": from the gym's own number
  * even while Send from is still the Cloud API (to try it before switching).

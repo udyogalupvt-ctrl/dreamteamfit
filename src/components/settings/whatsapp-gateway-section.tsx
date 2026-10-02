@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import {
   CheckCircle2,
   ChevronDown,
+  Download,
+  KeyRound,
   Link2,
   Loader2,
+  Monitor,
   QrCode,
   RefreshCcw,
   Send,
@@ -12,6 +15,7 @@ import {
   TriangleAlert,
   XCircle,
 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Field } from "@/components/common/form-dialog";
 import { FormSection } from "@/components/common/form-section";
@@ -29,7 +33,9 @@ import {
   renderPhoneText,
   type PhoneTextKind,
 } from "@/lib/whatsapp-texts";
+import { GYM_PC_SETUP_FILE, gymPcSetupBat } from "@/lib/gym-pc-setup";
 import {
+  gymPcSetupKey,
   saveWhatsAppGateway,
   sendWhatsAppTest,
   whatsAppGatewayAction,
@@ -208,71 +214,86 @@ export function WhatsAppGatewaySection({
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label="Gateway address"
-            htmlFor="gw-url"
-            hint="Where the OpenWA gateway runs, e.g. https://wa.yourgym.in"
-            className="sm:col-span-2"
-          >
-            <Input
-              id="gw-url"
-              value={url}
-              placeholder="https://"
-              onChange={(e) => setUrl(e.target.value.trim())}
-            />
-          </Field>
-          <Field label="Instance ID" htmlFor="gw-session" hint="The WhatsApp instance (session) ID">
-            <Input
-              id="gw-session"
-              value={sessionId}
-              onChange={(e) => setSessionId(e.target.value.trim())}
-            />
-          </Field>
-          <Field
-            label="Token (API key)"
-            htmlFor="gw-key"
-            hint={
-              connected
-                ? "Saved on the server. Leave empty to keep it."
-                : "Kept only on the server, never shown again."
-            }
-          >
-            <Input
-              id="gw-key"
-              type="password"
-              autoComplete="off"
-              value={apiKey}
-              placeholder={connected ? "•••••• saved" : "owa_k1_…"}
-              onChange={(e) => setApiKey(e.target.value.trim())}
-            />
-          </Field>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            disabled={!!busy || !url || !sessionId || (!apiKey && !connected)}
-            onClick={() =>
-              run("save", async () => {
-                const r = await saveWhatsAppGateway({ url, sessionId, apiKey });
-                setApiKey("");
-                setState(r);
-                toast.success("WhatsApp gateway saved", {
-                  description:
-                    r.status === "ready"
-                      ? `Connected: ${r.phoneLabel || "the gym's number"}.`
-                      : "Now link the gym's phone: Show QR.",
-                });
-              })
-            }
-          >
-            {busy === "save" ? (
-              <Loader2 className="animate-spin" aria-hidden />
-            ) : (
-              <Link2 aria-hidden />
-            )}{" "}
-            Save connection
-          </Button>
-        </div>
+        <GymPcBox saved={saved} />
+
+        <Collapsible defaultOpen={saved.gatewayMode === "server"}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="justify-between">
+              Or your own server (advanced) <ChevronDown aria-hidden />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-3 grid gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label="Gateway address"
+                htmlFor="gw-url"
+                hint="Where the OpenWA gateway runs, e.g. https://wa.yourgym.in"
+                className="sm:col-span-2"
+              >
+                <Input
+                  id="gw-url"
+                  value={url}
+                  placeholder="https://"
+                  onChange={(e) => setUrl(e.target.value.trim())}
+                />
+              </Field>
+              <Field
+                label="Instance ID"
+                htmlFor="gw-session"
+                hint="The WhatsApp instance (session) ID"
+              >
+                <Input
+                  id="gw-session"
+                  value={sessionId}
+                  onChange={(e) => setSessionId(e.target.value.trim())}
+                />
+              </Field>
+              <Field
+                label="Token (API key)"
+                htmlFor="gw-key"
+                hint={
+                  connected
+                    ? "Saved on the server. Leave empty to keep it."
+                    : "Kept only on the server, never shown again."
+                }
+              >
+                <Input
+                  id="gw-key"
+                  type="password"
+                  autoComplete="off"
+                  value={apiKey}
+                  placeholder={connected ? "•••••• saved" : "owa_k1_…"}
+                  onChange={(e) => setApiKey(e.target.value.trim())}
+                />
+              </Field>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                disabled={!!busy || !url || !sessionId || (!apiKey && !connected)}
+                onClick={() =>
+                  run("save", async () => {
+                    const r = await saveWhatsAppGateway({ url, sessionId, apiKey });
+                    setApiKey("");
+                    setState(r);
+                    toast.success("WhatsApp gateway saved", {
+                      description:
+                        r.status === "ready"
+                          ? `Connected: ${r.phoneLabel || "the gym's number"}.`
+                          : "Now link the gym's phone: Show QR.",
+                    });
+                  })
+                }
+              >
+                {busy === "save" ? (
+                  <Loader2 className="animate-spin" aria-hidden />
+                ) : (
+                  <Link2 aria-hidden />
+                )}{" "}
+                Save connection
+              </Button>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
 
         {connected ? (
           <div className="grid gap-3 rounded-xl border border-border p-4">
@@ -470,5 +491,122 @@ export function WhatsAppGatewaySection({
         </Collapsible>
       </div>
     </FormSection>
+  );
+}
+
+/** Online when the gym PC reported in the last 15 minutes (it does every 10 while it is on). */
+const PC_ONLINE_MS = 15 * 60 * 1000;
+
+/**
+ * The plug-and-play way: WhatsApp runs on the gym PC (Docker Desktop). One setup file, double-
+ * clicked once; after that it starts with the PC and tells the app its address by itself.
+ */
+function GymPcBox({ saved }: { saved: WhatsAppSettings }) {
+  const [busy, setBusy] = useState<"" | "get" | "new">("");
+  const [, setTick] = useState(0);
+  // Keep "online · 3 minutes ago" current while Settings stays open.
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const seen = saved.gatewayMode === "gym-pc" ? saved.gatewayPcSeenAt : null;
+  const online = !!seen && Date.now() - seen.getTime() < PC_ONLINE_MS;
+
+  const download = async (fresh: boolean) => {
+    setBusy(fresh ? "new" : "get");
+    try {
+      const { key } = await gymPcSetupKey(fresh);
+      const file = gymPcSetupBat(window.location.origin, key);
+      const url = URL.createObjectURL(new Blob([file], { type: "application/octet-stream" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = GYM_PC_SETUP_FILE;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      toast.success(fresh ? "New setup file downloaded" : "Setup file downloaded", {
+        description: fresh
+          ? "The old file and the PC using it stop now: run this one on the gym PC."
+          : "Double-click it on the gym PC.",
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  return (
+    <section
+      className="grid gap-3 rounded-xl border border-primary/40 bg-primary/5 p-4 text-sm"
+      aria-label="Gym PC"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="flex items-center gap-2 font-semibold">
+          <Monitor className="size-5" aria-hidden /> Run it on the gym PC (easiest)
+        </p>
+        {seen ? (
+          <StatusPill tone={online ? "success" : "danger"}>
+            {online ? "Gym PC online" : "Gym PC offline"} ·{" "}
+            {formatDistanceToNow(seen, { addSuffix: true })}
+          </StatusPill>
+        ) : (
+          <StatusPill tone="info">Not set up yet</StatusPill>
+        )}
+      </div>
+      <ol className="grid list-decimal gap-1.5 pl-5">
+        <li>
+          On the gym PC (Windows), install{" "}
+          <a
+            href="https://www.docker.com/products/docker-desktop/"
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold underline underline-offset-2"
+          >
+            Docker Desktop
+          </a>{" "}
+          once (free). Open it and skip the sign-in.
+        </li>
+        <li>
+          Download the setup file below and double-click it on the gym PC. If Windows warns, press{" "}
+          <b>More info → Run anyway</b>. The first time takes 5–15 minutes.
+        </li>
+        <li>
+          This box turns <b>Gym PC online</b>. Then press <b>Show QR</b> below and scan it with the
+          gym&apos;s WhatsApp (Linked devices → Link a device). Only once.
+        </li>
+      </ol>
+      <p className="text-meta">
+        After that, nothing to do: it starts by itself whenever the PC is on, and messages go out
+        while it is. When the PC is off, bills wait: press Retry once it is on.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" disabled={!!busy} onClick={() => void download(false)}>
+          {busy === "get" ? (
+            <Loader2 className="animate-spin" aria-hidden />
+          ) : (
+            <Download aria-hidden />
+          )}{" "}
+          Download setup file
+        </Button>
+        {seen ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!!busy}
+            onClick={() => void download(true)}
+            title="Makes a new key: the old setup file and the PC using it stop working"
+          >
+            {busy === "new" ? (
+              <Loader2 className="animate-spin" aria-hidden />
+            ) : (
+              <KeyRound aria-hidden />
+            )}{" "}
+            New setup key
+          </Button>
+        ) : null}
+      </div>
+    </section>
   );
 }
