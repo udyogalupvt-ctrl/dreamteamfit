@@ -163,6 +163,23 @@ export interface MemberPortalData {
   logs: PortalLog[];
   /** Active PT trainer: chat is open with them. */
   trainer: { id: string; name: string } | null;
+  /** Plans from the gym's old software, once the front desk linked this member to their old record. */
+  oldHistory: { memberId: string; joinedOn: string; plans: PortalOldPlan[] } | null;
+}
+
+/** A plan from the old software, as the member sees it. */
+export interface PortalOldPlan {
+  name: string;
+  start: string;
+  end: string;
+  price: number;
+  discount: number;
+  /** Price after discount. */
+  amount: number;
+  paid: number;
+  balance: number;
+  bill: string;
+  status: string;
 }
 
 export interface TrainerMemberRow {

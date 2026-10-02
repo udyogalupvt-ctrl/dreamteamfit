@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedActivityLogRouteImport } from './routes/_authenticated/activity-log'
 import { Route as AuthenticatedAnnouncementsRouteImport } from './routes/_authenticated/announcements'
 import { Route as AuthenticatedAttendanceRouteImport } from './routes/_authenticated/attendance'
+import { Route as AuthenticatedBackupRouteImport } from './routes/_authenticated/backup'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
 import { Route as AuthenticatedBiometricDevicesRouteImport } from './routes/_authenticated/biometric-devices'
 import { Route as AuthenticatedBirthdaysRouteImport } from './routes/_authenticated/birthdays'
@@ -74,6 +75,11 @@ const AuthenticatedAnnouncementsRoute =
 const AuthenticatedAttendanceRoute = AuthenticatedAttendanceRouteImport.update({
   id: '/attendance',
   path: '/attendance',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedBackupRoute = AuthenticatedBackupRouteImport.update({
+  id: '/backup',
+  path: '/backup',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedBillingRoute = AuthenticatedBillingRouteImport.update({
@@ -237,6 +243,7 @@ export interface FileRoutesByFullPath {
   '/activity-log': typeof AuthenticatedActivityLogRoute
   '/announcements': typeof AuthenticatedAnnouncementsRoute
   '/attendance': typeof AuthenticatedAttendanceRoute
+  '/backup': typeof AuthenticatedBackupRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
   '/birthdays': typeof AuthenticatedBirthdaysRoute
@@ -273,6 +280,7 @@ export interface FileRoutesByTo {
   '/activity-log': typeof AuthenticatedActivityLogRoute
   '/announcements': typeof AuthenticatedAnnouncementsRoute
   '/attendance': typeof AuthenticatedAttendanceRoute
+  '/backup': typeof AuthenticatedBackupRoute
   '/billing': typeof AuthenticatedBillingRoute
   '/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
   '/birthdays': typeof AuthenticatedBirthdaysRoute
@@ -311,6 +319,7 @@ export interface FileRoutesById {
   '/_authenticated/activity-log': typeof AuthenticatedActivityLogRoute
   '/_authenticated/announcements': typeof AuthenticatedAnnouncementsRoute
   '/_authenticated/attendance': typeof AuthenticatedAttendanceRoute
+  '/_authenticated/backup': typeof AuthenticatedBackupRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
   '/_authenticated/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
   '/_authenticated/birthdays': typeof AuthenticatedBirthdaysRoute
@@ -349,6 +358,7 @@ export interface FileRouteTypes {
     | '/activity-log'
     | '/announcements'
     | '/attendance'
+    | '/backup'
     | '/billing'
     | '/biometric-devices'
     | '/birthdays'
@@ -385,6 +395,7 @@ export interface FileRouteTypes {
     | '/activity-log'
     | '/announcements'
     | '/attendance'
+    | '/backup'
     | '/billing'
     | '/biometric-devices'
     | '/birthdays'
@@ -422,6 +433,7 @@ export interface FileRouteTypes {
     | '/_authenticated/activity-log'
     | '/_authenticated/announcements'
     | '/_authenticated/attendance'
+    | '/_authenticated/backup'
     | '/_authenticated/billing'
     | '/_authenticated/biometric-devices'
     | '/_authenticated/birthdays'
@@ -505,6 +517,13 @@ declare module '@tanstack/react-router' {
       path: '/attendance'
       fullPath: '/attendance'
       preLoaderRoute: typeof AuthenticatedAttendanceRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/backup': {
+      id: '/_authenticated/backup'
+      path: '/backup'
+      fullPath: '/backup'
+      preLoaderRoute: typeof AuthenticatedBackupRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/billing': {
@@ -717,6 +736,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedActivityLogRoute: typeof AuthenticatedActivityLogRoute
   AuthenticatedAnnouncementsRoute: typeof AuthenticatedAnnouncementsRoute
   AuthenticatedAttendanceRoute: typeof AuthenticatedAttendanceRoute
+  AuthenticatedBackupRoute: typeof AuthenticatedBackupRoute
   AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
   AuthenticatedBiometricDevicesRoute: typeof AuthenticatedBiometricDevicesRoute
   AuthenticatedBirthdaysRoute: typeof AuthenticatedBirthdaysRoute
@@ -748,6 +768,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedActivityLogRoute: AuthenticatedActivityLogRoute,
   AuthenticatedAnnouncementsRoute: AuthenticatedAnnouncementsRoute,
   AuthenticatedAttendanceRoute: AuthenticatedAttendanceRoute,
+  AuthenticatedBackupRoute: AuthenticatedBackupRoute,
   AuthenticatedBillingRoute: AuthenticatedBillingRoute,
   AuthenticatedBiometricDevicesRoute: AuthenticatedBiometricDevicesRoute,
   AuthenticatedBirthdaysRoute: AuthenticatedBirthdaysRoute,

@@ -36,6 +36,10 @@ export const FEATURE_META: Record<StaffFeature, { label: string; hint: string }>
     label: "Recycle Bin",
     hint: "See everything deleted and put it back (Delete forever stays with the owner)",
   },
+  backup: {
+    label: "Backup (old software data)",
+    hint: "See and download the old software's data, and old members not added yet (adding the data stays with the owner)",
+  },
   deleteMembers: { label: "Members", hint: "Members with their plans, bills and visits" },
   deleteLeads: { label: "Leads & follow-ups", hint: "Leads, their calls and follow-ups" },
   deleteBills: { label: "Bills", hint: "Bills with their payments" },
@@ -102,6 +106,7 @@ const PAGE_FEATURES: [prefix: string, feature: StaffFeature | "owner"][] = [
   ["/whatsapp-usage", "settings"],
   ["/staff", "staff"],
   ["/recycle-bin", "recycleBin"],
+  ["/backup", "backup"],
 ];
 
 export function featureForPath(pathname: string): StaffFeature | "owner" | null {

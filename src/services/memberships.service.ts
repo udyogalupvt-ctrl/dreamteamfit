@@ -30,6 +30,7 @@ const mapMembership = (id: string, d: DocumentData): Membership => ({
   ...(d["cancelId"] ? { cancelId: String(d["cancelId"]) } : {}),
   ...(d["cancelReason"] ? { cancelReason: String(d["cancelReason"]) } : {}),
   ...(d["cancelledOn"] ? { cancelledOn: String(d["cancelledOn"]) } : {}),
+  ...(d["paidInOldSoftware"] === true ? { paidInOldSoftware: true } : {}),
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });

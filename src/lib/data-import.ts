@@ -19,6 +19,7 @@ export const IMPORT_FIELDS: Record<ImportType, FieldDef[]> = {
     { key: "email", label: "Email", kind: "email", aliases: ["email", "email id", "mail", "e-mail"] },
     { key: "dateOfBirth", label: "Date of birth", kind: "date", aliases: ["dob", "date of birth", "birthday", "birth date"] },
     { key: "gender", label: "Gender", kind: "text", aliases: ["gender", "sex"] },
+    { key: "joinedOn", label: "Joining date", kind: "date", aliases: ["joining date", "join date", "joined", "joined on", "date of joining", "doj", "registration date", "admission date"] },
     { key: "address", label: "Address", kind: "text", aliases: ["address", "location", "city"] },
     { key: "emergencyContact", label: "Emergency contact", kind: "text", aliases: ["emergency", "emergency contact", "emergency number"] },
     { key: "notes", label: "Notes", kind: "text", aliases: ["notes", "remarks", "comment", "comments"] },
@@ -159,6 +160,7 @@ export function validateRows(type: ImportType, rows: RawRow[], mapping: Record<s
       if (String(data["fullName"] ?? "").length === 1) errors.push({ field: "Full name", reason: "Name is too short" });
       const g = key(String(data["gender"] ?? "")); data["gender"] = (GENDERS as readonly string[]).includes(g) ? g : g === "m" ? "male" : g === "f" ? "female" : "unspecified";
       if (data["dateOfBirth"] && String(data["dateOfBirth"]) > todayISO()) errors.push({ field: "Date of birth", reason: "Date of birth is in the future" });
+      if (data["joinedOn"] && String(data["joinedOn"]) > todayISO()) errors.push({ field: "Joining date", reason: "Joining date is in the future" });
       const p = String(data["phoneNormalized"] ?? "");
       const mid = memberIdOf(data["memberId"]); data["memberId"] = mid;
       // Family members often share one phone: with a member ID, the ID tells people apart.

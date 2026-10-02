@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useLive } from "@/hooks/use-live-query";
-import { formatDate, formatDateISO, normalizePhone } from "@/lib/format";
+import { formatDateISO, joinedOnOf, normalizePhone } from "@/lib/format";
 import { daysLeftLabel, planByClient, plansForLists, type PlanSummary } from "@/lib/member-plans";
 import { memberIdLabel, subscribeClients } from "@/services/clients.service";
 import { subscribeQueuedPlans } from "@/services/memberships.service";
@@ -267,7 +267,7 @@ function ClientsPage() {
                       <ExpiryCell plan={plans.get(c.id)} />
                     </TableCell>
                     <TableCell className="hidden whitespace-nowrap text-muted-foreground lg:table-cell">
-                      {formatDate(c.createdAt)}
+                      {formatDateISO(joinedOnOf(c))}
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       {isSetupPending(c) ? (

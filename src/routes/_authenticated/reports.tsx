@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { toast } from "sonner";
 import {
   Activity,
   BadgeIndianRupee,
-  BarChart3,
   CalendarCheck,
   CalendarClock,
+  Download,
   Dumbbell,
+  FileSpreadsheet,
+  Loader2,
   ReceiptIndianRupee,
   Salad,
   TrendingUp,
@@ -17,10 +20,12 @@ import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingRows } from "@/components/common/loading-state";
 import { PageHeader } from "@/components/common/page-header";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useReportsData } from "@/hooks/use-reports-data";
 import { formatDateISO, formatNumber, formatPrice, todayISO } from "@/lib/format";
+import { downloadCsv, downloadExcel, type ReportSheet } from "@/lib/report-export";
 import type { ReportDateRange, ReportPeriod } from "@/lib/reporting";
 import { EXPENSE_CATEGORIES } from "@/types/models";
 
@@ -54,6 +59,7 @@ function ReportsPage() {
   const [period, setPeriod] = useState<ReportPeriod>("month");
   const [custom, setCustom] = useState<ReportDateRange>({ start: todayISO(), end: todayISO() });
   const report = useReportsData(period, custom);
+  const [exporting, setExporting] = useState(false);
   const max = Math.max(...report.expenseBreakdown.map((x) => x.amount), 0);
   if (report.loading)
     return (
@@ -72,6 +78,24 @@ function ReportsPage() {
         title="Reports"
         description="Money, members and plans for any period."
         breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Reports" }]}
+        actions={
+          <Button
+            disabled={exporting}
+            onClick={() => {
+              setExporting(true);
+              downloadExcel(fileBase(report.range, "report") + ".xlsx", report.sheets)
+                .catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)))
+                .finally(() => setExporting(false));
+            }}
+          >
+            {exporting ? (
+              <Loader2 className="animate-spin" aria-hidden />
+            ) : (
+              <FileSpreadsheet aria-hidden />
+            )}
+            Download Excel
+          </Button>
+        }
       />
       {report.error ? <ErrorState error={report.error} title="Couldn't load reports" /> : null}
       <section className="surface-card p-4">
@@ -226,8 +250,6 @@ function ReportsPage() {
             ["Diet Assignments", report.plans.dietAssignments],
           ]}
         />
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
         <ReportSection
           icon={CalendarCheck}
           title="Attendance"
@@ -240,21 +262,78 @@ function ReportsPage() {
             ["Blocked Attempts", report.attendance.blocked ?? "—"],
           ]}
         />
-        <section className="surface-card p-5">
-          <div className="flex items-start gap-3">
-            <span className="grid size-10 place-items-center rounded-lg bg-primary/15 text-primary-foreground">
-              <BarChart3 className="size-5" />
-            </span>
-            <div>
-              <h2 className="text-card-title">Export preparation</h2>
-              <p className="text-meta mt-1">
-                Report metrics and rows are structured for future PDF and CSV export.
-              </p>
-            </div>
-          </div>
-        </section>
       </div>
+      <ExportCard sheets={report.sheets} range={report.range} />
     </div>
+  );
+}
+/** "rebuild-fitness-bills-2026-10-01-to-2026-10-31" */
+const fileBase = (range: ReportDateRange, what: string) =>
+  `rebuild-fitness-${what}-${range.start}${range.start === range.end ? "" : `-to-${range.end}`}`;
+
+function ExportCard({ sheets, range }: { sheets: ReportSheet[]; range: ReportDateRange }) {
+  const [busy, setBusy] = useState(false);
+  const excel = () => {
+    setBusy(true);
+    downloadExcel(fileBase(range, "report") + ".xlsx", sheets)
+      .catch((e: unknown) => toast.error(e instanceof Error ? e.message : String(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <section className="surface-card p-5" aria-labelledby="report-export-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 id="report-export-title" className="text-section-title flex items-center gap-2">
+            <FileSpreadsheet className="size-5" aria-hidden /> Download this report
+          </h2>
+          <p className="text-meta mt-1">
+            {formatDateISO(range.start)} to {formatDateISO(range.end)} · Excel has every sheet below
+            in one file; CSV is one sheet.
+          </p>
+        </div>
+        <Button onClick={excel} disabled={busy}>
+          {busy ? (
+            <Loader2 className="animate-spin" aria-hidden />
+          ) : (
+            <FileSpreadsheet aria-hidden />
+          )}
+          Excel (all sheets)
+        </Button>
+      </div>
+      <ul className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {sheets.map((s) => (
+          <li
+            key={s.id}
+            className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 p-3"
+          >
+            <div className="min-w-0">
+              <p className="font-semibold">
+                {s.title}{" "}
+                <span className="text-meta font-normal tabular-nums">
+                  · {formatNumber(s.rows.length)} {s.rows.length === 1 ? "row" : "rows"}
+                </span>
+              </p>
+              <p className="text-meta line-clamp-2">{s.hint}</p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0"
+              aria-label={`Download ${s.title} as CSV`}
+              onClick={() => downloadCsv(`${fileBase(range, s.id)}.csv`, s)}
+            >
+              <Download aria-hidden /> CSV
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {!sheets.some((s) => s.id === "visits") ? (
+        <p className="text-meta mt-3">
+          The list of every visit is included for periods of up to 31 days. Pick a shorter period to
+          download it.
+        </p>
+      ) : null}
+    </section>
   );
 }
 function MetricCard({

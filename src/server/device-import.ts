@@ -290,6 +290,40 @@ export async function importDeviceData(
     });
 }
 
+/**
+ * After "Read users": anyone on the app's list the machine did not send this time is no longer
+ * on it (taken off at the machine, or the machine was reset), so their number is free again for
+ * new members. Runs a minute after the machine answered, once its whole list has come in.
+ * People linked to a member or staff keep their link: that number stays theirs anyway.
+ */
+export async function markGoneUsers(device: DeviceInfo, askedAtMs: number, returned: number) {
+  if (!askedAtMs) return 0;
+  const firestore = db();
+  const snap = await firestore.collection("deviceUsers").where("deviceId", "==", device.id).get();
+  const seenMs = (d: FirebaseFirestore.DocumentData) =>
+    (d["seenAt"] as { toMillis?: () => number } | undefined)?.toMillis?.() ?? 0;
+  const live = snap.docs.filter((d) => d.data()["removed"] !== true);
+  const sent = live.filter((d) => seenMs(d.data()) >= askedAtMs).length;
+  // Machines that answer with how many they sent: only when all of them came in.
+  if (returned > 0 && sent < returned) return 0;
+  const gone = live.filter((d) => seenMs(d.data()) < askedAtMs && !d.data()["linkId"]);
+  if (!gone.length) return 0;
+  const writer = firestore.bulkWriter();
+  for (const d of gone)
+    void writer.update(d.ref, {
+      removed: true,
+      removedBy: "not on the machine at Read users",
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  await writer.close();
+  await systemAudit({
+    collection: "biometricDevices",
+    docId: device.id,
+    summary: `Read users: ${gone.length} ${gone.length === 1 ? "person is" : "people are"} no longer on ${device.name}; their numbers are free for new members`,
+  });
+  return gone.length;
+}
+
 /** Links machine users whose upload came in faster than they could be matched (a few per call). */
 export async function matchPending(device: DeviceInfo, budgetMs = 3000) {
   const deadline = Date.now() + budgetMs;

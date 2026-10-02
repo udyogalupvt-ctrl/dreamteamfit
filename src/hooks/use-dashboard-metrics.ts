@@ -22,11 +22,11 @@ import { useAccess } from "@/hooks/use-access";
 import { useLive } from "@/hooks/use-live-query";
 import {
   effectiveMembershipStatus,
-  formatDate,
   formatDateISO,
   formatNumber,
   formatPrice,
   formatTime,
+  joinedOnOf,
   todayISO,
 } from "@/lib/format";
 import { subscribeClients } from "@/services/clients.service";
@@ -304,9 +304,10 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
     const periodExpenses = expenses.data
       .filter((item) => item.date >= period.from && item.date <= period.to)
       .reduce((sum, item) => sum + item.amount, 0);
+    // By the day they joined the gym (members moved from the old software keep their old date).
     const joinedIn = (from: string, to: string) =>
       clients.data.filter((c) => {
-        const d = format(c.createdAt, "yyyy-MM-dd");
+        const d = joinedOnOf(c);
         return d >= from && d <= to;
       }).length;
     // Today keeps the month view for the "more numbers" (profit, expenses…); a picked period
@@ -378,7 +379,7 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
     });
 
     const newClients = period.isToday
-      ? clients.data.filter((c) => c.createdAt >= monthStart).length
+      ? clients.data.filter((c) => joinedOnOf(c) >= format(monthStart, "yyyy-MM-dd")).length
       : joinedIn(period.from, period.to);
     const withDob = clients.data.filter((c) => c.dateOfBirth);
     const birthdays = withDob.filter((c) => c.dateOfBirth!.slice(5) === today.slice(5)).length;
@@ -776,10 +777,14 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
         .sort((a, b) => (a.dueDate || "9").localeCompare(b.dueDate || "9"));
       const joined = clients.data
         .filter((c) => {
-          const d = format(c.createdAt, "yyyy-MM-dd");
+          const d = joinedOnOf(c);
           return d >= from && d <= to;
         })
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        .sort(
+          (a, b) =>
+            joinedOnOf(b).localeCompare(joinedOnOf(a)) ||
+            b.createdAt.getTime() - a.createdAt.getTime(),
+        );
       const calls = followUps.data
         .filter((f) => f.status === "pending" && f.followUpDate <= today)
         .sort((a, b) => a.followUpDate.localeCompare(b.followUpDate));
@@ -882,7 +887,7 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
           rows: joined.map((c) => ({
             id: c.id,
             title: c.fullName,
-            sub: `${c.clientCode ? `ID ${c.clientCode} · ` : ""}joined ${formatDate(c.createdAt)}`,
+            sub: `${c.clientCode ? `ID ${c.clientCode} · ` : ""}joined ${formatDateISO(joinedOnOf(c))}`,
             clientId: c.id,
           })),
         },

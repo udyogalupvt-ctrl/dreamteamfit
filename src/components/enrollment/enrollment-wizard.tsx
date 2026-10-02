@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PhotoLinkButtons } from "@/components/clients/photo-link-button";
 import { MemberAppCard } from "@/components/clients/member-app-card";
 import { Link } from "@tanstack/react-router";
@@ -101,6 +101,16 @@ import {
   type WhatsAppSettings,
 } from "@/types/models";
 import { daysBetween } from "@/lib/member-plans";
+import {
+  matchStaffName,
+  oldCounsellorOf,
+  oldJoinedOn,
+  runningOldPlan,
+  tidyName,
+  type OldMember,
+} from "@/lib/old-data";
+import { calculateEndDate } from "@/services/memberships.service";
+import { OldMemberPanel } from "./old-member-panel";
 import { subscribeClientMemberships } from "@/services/memberships.service";
 import type { EnrollmentOpenOptions } from "./enrollment-context";
 
@@ -131,6 +141,8 @@ const EMPTY: ClientInput = {
   source: "walk_in",
   notes: "",
   status: "active",
+  joinedOn: "",
+  oldMemberId: "",
 };
 
 // ---------------------------------------------------------------- draft (before payment)
@@ -154,6 +166,9 @@ interface Draft {
   nextPaymentDate?: string;
   photoLater?: boolean;
   memberNo?: string;
+  /** Moving from the old software: plan paid there; "" = the old plan's balance. */
+  paidOld?: boolean;
+  oldBalance?: string;
 }
 
 const draftStorageKey = (key: string) => `rf.enrollment-draft.${key}`;
@@ -198,8 +213,8 @@ export function EnrollmentWizard({
   const [step, setStep] = useState(() =>
     resuming ? SHARE : restored ? Math.min(Math.max(restored.step, firstStep), PAYMENT) : firstStep,
   );
-  const [client, setClient] = useState<ClientInput>(
-    () => restored?.client ?? { ...EMPTY, ...options.prefill },
+  const [client, setClient] = useState<ClientInput>(() =>
+    restored?.client ? { ...EMPTY, ...restored.client } : { ...EMPTY, ...options.prefill },
   );
   const [whatsappOptIn, setWhatsappOptIn] = useState(
     () => restored?.whatsappOptIn ?? existing?.whatsappOptIn ?? true,
@@ -222,6 +237,15 @@ export function EnrollmentWizard({
   // Most members send their photo later from their phone, so this starts ticked.
   const [photoLater, setPhotoLater] = useState(restored?.photoLater ?? true);
   const [memberNo, setMemberNo] = useState(restored?.memberNo ?? "");
+  const [paidOld, setPaidOld] = useState(restored?.paidOld ?? false);
+  const [oldBalanceText, setOldBalanceText] = useState(restored?.oldBalance ?? "");
+  // The old software's record(s) for the phone typed (Backup page data).
+  const [oldFound, setOldFound] = useState<{ members: OldMember[]; today: string }>({
+    members: [],
+    today: "",
+  });
+  // After saving a plan paid in the old software (no bill to share).
+  const [carried, setCarried] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [enrollmentId, setEnrollmentId] = useState<string | null>(
@@ -297,6 +321,8 @@ export function EnrollmentWizard({
       source: m.source,
       notes: m.notes,
       status: m.status,
+      joinedOn: m.joinedOn,
+      oldMemberId: m.oldMemberId,
     });
     setWhatsappOptIn(m.whatsappOptIn);
   }, [resuming, member.data]);
@@ -421,6 +447,52 @@ export function EnrollmentWizard({
   const balanceLeft = totals.total - Math.min(paid, totals.total) > 0;
   const hasEntry = Boolean(client.fullName || client.phone || packageId || ptOn);
 
+  // Moving from the old software: their record, and the plan still running there.
+  const oldLinked = oldFound.members.find((m) => m.memberId === client.oldMemberId) ?? null;
+  const oldRunning = oldLinked && oldFound.today ? runningOldPlan(oldLinked, oldFound.today) : null;
+  // Who was their counsellor in the old software: always shown, matched to staff or not.
+  const oldCounsellor = oldLinked ? oldCounsellorOf(oldLinked, oldFound.today || today) : "";
+  const oldCounsellorStaff = oldCounsellor ? matchStaffName(counsellors, oldCounsellor) : null;
+  // "Paid in the old software" is offered to a new member from the old data, or one whose plan
+  // started before today.
+  const canPaidOld = !existing && !resuming && (Boolean(client.oldMemberId) || startDate < today);
+  const paidInOld = canPaidOld && paidOld;
+  const oldBalance =
+    oldBalanceText === ""
+      ? (oldRunning?.balance ?? 0)
+      : Math.max(0, Math.floor(Number(oldBalanceText) || 0));
+  const dueLeft = paidInOld ? oldBalance > 0 : balanceLeft;
+  const newEnd = gymPackage ? calculateEndDate(startDate, gymPackage.durationDays) : "";
+
+  /** "Use old details": name (if empty), gender, birthday, joining date, old ID, counsellor. */
+  const fillFromOld = (m: OldMember) => {
+    setClient((c) => ({
+      ...c,
+      fullName: c.fullName.trim() ? c.fullName : tidyName(m.name),
+      gender: c.gender === "unspecified" ? m.gender : c.gender,
+      dateOfBirth: c.dateOfBirth || m.dob || null,
+      joinedOn: oldJoinedOn(m),
+      oldMemberId: m.memberId,
+    }));
+    // The same person even when written differently ("M Keerthi" = "keerthi M").
+    const match = matchStaffName(counsellors, oldCounsellorOf(m, oldFound.today || today));
+    if (match) setCounsellorId(match.id);
+    const run = runningOldPlan(m, oldFound.today || today);
+    if (run) {
+      setStartDate(run.start);
+      setPaidOld(true);
+      setOldBalanceText("");
+    }
+    toast.success("Filled in from the old software", {
+      description: `Joined ${formatDateISO(oldJoinedOn(m))}${run ? ` · ${run.name} until ${formatDateISO(run.end)}` : ""}`,
+    });
+  };
+  const unlinkOld = () => {
+    setClient((c) => ({ ...c, joinedOn: "", oldMemberId: "" }));
+    setPaidOld(false);
+    setOldBalanceText("");
+  };
+
   // Keep an unsaved draft so an accidental close never loses what staff typed.
   useEffect(() => {
     if (confirmed || resuming) return;
@@ -446,6 +518,8 @@ export function EnrollmentWizard({
             nextPaymentDate,
             photoLater,
             memberNo,
+            paidOld,
+            oldBalance: oldBalanceText,
           }
         : null,
     );
@@ -471,6 +545,8 @@ export function EnrollmentWizard({
     nextPaymentDate,
     photoLater,
     memberNo,
+    paidOld,
+    oldBalanceText,
   ]);
 
   const startFresh = () => {
@@ -487,6 +563,8 @@ export function EnrollmentWizard({
     setNextPaymentDate("");
     setPhotoLater(true);
     setMemberNo("");
+    setPaidOld(false);
+    setOldBalanceText("");
     setStep(firstStep);
   };
 
@@ -496,6 +574,8 @@ export function EnrollmentWizard({
       if (client.fullName.trim().length < 2) e["fullName"] = "Enter the member's name";
       if (normalizePhone(client.phone).length < 10) e["phone"] = "Enter a 10-digit mobile number";
       if (client.email && !/^\S+@\S+\.\S+$/.test(client.email)) e["email"] = "Invalid email";
+      if (client.joinedOn && client.joinedOn > todayISO())
+        e["joinedOn"] = "Joining date can't be in the future";
       // Every member needs a photo: take it now, or send them the upload link.
       if (!client.profilePhotoUrl && !photoLater)
         e["photo"] = "Take the member's photo, or tick that they will send it from their phone";
@@ -517,7 +597,12 @@ export function EnrollmentWizard({
       if (counsellors.length && !counsellor) e["counsellor"] = "Pick the counsellor";
       if (planDateProblem) e["planDate"] = planDateProblem;
     }
-    if (s === PAYMENT) {
+    if (s === PAYMENT && paidInOld) {
+      if (!gymPackage && !pt) e["package"] = "Pick a package first";
+      if (oldBalance > 0 && !nextPaymentDate) e["nextPaymentDate"] = "When will the rest be paid?";
+      else if (oldBalance > 0 && nextPaymentDate < todayISO())
+        e["nextPaymentDate"] = "Pick today or a later date";
+    } else if (s === PAYMENT) {
       if (!gymPackage && !pt) e["package"] = "Pick a package first";
       if (!(paid >= 0) || paid > totals.total)
         e["amountPaid"] = `Enter 0 to ${formatPrice(totals.total)}`;
@@ -550,19 +635,31 @@ export function EnrollmentWizard({
         gymPackage,
         pt,
         startDate,
-        discount,
-        amountPaid: paid,
+        discount: paidInOld ? 0 : discount,
+        amountPaid: paidInOld ? 0 : paid,
         method,
         notes,
         settings: settings.data,
         staff: { uid: user?.uid ?? "", name: user?.displayName || user?.email || "Staff" },
         counsellor: counsellor ? { id: counsellor.id, name: counsellor.name } : null,
-        nextPaymentDate: balanceLeft ? nextPaymentDate : null,
+        nextPaymentDate: dueLeft ? nextPaymentDate : null,
         memberId: cleanMemberId(memberNo),
         upgrade,
+        oldSoftware: paidInOld ? { balance: oldBalance } : null,
       });
       writeDraft(draftKey, null);
       setEnrollmentId(r.enrollmentId);
+      if (paidInOld || !r.invoice) {
+        // Paid in the old software: nothing to collect or share now; on to the thumb.
+        setCarried(true);
+        toast.success("Member saved · plan carried over from the old software", {
+          description: r.invoice
+            ? `Balance ${formatPrice(oldBalance)} to collect: bill ${r.invoice.invoiceNumber}`
+            : "No money counted today",
+        });
+        setStep(THUMB);
+        return;
+      }
       toast.success("Payment saved and bill created", { description: r.invoice.invoiceNumber });
       setStep(SHARE);
       if (whatsappOptIn && isWhatsAppApiLive(wa.data) && wa.data.autoSendInvoice) {
@@ -709,6 +806,17 @@ export function EnrollmentWizard({
               whatsappOptIn={whatsappOptIn}
               setWhatsappOptIn={setWhatsappOptIn}
               errors={errors}
+              oldPanel={
+                memberId ? null : (
+                  <OldMemberPanel
+                    phone={client.phone}
+                    linkedId={client.oldMemberId}
+                    onUse={fillFromOld}
+                    onUnlink={unlinkOld}
+                    onFound={(members, day) => setOldFound({ members, today: day })}
+                  />
+                )
+              }
             />
           ) : null}
 
@@ -797,11 +905,47 @@ export function EnrollmentWizard({
                     setCreditText={setCreditText}
                   />
                 ) : null}
+                {oldRunning && !existing ? (
+                  <div className="space-y-1.5 rounded-xl border border-info/40 bg-info/10 p-3 text-sm">
+                    <p>
+                      <b>Running in the old software:</b> {oldRunning.name} ·{" "}
+                      {formatDateISO(oldRunning.start)} → {formatDateISO(oldRunning.end)}
+                      {oldRunning.balance > 0
+                        ? ` · balance ${formatPrice(oldRunning.balance)}`
+                        : " · fully paid"}
+                    </p>
+                    <p className="text-meta">
+                      Pick the matching package. The start date is set to the old plan&apos;s start
+                      so the days carry over.
+                      {gymPackage && newEnd && newEnd !== oldRunning.end
+                        ? ` Here it ends on ${formatDateISO(newEnd)}, in the old software on ${formatDateISO(oldRunning.end)}: change the start date if it must end on the same day.`
+                        : ""}
+                    </p>
+                    {startDate !== oldRunning.start ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setStartDate(oldRunning.start)}
+                      >
+                        Start on {formatDateISO(oldRunning.start)}
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="grid gap-3 sm:grid-cols-2">
                   {showChoice ? (
                     <div className="max-sm:hidden" />
                   ) : (
-                    <Field label="Start date" htmlFor="e-start">
+                    <Field
+                      label="Start date"
+                      htmlFor="e-start"
+                      hint={
+                        newEnd
+                          ? `${gymPackage?.durationDays} days: ends ${formatDateISO(newEnd)}`
+                          : undefined
+                      }
+                    >
                       <Input
                         id="e-start"
                         type="date"
@@ -816,9 +960,15 @@ export function EnrollmentWizard({
                     required={counsellors.length > 0}
                     error={errors["counsellor"]}
                     hint={
-                      counsellors.length
-                        ? "Who helped this member join"
-                        : "Add staff in Staff to pick a counsellor"
+                      oldCounsellor
+                        ? `Old software counsellor: ${oldCounsellor}${
+                            oldCounsellorStaff
+                              ? ` (${oldCounsellorStaff.name} in your staff)`
+                              : " · not in your staff list, pick who it is now"
+                          }`
+                        : counsellors.length
+                          ? "Who helped this member join"
+                          : "Add staff in Staff to pick a counsellor"
                     }
                   >
                     <Select
@@ -1002,129 +1152,210 @@ export function EnrollmentWizard({
                     ) : null}
                   </ul>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field
-                    label="Amount received ₹"
-                    htmlFor="e-paid"
-                    error={errors["amountPaid"]}
-                    className="col-span-2 sm:col-span-1"
-                    hint={
-                      paid < totals.total
-                        ? `Balance ${formatPrice(totals.total - paid)} stays due`
-                        : "Full payment"
-                    }
-                  >
-                    <Input
-                      id="e-paid"
-                      type="number"
-                      inputMode="decimal"
-                      min={0}
-                      max={totals.total}
-                      value={paid}
-                      onChange={(e) =>
-                        setAmountPaid(e.target.value === "" ? 0 : Number(e.target.value))
-                      }
+                {canPaidOld ? (
+                  <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm">
+                    <Checkbox
+                      checked={paidOld}
+                      onCheckedChange={(v) => setPaidOld(v === true)}
+                      className="mt-0.5"
+                      aria-label="Paid in the old software"
                     />
-                  </Field>
-                  <Field label="Paid by" htmlFor="e-method" className="col-span-2 sm:col-span-1">
-                    <div className="flex flex-wrap gap-1.5" role="radiogroup" id="e-method">
-                      {PAYMENT_METHODS.filter((m) => m !== "Other").map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          role="radio"
-                          aria-checked={method === m}
-                          onClick={() => setMethod(m)}
-                          className={cn(
-                            "rounded-lg border px-3 py-2 text-sm font-semibold",
-                            method === m
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "border-border hover:bg-accent",
-                          )}
-                        >
-                          {m}
-                        </button>
-                      ))}
-                    </div>
-                  </Field>
-                  {balanceLeft ? (
+                    <span>
+                      <span className="block font-semibold">Paid in the old software</span>
+                      <span className="text-meta">
+                        For a member moving over whose plan is already paid there. No money is taken
+                        or counted today (day book, cash and income stay as they are).
+                      </span>
+                    </span>
+                  </label>
+                ) : null}
+                {paidInOld ? (
+                  <div className="grid grid-cols-2 gap-3">
                     <Field
-                      label="Next payment date"
-                      htmlFor="e-nextpay"
-                      required
-                      error={errors["nextPaymentDate"]}
-                      className="col-span-2"
-                      hint="A WhatsApp reminder goes to the member that morning."
+                      label="Balance still to pay ₹"
+                      htmlFor="e-oldbal"
+                      className="col-span-2 sm:col-span-1"
+                      hint={
+                        oldRunning
+                          ? `Old software: ${formatPrice(oldRunning.balance)} balance on ${oldRunning.name}`
+                          : "0 if fully paid"
+                      }
                     >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Input
-                          id="e-nextpay"
-                          type="date"
-                          min={todayISO()}
-                          value={nextPaymentDate}
-                          onChange={(e) => setNextPaymentDate(e.target.value)}
-                          className="w-auto"
-                        />
-                        {[7, 15, 30].map((d) => (
-                          <Button
-                            key={d}
+                      <Input
+                        id="e-oldbal"
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        value={oldBalanceText === "" ? oldBalance : oldBalanceText}
+                        onChange={(e) =>
+                          setOldBalanceText(e.target.value === "" ? "0" : e.target.value)
+                        }
+                      />
+                    </Field>
+                    {oldBalance > 0 ? (
+                      <Field
+                        label="Next payment date"
+                        htmlFor="e-nextpay"
+                        required
+                        error={errors["nextPaymentDate"]}
+                        className="col-span-2"
+                        hint="A bill for the balance is made, to collect as usual."
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Input
+                            id="e-nextpay"
+                            type="date"
+                            min={todayISO()}
+                            value={nextPaymentDate}
+                            onChange={(e) => setNextPaymentDate(e.target.value)}
+                            className="w-auto"
+                          />
+                          {[7, 15, 30].map((d) => (
+                            <Button
+                              key={d}
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setNextPaymentDate(addDaysISO(todayISO(), d))}
+                            >
+                              +{d} days
+                            </Button>
+                          ))}
+                        </div>
+                      </Field>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field
+                      label="Amount received ₹"
+                      htmlFor="e-paid"
+                      error={errors["amountPaid"]}
+                      className="col-span-2 sm:col-span-1"
+                      hint={
+                        paid < totals.total
+                          ? `Balance ${formatPrice(totals.total - paid)} stays due`
+                          : "Full payment"
+                      }
+                    >
+                      <Input
+                        id="e-paid"
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        max={totals.total}
+                        value={paid}
+                        onChange={(e) =>
+                          setAmountPaid(e.target.value === "" ? 0 : Number(e.target.value))
+                        }
+                      />
+                    </Field>
+                    <Field label="Paid by" htmlFor="e-method" className="col-span-2 sm:col-span-1">
+                      <div className="flex flex-wrap gap-1.5" role="radiogroup" id="e-method">
+                        {PAYMENT_METHODS.filter((m) => m !== "Other").map((m) => (
+                          <button
+                            key={m}
                             type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setNextPaymentDate(addDaysISO(todayISO(), d))}
+                            role="radio"
+                            aria-checked={method === m}
+                            onClick={() => setMethod(m)}
+                            className={cn(
+                              "rounded-lg border px-3 py-2 text-sm font-semibold",
+                              method === m
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border hover:bg-accent",
+                            )}
                           >
-                            +{d} days
-                          </Button>
+                            {m}
+                          </button>
                         ))}
                       </div>
                     </Field>
-                  ) : null}
-                  <Field
-                    label="Discount ₹"
-                    htmlFor="e-disc"
-                    error={discountProblem || errors["discount"]}
-                    hint={maxDiscount !== null ? `Max ${formatPrice(maxDiscount)}` : undefined}
-                  >
-                    <Input
-                      id="e-disc"
-                      type="number"
-                      inputMode="decimal"
-                      min={0}
-                      max={maxDiscount ?? undefined}
-                      value={discount}
-                      onChange={(e) => setDiscount(Number(e.target.value))}
-                    />
-                  </Field>
-                  <Field label="Note on bill" htmlFor="e-inote">
-                    <Input
-                      id="e-inote"
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Optional"
-                    />
-                  </Field>
-                </div>
+                    {balanceLeft ? (
+                      <Field
+                        label="Next payment date"
+                        htmlFor="e-nextpay"
+                        required
+                        error={errors["nextPaymentDate"]}
+                        className="col-span-2"
+                        hint="A WhatsApp reminder goes to the member that morning."
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Input
+                            id="e-nextpay"
+                            type="date"
+                            min={todayISO()}
+                            value={nextPaymentDate}
+                            onChange={(e) => setNextPaymentDate(e.target.value)}
+                            className="w-auto"
+                          />
+                          {[7, 15, 30].map((d) => (
+                            <Button
+                              key={d}
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setNextPaymentDate(addDaysISO(todayISO(), d))}
+                            >
+                              +{d} days
+                            </Button>
+                          ))}
+                        </div>
+                      </Field>
+                    ) : null}
+                    <Field
+                      label="Discount ₹"
+                      htmlFor="e-disc"
+                      error={discountProblem || errors["discount"]}
+                      hint={maxDiscount !== null ? `Max ${formatPrice(maxDiscount)}` : undefined}
+                    >
+                      <Input
+                        id="e-disc"
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        max={maxDiscount ?? undefined}
+                        value={discount}
+                        onChange={(e) => setDiscount(Number(e.target.value))}
+                      />
+                    </Field>
+                    <Field label="Note on bill" htmlFor="e-inote">
+                      <Input
+                        id="e-inote"
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Optional"
+                      />
+                    </Field>
+                  </div>
+                )}
               </div>
               <aside className="h-fit rounded-2xl bg-foreground p-4 text-background sm:p-5">
                 <dl className="space-y-2 text-sm">
-                  {(
-                    [
-                      ["Subtotal", totals.subtotal],
-                      ["Discount", -(totals.discount - totals.upgradeCredit)],
-                      ...(totals.upgradeCredit
-                        ? [["Upgrade credit", -totals.upgradeCredit] as const]
-                        : []),
-                      ...(totals.tax ? [["Tax", totals.tax] as const] : []),
-                      ["Total", totals.total],
-                      ["Received", Math.min(paid, totals.total)],
-                      ["Balance", Math.max(0, totals.total - paid)],
-                    ] as const
+                  {(paidInOld
+                    ? ([
+                        ["Plan price", totals.subtotal],
+                        ["Counted today", 0],
+                        ["Balance to collect", oldBalance],
+                      ] as const)
+                    : ([
+                        ["Subtotal", totals.subtotal],
+                        ["Discount", -(totals.discount - totals.upgradeCredit)],
+                        ...(totals.upgradeCredit
+                          ? [["Upgrade credit", -totals.upgradeCredit] as const]
+                          : []),
+                        ...(totals.tax ? [["Tax", totals.tax] as const] : []),
+                        ["Total", totals.total],
+                        ["Received", Math.min(paid, totals.total)],
+                        ["Balance", Math.max(0, totals.total - paid)],
+                      ] as const)
                   ).map(([k, v]) => (
                     <div
                       key={k}
                       className={cn(
                         "flex justify-between",
-                        k === "Total" && "border-t border-background/20 pt-2 text-base",
+                        (k === "Total" || k === "Counted today") &&
+                          "border-t border-background/20 pt-2 text-base",
                       )}
                     >
                       <dt>{k}</dt>
@@ -1154,6 +1385,10 @@ export function EnrollmentWizard({
             <MemberAppCard client={member.data} auto className="mt-4" />
           ) : null}
 
+          {/* Carried over from the old software: no bill step, so the app link is made here. */}
+          {step === THUMB && confirmed && member.data && (carried || !invoiceId) ? (
+            <MemberAppCard client={member.data} auto className="mb-4" />
+          ) : null}
           {step === THUMB && confirmed && memberId ? (
             thumbNeeded ? (
               <FingerprintPanel
@@ -1175,7 +1410,10 @@ export function EnrollmentWizard({
                 <CheckCircle2 className="size-14 text-success" aria-hidden />
                 <p className="text-section-title">All done</p>
                 <p className="text-meta max-w-sm">
-                  Paid, bill shared, thumb registered. {name} can walk in.
+                  {carried || !invoiceId
+                    ? "Plan carried over from the old software, thumb registered."
+                    : "Paid, bill shared, thumb registered."}{" "}
+                  {name} can walk in.
                 </p>
               </div>
             ) : (
@@ -1221,7 +1459,9 @@ export function EnrollmentWizard({
                     <Check aria-hidden />
                   )}
                   <span className="truncate">
-                    Confirm payment · {formatPrice(Math.min(paid, totals.total))}
+                    {paidInOld
+                      ? "Save member · paid in the old software"
+                      : `Confirm payment · ${formatPrice(Math.min(paid, totals.total))}`}
                   </span>
                 </Button>
               )}
@@ -1278,7 +1518,10 @@ function DetailsStep({
   errors,
   photoLater,
   setPhotoLater,
+  oldPanel,
 }: {
+  /** Old software match under the phone number (new members only). */
+  oldPanel: ReactNode;
   /** null = an existing member (the ID is already given). */
   memberNo: string | null;
   setMemberNo: (v: string) => void;
@@ -1315,7 +1558,7 @@ function DetailsStep({
           hint={
             idError
               ? undefined
-              : "Next free number, also used on the fingerprint machine. Change it to keep their old number."
+              : "Lowest number free on the fingerprint machine, also used there. Change it to keep their old number."
           }
           className="sm:col-span-2 sm:max-w-sm"
         >
@@ -1347,6 +1590,7 @@ function DetailsStep({
           onChange={(e) => setClient({ ...client, phone: e.target.value })}
         />
       </Field>
+      {oldPanel}
       <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm sm:col-span-2">
         <Checkbox
           checked={whatsappOptIn}
@@ -1417,6 +1661,29 @@ function DetailsStep({
           max={new Date().toISOString().slice(0, 10)}
           value={client.dateOfBirth ?? ""}
           onChange={(e) => setClient({ ...client, dateOfBirth: e.target.value || null })}
+        />
+      </Field>
+      <Field
+        label="Joining date"
+        htmlFor="e-joined"
+        error={errors["joinedOn"]}
+        hint={
+          client.oldMemberId
+            ? `From the old software (${client.oldMemberId})`
+            : "The day they first joined the gym"
+        }
+      >
+        <Input
+          id="e-joined"
+          type="date"
+          max={todayISO()}
+          value={client.joinedOn || todayISO()}
+          onChange={(e) =>
+            setClient({
+              ...client,
+              joinedOn: e.target.value === todayISO() ? "" : e.target.value,
+            })
+          }
         />
       </Field>
       <Field label="Gender" htmlFor="e-gender">

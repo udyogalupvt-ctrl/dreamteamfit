@@ -21,6 +21,10 @@ export function formatDateISO(value: string | null | undefined): string {
   return format(parseISO(value), "d MMM yyyy");
 }
 
+/** The day a member first joined: their joining date, or else the day they were added here. */
+export const joinedOnOf = (c: { joinedOn?: string; createdAt: Date }) =>
+  c.joinedOn || format(c.createdAt, "yyyy-MM-dd");
+
 export function formatDate(value: Date | null | undefined): string {
   return value ? format(value, "d MMM yyyy") : "—";
 }
