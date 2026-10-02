@@ -30,6 +30,7 @@ import { systemAudit } from "./audit";
 import {
   importDeviceData,
   importWindowOpen,
+  markGoneUsers,
   matchPending,
   type MachineUser,
 } from "./device-import";
@@ -43,7 +44,14 @@ const ENROLL_REQUEST_TTL_MS = 10 * 60 * 1000;
 /** Seconds between device polls. Each poll costs ~1 Firestore read (free plan: 50,000/day). */
 const POLL_DELAY_SECONDS = 15;
 /** App-side notes handled here on the server, never sent to a device. */
-const SERVER_TASKS = new Set(["door_check", "forget", "bin_off", "staff_off", "photo_sync"]);
+const SERVER_TASKS = new Set([
+  "door_check",
+  "forget",
+  "bin_off",
+  "staff_off",
+  "photo_sync",
+  "users_gone",
+]);
 /** Machine requests that expire if the machine doesn't pick them up in time. */
 const STALE_WHEN_LATE = new Set(["user_upsert", "import_check", "import_users", "import_fp"]);
 const STALE_AFTER_MS = 30 * 60 * 1000;
@@ -193,6 +201,16 @@ async function runServerTasks(tasks: QueryDocumentSnapshot[]) {
           String(d["deviceId"] ?? ""),
         );
       else if (d["type"] === "photo_sync") await queueMemberPhoto(String(d["clientId"]));
+      else if (d["type"] === "users_gone")
+        await markGoneUsers(
+          {
+            id: String(d["deviceId"] ?? ""),
+            name: String(d["deviceName"] ?? "the machine"),
+            serialNumber: String(d["serialNumber"] ?? ""),
+          },
+          Number(d["askedAtMs"] ?? 0),
+          Number(d["returned"] ?? 0),
+        );
       else await syncDoorAccess(String(d["clientId"]));
     } catch (e) {
       error = String(e);
@@ -234,7 +252,12 @@ async function nextCommands(device: Device) {
     .where("status", "==", "pending")
     .limit(100)
     .get();
-  const tasks = pending.docs.filter((d) => SERVER_TASKS.has(String(d.data()["type"])));
+  // Server tasks, except those set to wait a little (e.g. for the rest of a user list).
+  const tasks = pending.docs.filter(
+    (d) =>
+      SERVER_TASKS.has(String(d.data()["type"])) &&
+      !(Number(d.data()["runAfterMs"] ?? 0) > Date.now()),
+  );
   if (tasks.length) await runServerTasks(tasks.slice(0, 25));
   // What those tasks decided (e.g. "take this member off the machine") goes out in this same
   // check-in, not the next one: Block entry reaches the door one poll (~15 s) sooner.
@@ -411,6 +434,23 @@ async function commandResults(device: Device, body: string) {
       await syncDoorAccess(String(d["clientId"])).catch((e) =>
         console.error("door check after thumb copy failed", String(e)),
       );
+    // The machine answered "Read users": in a minute (its whole list is in by then), whoever it
+    // no longer has is marked so, and their numbers go to new members (after a reset: all).
+    if (d["type"] === "import_users" && code >= 0 && (await importWindowOpen(device.id)))
+      await firestore.collection("biometricCommands").add({
+        deviceId: device.id,
+        deviceName: device.name,
+        serialNumber: device.serialNumber,
+        type: "users_gone",
+        askedAtMs: createdMs(d),
+        returned: code,
+        runAfterMs: Date.now() + 60_000,
+        status: "pending",
+        door: false,
+        clientId: "",
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     if (!ok && d["enrollmentId"])
       await firestore
         .doc(`enrollments/${String(d["enrollmentId"])}`)

@@ -174,6 +174,11 @@ export function DeviceUsersSection({ device }: { device: BiometricDevice }) {
                     : "…"}
               {reading ? ` · reading until ${time.format(device.importUntil!)}` : ""}
             </p>
+            <p className="text-meta">
+              New members get the lowest number free here. After the machine is reset (or people are
+              deleted on it), read again: whoever is gone is taken off this list and their numbers
+              are given again.
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             {count && !users ? (

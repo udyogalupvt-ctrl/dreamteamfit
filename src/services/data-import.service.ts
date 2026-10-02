@@ -85,7 +85,7 @@ export async function runImport(params: {
         getDocs(col(COLLECTIONS.deviceUsers)).catch(() => null),
       ]);
       const reservedBy = new Map(reserved.docs.map((d) => [d.id, String(d.data()["clientId"] ?? "")]));
-      const taken = new Set<string>([...reservedBy.keys(), ...ctx.clients.map((c) => c.clientCode)]);
+      const taken = new Set<string>([...reservedBy.keys(), ...ctx.clients.flatMap((c) => [c.clientCode, c.biometricUserId].filter(Boolean))]);
       const kept: ValidatedRow[] = [];
       for (const r of newClients) {
         const mid = String(r.data["memberId"] ?? "");
@@ -99,7 +99,8 @@ export async function runImport(params: {
       }
       // Numbers the old machine still uses (people not in this file) stay free for them.
       for (const d of onMachine?.docs ?? []) if (d.data()["removed"] !== true) taken.add(String(d.data()["pin"] ?? ""));
-      let next = Math.max(0, ...[...taken].map((c) => (/^\d+$/.test(c) ? Number(c) : 0)).filter((n) => n <= MAX_MEMBER_ID)) + 1;
+      // The lowest free numbers first, like the joining form.
+      let next = 1;
       for (const r of kept) {
         if (codeOf.has(r.row)) continue;
         while (taken.has(String(next))) next++;

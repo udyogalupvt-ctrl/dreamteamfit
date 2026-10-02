@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import { ArchiveRestore, Check, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDateISO, formatPrice } from "@/lib/format";
-import { oldJoinedOn, oldPhoneKey, runningOldPlan, tidyName, type OldMember } from "@/lib/old-data";
+import {
+  oldCounsellorOf,
+  oldJoinedOn,
+  oldPhoneKey,
+  runningOldPlan,
+  tidyName,
+  type OldMember,
+} from "@/lib/old-data";
 import { lookupOldMembers } from "@/services/old-data.service";
 
 /**
@@ -112,6 +119,9 @@ export function OldMemberPanel({
                 <p className="text-meta">
                   Last plan: {last.name} · ended {formatDateISO(last.end)}
                 </p>
+              ) : null}
+              {oldCounsellorOf(m, state.today) ? (
+                <p className="text-meta">Counsellor: {oldCounsellorOf(m, state.today)}</p>
               ) : null}
             </div>
             {linked ? (

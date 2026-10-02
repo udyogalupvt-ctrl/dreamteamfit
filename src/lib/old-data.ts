@@ -308,3 +308,38 @@ export function oldJoinedOn(m: Pick<OldMember, "registeredOn" | "plans">) {
 /** The old plan still running on a day ("" end = unknown, not running). */
 export const runningOldPlan = (m: Pick<OldMember, "plans">, today: string) =>
   m.plans.find((p) => p.end >= today && p.start <= today && !/inactive/i.test(p.status)) ?? null;
+
+/** Who the counsellor was in the old software: of the running plan, else the latest, else the member's. */
+export function oldCounsellorOf(m: Pick<OldMember, "plans" | "counsellor">, today: string) {
+  return (
+    runningOldPlan(m, today)?.counsellor ||
+    m.plans.find((p) => p.counsellor)?.counsellor ||
+    m.counsellor
+  );
+}
+
+const nameWords = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 3);
+
+/**
+ * The staff member an old software name means, written differently ("M Keerthi" = "keerthi M",
+ * "Abhilash Nambaru" = "N. Abhilash", "O PavanKumar" = "Pavan"); null when none or several fit.
+ */
+export function matchStaffName<T extends { name: string }>(staff: T[], name: string): T | null {
+  const want = nameWords(name);
+  if (!want.length) return null;
+  const same = (a: string, b: string) =>
+    a === b || (Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a)));
+  const scored = staff
+    .map((s) => {
+      const have = nameWords(s.name);
+      return { s, score: want.filter((w) => have.some((h) => same(w, h))).length };
+    })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+  return scored[0] && scored[0].score > (scored[1]?.score ?? 0) ? scored[0].s : null;
+}

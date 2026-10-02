@@ -101,7 +101,14 @@ import {
   type WhatsAppSettings,
 } from "@/types/models";
 import { daysBetween } from "@/lib/member-plans";
-import { oldJoinedOn, runningOldPlan, tidyName, type OldMember } from "@/lib/old-data";
+import {
+  matchStaffName,
+  oldCounsellorOf,
+  oldJoinedOn,
+  runningOldPlan,
+  tidyName,
+  type OldMember,
+} from "@/lib/old-data";
 import { calculateEndDate } from "@/services/memberships.service";
 import { OldMemberPanel } from "./old-member-panel";
 import { subscribeClientMemberships } from "@/services/memberships.service";
@@ -443,6 +450,9 @@ export function EnrollmentWizard({
   // Moving from the old software: their record, and the plan still running there.
   const oldLinked = oldFound.members.find((m) => m.memberId === client.oldMemberId) ?? null;
   const oldRunning = oldLinked && oldFound.today ? runningOldPlan(oldLinked, oldFound.today) : null;
+  // Who was their counsellor in the old software: always shown, matched to staff or not.
+  const oldCounsellor = oldLinked ? oldCounsellorOf(oldLinked, oldFound.today || today) : "";
+  const oldCounsellorStaff = oldCounsellor ? matchStaffName(counsellors, oldCounsellor) : null;
   // "Paid in the old software" is offered to a new member from the old data, or one whose plan
   // started before today.
   const canPaidOld = !existing && !resuming && (Boolean(client.oldMemberId) || startDate < today);
@@ -464,8 +474,8 @@ export function EnrollmentWizard({
       joinedOn: oldJoinedOn(m),
       oldMemberId: m.memberId,
     }));
-    const want = m.counsellor.trim().toLowerCase();
-    const match = want ? counsellors.find((x) => x.name.trim().toLowerCase() === want) : null;
+    // The same person even when written differently ("M Keerthi" = "keerthi M").
+    const match = matchStaffName(counsellors, oldCounsellorOf(m, oldFound.today || today));
     if (match) setCounsellorId(match.id);
     const run = runningOldPlan(m, oldFound.today || today);
     if (run) {
@@ -950,9 +960,15 @@ export function EnrollmentWizard({
                     required={counsellors.length > 0}
                     error={errors["counsellor"]}
                     hint={
-                      counsellors.length
-                        ? "Who helped this member join"
-                        : "Add staff in Staff to pick a counsellor"
+                      oldCounsellor
+                        ? `Old software counsellor: ${oldCounsellor}${
+                            oldCounsellorStaff
+                              ? ` (${oldCounsellorStaff.name} in your staff)`
+                              : " · not in your staff list, pick who it is now"
+                          }`
+                        : counsellors.length
+                          ? "Who helped this member join"
+                          : "Add staff in Staff to pick a counsellor"
                     }
                   >
                     <Select
@@ -1542,7 +1558,7 @@ function DetailsStep({
           hint={
             idError
               ? undefined
-              : "Next free number, also used on the fingerprint machine. Change it to keep their old number."
+              : "Lowest number free on the fingerprint machine, also used there. Change it to keep their old number."
           }
           className="sm:col-span-2 sm:max-w-sm"
         >

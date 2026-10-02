@@ -150,16 +150,26 @@ async function machineIds() {
 }
 
 /**
- * The next free member ID: one more than the highest in use (1 when there are no members),
- * also above any member number already on the fingerprint machine.
+ * The next member ID: the lowest number free on the fingerprint machine and in the app. It
+ * follows the machine: numbers of people taken off it (or all of them, after the machine was
+ * reset and "Read users" pressed) are given again, and gaps are filled before going higher.
  */
 export async function suggestMemberId() {
   const [snap, onMachine] = await Promise.all([getDocs(col(COLLECTIONS.clients)), machineIds()]);
-  const max = Math.max(
-    snap.docs.reduce((n, d) => Math.max(n, idNumber(String(d.data()["clientCode"] ?? ""))), 0),
-    ...onMachine.map((u) => Number(u.pin)).filter((n) => n > 0 && n <= MAX_MEMBER_ID),
-  );
-  return String(Math.min(max + 1, MAX_MEMBER_ID));
+  const taken = new Set<string>(onMachine.map((u) => u.pin));
+  snap.docs.forEach((d) => {
+    taken.add(String(d.data()["clientCode"] ?? ""));
+    const pin = String(d.data()["biometricUserId"] ?? "");
+    if (pin) taken.add(pin);
+  });
+  for (let n = 1; n <= MAX_MEMBER_ID; n++) {
+    const id = String(n);
+    if (taken.has(id)) continue;
+    // Still kept for a member in the Recycle Bin (given back when the bin is emptied).
+    if ((await getDoc(memberIdRef(id)).catch(() => null))?.exists()) continue;
+    return id;
+  }
+  return "";
 }
 
 /** Why this ID can't be given, or "" when it is free. */

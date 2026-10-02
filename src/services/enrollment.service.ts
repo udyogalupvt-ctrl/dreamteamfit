@@ -610,8 +610,8 @@ export async function closeOpenFollowUps(
 
 /**
  * The machine ID to suggest for a member: their member ID when nobody else has it (on the
- * machine, e.g. from the old software, or in the app), otherwise the next free number. Members
- * stay below 9000 (staff start at 9001).
+ * machine, e.g. from the old software, or in the app), otherwise the lowest free number.
+ * Members stay below 9000 (staff start at 9001).
  */
 export async function freeMachineId(deviceId: string, preferred: string, clientId: string) {
   const [clients, onMachine] = await Promise.all([
@@ -624,16 +624,19 @@ export async function freeMachineId(deviceId: string, preferred: string, clientI
   ]);
   const taken = new Set<string>();
   clients.docs.forEach((d) => {
+    if (d.id === clientId) return;
     const p = String(d.data()["biometricUserId"] ?? "");
-    if (p && d.id !== clientId) taken.add(p);
+    if (p) taken.add(p);
+    // Another member's ID stays theirs for their own thumb.
+    const code = String(d.data()["clientCode"] ?? "");
+    if (code) taken.add(code);
   });
   onMachine?.docs.forEach((d) => {
     const u = d.data();
     if (u["removed"] !== true && u["linkId"] !== clientId) taken.add(String(u["pin"] ?? ""));
   });
   if (preferred && !taken.has(preferred)) return preferred;
-  const numbers = [...taken].map(Number).filter((n) => Number.isInteger(n) && n > 0 && n < 9000);
-  let next = Math.max(0, ...numbers) + 1;
+  let next = 1;
   while (taken.has(String(next))) next += 1;
   return String(next);
 }
