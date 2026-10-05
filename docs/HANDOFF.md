@@ -1,5 +1,29 @@
 # Handoff
 
+## 2026-10-06 (later): "WhatsApp on the gym PC" merged and pushed
+
+Branch `claude/friendly-albattani-ostipp` commit 35b7f9c (made 2 Oct, never merged) is now on
+`main`, with the user's OK after checks. Settings → WhatsApp → "Run it on the gym PC": download
+`RebuildFitness-WhatsApp.bat`, double-click on the gym PC (needs Docker Desktop); it runs OpenWA +
+a free Cloudflare quick tunnel + `public/gym-pc/link.mjs`, which reports the tunnel address to
+`POST /api/whatsapp/gateway-link` every 10 minutes ("Gym PC online").
+
+Security review (done here): setup key is random, server-only, compared in constant time; only
+Settings logins can make/reset it; the gateway must answer before anything is saved; the token
+for the app is limited to one OpenWA instance. Hardened before merging: malformed keys are refused
+before any Firestore read; only `https://` addresses accepted (the token travels with each call).
+Not changed: the compose file uses `cloudflare/cloudflared:latest` and `node:22-alpine` (unpinned).
+
+Tests (local emulators): new `gym_pc_local.py` 24/24 (fake https OpenWA `fake_owa.py` :5443,
+server `serve_gympc.sh` with NODE_TLS_REJECT_UNAUTHORIZED=0 for the self-signed fake only;
+light/dark 390/1440). Regression after the merge: edits 47, plans_end 12, undo_refund 41,
+daybook 4, billing 6, double_tap 4, dash_money 5, batch_features 24, journey 15, search 25: all
+pass. `journey.py` updated (new WhatsApp switch + Send from; trainers are made via the staff form
+since d15b5cb). Test kit is in session scratchpad f118e4b0… (`regress_merge.sh`).
+
+Not done (needs the gym): the real gym-PC setup has never been run on a Windows PC with Docker.
+Try it once at the gym: download the setup file, run it, check "Gym PC online", Show QR, send a test.
+
 ## 2026-10-06: Edit options audit ("after adding a package, can it be edited?")
 
 Audited every record staff create, as owner / manager / front desk / trainer. Master data
@@ -53,10 +77,8 @@ Also fixed a race: "End all plans & stop entry" now appears only after PT plans 
   `VITE_USE_EMULATORS=1 VITE_FIREBASE_PROJECT_ID=leadsmanage-1f7cd npx vite build`.
 
 ### Next
-- Pushed to `main` on 2026-10-06. Check the Vercel deploy finished, then test on the live app:
-  Member → Plan → "Edit plan", Payments → edit a payment, Bill "⋯" → Edit bill.
-- Unmerged: `origin/claude/friendly-albattani-ostipp` has commit 35b7f9c ("WhatsApp on the gym PC")
-  that is not on `main`. It also touches `src/types/models.ts`, so expect a small merge there.
-- Optional: update journey.py for the new WhatsApp settings screen.
+- Live check (owner login needed): Member → Plan → "Edit plan", Payments → edit a payment,
+  Bill "⋯" → Edit bill. Settings → WhatsApp shows the "Run it on the gym PC" box.
+- At the gym: run the gym-PC setup once (see the section above) if they want WhatsApp from the PC.
 
 Last updated: 2026-10-06

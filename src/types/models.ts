@@ -836,6 +836,10 @@ export interface WhatsAppSettings {
   phoneTexts: Partial<Record<string, string>>;
   /** WhatsApp's own limit on the linked number (e.g. tos_block), "" when none; kept by the server. */
   gatewayRestriction: string;
+  /** "gym-pc": the gateway runs on the gym PC and reports its address itself; kept by the server. */
+  gatewayMode: string;
+  /** When the gym PC last reported in (every 10 minutes while it is on); kept by the server. */
+  gatewayPcSeenAt: Date | null;
 }
 
 // ---------------- PT, trainers, payments, enrollment, finance, import ----------------

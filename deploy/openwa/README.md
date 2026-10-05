@@ -10,6 +10,12 @@ Time needed: about 1 hour. You need:
 - a Cloudflare account with the gym's domain in it;
 - a server (step 1): **free on Oracle Cloud**, or a paid one (about ₹500–1,000 a month).
 
+**Easiest: on the gym PC, no server.** In the app: **Settings → WhatsApp → Run it on the gym
+PC**. Install Docker Desktop once, download the setup file there and double-click it on the PC.
+It starts by itself whenever the PC is on and tells the app its address by itself (the kit is
+[public/gym-pc](../../public/gym-pc)). Messages go out while the PC is on; this page is for a
+server that is always on.
+
 **Want to see it work first?** Run the gateway on your own computer for 15 minutes, from VS Code,
 and send a test from the live app: [local/README.md](local/README.md).
 

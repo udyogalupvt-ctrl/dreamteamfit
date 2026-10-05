@@ -1,0 +1,109 @@
+# Rebuild Fitness: WhatsApp from the gym's own number, running on the gym PC.
+#
+# Put here by RebuildFitness-WhatsApp.bat (download it in the app: Settings → WhatsApp → Gym PC).
+# Docker Desktop starts these by itself when the PC starts, so after the first setup there is
+# nothing to do: open the PC and bills and member app links go out on WhatsApp.
+#
+#   openwa  the WhatsApp gateway (WhatsApp Web, linked to the gym's phone by a QR scan)
+#   tunnel  a free Cloudflare address so the app can reach this PC (no router or port setup)
+#   link    tells the app that address whenever it changes, and restarts WhatsApp if it stopped
+#
+# Nothing listens on the internet except through the tunnel, and every call needs the token that
+# only this PC and the app's server have.
+
+name: rebuild-whatsapp
+
+services:
+  openwa:
+    image: ghcr.io/rmyndharis/openwa:${OPENWA_VERSION:-0.23}
+    container_name: rebuild-whatsapp
+    restart: unless-stopped
+    stop_grace_period: 45s
+    security_opt:
+      - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 1536m
+    pids_limit: 1024
+    volumes:
+      # The linked WhatsApp and OpenWA's database. Keep it: deleting it means scanning the QR again.
+      - openwa-data:/app/data
+    networks:
+      - wa
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Kolkata
+      HOME: /tmp
+      XDG_CONFIG_HOME: /tmp/.config
+      XDG_CACHE_HOME: /tmp/.cache
+      PORT: "2785"
+      LOG_LEVEL: info
+      # A real Chrome, like normal WhatsApp Web (the lower ban risk of OpenWA's two engines).
+      ENGINE_TYPE: whatsapp-web.js
+      # After the PC restarts, the phone reconnects by itself (no new QR).
+      AUTO_START_SESSIONS: "true"
+      SERVE_DASHBOARD: "false"
+      MCP_ENABLED: "false"
+      # A typing pause before each message, like a person.
+      SIMULATE_TYPING: "true"
+      # Safety limits per day (the gym sends only bills and member app links): a mistake can never
+      # blast the number; extra messages are refused.
+      SEND_PACING_ENABLED: "true"
+      SEND_PACING_WARMUP_SCHEDULE: ${DAILY_LIMIT:-60,80,100}
+      SEND_PACING_COLD_DAILY_CAP: ${NEW_CHATS_DAILY_LIMIT:-40,50,60}
+      SEND_PACING_BREAKER_THRESHOLD: "5"
+      SEND_PACING_BREAKER_COOLDOWN_MS: "900000"
+      WEBHOOK_TIMEOUT: "10000"
+      WEBHOOK_RETRY_DELAY: "5000"
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: rebuild-whatsapp-tunnel
+    restart: unless-stopped
+    # A free https://….trycloudflare.com address (no account); "link" reads it from :2000.
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 --url http://openwa:2785
+    networks:
+      - wa
+    depends_on:
+      - openwa
+
+  link:
+    image: node:22-alpine
+    container_name: rebuild-whatsapp-link
+    restart: unless-stopped
+    working_dir: /kit
+    command: ["node", "link.mjs"]
+    # APP_URL and LINK_KEY (this PC's setup key), written by the setup file.
+    env_file: .env
+    environment:
+      OPENWA_API: http://openwa:2785/api
+      TUNNEL_METRICS: http://tunnel:2000
+      OPENWA_KEY_FILE: /owa/.api-key
+      STATE_FILE: /state/link.json
+    volumes:
+      - ./link.mjs:/kit/link.mjs:ro
+      # Only to read OpenWA's admin key (it never leaves this PC).
+      - openwa-data:/owa:ro
+      - link-state:/state
+    mem_limit: 128m
+    networks:
+      - wa
+    depends_on:
+      - openwa
+      - tunnel
+
+volumes:
+  openwa-data:
+  link-state:
+
+networks:
+  wa:

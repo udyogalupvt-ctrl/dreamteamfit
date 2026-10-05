@@ -8,6 +8,8 @@
  *   POST /api/whatsapp/gateway          settings: save { url, sessionId, apiKey? } and check it
  *   POST /api/whatsapp/gateway-status   settings: { action: status | start | qr | pairing, phone? }
  *   POST /api/whatsapp/gateway-webhook  the gateway: delivery ticks and phone status (signed)
+ *   POST /api/whatsapp/gateway-link     the gym PC (public/gym-pc): its current address, instance
+ *                                       and token, with the gym PC's setup key (Bearer)
  *
  * The API key lives only in serverSecrets/whatsappGateway (Firestore rules: no browser access);
  * OPENWA_URL / OPENWA_SESSION_ID / OPENWA_API_KEY on Vercel are used when Settings has none.
@@ -39,6 +41,8 @@ export interface GatewayConfig {
   webhookSecret: string;
   /** WhatsApp's own limit on the number (e.g. tos_block), "" when there is none. */
   restriction: string;
+  /** The gateway runs on the gym PC (public/gym-pc), not on a server. */
+  gymPc: boolean;
 }
 
 // A warm server instance re-reads the settings at most every 30 s (each send would cost 2 reads).
@@ -56,6 +60,7 @@ export async function gatewayConfig(fresh = false): Promise<GatewayConfig> {
     texts: (s["phoneTexts"] as Record<string, string> | undefined) ?? {},
     webhookSecret: String(k["webhookSecret"] ?? ""),
     restriction: String(s["gatewayRestriction"] ?? ""),
+    gymPc: s["gatewayMode"] === "gym-pc",
   };
   cached = { at: Date.now(), value };
   return value;
@@ -130,6 +135,16 @@ function plainError(status: number, data: unknown) {
 
 const sessionPath = (g: GatewayConfig) => `/sessions/${encodeURIComponent(g.sessionId)}`;
 
+/**
+ * The gateway runs on the gym PC and can't be reached: no answer (0), or Cloudflare's own answer
+ * for a tunnel whose PC is off or whose gateway is down (530, 502).
+ */
+const PC_OFF = new Set([0, 502, 530]);
+const PC_OFF_TEXT =
+  "The gym PC that sends WhatsApp is off or offline. Turn it on, wait 2 minutes, then try again.";
+const errorFor = (g: GatewayConfig, r: { status: number; error: string }) =>
+  g.gymPc && PC_OFF.has(r.status) ? PC_OFF_TEXT : r.error;
+
 /** Where a message's link goes: the bill page or the member app. */
 function linkFor(kind: PhoneTextKind, param: string) {
   const target = PHONE_TEXT_LINKS[kind];
@@ -174,7 +189,12 @@ export async function sendFromPhone(input: {
     method: "POST",
     body: { chatId: `${input.to}@c.us`, text: message },
   });
-  if (!r.ok) return { ok: false, error: r.error, code: `gateway_${r.status}` };
+  if (!r.ok)
+    return {
+      ok: false,
+      error: errorFor(g, r),
+      code: `gateway_${r.status}`,
+    };
   return { ok: true, providerMessageId: String(r.data.messageId ?? "") };
 }
 
@@ -204,7 +224,7 @@ const STATUS_WORDS: Record<string, string> = {
 /** Connection state for Settings / Test connection, and kept on settings/whatsapp. */
 export async function gatewaySession(g: GatewayConfig) {
   const r = await call<Session>(g, sessionPath(g));
-  if (!r.ok) return { ok: false as const, error: r.error };
+  if (!r.ok) return { ok: false as const, error: errorFor(g, r) };
   const status = String(r.data.status ?? "unknown");
   const phone = String(r.data.phone ?? "");
   const restriction = String(r.data.restriction?.kind ?? "");
@@ -320,6 +340,8 @@ async function saveConnection(request: Request) {
     {
       gatewayUrl: url,
       gatewaySessionId: sessionId,
+      // Typed in by hand: a server of the gym's own (not the gym PC kit).
+      gatewayMode: "server",
       gatewayPhone: String(check.data.phone ?? ""),
       gatewayStatus: String(check.data.status ?? ""),
       gatewayCheckedAt: FieldValue.serverTimestamp(),
@@ -341,6 +363,9 @@ async function connectionAction(request: Request) {
     return json({ error: "Only logins with Settings can change WhatsApp." }, 403);
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const action = String(body["action"] ?? "status");
+  // The gym PC's setup key, for its setup file; a new one stops the old file and PC.
+  if (action === "pc-key" || action === "pc-key-reset")
+    return json({ key: await gymPcKey(action === "pc-key-reset") });
   const g = await gatewayConfig(true);
   if (!g.url || !g.sessionId || !g.apiKey)
     return json({ error: "Save the gateway connection first." }, 400);
@@ -352,6 +377,8 @@ async function connectionAction(request: Request) {
       method: "POST",
       timeoutMs: 30_000,
     });
+    if (!r.ok && g.gymPc && PC_OFF.has(r.status) && r.status !== 0)
+      return json({ error: PC_OFF_TEXT }, 502);
     // "Already started" (400) and still starting (no answer yet) are fine.
     if (!r.ok && r.status !== 400 && r.status !== 0)
       return json(
@@ -374,7 +401,7 @@ async function connectionAction(request: Request) {
         note:
           r.status === 400
             ? "No QR right now: the phone is already linked, or the instance is still starting. Press Check again in a few seconds."
-            : r.error,
+            : errorFor(g, r),
       });
     return json({ qrCode: String(r.data.qrCode ?? ""), status: String(r.data.status ?? "") });
   }
@@ -384,7 +411,7 @@ async function connectionAction(request: Request) {
       method: "POST",
       body: { phoneNumber: phone.length === 10 ? `91${phone}` : phone },
     });
-    if (!r.ok) return json({ error: r.error }, 400);
+    if (!r.ok) return json({ error: errorFor(g, r) }, 400);
     return json({ pairingCode: String(r.data.pairingCode ?? "") });
   }
   const s = await gatewaySession(g);
@@ -460,8 +487,80 @@ async function webhook(request: Request) {
   return text("OK");
 }
 
+/** The gym PC's setup key ("" when none was made yet); kept only on the server. */
+async function gymPcKey(reset = false) {
+  const current = String((await secretRef().get()).data()?.["gymPcKey"] ?? "");
+  if (current && !reset) return current;
+  const key = `rfpc_${randomBytes(24).toString("base64url")}`;
+  await secretRef().set({ gymPcKey: key }, { merge: true });
+  return key;
+}
+
+const PC_KEY = /^rfpc_[A-Za-z0-9_-]{20,}$/;
+
+const sameText = (a: string, b: string) =>
+  a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+/**
+ * The gym PC reports where its gateway is now (the quick tunnel's address changes on every
+ * restart), with the instance and the token it made for the app. Saved only after the gateway
+ * answered with them, like Save connection. Every 10 minutes it reports again: "Gym PC online".
+ */
+async function linkFromGymPc(request: Request) {
+  const given = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  // Anything that isn't shaped like a setup key is refused before it costs a database read.
+  const key = PC_KEY.test(given)
+    ? String((await secretRef().get()).data()?.["gymPcKey"] ?? "")
+    : "";
+  if (!key || !sameText(given, key))
+    return json(
+      { error: "This PC's setup key is not valid any more. Download the setup again in the app." },
+      401,
+    );
+  const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  const url = String(body["url"] ?? "")
+    .trim()
+    .replace(/\/+$/, "");
+  const sessionId = String(body["sessionId"] ?? "").trim();
+  const apiKey = String(body["apiKey"] ?? "").trim();
+  // https only: the gateway token travels with every call to this address.
+  if (!/^https:\/\/[^\s/]+$/i.test(url) || !/^[A-Za-z0-9_-]{3,80}$/.test(sessionId) || !apiKey)
+    return json({ error: "Address, instance and token are needed." }, 400);
+  const current = await gatewayConfig(true);
+  const g: GatewayConfig = { ...current, url, sessionId, apiKey };
+  const check = await call<Session>(g, sessionPath(g));
+  if (!check.ok) return json({ error: check.error }, 400);
+  const changed =
+    current.url !== url || current.sessionId !== sessionId || current.apiKey !== apiKey;
+  if (current.apiKey !== apiKey) await secretRef().set({ apiKey }, { merge: true });
+  await settingsRef().set(
+    {
+      gatewayUrl: url,
+      gatewaySessionId: sessionId,
+      gatewayMode: "gym-pc",
+      gatewayPhone: String(check.data.phone ?? ""),
+      gatewayStatus: String(check.data.status ?? ""),
+      gatewayCheckedAt: FieldValue.serverTimestamp(),
+      gatewayPcSeenAt: FieldValue.serverTimestamp(),
+      ...(changed ? { updatedAt: FieldValue.serverTimestamp() } : {}),
+    },
+    { merge: true },
+  );
+  cached = null;
+  // Delivery ticks: the gateway calls the app (its address doesn't change), set up once.
+  const webhook = changed
+    ? await registerWebhook({ ...g, webhookSecret: (await gatewayConfig(true)).webhookSecret })
+    : "on";
+  const status = String(check.data.status ?? "");
+  return json({ ok: true, status, statusLabel: STATUS_WORDS[status] ?? status, webhook });
+}
+
 export function handleGateway(request: Request, action: string) {
   if (action === "gateway-webhook") return webhook(request);
+  if (action === "gateway-link")
+    return request.method === "POST"
+      ? linkFromGymPc(request)
+      : Promise.resolve(text("Method not allowed", 405));
   if (request.method !== "POST") return Promise.resolve(text("Method not allowed", 405));
   if (action === "gateway") return saveConnection(request);
   if (action === "gateway-status") return connectionAction(request);

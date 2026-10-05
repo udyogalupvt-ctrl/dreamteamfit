@@ -1,5 +1,9 @@
 # Try it on your computer first (VS Code, about 15 minutes)
 
+> **For everyday use on the gym PC**, don't use this folder: in the app, open **Settings →
+> WhatsApp → Run it on the gym PC** and download the one setup file. It starts with the PC and
+> keeps the app's address up to date by itself. This folder is a short developer test.
+
 Before setting up the server, run the WhatsApp gateway on your own computer, link a phone, and
 send a test from the **live app**. Live bills keep going through the WhatsApp Cloud API the whole
 time: only **Send test** uses the linked phone.

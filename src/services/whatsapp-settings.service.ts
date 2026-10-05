@@ -8,7 +8,7 @@ import {
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import type { WhatsAppSettings } from "@/types/models";
-import { COLLECTIONS } from "./firestore.service";
+import { COLLECTIONS, toDate } from "./firestore.service";
 
 export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   enabled: false,
@@ -35,6 +35,8 @@ export const DEFAULT_WHATSAPP_SETTINGS: WhatsAppSettings = {
   gatewayStatus: "",
   phoneTexts: {},
   gatewayRestriction: "",
+  gatewayMode: "",
+  gatewayPcSeenAt: null,
 };
 
 const map = (d?: DocumentData): WhatsAppSettings => ({
@@ -44,6 +46,8 @@ const map = (d?: DocumentData): WhatsAppSettings => ({
   sender: d?.["sender"] === "phone" ? "phone" : "cloud",
   phoneTexts: (d?.["phoneTexts"] as Record<string, string> | undefined) ?? {},
   gatewayRestriction: String(d?.["gatewayRestriction"] ?? ""),
+  gatewayMode: String(d?.["gatewayMode"] ?? ""),
+  gatewayPcSeenAt: d?.["gatewayPcSeenAt"] ? toDate(d["gatewayPcSeenAt"]) : null,
 });
 
 /** Sending from the gym's own number (linked phone) rather than the Meta Cloud API. */
@@ -72,6 +76,8 @@ export const saveWhatsAppSettings = (settings: WhatsAppSettings) => {
     gatewayPhone: _p,
     gatewayStatus: _t,
     gatewayRestriction: _r,
+    gatewayMode: _m,
+    gatewayPcSeenAt: _seen,
     ...rest
   } = settings;
   return setDoc(
