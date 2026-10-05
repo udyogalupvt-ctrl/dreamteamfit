@@ -1,4 +1,6 @@
 import {
+  deleteDoc,
+  deleteField,
   doc,
   getCountFromServer,
   getDocs,
@@ -178,6 +180,32 @@ export async function recordAttendance(input: {
   return { id, created };
 }
 export const makeManualReference = () => `manual-${crypto.randomUUID()}`;
+
+/**
+ * Removes a visit staff marked by hand by mistake (wrong member or day). The member's last visit
+ * and the member app's visit calendar go back to their other visits. Thumb punches stay.
+ */
+export async function removeManualVisit(e: AttendanceEvent) {
+  if (e.source !== "manual") throw new Error("Only a visit marked by hand can be removed.");
+  await deleteDoc(doc(db, COLLECTIONS.attendance, e.id));
+  if (!e.clientId || e.accessDecision !== "allowed") return;
+  const rest = await getDocs(
+    query(col(COLLECTIONS.attendance), where("clientId", "==", e.clientId)),
+  );
+  const days = rest.docs
+    .map((d) => d.data())
+    .filter((d) => d["accessDecision"] === "allowed")
+    .map((d) => String(d["attendanceDate"] ?? ""))
+    .filter(Boolean);
+  if (days.includes(e.attendanceDate)) return;
+  const last = days.sort().at(-1) ?? "";
+  const ref = doc(db, COLLECTIONS.clients, e.clientId);
+  await updateDoc(ref, { lastVisitDate: last }).catch(() => undefined);
+  await updateDoc(doc(db, "memberVisits", e.clientId), {
+    [`days.${e.attendanceDate}`]: deleteField(),
+    updatedAt: serverTimestamp(),
+  }).catch(() => undefined);
+}
 export async function findClientByBiometricId(userId: string, deviceId: string) {
   const snap = await getDocs(
     query(col(COLLECTIONS.clients), where("biometricUserId", "==", userId)),

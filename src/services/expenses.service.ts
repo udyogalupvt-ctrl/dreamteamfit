@@ -1,6 +1,7 @@
 import {
   addDoc,
   doc,
+  getDocs,
   orderBy,
   query,
   serverTimestamp,
@@ -31,6 +32,7 @@ export const mapExpense = (id: string, d: DocumentData): Expense => ({
   settled: d["settled"] !== false,
   settledDate: d["settledDate"] ?? "",
   settledMethod: d["settledMethod"] ?? "",
+  ...(d["staffPaymentId"] ? { staffPaymentId: String(d["staffPaymentId"]) } : {}),
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -122,6 +124,18 @@ export async function createExpense(
   await batch.commit();
   return ref.id;
 }
+/** The staff pay record made with a salary / incentive expense (only those have one). */
+export async function staffPaymentRefs(item: Pick<Expense, "id" | "category" | "staffPaymentId">) {
+  if (item.staffPaymentId) return [doc(db, COLLECTIONS.staffPayments, item.staffPaymentId)];
+  // Paid before expenses kept the link: look it up (only Income & expenses logins may read it;
+  // others edit the expense alone, as before).
+  if (item.category !== "Staff Salary" && item.category !== "Incentive") return [];
+  const snap = await getDocs(
+    query(col(COLLECTIONS.staffPayments), where("expenseId", "==", item.id)),
+  ).catch(() => null);
+  return snap ? snap.docs.map((d) => d.ref) : [];
+}
+
 export async function updateExpense(
   item: Expense,
   input: ExpenseFormValues,
@@ -130,6 +144,15 @@ export async function updateExpense(
   const data = expenseSchema.parse(input);
   const batch = writeBatch(db);
   batch.update(doc(db, COLLECTIONS.expenses, item.id), { ...data, updatedAt: serverTimestamp() });
+  // A salary / incentive paid on the Staff page: its pay record follows (amount, mode, date).
+  for (const ref of await staffPaymentRefs(item))
+    batch.update(ref, {
+      amount: data.amount,
+      method: data.paymentMethod,
+      date: data.date,
+      notes: data.notes ?? "",
+      updatedAt: serverTimestamp(),
+    });
   batch.set(
     doc(col(COLLECTIONS.expenseActivities)),
     activity(item.id, data.title, "updated", staff.name),

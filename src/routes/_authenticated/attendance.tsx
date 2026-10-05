@@ -12,6 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import { ManualAttendanceDialog } from "@/components/attendance/manual-attendance-dialog";
+import { RemoveVisitButton } from "@/components/attendance/remove-visit-button";
 import { StaffAttendanceSection } from "@/components/attendance/staff-attendance-section";
 import { SimulateScanDialog } from "@/components/attendance/simulate-scan-dialog";
 import { EmptyState } from "@/components/common/empty-state";
@@ -479,6 +480,9 @@ function EventList({
               <TableHead>Device</TableHead>
               <TableHead>{access ? "Reason" : "Access"}</TableHead>
               <TableHead>Source</TableHead>
+              <TableHead>
+                <span className="sr-only">Remove</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -501,6 +505,9 @@ function EventList({
                   )}
                 </TableCell>
                 <TableCell>{e.source}</TableCell>
+                <TableCell className="w-0 p-1">
+                  <RemoveVisitButton event={e} />
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -516,7 +523,10 @@ function EventList({
                   {format(e.timestamp, "dd MMM, hh:mm a")} · ID {e.biometricUserId || "—"}
                 </p>
               </div>
-              <StatusPill tone={accessTone(e)}>{accessText(e)}</StatusPill>
+              <div className="flex items-center gap-1">
+                <StatusPill tone={accessTone(e)}>{accessText(e)}</StatusPill>
+                <RemoveVisitButton event={e} />
+              </div>
             </div>
             <p className="text-meta mt-3">
               {EVENT_LABELS[e.eventType]} · {e.deviceNameSnapshot} · {e.source}

@@ -83,6 +83,8 @@ import { cn } from "@/lib/utils";
 import { memberIdLabel, subscribeClient, updateClient } from "@/services/clients.service";
 import { subscribeClientMemberships, undoLastPause } from "@/services/memberships.service";
 import { PausePlanDialog } from "@/components/clients/pause-plan-dialog";
+import { EditPlanDialog, PlanEdits } from "@/components/clients/edit-plan-dialog";
+import { canEditPlan } from "@/services/plan-edit.service";
 import {
   subscribeClientWorkoutAssignments,
   updateWorkoutAssignmentStatus,
@@ -168,6 +170,7 @@ function ClientProfilePage() {
   const [addBookingOpen, setAddBookingOpen] = useState(false);
   const [cancelling, setCancelling] = useState<Membership | null>(null);
   const [pausing, setPausing] = useState<Membership | null>(null);
+  const [editing, setEditing] = useState<Membership | null>(null);
 
   const crumbs = [
     { label: "Home", to: "/dashboard" },
@@ -519,6 +522,9 @@ function ClientProfilePage() {
                 <MembershipHero
                   m={current}
                   onCancel={() => setCancelling(current)}
+                  onEdit={
+                    can("members") && canEditPlan(current) ? () => setEditing(current) : undefined
+                  }
                   onPause={can("packages") ? () => setPausing(current) : undefined}
                   onUndoPause={
                     can("packages")
@@ -559,6 +565,7 @@ function ClientProfilePage() {
                           {m.durationDaysSnapshot} days
                         </p>
                         {m.status === "cancelled" ? <CancelNote plan={m} /> : null}
+                        <PlanEdits plan={m} />
                       </div>
                       <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
                         <span className="font-semibold tabular-nums">
@@ -568,6 +575,16 @@ function ClientProfilePage() {
                           {MEMBERSHIP_STATUS_META[m.effective].label}
                         </StatusPill>
                         <RestorePlanButton client={c} kind="gym" plan={m} />
+                        {can("members") && canEditPlan(m) ? (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Edit ${m.packageNameSnapshot}`}
+                            onClick={() => setEditing(m)}
+                          >
+                            <Pencil aria-hidden />
+                          </Button>
+                        ) : null}
                         {m.effective === "active" || m.effective === "pending" ? (
                           <Button
                             variant="ghost"
@@ -666,6 +683,13 @@ function ClientProfilePage() {
       <AddDietDialog open={addDietOpen} onOpenChange={setAddDietOpen} clientId={c.id} />
       <BookingFormDialog open={addBookingOpen} onOpenChange={setAddBookingOpen} initialClient={c} />
       <PhotoDialog open={photoOpen} onOpenChange={setPhotoOpen} client={c} />
+      <EditPlanDialog
+        client={c}
+        membership={editing}
+        memberships={memberships.data}
+        invoices={invoices.data}
+        onClose={() => setEditing(null)}
+      />
       <PausePlanDialog
         membership={pausing}
         isCurrent={!!pausing && c.currentMembership?.membershipId === pausing.id}
@@ -693,11 +717,14 @@ const MORE_TABS = [
 function MembershipHero({
   m,
   onCancel,
+  onEdit,
   onPause,
   onUndoPause,
 }: {
   m: Membership;
   onCancel: () => void;
+  /** Only for logins allowed to change members' plans. */
+  onEdit: (() => void) | undefined;
   /** Only for logins allowed to change plans. */
   onPause: (() => void) | undefined;
   onUndoPause: (() => void) | undefined;
@@ -731,10 +758,14 @@ function MembershipHero({
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm">
-          Paid snapshot{" "}
-          <span className="font-semibold tabular-nums">{formatPrice(m.priceSnapshot)}</span>
+          Price <span className="font-semibold tabular-nums">{formatPrice(m.priceSnapshot)}</span>
         </p>
         <div className="flex flex-wrap gap-1">
+          {onEdit ? (
+            <Button variant="outline" size="sm" onClick={onEdit}>
+              <Pencil aria-hidden /> Edit plan
+            </Button>
+          ) : null}
           {onPause ? (
             <Button variant="outline" size="sm" onClick={onPause}>
               <PauseCircle aria-hidden /> Pause

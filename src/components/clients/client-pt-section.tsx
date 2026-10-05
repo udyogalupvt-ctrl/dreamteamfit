@@ -1,4 +1,4 @@
-import { Dumbbell, Fingerprint, RotateCcw, ShieldCheck, ShieldX } from "lucide-react";
+import { Dumbbell, Fingerprint, Pencil, RotateCcw, ShieldCheck, ShieldX } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/empty-state";
@@ -19,6 +19,11 @@ import { BOOKING_STATUS_META, formatTime } from "@/lib/format";
 import { useState } from "react";
 import { subscribeClientPayments, undoBalancePayment } from "@/services/finance.service";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import {
+  EditLines,
+  EditPaymentDialog,
+  usePaymentEditRights,
+} from "@/components/billing/edit-payment-dialog";
 import type { BiometricDevice, Booking, Client, Payment, PtAssignment } from "@/types/models";
 
 export function ClientPtSection({ client }: { client: Client }) {
@@ -62,7 +67,7 @@ export function ClientPtSection({ client }: { client: Client }) {
             <StatusPill
               tone={p.status === "active" ? "success" : p.status === "pending" ? "warning" : "info"}
             >
-              {p.status === "pending" ? "Pending biometric" : p.status}
+              {p.status === "pending" ? "Starts later" : p.status}
             </StatusPill>
           </div>
           <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
@@ -226,6 +231,8 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
     clientId,
   ]);
   const [undoing, setUndoing] = useState<Payment | null>(null);
+  const [editing, setEditing] = useState<Payment | null>(null);
+  const rightsOf = usePaymentEditRights();
   if (!pays.data.length) return null;
   const undo = async () => {
     const p = undoing;
@@ -257,6 +264,8 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
                     : "at checkout"}{" "}
                 · {p.invoiceNumber || "no bill"})
               </span>
+              {p.note ? <span className="text-meta block">{p.note}</span> : null}
+              <EditLines edits={p.edits} />
             </span>
             <span className="flex items-center gap-2">
               <span className="text-meta">
@@ -264,6 +273,16 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
                   ? `PT gym ${formatPrice(p.ptGymAmount)} · trainer ${formatPrice(p.trainerShareAmount)}`
                   : `Membership ${formatPrice(p.membershipGymAmount)}`}
               </span>
+              {rightsOf(p).mayEdit ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Edit payment ${formatPrice(p.amount)} on ${formatDateISO(p.paymentDate)}`}
+                  onClick={() => setEditing(p)}
+                >
+                  <Pencil aria-hidden /> Edit
+                </Button>
+              ) : null}
               {/* A balance payment entered by mistake can be taken back the same day. */}
               {p.kind === "balance" && p.paymentDate === todayISO() ? (
                 <Button variant="ghost" size="sm" onClick={() => setUndoing(p)}>
@@ -274,6 +293,7 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
           </li>
         ))}
       </ul>
+      <EditPaymentDialog payment={editing} onClose={() => setEditing(null)} />
       <ConfirmDialog
         open={!!undoing}
         onOpenChange={(o) => !o && setUndoing(null)}

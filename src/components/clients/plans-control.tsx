@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { Ban, Dumbbell, RotateCcw, XCircle } from "lucide-react";
+import { Ban, Dumbbell, Pencil, RotateCcw, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { EditLines } from "@/components/billing/edit-payment-dialog";
+import { EditPtDialog } from "@/components/clients/edit-pt-dialog";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { Field, FormDialog } from "@/components/common/form-dialog";
 import { StatusPill } from "@/components/common/status-pill";
@@ -420,6 +422,8 @@ export function ClientPtPlans({ client, invoices }: { client: Client; invoices: 
     [client.id],
   );
   const [cancelling, setCancelling] = useState<PtAssignment | null>(null);
+  const [editing, setEditing] = useState<PtAssignment | null>(null);
+  const { can } = useAccess();
   if (!pts.data.length) return null;
   return (
     <section className="surface-card overflow-hidden">
@@ -442,11 +446,22 @@ export function ClientPtPlans({ client, invoices }: { client: Client; invoices: 
                   {formatDateISO(p.endDate)}
                 </p>
                 {p.status === "cancelled" ? <CancelNote plan={p} /> : null}
+                <EditLines edits={p.edits} />
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
                 <span className="font-semibold tabular-nums">{formatPrice(p.ptPrice)}</span>
                 <StatusPill tone={meta.tone}>{meta.label}</StatusPill>
                 <RestorePlanButton client={client} kind="pt" plan={p} />
+                {ptOpen(p) && can("members") ? (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Edit ${p.ptPackageNameSnapshot}`}
+                    onClick={() => setEditing(p)}
+                  >
+                    <Pencil aria-hidden />
+                  </Button>
+                ) : null}
                 {ptOpen(p) ? (
                   <Button
                     variant="ghost"
@@ -462,6 +477,7 @@ export function ClientPtPlans({ client, invoices }: { client: Client; invoices: 
           );
         })}
       </ul>
+      <EditPtDialog pt={editing} onClose={() => setEditing(null)} />
       <CancelPlansDialog
         client={client}
         plans={[]}
@@ -498,7 +514,8 @@ export function EndAllPlansButton({
     ["active", "pending"].includes(effectiveMembershipStatus(m)),
   );
   const openPts = pts.data.filter(ptOpen);
-  if (!owner || (!plans.length && !openPts.length)) return null;
+  // Shown once the PT plans are in, so the box lists everything that will be ended.
+  if (!owner || pts.loading || (!plans.length && !openPts.length)) return null;
   return (
     <>
       <Button

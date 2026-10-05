@@ -405,6 +405,7 @@ export async function payStaff(input: {
   const batch = writeBatch(db);
   const now = serverTimestamp();
   const expenseRef = doc(col(COLLECTIONS.expenses));
+  const payRef = doc(col(COLLECTIONS.staffPayments));
   const title = `${input.kind === "salary" ? "Salary" : "Incentive"} · ${input.staff.name} · ${input.periodLabel}`;
   batch.set(expenseRef, {
     title,
@@ -415,6 +416,8 @@ export async function payStaff(input: {
     description: "",
     notes: input.notes,
     paidBy: "Gym",
+    // Its staff pay record: editing / deleting the expense keeps that in step.
+    staffPaymentId: payRef.id,
     settled: true,
     settledDate: "",
     settledMethod: "",
@@ -430,7 +433,6 @@ export async function payStaff(input: {
     createdBy: input.by.name,
     createdAt: now,
   });
-  const payRef = doc(col(COLLECTIONS.staffPayments));
   batch.set(payRef, {
     staffId: input.staff.id,
     staffNameSnapshot: input.staff.name,

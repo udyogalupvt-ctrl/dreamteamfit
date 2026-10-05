@@ -7,6 +7,7 @@ import {
   Loader2,
   MessageCircle,
   MoreHorizontal,
+  Pencil,
   Printer,
   Send,
   Trash2,
@@ -48,6 +49,8 @@ import { recordBalancePayment, undoBalancePayment } from "@/services/finance.ser
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { useLive } from "@/hooks/use-live-query";
 import { useAuth } from "@/hooks/use-auth";
+import { useAccess } from "@/hooks/use-access";
+import { EditBillDialog } from "@/components/billing/edit-bill-dialog";
 
 export function InvoiceActions({
   invoice,
@@ -59,6 +62,8 @@ export function InvoiceActions({
   const wa = useLive(subscribeWhatsAppSettings, DEFAULT_WHATSAPP_SETTINGS, []);
   const business = useLive(subscribeBusinessSettings, DEFAULT_BILLING_SETTINGS, []);
   const [paying, setPaying] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const { can } = useAccess();
   const [busy, setBusy] = useState(false);
   // Delete (owner, or a login given "Bills" delete): into the Recycle Bin.
   const bin = useBin();
@@ -136,6 +141,11 @@ export function InvoiceActions({
           <DropdownMenuItem onSelect={() => window.open(url, "_blank", "noopener,noreferrer")}>
             <ExternalLink aria-hidden /> View bill
           </DropdownMenuItem>
+          {can("billing") ? (
+            <DropdownMenuItem onSelect={() => setEditing(true)}>
+              <Pencil aria-hidden /> Edit bill
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuItem onSelect={() => void pdf()}>
             <Download aria-hidden /> Download PDF
           </DropdownMenuItem>
@@ -168,6 +178,13 @@ export function InvoiceActions({
         </DropdownMenuContent>
       </DropdownMenu>
       <BalancePaymentDialog invoice={invoice} open={paying} onOpenChange={setPaying} />
+      {editing ? (
+        <EditBillDialog
+          invoice={invoice}
+          settings={business.data}
+          onClose={() => setEditing(false)}
+        />
+      ) : null}
       <ConfirmDialog
         open={deleting}
         onOpenChange={setDeleting}

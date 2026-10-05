@@ -27,6 +27,7 @@ import type {
 } from "@/types/models";
 import { updateEnrollmentStatus } from "./class-enrollments.service";
 import { memberIdDocRef } from "./clients.service";
+import { staffPaymentRefs } from "./expenses.service";
 import { col, COLLECTIONS, toDate, type CollectionName } from "./firestore.service";
 import { memberAppAction, trainerAccess } from "./portal.service";
 import { mapBinEntry as mapEntry } from "./recycle-bin-list.service";
@@ -464,7 +465,8 @@ export async function binExpense(e: Expense, by: Deleter) {
     section: "expenses",
     label: `Expense: ${e.title}`,
     detail: `₹${e.amount.toLocaleString("en-IN")} · ${e.date}`,
-    refs: [doc(db, COLLECTIONS.expenses, e.id)],
+    // A salary's pay record goes (and comes back) with it, so the staff page doesn't show it paid.
+    refs: [doc(db, COLLECTIONS.expenses, e.id), ...(await staffPaymentRefs(e))],
     by,
   });
 }

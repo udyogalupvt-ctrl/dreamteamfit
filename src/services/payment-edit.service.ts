@@ -1,0 +1,172 @@
+import { doc, runTransaction, serverTimestamp } from "@/lib/firestore";
+import { db } from "@/lib/firebase";
+import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
+import { derivePaymentStatus } from "@/lib/invoice-utils";
+import type { Payment, PaymentMethod, RecordEdit } from "@/types/models";
+import { allocatePayment, cashOpenFrom } from "./finance.service";
+
+export { cashOpenFrom };
+import { COLLECTIONS } from "./firestore.service";
+
+/**
+ * Correcting a payment after it was saved: wrong mode (Cash / UPI…), wrong amount, wrong date, or
+ * a note. The bill's paid / balance follow the new amount, the membership / PT / trainer split is
+ * worked out again, and the Day Book shows the corrected line.
+ *
+ * Who: the front desk (Billing) fixes today's payments; older ones need Income & expenses, since
+ * they change cash already counted and handed over. Payments before the 1st of last month keep
+ * their amount, mode and date (the Day Book carries that cash forward); only the note changes.
+ */
+
+const round = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+
+/** What this login may change on a payment. */
+export function paymentEditRights(p: Payment, can: { billing: boolean; finance: boolean }) {
+  const today = todayISO();
+  const mayEdit = can.finance || (can.billing && p.paymentDate === today);
+  const cashOpen = p.paymentDate >= cashOpenFrom(today);
+  return {
+    mayEdit,
+    /** Mode and date (money stays the same, moves between days / modes). */
+    money: mayEdit && cashOpen,
+    /** The amount: not for refunds (Restore on the plan takes those back). */
+    amount: mayEdit && cashOpen && p.kind !== "refund" && !!p.invoiceId,
+  };
+}
+
+export interface PaymentEditForm {
+  amount: number;
+  method: PaymentMethod;
+  paymentDate: string;
+  note: string;
+}
+
+export function paymentChanges(p: Payment, f: PaymentEditForm) {
+  const out: string[] = [];
+  if (round(f.amount) !== round(p.amount))
+    out.push(`Amount ${formatPrice(p.amount)} → ${formatPrice(f.amount)}`);
+  if (f.method !== p.method) out.push(`Mode ${p.method} → ${f.method}`);
+  if (f.paymentDate !== p.paymentDate)
+    out.push(`Date ${formatDateISO(p.paymentDate)} → ${formatDateISO(f.paymentDate)}`);
+  if (f.note.trim() !== p.note.trim())
+    out.push(f.note.trim() ? `Note: ${f.note.trim()}` : "Note removed");
+  return out;
+}
+
+export async function editPayment(input: {
+  payment: Payment;
+  form: PaymentEditForm;
+  reason: string;
+  can: { billing: boolean; finance: boolean };
+  /** When a balance appears or grows: the day the member will pay it. */
+  nextPaymentDate: string | null;
+  by: string;
+}) {
+  const { payment: p, form } = input;
+  const today = todayISO();
+  const rights = paymentEditRights(p, input.can);
+  if (!rights.mayEdit)
+    throw new Error("Only today's payments can be changed here. Ask the owner for older ones.");
+  const changes = paymentChanges(p, form);
+  if (!changes.length) throw new Error("Nothing was changed.");
+  const amountChanged = round(form.amount) !== round(p.amount);
+  if ((form.method !== p.method || form.paymentDate !== p.paymentDate) && !rights.money)
+    throw new Error("This payment is older than last month: only its note can change.");
+  if (amountChanged && !rights.amount) throw new Error("The amount of this payment can't change.");
+  const dateChanged = form.paymentDate !== p.paymentDate;
+  if (dateChanged && !input.can.finance)
+    throw new Error("Changing a payment's date needs Income & expenses (the owner).");
+  if (dateChanged && !/^\d{4}-\d{2}-\d{2}$/.test(form.paymentDate))
+    throw new Error("Pick the payment date.");
+  if (dateChanged && form.paymentDate > today)
+    throw new Error("The payment date can't be in the future.");
+  if (dateChanged && form.paymentDate < cashOpenFrom(today))
+    throw new Error(`Pick a date from ${formatDateISO(cashOpenFrom(today))} on.`);
+  if (amountChanged && !(form.amount > 0)) throw new Error("Enter an amount above zero.");
+
+  const edit: RecordEdit = {
+    on: today,
+    by: input.by,
+    reason: input.reason.trim().slice(0, 300),
+    changes,
+  };
+  const payRef = doc(db, COLLECTIONS.payments, p.id);
+  await runTransaction(db, async (tx) => {
+    const pay = await tx.get(payRef);
+    const invRef = p.invoiceId ? doc(db, COLLECTIONS.invoices, p.invoiceId) : null;
+    const inv = invRef ? await tx.get(invRef) : null;
+    if (!pay.exists()) throw new Error("This payment was removed.");
+    const cur = pay.data();
+    if (
+      Number(cur["amount"]) !== p.amount ||
+      cur["method"] !== p.method ||
+      cur["paymentDate"] !== p.paymentDate
+    )
+      throw new Error("This payment was just changed by someone else. Open it again.");
+
+    const patch: Record<string, unknown> = {
+      method: form.method,
+      paymentDate: form.paymentDate,
+      note: form.note.trim().slice(0, 300),
+      edits: [...(Array.isArray(cur["edits"]) ? cur["edits"] : []), edit],
+      updatedAt: serverTimestamp(),
+    };
+    if (inv?.exists() && invRef) {
+      const d = inv.data();
+      const total = Number(d["total"] ?? 0);
+      const billPatch: Record<string, unknown> = {};
+      if (amountChanged) {
+        const status = String(d["paymentStatus"] ?? "");
+        if (status === "closed" || status === "refunded")
+          throw new Error(`Bill ${d["invoiceNumber"]} is ${status}: the amount can't change.`);
+        const before = Number(d["amountPaid"] ?? 0);
+        const paid = round(before - p.amount + form.amount);
+        if (paid > total + 0.001)
+          throw new Error(
+            `Too much: the bill is ${formatPrice(total)} and ${formatPrice(round(before - p.amount))} is paid by other payments.`,
+          );
+        const balance = round(total - paid);
+        const oldBalance = round(total - before);
+        if (balance > oldBalance && !input.nextPaymentDate)
+          throw new Error("Pick the date the member will pay the balance.");
+        Object.assign(billPatch, {
+          amountPaid: paid,
+          balanceDue: balance,
+          paymentStatus: derivePaymentStatus(total, paid),
+          ...(balance > oldBalance && input.nextPaymentDate
+            ? { dueDate: input.nextPaymentDate }
+            : {}),
+        });
+        Object.assign(
+          patch,
+          { amount: round(form.amount) },
+          allocatePayment(
+            {
+              total,
+              membershipGross: Number(d["membershipGross"] ?? 0),
+              ptGross: Number(d["ptGross"] ?? 0),
+              trainerShareTotal: Number(d["trainerShareTotal"] ?? 0),
+            },
+            round(form.amount),
+          ),
+        );
+      }
+      // The bill shows the checkout payment's mode.
+      if (p.kind === "initial" && form.method !== p.method)
+        billPatch["paymentMethod"] = form.method;
+      if (Object.keys(billPatch).length) {
+        billPatch["updatedAt"] = serverTimestamp();
+        tx.update(invRef, billPatch);
+        if (d["publicToken"])
+          tx.update(doc(db, COLLECTIONS.publicInvoices, String(d["publicToken"])), billPatch);
+        if (amountChanged && d["enrollmentId"])
+          tx.update(doc(db, COLLECTIONS.enrollments, String(d["enrollmentId"])), {
+            paymentStatus: billPatch["paymentStatus"],
+            updatedAt: serverTimestamp(),
+          });
+      }
+    } else if (amountChanged) throw new Error("This payment's bill was not found.");
+    tx.update(payRef, patch);
+  });
+  return changes;
+}

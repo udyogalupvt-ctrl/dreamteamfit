@@ -9,6 +9,7 @@ import {
   serverTimestamp,
   updateDoc,
   where,
+  writeBatch,
   type DocumentData,
   type Transaction,
 } from "@/lib/firestore";
@@ -260,10 +261,71 @@ export async function createClient(input: ClientInput, inquiryId: string | null 
   return ref.id;
 }
 
+/**
+ * Saves the member's details. A corrected phone also becomes their WhatsApp number (unless a
+ * different WhatsApp number was set on purpose), and a corrected name / phone reaches their
+ * bills (and the bill links) and payments, so reminders, re-sent bills and the Day Book use it.
+ */
 export async function updateClient(id: string, input: ClientUpdateInput) {
+  const ref = doc(db, COLLECTIONS.clients, id);
   const patch: Record<string, unknown> = { ...input, updatedAt: serverTimestamp() };
+  const nameIn = input.fullName?.trim();
+  const phoneIn = input.phone?.trim();
+  if (!nameIn && !phoneIn) return updateDoc(ref, patch);
+  const before = (await getDoc(ref)).data() ?? {};
+  const oldPhone = String(before["phone"] ?? "");
+  const phoneChanged = !!phoneIn && normalizePhone(phoneIn) !== normalizePhone(oldPhone);
+  const nameChanged = !!nameIn && nameIn !== String(before["fullName"] ?? "");
   if (input.phone !== undefined) patch["phoneNormalized"] = normalizePhone(input.phone);
-  await updateDoc(doc(db, COLLECTIONS.clients, id), patch);
+  const wa = String(before["whatsappPhone"] ?? "");
+  if (
+    phoneChanged &&
+    input.whatsappPhone === undefined &&
+    (!wa || normalizePhone(wa) === normalizePhone(oldPhone))
+  )
+    patch["whatsappPhone"] = phoneIn;
+  await updateDoc(ref, patch);
+  if (!phoneChanged && !nameChanged) return;
+
+  const [bills, pays] = await Promise.all([
+    getDocs(query(col(COLLECTIONS.invoices), where("clientId", "==", id))),
+    getDocs(query(col(COLLECTIONS.payments), where("clientId", "==", id))),
+  ]);
+  const now = serverTimestamp();
+  let batch = writeBatch(db);
+  let n = 0;
+  const flush = async () => {
+    if (n) await batch.commit();
+    batch = writeBatch(db);
+    n = 0;
+  };
+  for (const b of bills.docs) {
+    batch.update(b.ref, {
+      ...(nameChanged ? { clientNameSnapshot: nameIn } : {}),
+      ...(phoneChanged ? { clientPhoneSnapshot: phoneIn } : {}),
+      updatedAt: now,
+    });
+    if (++n >= 400) await flush();
+  }
+  if (nameChanged)
+    for (const p of pays.docs) {
+      batch.update(p.ref, { clientNameSnapshot: nameIn, updatedAt: now });
+      if (++n >= 400) await flush();
+    }
+  await flush();
+  // Bill links: one at a time, so an old bill without a link doesn't stop the others.
+  await Promise.all(
+    bills.docs
+      .map((b) => String(b.data()["publicToken"] ?? ""))
+      .filter(Boolean)
+      .map((token) =>
+        updateDoc(doc(db, COLLECTIONS.publicInvoices, token), {
+          ...(nameChanged ? { clientName: nameIn } : {}),
+          ...(phoneChanged ? { clientPhone: phoneIn } : {}),
+          updatedAt: serverTimestamp(),
+        }).catch(() => undefined),
+      ),
+  );
 }
 
 /**

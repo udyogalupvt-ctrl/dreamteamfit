@@ -96,22 +96,22 @@ export async function saveFollowUp(input: FollowUpInput, id?: string) {
         ...input,
         automated: Boolean(input.automated),
         parentFollowUpId: input.parentFollowUpId ?? null,
-        status: "pending",
-        lastContactDate: null,
-        ...(id ? {} : { createdAt: now }),
+        // An edit keeps a done call done (and when it was made); only a new one starts pending.
+        ...(id ? {} : { status: "pending", lastContactDate: null, createdAt: now }),
         updatedAt: now,
       },
       { merge: Boolean(id) },
     );
-    tx.set(doc(col(COLLECTIONS.automationActivities)), {
-      type: "followup_created",
-      referenceId: ref.id,
-      clientId: input.clientId,
-      clientNameSnapshot: input.clientNameSnapshot,
-      description: `Follow-up created: ${input.reason}`,
-      createdAt: now,
-      updatedAt: now,
-    });
+    if (!id)
+      tx.set(doc(col(COLLECTIONS.automationActivities)), {
+        type: "followup_created",
+        referenceId: ref.id,
+        clientId: input.clientId,
+        clientNameSnapshot: input.clientNameSnapshot,
+        description: `Follow-up created: ${input.reason}`,
+        createdAt: now,
+        updatedAt: now,
+      });
   });
   return ref.id;
 }

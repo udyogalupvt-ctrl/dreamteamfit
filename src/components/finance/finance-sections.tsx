@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { endOfMonth, format, startOfMonth, startOfYear, subMonths } from "date-fns";
-import { CheckCircle2, Plus, Wallet } from "lucide-react";
+import { CheckCircle2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatCard } from "@/components/common/stat-card";
@@ -22,6 +22,8 @@ import { toastWithUndo } from "@/lib/undo-toast";
 import { cn } from "@/lib/utils";
 import {
   addManualIncome,
+  removeManualIncome,
+  updateManualIncome,
   buildFinanceSummary,
   setPayoutStatus,
   subscribeManualIncome,
@@ -76,6 +78,8 @@ export function IncomeSection() {
   const [customTo, setCustomTo] = useState(todayISO());
   const [from, to] = rangeFor(period, customFrom, customTo);
   const [open, setOpen] = useState(false);
+  // The "other income" line being corrected (null = adding a new one).
+  const [editId, setEditId] = useState<string | null>(null);
   const [f, setF] = useState({
     title: "",
     category: "Other",
@@ -143,6 +147,23 @@ export function IncomeSection() {
     if (f.title.trim().length < 2 || !(amount > 0))
       return void toast.error("Enter what it was for and a positive amount");
     try {
+      if (editId) {
+        await updateManualIncome(
+          manual.data.find((m) => m.id === editId) ?? { id: editId, date: f.date },
+          {
+            title: f.title.trim(),
+            category: f.category,
+            amount,
+            method: f.method,
+            date: f.date,
+          },
+        );
+        toast.success("Income updated");
+        setOpen(false);
+        setEditId(null);
+        setF((x) => ({ ...x, title: "", amount: "", date: todayISO() }));
+        return;
+      }
       await addManualIncome({
         ...f,
         title: f.title.trim(),
@@ -295,7 +316,26 @@ export function IncomeSection() {
                     </p>
                     {r.detail ? <p className="text-meta break-words">{r.detail}</p> : null}
                   </div>
-                  <p className="shrink-0 font-bold tabular-nums">{formatPrice(r.amount)}</p>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <p className="font-bold tabular-nums">{formatPrice(r.amount)}</p>
+                    {r.kind === "manual" ? (
+                      <ManualIncomeActions
+                        m={manual.data.find((m) => m.id === r.id)}
+                        onEdit={(m) => {
+                          setEditId(m.id);
+                          setF({
+                            title: m.title,
+                            category: m.category,
+                            amount: String(m.amount),
+                            method: m.method,
+                            date: m.date,
+                            notes: m.notes,
+                          });
+                          setOpen(true);
+                        }}
+                      />
+                    ) : null}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -305,8 +345,14 @@ export function IncomeSection() {
 
       <FormDialog
         open={open}
-        onOpenChange={setOpen}
-        title="Add other income"
+        onOpenChange={(o) => {
+          setOpen(o);
+          if (!o && editId) {
+            setEditId(null);
+            setF((x) => ({ ...x, title: "", amount: "", date: todayISO() }));
+          }
+        }}
+        title={editId ? "Edit other income" : "Add other income"}
         description="For money not billed to a member, e.g. a vending machine or event."
         footer={
           <>
@@ -371,6 +417,45 @@ export function IncomeSection() {
         </div>
       </FormDialog>
     </div>
+  );
+}
+
+/** Edit / remove (with Undo) on an "other income" line. */
+function ManualIncomeActions({
+  m,
+  onEdit,
+}: {
+  m: ManualIncome | undefined;
+  onEdit: (m: ManualIncome) => void;
+}) {
+  if (!m) return null;
+  const remove = async () => {
+    try {
+      const putBack = await removeManualIncome(m);
+      toastWithUndo(`Removed ${m.title}`, putBack, formatPrice(m.amount));
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    }
+  };
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`Edit ${m.title}`}
+        onClick={() => onEdit(m)}
+      >
+        <Pencil aria-hidden />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`Remove ${m.title}`}
+        onClick={() => remove()}
+      >
+        <Trash2 aria-hidden />
+      </Button>
+    </>
   );
 }
 

@@ -296,6 +296,21 @@ export interface Membership extends BaseDoc {
   cancelId?: string;
   /** Moved over from the old gym software: sold and paid there, not a sale here. */
   paidInOldSoftware?: boolean;
+  /** The bill this plan was sold on. */
+  invoiceId?: string;
+  /** Upgraded to another plan: this one ended early, its unused days were credited there. */
+  upgradedTo?: string;
+  /** Corrections made after the sale (wrong package, dates, counsellor), oldest first. */
+  edits: MembershipEdit[];
+}
+
+export interface MembershipEdit {
+  /** Day of the correction (YYYY-MM-DD). */
+  on: string;
+  by: string;
+  reason: string;
+  /** "Start 1 Oct 2026 → 2 Oct 2026", one line per field changed. */
+  changes: string[];
 }
 
 export const PAUSE_REASONS = ["Travel", "Medical", "Other"] as const;
@@ -521,6 +536,8 @@ export interface Expense extends BaseDoc {
   settled: boolean;
   settledDate: string;
   settledMethod: string;
+  /** Salary / incentive paid on the Staff page: its staff pay record. */
+  staffPaymentId?: string;
 }
 
 export type ExpenseActivityAction = "created" | "updated" | "deleted";
@@ -589,6 +606,8 @@ export interface Invoice extends BaseDoc {
   counsellorName: string;
   /** Part of the discount that is credit for the unused days of an upgraded plan. */
   upgradeCredit: number;
+  /** Corrections after the bill was made (discount, pay-by date, note). */
+  edits: RecordEdit[];
 }
 
 export interface PublicInvoice {
@@ -889,6 +908,8 @@ export interface PtAssignment extends BaseDoc, ShareSnapshot {
   cancelledOn?: string;
   cancelReason?: string;
   cancelId?: string;
+  /** Corrections after the sale (trainer, dates), oldest first. */
+  edits: RecordEdit[];
 }
 export interface Payment extends BaseDoc {
   clientId: string;
@@ -911,6 +932,17 @@ export interface Payment extends BaseDoc {
   createdByUid: string;
   counsellorId: string;
   counsellorName: string;
+  note: string;
+  /** Corrections made later (wrong mode, amount, date), oldest first. */
+  edits: RecordEdit[];
+}
+
+/** One correction to a saved record: when, who, why, and what changed (one line per field). */
+export interface RecordEdit {
+  on: string;
+  by: string;
+  reason: string;
+  changes: string[];
 }
 export const ENROLLMENT_FLOW_STATUSES = [
   "draft",

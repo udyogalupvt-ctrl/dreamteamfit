@@ -1,3 +1,4 @@
+import { RemoveVisitButton } from "@/components/attendance/remove-visit-button";
 import { useMemo } from "react";
 import { format } from "date-fns";
 import { CalendarCheck, Fingerprint, ShieldCheck, ShieldX } from "lucide-react";
@@ -130,11 +131,14 @@ export function ClientAttendanceSection({
                       {e.source === "manual" ? "entered by staff" : e.deviceNameSnapshot}
                     </p>
                   </div>
-                  <StatusPill tone={e.accessDecision === "allowed" ? "success" : "danger"}>
-                    {e.accessDecision === "allowed"
-                      ? "allowed"
-                      : ACCESS_REASON_LABELS[e.accessReason]}
-                  </StatusPill>
+                  <span className="flex shrink-0 items-center gap-1">
+                    <StatusPill tone={e.accessDecision === "allowed" ? "success" : "danger"}>
+                      {e.accessDecision === "allowed"
+                        ? "allowed"
+                        : ACCESS_REASON_LABELS[e.accessReason]}
+                    </StatusPill>
+                    <RemoveVisitButton event={e} />
+                  </span>
                 </li>
               ))}
             </ul>

@@ -1,5 +1,6 @@
 import {
   addDoc,
+  deleteDoc,
   doc,
   documentId,
   getAggregateFromServer,
@@ -53,6 +54,8 @@ export const mapPayment = (id: string, d: DocumentData): Payment => ({
   createdByUid: d["createdByUid"] ?? "",
   counsellorId: d["counsellorId"] ?? "",
   counsellorName: d["counsellorName"] ?? "",
+  note: String(d["note"] ?? ""),
+  edits: Array.isArray(d["edits"]) ? d["edits"] : [],
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -195,6 +198,44 @@ export const subscribeManualIncome = (ok: (x: ManualIncome[]) => void, fail: (e:
     fail,
     orderBy("createdAt", "desc"),
   );
+
+/** First day whose cash can still change: the 1st of last month (Day Book carry-forward). */
+export function cashOpenFrom(today = todayISO()) {
+  const [y, m] = today.split("-").map(Number) as [number, number];
+  const back = new Date(Date.UTC(y, m - 2, 1));
+  return back.toISOString().slice(0, 10);
+}
+
+/** Day Book cash before the 1st of last month is carried forward: those lines stay as they are. */
+function assertCashOpen(...dates: string[]) {
+  const from = cashOpenFrom();
+  if (dates.some((d) => d < from))
+    throw new Error(
+      `Cash before ${from.split("-").reverse().join("-")} is already carried forward in the Day Book: it can't change.`,
+    );
+}
+
+/** Corrects an "other income" line (typo in the amount, date, mode…). */
+export async function updateManualIncome(
+  before: Pick<ManualIncome, "id" | "date">,
+  input: Pick<ManualIncome, "title" | "category" | "amount" | "method" | "date">,
+) {
+  assertCashOpen(before.date, input.date);
+  const id = before.id;
+  await updateDoc(doc(db, COLLECTIONS.manualIncome, id), {
+    ...input,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Removes an "other income" line added by mistake; returns how to put it back (Undo). */
+export async function removeManualIncome(m: ManualIncome) {
+  assertCashOpen(m.date);
+  const ref = doc(db, COLLECTIONS.manualIncome, m.id);
+  await deleteDoc(ref);
+  const { id: _id, createdAt, ...rest } = m;
+  return () => setDoc(ref, { ...rest, createdAt, updatedAt: serverTimestamp() });
+}
 
 export async function addManualIncome(input: Omit<ManualIncome, "id" | "createdAt" | "updatedAt">) {
   await addDoc(col(COLLECTIONS.manualIncome), {

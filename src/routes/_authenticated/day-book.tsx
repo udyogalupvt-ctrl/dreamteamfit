@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { endOfWeek, format, startOfMonth, startOfWeek, subDays, subMonths } from "date-fns";
-import { Download, HandCoins, Plus, Printer } from "lucide-react";
+import { Download, HandCoins, Pencil, Plus, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import { z } from "zod";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingRows } from "@/components/common/loading-state";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusPill } from "@/components/common/status-pill";
+import { EditPaymentDialog, usePaymentEditRights } from "@/components/billing/edit-payment-dialog";
 import { ExpenseFormDialog } from "@/components/expenses/expense-form-dialog";
 import { SettleDialog } from "@/components/expenses/settle-dialog";
 import { HandoverDialog } from "@/components/finance/cash-book-section";
@@ -69,6 +70,8 @@ function DayBookPage() {
       .catch(() => setCheckpoints([]));
   }, []);
   const [adding, setAdding] = useState(add === "expense");
+  const [editingPay, setEditingPay] = useState<Payment | null>(null);
+  const payRights = usePaymentEditRights();
   const [settling, setSettling] = useState<Expense | null>(null);
   // The handover window, open on one day's cash; `drawer` = ask for the morning's drawer cash too.
   const [handover, setHandover] = useState<{ date: string; drawer: boolean } | null>(null);
@@ -349,6 +352,9 @@ function DayBookPage() {
                       <TableHead>Paid by</TableHead>
                       <TableHead className="hidden md:table-cell">Collected by</TableHead>
                       <TableHead className="hidden md:table-cell">Counsellor</TableHead>
+                      <TableHead>
+                        <span className="sr-only">Edit</span>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -373,6 +379,18 @@ function DayBookPage() {
                         <TableCell className="hidden md:table-cell">{p.createdBy || "—"}</TableCell>
                         <TableCell className="hidden md:table-cell">
                           {p.counsellorName || "—"}
+                        </TableCell>
+                        <TableCell className="w-0 p-1">
+                          {payRights(p).mayEdit ? (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`Edit ${p.clientNameSnapshot}'s ${formatPrice(p.amount)} payment`}
+                              onClick={() => setEditingPay(p)}
+                            >
+                              <Pencil aria-hidden />
+                            </Button>
+                          ) : null}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -511,6 +529,7 @@ function DayBookPage() {
         </>
       )}
       <ExpenseFormDialog open={adding} onOpenChange={setAdding} />
+      <EditPaymentDialog payment={editingPay} onClose={() => setEditingPay(null)} />
       <SettleDialog expense={settling} onClose={() => setSettling(null)} />
       <HandoverDialog
         date={handover?.date ?? null}

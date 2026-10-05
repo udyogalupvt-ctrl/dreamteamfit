@@ -63,6 +63,7 @@ export const mapInvoice = (id: string, d: DocumentData): Invoice => ({
   counsellorId: d["counsellorId"] ?? "",
   counsellorName: d["counsellorName"] ?? "",
   upgradeCredit: Number(d["upgradeCredit"] ?? 0),
+  edits: Array.isArray(d["edits"]) ? d["edits"] : [],
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
