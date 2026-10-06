@@ -1,235 +1,307 @@
-# CFO: build plan (version 1)
+# CFO: build plan (version 1, reviewed)
 
-Spec: `CFO_SPEC.md` (including "Adjustments for this app"). This plan says how it is built in
-this codebase. Branch `cfo-v1`, local commits only.
+Spec: `CFO_SPEC.md` (incl. "Adjustments for this app"). This plan says how it is built here.
+Branch `cfo-v1`, local commits only. Contracts: `src/lib/cfo/types.ts`.
+Reviewed 2026-10-06 by three independent reviewers (maths, code, owner/safety); their fixes are in.
 
-## 1. Architecture in one picture
+## 1. Architecture
 
 ```
-Firestore (existing data) ──read by──> src/server/cfo-data.ts  (admin SDK, few queries, normalises docs)
-                                          │  CfoInput (plain objects, no Firestore types)
-                                          ▼
-                                   src/lib/cfo/*  (PURE maths: numbers, alerts, brief input; unit-tested)
-                                          │  CfoSnapshot
-                                          ▼
-src/server/cfo.ts  ── saves ──> cfoReports/latest   (numbers + alert lists; read by the page)
-        │                         cfoBriefs/{date}  (AI text + the exact input sent)
-        └── src/server/ai.ts  (Gemini | OpenAI | Claude | off, plain fetch, timeout + 1 retry)
-
-Page /cfo  ── reads 3 docs (cfoReports/latest, newest cfoBriefs, cfoSettings/main) ──> UI
-          ── POST /api/cfo/refresh  (recompute; optionally new brief)
-Morning cron (existing /api/cron/morning) ── last step: recompute; new brief if none yet this week (Mon)
+Firestore ──(single-field queries, getAll)──> src/server/cfo-data.ts ──CfoInput──> src/lib/cfo (pure maths)
+                                                                                  │
+         cfoReports/latest  (numbers, counts, top rows)  <──────────── CfoComputed ┘
+         cfoReports/list-{atRisk|renewals|newSlipping|ptChances|dues}  (full lists, one doc each)
+         cfoBriefs/latest (newest OK brief) · cfoBriefs/status (last attempt) · cfoBriefs/{date}-{HHmm} (history)
+src/server/ai.ts: Gemini | OpenAI | Claude | off (plain fetch, keys in headers, deadline-bound)
+Page /cfo reads 3 docs on open (+1 per list tab opened). Refresh → POST /api/cfo/refresh; new summary → POST /api/cfo/brief.
+Morning cron: last step, own try/catch, only if ≥30 s left.
 ```
 
-Why: Firestore charges per read. The heavy reading happens on the server once a day (and on
-Refresh, throttled to once a minute), not every time someone opens the page (page = 3 reads).
+Hard rules for the code:
+- **Every Firestore query uses one field only** (one equality OR one range) — the live project has
+  no composite indexes. **No filtered aggregate** (`sum`/`count` with `where`). Grep check in tests.
+- `src/lib/cfo` is pure: relative imports with `.ts` extension, every type import is `import type`,
+  no `@/` imports, no enums/namespaces. Runs under `node --test` (Node 22 type stripping).
+- Every snapshot number is finite (no NaN/Infinity): "not enough data" is `null`.
+- Server never logs AI requests, replies or member rows.
 
 ## 2. Spec terms → real data
 
 | Spec term | Real source |
 |---|---|
-| Member | `clients` (`fullName`, `phone`, `clientCode`, `joinedOn` or `createdAt` (IST date), `lastVisitDate`, `thumbSince`, `firstThumbRegistered`) |
-| Membership plan | `memberships` (`startDate`, `endDate`, `priceSnapshot` = list price, `status`, `pauses[]`, `cancelledOn`, `cancelId`, `invoiceId`, `paidInOldSoftware`, `source:"import"`, `upgradedTo`, `upgradeFrom`, `originalEndDate`) |
-| Price after discount | Only on the bill (`invoices`): plan's share of `subtotal − discount` (see 4.1) |
-| Amount paid so far | Bill `amountPaid` shared the same way (no per-plan payment link is reliable) |
-| Payments received | `payments` (`amount`, negative for refunds; `paymentDate`; `kind`; `cancelId`) |
-| PT | `ptAssignments` (`ptPrice`, `trainerId`, `trainerNameSnapshot`, dates, `status`, `invoiceId`, `trainerShareAmount`), payouts in `trainerPayouts` (`ptAssignmentId`, `trainerShareAmount`, `status`, `paidAt` YYYY-MM-DD, `adjustment`) |
-| Attendance | `memberVisits/{clientId}.days` (one entry per visit day, allowed punches only, kept in step when a hand-marked visit is removed) + `clients.lastVisitDate` |
-| Expenses | `expenses` (`amount`, `date`, `category`, `paidBy`, `settled`, `settledDate`). Staff salary is already here (`payStaff` writes an expense) |
-| Other income | `manualIncome` (`amount`, `date`) + non-plan lines on bills |
-| Trainer salary | `trainers.staffId` → `staffPrivate/{staffId}.monthlySalary` |
-| Frozen | Plan pause (`pauses[]`: `on`, `days`) |
-| Admin | `requireFeature(request,"finance")` on the server; `can("finance")` in the page and rules (owners + "All features" + Finance ticked) |
+| Member | `clients`: `fullName`, `phone`, `clientCode`, `joinedOn` (else `createdAt` → IST date via Intl, not `joinedOnOf`), `lastVisitDate`, `thumbSince`, `firstThumbRegistered` |
+| Plan | `memberships`: `startDate`, `endDate`, `priceSnapshot` (list price), `status`, `pauses[]`, `cancelledOn`, `cancelId`, `invoiceId`, `paidInOldSoftware`, `source`, `upgradedTo`, `upgradeFrom`, `originalEndDate`, `upgradeCredit` (on the old plan) |
+| Price after discount, paid so far | The plan's bill (`invoices`), shared as in 4.1 |
+| Payments | `payments`: `amount` (minus = refund), `paymentDate`, `kind`, `cancelId` |
+| PT | `ptAssignments` (`ptPrice`, `trainerId`, dates, `status`, `invoiceId`, `trainerShareAmount`, `paidInOldSoftware`); `trainerPayouts` (`ptAssignmentId`, `trainerShareAmount`, `beforeCancel.trainerShareAmount`, `status`, `paidAt` YYYY-MM-DD, `adjustment`) |
+| Attendance | `memberVisits/{clientId}.days` + `clients.lastVisitDate` |
+| Expenses | `expenses` (`amount`, `date`, `category`, `paidBy`, `settled`, `settledDate`); salary already in here |
+| Other income | `manualIncome` + non-plan lines on bills |
+| Trainer salary | `staffPrivate/{trainer.staffId || trainer.id}.monthlySalary` (0 or missing = not stored) |
+| Frozen | Pause (`pauses[]`) |
+| Admin | server: `requireStaff` → 401, then `requireFeature(req,"finance")` → 403; page/rules: `can("finance")` |
 
-## 3. New data (no existing data is changed)
+## 3. New data (nothing existing is changed or migrated)
 
-| Collection / doc | Who writes | Rules |
+| Doc | Written by | Rules |
 |---|---|---|
-| `cfoSettings/main` `{openingBalance:number|null, openingDate:"YYYY-MM-DD"|"", atRiskDays:14, renewalDays:30, newMemberMinVisits:4, ptMinVisits:12, runwayWarnMonths:2, graceDays:15, aiEnabled:true, language:"English"|"Telugu"|"Hindi", updatedAt, updatedBy}` | Page (through `@/lib/firestore`, so it is audit-logged) | read/write `can('finance')`, id must be `main`, field types checked |
-| `cfoReports/latest` = the `CfoSnapshot` (numbers, lists, notes, `computedAt`, `computedBy`) | Server only | read `can('finance')`, write `false` |
-| `cfoBriefs/{YYYY-MM-DD}` `{date, createdAt, by, provider, model, status:"ok"|"failed"|"off"|"unverified", text, input (exact JSON sent), error, unknownNumbers}` | Server only | read `can('finance')`, write `false` |
+| `cfoSettings/main` (`CfoSettings` + `updatedAt`, `updatedBy`) | page via `@/lib/firestore` (audited, line has no amounts) | read/write `can('finance')`, id `main`, types checked |
+| `cfoReports/latest` (`CfoSnapshot` + lock fields) | server only | read `can('finance')`, write false |
+| `cfoReports/list-*` (`CfoListDoc`) | server only | same block |
+| `cfoBriefs/latest`, `cfoBriefs/status`, `cfoBriefs/{date}-{HHmm}` | server only | read `can('finance')`, write false |
 
-Expense categories already exist. No migration. No field is added to existing collections.
-Production rules deploy needs the user's OK (not done in this build).
+Release order (for the user, later): deploy rules first, then code. Until rules exist the page
+shows "CFO is being set up" instead of an error.
 
-## 4. Layer 1: exact maths (all in `src/lib/cfo`, pure, unit-tested)
+## 4. Layer 1 maths (pure, `src/lib/cfo`)
 
-Dates are `YYYY-MM-DD` strings; "today" (T) is IST (`localDate()` on the server). Day maths is
-done on date strings in UTC so time zones never shift a day. Money is kept unrounded inside and
-rounded to whole rupees only for display and stored totals.
+T = today (IST). Day maths on date strings in UTC. Inclusive day counts.
+**Rounding:** round each leaf once to whole rupees (per month: gym, PT, other income; each expense
+category; each cash part; each advance item), then build every total and difference from the
+rounded leaves, so profit = earned − expenses and free cash = cash − parts exactly on the page.
 
-### 4.1 Value and paid amount of each plan (from its bill), tax taken out
+### 4.1 Plan value and paid amount (tax taken out)
 
-For a bill: `grossM` = `membershipGross` (fallback: the plan's list price), `grossP` = `ptGross`
-(fallback: PT list price), scaled down together if they add up to more than `subtotal`;
-`grossO = subtotal − grossM − grossP` (other lines). `credit = upgradeCredit`.
+Bill with `subtotal ≤ 0` → all values and paid = 0 (plan still counts for members/alerts).
+Else: `grossM` = `membershipGross` (fallback the plan's list price), `grossP` = `ptGross` (fallback
+PT list price), scaled down together if `grossM + grossP > subtotal`; `grossO = subtotal − grossM − grossP`.
+`credit = min(bill.upgradeCredit, base × grossM/subtotal)`.
+- `base = subtotal − (discount − credit)`; `valueM = base·grossM/subtotal`, `valueP = base·grossP/subtotal`,
+  `valueO = base·grossO/subtotal`.
+- `cashExTax = total > 0 ? amountPaid × (subtotal − discount)/total : 0`, shared by
+  (`valueM − credit`, `valueP`, `valueO`); then `paidM += credit` (credit = already paid).
+- **Old-software bills** (its plans have `paidInOldSoftware`): never use the shares above. Open
+  amount = `balanceDue + closedAmount` (ex-tax); share it over that bill's old plans by list price;
+  each plan: value = list price, paid = list price − its share of the open amount. Old plan with no
+  bill: value = paid = list price. Imported plan (`source:"import"`, no bill): value = paid = list price.
+- Plan whose bill is missing (deleted, or empty `invoiceId` and no loaded bill names it):
+  value = paid = 0 + data note.
+- **Orphan bill** (its `membershipId`/`ptAssignmentId` plan no longer exists — member deleted with
+  "keep bills"): `valueM + valueP − its PT payouts' trainer share` earned on the bill date + data note.
+- `valueO` (other lines) is earned on the bill date.
 
-- `base = subtotal − (discount − credit)` (discount without the upgrade credit), shared by gross:
-  `valueM = base × grossM/subtotal`, `valueP = base × grossP/subtotal`, `valueO = base × grossO/subtotal`.
-- Cash paid without tax: `cashExTax = amountPaid × (subtotal − discount)/total` (0 if `total` is 0).
-  Shared by the "after full discount" amounts (`valueM − credit`, `valueP`, `valueO`), then
-  `paidM += credit` (upgrade credit counts as already paid).
-- Old-software plan (`paidInOldSoftware`): value = list price; paid = value − (its bill's
-  `balanceDue` without tax, or 0 if no bill). Imported plan (`source:"import"`, no bill): value =
-  paid = list price. Any other plan whose bill is missing (deleted): value = paid = 0, and a
-  "data to check" note counts it.
-- `valueO` (other lines on a bill) is earned on the bill date.
+### 4.2 Spreading over days (one function)
 
-### 4.2 Spreading a value over days (one function for gym plans, PT plans and trainer share)
+Item: `start`, `end`, `totalEnd` (original length), paused days (union), `V`, optional
+`stopOn` (first day it no longer earns) and `F` (final lifetime value).
+- Active days = days in `[start, totalEnd]` not paused; 0 or bad dates → all of `V` on `start` + note.
+- Earned in `[a,b]` = `V × activeDays([a,b] ∩ [start, min(end, stopOn−1)]) / totalActive`.
+- If `stopOn` is set: on `stopOn` book `F − earned before stopOn` (may be minus). Lifetime = `F`.
 
-Item: `start`, `end` (actual), `totalEnd` (= `originalEndDate` for a plan cut short by an upgrade,
-else `end`), paused days (union of all pauses), `value V`, optional `cancelledOn` and `finalValue F`.
-- Active days = days in `[start, totalEnd]` that are not paused. If 0 or bad dates: whole value on
-  `start` (+ note).
-- Earned in period `[a,b]` = `V × (active days in [a,b] ∩ [start, end] before cancelledOn) / total active days`.
-- Cancelled: earning stops the day before `cancelledOn`; on `cancelledOn` the difference
-  `F − earned so far` is booked (can be minus). For a cancelled gym/PT plan `F` = paid (without
-  tax) − its share of the refunds with the same `cancelId` (refunds shared by paid amount). So the
-  total ever earned on a cancelled plan = money kept. Past months never change when a plan is
-  cancelled later; a restore (undo) puts everything back because we always recompute.
-- Upgrade: the old plan stops at its new `endDate` but is spread over its original length; the
-  unused part moves to the new plan as `credit` (4.1). Past months stay stable.
+Used for:
+| Case | totalEnd | stopOn | F |
+|---|---|---|---|
+| Normal plan | end | — | — (lifetime V) |
+| Cancelled (gym or PT) | end | cancelledOn | paid − its share of refunds with the same `cancelId` (shared by paid amount) |
+| Upgraded old plan (`upgradedTo`) | originalEndDate | new plan's start (= end+1) | V − credit |
+| Superseded (status `expired`, another non-cancelled gym plan of the member starts after its start and on/before its end) | end | that plan's start | V (days given up; gym keeps it) |
+| Trainer share of a PT plan (cost) | as the PT plan | as the PT plan | Σ current non-cancelled payout lines incl. minus adjustments; V = Σ non-adjustment lines using `beforeCancel` amount when present; no payout lines: `trainerShareAmount` only if the PT plan has a live bill and is not old-software, else 0 |
+
+PT counts in income as **the gym's share**: PT income spread − trainer share spread (same as the
+rest of the app: "the trainer's share is not gym income"). Trainer share is not an expense.
 
 ### 4.3 Monthly numbers (6 full months + this month so far)
 
-- **Earned income (M)** = gym plans + PT plans (4.2) + other bill lines + `manualIncome` in M.
-  This month is counted up to and including today ("so far").
-- **Expenses (M)** = expense records dated in M (all, whoever paid) + **trainer share** of PT
-  earned in M (spread like the PT income; per PT plan = sum of its non-cancelled payout lines incl.
-  minus adjustments, fallback `trainerShareAmount`). Trainer share is shown as its own category
-  "Trainer share (PT)" because it is a real cost that is not on the Expenses page.
-- **Profit or loss (M)** = earned income − expenses.
-- **Average monthly expenses** = average of the last 3 full months that have data (a month has
-  data if it is on/after the month of the gym's first record). "based on N months"; 0 months → null.
-- **Active members (today)** = distinct members with a non-cancelled gym or PT plan covering today
-  (paused members count; they are still members).
-- **Active members in M** = distinct members with such a plan on at least one day of M.
-- **Income per member** = earned income of last full month / active members in that month.
-- **Break-even members** = ceil(average monthly expenses / income per member); null if either is
-  missing or 0. Page says above / below.
-- **Advance money owed** = for every non-cancelled gym/PT plan that ends today or later (includes
-  queued, paid-ahead plans): `max(0, paid − V × active days used up to today / total active days)`.
-- **Cash balance** (only when opening money is set) = opening balance (money at the START of the
-  opening date) + sum of `payments.amount` with `paymentDate ≥ openingDate` (one aggregate query;
-  refunds are minus) + old bills without payment records (`paymentsTracked:false`, by bill date)
-  + `manualIncome` since + … − expenses paid by the gym since (`paidBy "Gym"` by `date`; others by
-  `settledDate` once settled) − trainer payouts paid since (`paidAt`).
-- **Free cash** = cash − advance owed. **Runway** = cash / average monthly expenses (null when
-  either is missing; "if no new money comes in").
-- **Renewal rate (M)**: gym plans (not cancelled, not cut short by an upgrade) ending in M, one per
-  member (their latest ending in M). Renewed = another non-cancelled gym plan of the same member
-  ends later and starts on or before `end + grace`. Not renewed = no such plan and `end + grace`
-  is before today. Otherwise "still deciding" (shown, not counted). Rate = renewed / (renewed +
-  not renewed), null if 0.
-- **New members (M)** = members whose join date (`joinedOn`, else `createdAt` IST) is in M, except
-  members whose every plan came from the old software or an import.
-- **Net member growth (M)** = new members − not renewed.
-- **Pending dues** = bills with `balanceDue > 0` and status not `refunded`/`closed`. Age from
-  `dueDate` (else bill date): not due yet / 0–7 / 8–30 / more than 30 days late. List + totals.
-- **PT income per trainer** (this month so far and last month): PT earned income + trainer share
-  + monthly salary when the trainer has one.
+- **Earned income (M)** = gym plans + PT gym share + other bill lines + `manualIncome`. Current
+  month counted to today (`partial`, with `daysCounted`/`daysInMonth`).
+- **Money received (M)** = Σ `payments.amount` by `paymentDate` + old bills (`paymentsTracked`
+  false) by bill date. Shown under profit as "same as the Dashboard"; explains earned vs received.
+- **Expenses (M)** = expense records dated in M (whoever paid). By category; custom categories kept for the page.
+- **Profit (M)** = earned − expenses.
+- **Has data (M)**: months from the month of the **first expense record** on. Earlier months show
+  income but "no expense records yet" (no profit, not used in averages).
+- **Average monthly expenses** = mean of the last 3 full months that have data ("based on N months"; none → null).
+- **Average active members (M)** = Σ over days of M of members with a non-cancelled gym/PT plan
+  covering that day ÷ days in M (2 decimals). Head count also kept for trends.
+- **Income per member** = earned (last full month) / its average active members (null if month has no data or 0).
+- **Break-even** = ceil(avg monthly expenses / income per member); null if unknown.
+- **Active members (today)** = distinct members with a non-cancelled gym/PT plan covering T (paused count).
+- **Advance (paid in advance by members)** = Σ over non-cancelled gym/PT plans with effective end ≥ T
+  (incl. queued) of `max(0, paidEff − V × activeDaysUsed(start..T)/totalActive)`; `paidEff` =
+  paid − credit for an upgraded old plan; superseded plans end at their cut.
+- **Cash** (only when opening money set; D = opening date) = opening balance (at the START of D)
+  + Σ payments.amount (paymentDate ≥ D) + Σ old bills' amountPaid (paymentsTracked false, invoiceDate ≥ D)
+  + Σ manualIncome (date ≥ D) − Σ expenses paid by the gym (date ≥ D) − Σ staff-paid expenses
+  settled (settledDate ≥ D) − Σ payouts with status paid (paidAt ≥ D, minus lines included). Nothing else.
+- **Free cash ("really yours")** = cash − advance − pending trainer payouts (status pending, incl.
+  minus lines) − staff-paid expenses not yet settled.
+- **Runway** = cash / avg monthly expenses; cash ≤ 0 → 0 ("money has run out", warning); unknown → null.
+- **Renewal (M)**: gym plans (not cancelled, not upgraded, not superseded) ending in M, latest per
+  member. Renewed = another non-cancelled gym plan of the member ends later and starts ≤ end + grace.
+  Not renewed = none and end + grace < T. Else still deciding (shown, not counted). Rate =
+  renewed / (renewed + not renewed), null if 0.
+- **Left early (M)** = members with a gym plan cancelled in M and no other non-cancelled gym plan
+  covering the cancel day or starting within grace after it.
+- **New members (M)** = join date in M, except members whose every plan is old-software/imported.
+- **Net growth (M)** = new − not renewed − left early (each member counted once per month).
+- **Pending dues** = bills with balanceDue > 0, status not refunded/closed; late days from dueDate
+  (else bill date): not due yet / 0–7 / 8–30 / 30+. Total equals the Dashboard's "Balance due".
+- **PT per trainer** (this month so far, last month): PT income (full), trainer share, gym keeps, salary.
 
-### 4.4 Layer 2 alerts (thresholds from `cfoSettings`)
+### 4.4 Layer 2 alerts
 
-"Running plan" = non-cancelled gym plan covering today (latest-ending if several). Visit days =
-`memberVisits` days ∪ `lastVisitDate`. "Tracked" = thumb registered or a known last visit (same
-rule as the Calls page; untracked members are counted in a note "N can't be checked yet").
-`from` = later of `thumbSince` and the start of the member's unbroken run of plans (walk back
-through earlier plans that ended within the grace period before the next started).
+Running plan = non-cancelled, not superseded gym plan covering T (latest end if several). Visit
+days = memberVisits days ∪ lastVisitDate. Tracked = thumb registered or a known visit (untracked
+counted in a note). `from` = later of `thumbSince` and the start of the member's unbroken run of
+plans (walk back through plans that ended within grace before the next one started).
 
-| Alert | Rule | Money at stake |
+| Alert (tab) | Rule | Money column |
 |---|---|---|
-| At-risk | Running plan, not paused today, tracked; and (days since the later of last visit / `from`, minus paused days, ≥ `atRiskDays`) OR (`from` ≤ today−27, no pause in the last 28 days, visits in the earlier 14 days ≥ 4 and last-14-day visits ≤ half of them) | plan value |
-| Renewal coming | Running plan ends in 0…`renewalDays` days and no later non-cancelled gym plan; "Top priority" if also at-risk | plan value |
-| New member slipping | Counts as a new member, joined 7…30 days ago, running plan, not paused, tracked (or plan waiting for thumb), visit days since joining < `newMemberMinVisits` | plan value |
-| PT opportunity | Running plan, visit days in last 30 ≥ `ptMinVisits`, never had a non-cancelled PT plan | cheapest active PT package price |
-| Cash warning | runway < `runwayWarnMonths` OR active members < break-even | — (reasons listed) |
+| At risk ("Not coming") | running, not paused today, tracked; days since later of (last visit, from) minus paused days ≥ atRiskDays, OR dropping: from ≤ T−27, no pause in last 28 days, earlier-14-day visits ≥ 4 and last-14 ≤ half | "Next renewal worth" = plan value |
+| Renewals | running plan ends in 0..renewalDays days, no later non-cancelled gym plan; Top priority if also at risk | "Renewal worth" |
+| New members slipping | new member (4.3), joined 7..30 days ago, running, not paused, tracked or waiting for thumb, visit days since joining < newMemberMinVisits | "Plan worth" |
+| PT chances | running, visit days in last 30 ≥ ptMinVisits, never a non-cancelled PT plan | "PT from" = cheapest active PT package |
+| Cash | runway < runwayWarnMonths, cash ≤ 0, or active < break-even | reasons |
 
-Row: name, member ID, phone, plan, end date, last visit, money, short reason. Sorted by money,
-highest first (top-priority badge shown). Lists are stored up to 500 rows each with the full
-count and total (page says "showing 500 of N" if ever cut).
+**Changes from the spec (shown on the page too):** the "dropping" rule needs ≥ 4 visits in the
+earlier 14 days (with fewer, "half" is noise); new members are checked from day 7 (earlier is too
+soon to judge); the profit card shows the last full month (this month so far underneath), because
+rent and salaries are paid early in the month; PT counts as the gym's share.
+
+Rows sorted by money, highest first; top-priority badge. Summary doc keeps count, total and the
+top 20 rows per list; full lists (cap 1,000 rows, trimmed to stay under 800 KB with "showing N of M")
+in `cfoReports/list-*`.
 
 ## 5. Layer 3: AI brief
 
-- `buildBriefInput(snapshot, settings)` → totals only, numbers pre-formatted exactly as the page
-  shows them ("₹1,90,000", "2.4 months", "70%"), plus rule thresholds and today's date. Never
-  member rows. Guard before sending: JSON must not contain any 10-digit number or any name/phone
-  from the alert rows (refuse to send if it does).
-- System prompt = spec text + "Copy every number exactly as written in the data."
-- `verifyBriefNumbers(text, input)`: every number in the reply must appear in the input (after
-  removing ₹ , % and spaces) or be 1/2/3 list numbering. If not: retry once with a reminder; if still
-  wrong, status `unverified`, page shows the fallback message.
-- Provider: env `CFO_AI_PROVIDER` = `gemini` | `openai` | `claude` | `off` (default off when no
-  key), `CFO_AI_MODEL` (optional), `GEMINI_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`,
-  `CFO_AI_BASE_URL` (optional override; local tests point it at a fake AI). Plain `fetch`, 20 s
-  timeout, one retry, never throws, total kept inside the 60 s function limit.
-- When: morning cron makes one if there is none since this week's Monday; Refresh button makes a
-  new one. Settings switch `aiEnabled` off → no call, page shows "AI summary is not available right now."
+- `buildBriefInput` fills the fixed type `CfoBriefInput` (allow-list): `currency`, `language`, `today`,
+  `lastFullMonth` and `thisMonthSoFar` (earned, expenses, profit, received, renewal rate, new, lost,
+  daysCounted/daysInMonth), `members` (active, break-even, above/below), `cash` (balance, really
+  yours, advance, runway; or "not set"), `alerts` (count + money per list), `dues` (groups),
+  `expensesByCategory` (10 built-in names; every custom category added into "Other (custom)"),
+  `pt` (total gym share, trainer share, number of trainers), `rules` (thresholds). Values are
+  pre-formatted strings exactly as the page shows them. Never: names, phones, IDs, bill numbers,
+  per-trainer rows, salaries, custom category text, notes, package names.
+- Privacy guard (backup): refuse if any run of 10+ digits, or any whole-word (case-insensitive)
+  match of a client/trainer name part of 3+ letters that is not part of the fixed vocabulary.
+  Status `blocked`, reason "personal data check" (no name saved).
+- Prompt = spec text + "Judge 'Where you stand' on the last full month; mention this month only as
+  so far. Write every number in 0-9 digits exactly as in the data (e.g. ₹1,90,000). Never use words
+  for numbers, lakh or crore, another script's digits, or dates."
+- `verifyBriefNumbers`: native digits mapped to 0-9; any lakh/crore/लाख/లక్ష/K/L next to a number
+  → unknown; numbers taken as whole tokens (₹ , % stripped); each must be in the allowed set (every
+  number in the input as digits, today's date parts, 1, 2, 3). Exact set match, never substring.
+- At most **2 AI calls per brief** (timeout retry and number-check retry share them). Timeout =
+  min(20 s, time left − 5 s); under 10 s left → `skipped`.
+- Storage: OK briefs → `cfoBriefs/{date}-{HHmm}` and copied to `cfoBriefs/latest` (with
+  `snapshotComputedAt`); every attempt updates `cfoBriefs/status` {at, status, reason}. Failed
+  attempts never replace the OK brief. Page: newest OK brief + "Written Mon 6 Oct with that
+  morning's numbers; numbers below are newer" when snapshot differs + small line about the last failed attempt.
+- Fallback text: "AI summary is not available right now." + reason ("switched off in CFO settings" /
+  "not set up yet" / "couldn't check its numbers" / "the AI service didn't answer") + "All numbers below are correct."
+- Provider env: `CFO_AI_PROVIDER` gemini|openai|claude|off (off when its key is missing),
+  `CFO_AI_MODEL` (default per provider), `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`.
+  Keys only in headers (`x-goog-api-key`, `Authorization: Bearer`, `x-api-key` + `anthropic-version`).
+  Saved errors: short code + HTTP status, ≤120 chars, key text stripped. `CFO_AI_BASE_URL`,
+  `CFO_TODAY`, `CFO_MIN_REFRESH_SECONDS` are honoured **only when `FIRESTORE_EMULATOR_HOST` is set**.
+- When: morning cron makes one if there is no OK brief since this week's Monday (retries daily);
+  "New AI summary" button: max 3 per day.
 
-## 6. Files
+## 6. Server, limits, files
 
-New
-- `src/lib/cfo/types.ts` (input, settings, snapshot contracts), `dates.ts`, `money.ts`,
-  `plans.ts` (4.1, 4.2), `numbers.ts` (4.3), `alerts.ts` (4.4), `brief.ts` (5), `index.ts`
-  (`computeCfoSnapshot(input, settings)`), `*.test.ts` (node:test; relative imports with `.ts`).
-- `src/server/cfo-data.ts` (Firestore → `CfoInput`), `src/server/ai.ts`, `src/server/cfo.ts`
-  (`handleCfo`, `refreshCfo`, `cfoMorningStep`).
-- `src/services/cfo.service.ts`, `src/routes/_authenticated/cfo.tsx`, `src/components/cfo/*`.
+- `POST /api/cfo/refresh` (numbers only), `POST /api/cfo/brief` (summary from the saved snapshot).
+  401 no login / portal token; 403 no Finance; JSON errors always (handler wrapped).
+- One lock for everyone (transaction on `cfoReports/latest`: `runningSince`, `computedAt`):
+  recompute at most once per 10 min (settings save and cron included; cron skips if fresh).
+  Reply says when Refresh is possible again. Brief counter `manualBriefs {date, count}`.
+- Deadline per request (start + 50 s). Numbers saved before any AI call. Page treats non-JSON / 504
+  as "Still working it out. Try again in 2 minutes."
+- Reads per refresh (1,000 members, 3,000 plans, 150 visits/day): memberships `endDate ≥ windowStart`
+  (~1,500) + `endDate == ""`; ptAssignments all (~300); trainerPayouts all (~350); invoices getAll
+  plan bills + `invoiceDate ≥ windowStart` + `balanceDue > 0` + `paymentsTracked == false`
+  (~1,500 de-duplicated); payments `paymentDate ≥ min(D, 1st of last month)` (~600) + `kind == "refund"`;
+  expenses `date ≥ min(windowStart, D)` + `settledDate ≥ D`; `expenses orderBy date limit 1`;
+  manualIncome `date ≥ min(windowStart, D)`; clients getAll referenced (~1,000); memberVisits getAll
+  members with a running plan or new (~500); trainers, ptPackages, staffPrivate getAll (small).
+  ≈ 6–7k reads; report stores `readCount`.
 
-Changed (small)
-- `src/server/router.ts` (+ `/api/cfo/` line), `src/server/automation.ts` (morning: last step,
-  own try/catch), `src/server/admin.ts` (health: AI provider set/missing),
-  `src/services/firestore.service.ts` (COLLECTIONS), `src/constants/navigation.ts` + `features.ts`
-  (`/cfo` → `finance`), `firestore.rules` (3 blocks), `src/lib/audit-describe.ts` (CFO settings
-  line), `package.json` (`"test:cfo": "node --test src/lib/cfo/"`), `.env.example` + README (AI vars).
+Files — new: `src/lib/cfo/{types,dates,money,plans,numbers,alerts,brief,index}.ts` + `*.test.ts`;
+`src/server/{cfo-data,ai,cfo}.ts`; `src/services/cfo.service.ts`; `src/routes/_authenticated/cfo.tsx`;
+`src/components/cfo/*`. Changed: `src/server/router.ts`, `automation.ts` (morning step),
+`admin.ts` (health: AI set/missing), `firestore.rules`, `src/services/firestore.service.ts`
+(COLLECTIONS), `src/constants/navigation.ts` (Workspace, after Income & Expenses: "CFO"),
+`src/constants/features.ts` (`/cfo` → finance; Finance hint mentions the CFO page),
+`src/lib/audit-describe.ts`, `package.json` (`"test:cfo": "node --test \"src/lib/cfo/**/*.test.ts\""`),
+`.env.example`, README env table.
 
-API: `POST /api/cfo/refresh {brief:boolean}` → `{ok, computedAt, brief: status}`; 401/403 JSON
-errors; 429-style message if refreshed in the last 60 s. Errors always JSON (never the router's
-plain-text 500).
+## 7. Page (`/cfo`)
 
-## 7. Page (`/cfo`, nav "CFO", Management group, `finance`)
+Plain words; spec names as small grey sub-labels.
+1. Header: "Worked out 8:02 AM today" (amber if > 26 h old), Refresh (disabled with reason during
+   the 10-min lock), Settings. No snapshot yet: "Work out my numbers".
+2. Health cards, each with a word (Good / Watch / Problem) so colour is never the only signal:
+   - "September: Profit ₹X" (last full month; green > 0, red < 0) + grey "October so far (6 of 31
+     days): earned ₹A · spent ₹B · received ₹C (same as Dashboard)".
+   - "Members 120 · need 100 to cover costs" (green ≥ +10 %, amber within 10 %, red below).
+   - "All gym money (bank + UPI + cash)" — not the Day Book drawer (red ≤ 0).
+   - "Money that is really yours" (red < 0 "You have spent ₹X of members' advance money", amber < 1 month of expenses).
+   - "Months you can run with no new money" (red < warn, amber < 2× warn). Grey = not enough data.
+   Cash cards ask for opening money until it is set.
+3. "This week's summary" card (date, provider, notes from §5) or the fallback.
+4. Problem tabs as a sideways chip row with counts; header sentence with the money ("38 members
+   not coming for 14+ days. Their next renewals are worth ₹1,90,000."). Rows: name, ID, phone,
+   plan, end, last visit, money (per-tab column name), reason; Call (`tel:`), WhatsApp (`wa.me`,
+   `normalizeWhatsAppPhone`, fixed factual text, no offers); on tap re-check live (1–2 reads):
+   already renewed / paid / came today → say so instead of opening WhatsApp. Excel + Print per tab.
+   Phone: cards; desktop: table. List loaded when the tab opens.
+5. Trends (6 months + this month): earned vs expenses, new vs lost (not renewed = "Blacklist", left
+   early), renewal rate; months without expense records greyed; small table under each chart.
+6. "How these numbers are worked out": each number, one line + rupee example; changes from the spec;
+   expenses by category; PT per trainer; data notes; "Active today includes PT-only members and
+   plans waiting for a thumb; Dashboard counts only active gym plans".
+7. Settings dialog: "Total gym money at the START of [date]: bank + UPI + card + cash drawer, before
+   any payment or expense that day" (no future dates; tip: last night's bank balance + this
+   morning's drawer), thresholds, AI on/off, language. Save → "Work out the numbers again now?".
+Permission-denied on read → "CFO is being set up" (no console error spam).
 
-1. Header: "Updated 8:02 AM today", Refresh, Settings.
-2. Five health cards (green / amber / red): profit this month so far (with last month under it),
-   active vs break-even, cash, free cash, runway. Cash cards ask for opening money until it is set.
-3. "This week's brief" card (date, provider) or the fallback line.
-4. Problem tabs: At risk · Renewals · New members · PT chances · Dues · Cash, each with count and
-   money; rows have Call (`tel:`) and WhatsApp chat (`wa.me`, free); Excel download per tab.
-   Phone: cards; desktop: table.
-5. Trends (6 months + this month): earned vs expenses, new vs lost members, renewal rate; each
-   with a small table for screen readers.
-6. "How these numbers are worked out": every Layer 1 number with its one-line meaning and a rupee
-   example; expenses by category; PT per trainer.
-7. Settings dialog: opening money + date, thresholds, AI on/off, brief language. Save → recompute.
-First visit (no snapshot): one button "Work out my numbers".
+WhatsApp texts (facts only): not coming — "Hi {first}, we haven't seen you at {gym} for {n} days.
+Is everything okay? Your plan runs till {end}."; dropping — "Hi {first}, we've missed you at
+{gym} lately. Is everything okay? Your plan runs till {end}."; renewal — "Hi {first}, your {gym}
+plan ends on {end}. Reply here or visit the front desk to renew."; new — "Hi {first}, welcome to
+{gym}! How are your first weeks going? Ask at the front desk if you'd like help with a workout
+plan."; PT — "Hi {first}, great to see you training so regularly at {gym}! If you'd like a
+personal trainer, ask at the front desk."; dues — "Hi {first}, a balance of ₹{live balance} is
+pending on your {gym} bill {number}. Please pay at the front desk or reply here."
 
-## 8. Tests and how each of the 10 checks is proved
+## 8. Tests and proof for the 10 checks
 
-- Unit tests (`npm run test:cfo`): every formula, edge cases (zero data, divide by zero, pause,
-  part payment, refund/cancel, upgrade, missing end date, old-software, tax bill, orphan bill).
-- Local emulator e2e (`cfo_local.py` in the session scratchpad, `CFO_TODAY` fixed date honoured
-  only when `FIRESTORE_EMULATOR_HOST` is set): seeds the spec's test data, refreshes through the
-  API as owner, compares every number with a hand calculation written in `cfo_expected.md`.
-- Fake AI (`fake_ai.py`) records every request: proves no names/phones are sent, numbers match.
-- Playwright as owner (light/dark, 390/1440), as a desk login without Finance, console errors.
+- Unit (`npm run test:cfo`): every formula and edge case: ₹0 bill, 100 % discount, tax bill,
+  gym+PT bill, part payment, pause (stacked), cancel with no/part/full refund (income and trainer
+  share), upgrade after 165 days / day 1 / future-dated (Σ earned = Σ kept), superseded plan,
+  old-software gym+PT on one bill, orphan bill, missing bill, missing end date, brand-new gym,
+  February, Number.isFinite over the whole snapshot, profit = earned − expenses exactly, rounding,
+  brief input allow-list, privacy guard, number check (₹90,000 vs ₹1,90,000; "1.9 lakh"; Telugu digits).
+- Emulator e2e (session scratchpad): `cfo_seed.py` seeds the spec's test data for a fixed
+  `CFO_TODAY`; `cfo_expected.md` = independent hand calculation (written without reading the
+  engine code); `cfo_local.py` refreshes through the API and compares every number and list;
+  `fake_ai.py` records requests (normal / invents a number / uses lakh / slow 25 s / 500);
+  `cfo_access_local.py` (no token 401, member-app & trainer-app tokens 401, desk 403, manager 200,
+  direct reads of `cfoReports/*`, `cfoBriefs/*`, `cfoSettings/main` denied for desk/portal, writes denied).
+- Playwright as owner (light/dark, 390/1440) and desk; console errors collected.
+- Regression: the old kit (`regress_merge.sh` suites + journey + search + gym_pc) with the HANDOFF
+  counts, plus `cfo_regress_local.py` (front desk at 390 px: join with payment, balance payment,
+  hand-marked visit, machine punch via /iclock, expense in Day Book and Income & expenses, trainer
+  payout paid → owner Refresh shows each change), and the morning cron with the CFO step throwing
+  and timing out (reminders still go out).
 
 | Check | Proof |
 |---|---|
-| 1 Earned income | unit test + e2e value for the test month = hand calc (yearly plan spread) |
-| 2 Profit | unit + e2e: earned − expenses for the same month |
-| 3 Break-even | unit + e2e + page text "above/below break-even" |
-| 4 Advance owed, free cash | unit + e2e incl. part-payment plan and paused member |
-| 5 Cash, runway | Playwright: save opening money; take a payment + add an expense in the app; Refresh; both numbers move by the exact amounts |
-| 6 Renewal rate, net growth | unit + e2e vs hand calc |
-| 7 Pending dues | unit + e2e + page list and group totals |
-| 8 Alerts | unit + e2e: exact members per list; paused member never at-risk |
-| 9 AI brief | fake AI: generated, every number found on the page, request has no names/phones; AI off and AI failing → page works with the fallback line |
-| 10 Safety | desk login: page shows "no access", API 403; regression suites (join member, payment, attendance, expense) pass; 390 px no sideways scroll; console clean |
+| 1 Earned income | unit + e2e vs hand calc (yearly plan spread) |
+| 2 Profit | unit + e2e (profit = earned − expenses, exact) |
+| 3 Break-even | unit + e2e + page text above/below |
+| 4 Advance, free cash | unit + e2e incl. part-payment plan and paused member |
+| 5 Cash, runway | Playwright: save opening money; payment + expense in the app; Refresh; exact change |
+| 6 Renewal rate, net growth | unit + e2e (incl. left early) |
+| 7 Pending dues | unit + e2e + page; total = Dashboard "Balance due" |
+| 8 Alerts | unit + e2e exact members; paused member never at risk |
+| 9 AI brief | fake AI: OK brief numbers ⊂ its snapshot; request has no names/phones/custom categories; AI off / failing / inventing → page works with fallback |
+| 10 Safety | access tests + regression + 390 px no sideways scroll + no console errors |
 
-## 9. Risks and limits (written down so nobody is surprised)
+## 9. Limits (written down)
 
-- Numbers refresh once a day or on Refresh, not live. The page shows when they were made.
+- Numbers refresh each morning or on Refresh (max once per 10 min), not live.
 - Upgrade credit and old-software plans use list prices where the real price is unknown.
-- Members deleted with their accounts vanish from history (their money docs are gone).
-- Income is counted without GST (tax is off for this gym today); cash includes it.
-- The real AI is only tried with the user's key; build and tests use the fake AI.
+- Members deleted with their accounts vanish from history.
+- Income excludes GST (tax is off today); cash includes it.
+- Real AI only with the user's key; build and tests use the fake AI.
+- Not in v1 (spec): forecasts, what-ifs, WhatsApp brief, gym comparison; also Member Calls call-status sync.

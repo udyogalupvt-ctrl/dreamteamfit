@@ -1,5 +1,14 @@
 # Handoff
 
+## 2026-10-06 (in progress): CFO build on branch `cfo-v1`
+
+"Implement CFO" Phase 2 is running. `CFO_SPEC.md` (with "Adjustments for this app"), the reviewed
+`CFO_PLAN.md` and the contracts `src/lib/cfo/types.ts` are committed on local branch `cfo-v1`
+(not pushed, not merged). Next: engine (`src/lib/cfo`), server (`src/server/cfo*.ts`, `ai.ts`),
+page (`/cfo`), test kit in the session scratchpad (8b942f95…), then verification of the 10 checks.
+Production rules for `cfoSettings`/`cfoReports`/`cfoBriefs` are NOT deployed (needs the user's OK;
+deploy rules before code). No AI key is set; tests use a fake AI.
+
 ## 2026-10-06 (latest): CFO feature set up, not built yet
 
 `CFO_SPEC.md` (the AI CFO spec with its 10 checks) is now in the project root, and the
