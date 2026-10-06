@@ -6,6 +6,7 @@
  */
 import { FieldValue, type DocumentData } from "firebase-admin/firestore";
 import { db, json, localDate } from "./admin";
+import { runCfoMorning } from "./cfo";
 import { memberOwner, pushTo, type PushMessage } from "./push";
 import { sendTemplateMessage, whatsappNumber } from "./whatsapp";
 
@@ -578,6 +579,7 @@ async function pruneOldCommands() {
 }
 
 export async function handleCron(request: Request, url: URL) {
+  const startedAt = Date.now();
   const secret = (process.env["CRON_SECRET"] ?? "").trim();
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`)
     return json({ error: "Unauthorized" }, 401);
@@ -589,7 +591,9 @@ export async function handleCron(request: Request, url: URL) {
     const paymentsDue = await processPaymentDueReminders();
     const deviceLog = await pruneDeviceLog();
     const oldCommands = await pruneOldCommands();
-    return json({ ok: true, plans, renewals, birthdays, paymentsDue, deviceLog, oldCommands });
+    // The CFO is the last step: it has its own try/catch and never holds up the reminders above.
+    const cfo = await runCfoMorning(startedAt);
+    return json({ ok: true, plans, renewals, birthdays, paymentsDue, deviceLog, oldCommands, cfo });
   }
   if (job === "night") return json({ ok: true, absences: await processAbsenceNudges() });
   return json({ error: "Unknown job" }, 404);

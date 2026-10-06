@@ -3,6 +3,7 @@
  * free plan). src/server.ts sends every /api/* and /iclock/* request here.
  */
 import { handleCron } from "./automation";
+import { handleCfo } from "./cfo";
 import { handleIclock } from "./biometric";
 import { handleStaff } from "./staff";
 import { handleDeviceUsers } from "./device-import";
@@ -22,6 +23,7 @@ export async function handleServerRoute(request: Request): Promise<Response> {
     if (/^\/iclock(\/|$)/i.test(path)) return await handleIclock(request, url);
     if (path.startsWith("/api/whatsapp/")) return await handleWhatsApp(request, url);
     if (path.startsWith("/api/cron/")) return await handleCron(request, url);
+    if (path.startsWith("/api/cfo/")) return await handleCfo(request, url);
     if (path.startsWith("/api/staff/")) return await handleStaff(request, url);
     if (path.startsWith("/api/devices/")) return await handleDeviceUsers(request, url);
     if (path === "/api/member-photo") return await handleMemberPhoto(request, url);

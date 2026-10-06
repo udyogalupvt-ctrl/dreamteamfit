@@ -77,7 +77,8 @@ PT list price), scaled down together if `grossM + grossP > subtotal`; `grossO = 
 - Plan whose bill is missing (deleted, or empty `invoiceId` and no loaded bill names it):
   value = paid = 0 + data note.
 - **Orphan bill** (its `membershipId`/`ptAssignmentId` plan no longer exists — member deleted with
-  "keep bills"): `valueM + valueP − its PT payouts' trainer share` earned on the bill date + data note.
+  "keep bills"; only bills dated in the report window, since older unpaid bills are loaded for dues
+  while their ended plans are not): `valueM + valueP − its PT payouts' trainer share` earned on the bill date + data note.
 - `valueO` (other lines) is earned on the bill date.
 
 ### 4.2 Spreading over days (one function)
@@ -93,7 +94,7 @@ Used for:
 |---|---|---|---|
 | Normal plan | end | — | — (lifetime V) |
 | Cancelled (gym or PT) | end | cancelledOn | paid − its share of refunds with the same `cancelId` (shared by paid amount) |
-| Upgraded old plan (`upgradedTo`) | originalEndDate | new plan's start (= end+1) | V − credit |
+| Upgraded old plan (`upgradedTo`) | originalEndDate | new plan's start (= end+1) | V − the credit the new plan's bill really applied (not capped: a credit above what was paid is a loss on the upgrade day) |
 | Superseded (status `expired`, another non-cancelled gym plan of the member starts after its start and on/before its end) | end | that plan's start | V (days given up; gym keeps it) |
 | Trainer share of a PT plan (cost) | as the PT plan | as the PT plan | Σ current non-cancelled payout lines incl. minus adjustments; V = Σ non-adjustment lines using `beforeCancel` amount when present; no payout lines: `trainerShareAmount` only if the PT plan has a live bill and is not old-software, else 0 |
 
@@ -123,11 +124,14 @@ rest of the app: "the trainer's share is not gym income"). Trainer share is not 
   + Σ payments.amount (paymentDate ≥ D) + Σ old bills' amountPaid (paymentsTracked false, invoiceDate ≥ D)
   + Σ manualIncome (date ≥ D) − Σ expenses paid by the gym (date ≥ D) − Σ staff-paid expenses
   settled (settledDate ≥ D) − Σ payouts with status paid (paidAt ≥ D, minus lines included). Nothing else.
-- **Free cash ("really yours")** = cash − advance − pending trainer payouts (status pending, incl.
-  minus lines) − staff-paid expenses not yet settled.
+- **Free cash ("really yours")** = cash − advance + the trainers' part of the advance − pending
+  trainer payouts (status pending, incl. minus lines) − staff-paid expenses not yet settled. The
+  trainers' part of unused PT days is owed once: to the trainer, or back to the member on a refund
+  (the app then takes it off the trainer's pay), so it is not subtracted twice (review 2026-10-06).
 - **Runway** = cash / avg monthly expenses; cash ≤ 0 → 0 ("money has run out", warning); unknown → null.
 - **Renewal (M)**: gym plans (not cancelled, not upgraded, not superseded) ending in M, latest per
-  member. Renewed = another non-cancelled gym plan of the member ends later and starts ≤ end + grace.
+  member. Renewed = another non-cancelled, not cut-short gym plan of the member that started
+  after this one, ends later and starts ≤ end + grace.
   Not renewed = none and end + grace < T. Else still deciding (shown, not counted). Rate =
   renewed / (renewed + not renewed), null if 0.
 - **Left early (M)** = members with a gym plan cancelled in M and no other non-cancelled gym plan

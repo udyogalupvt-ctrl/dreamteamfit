@@ -10,6 +10,7 @@ import {
   Fingerprint,
   History,
   LayoutDashboard,
+  LineChart,
   Megaphone,
   MessageCircle,
   Package,
@@ -82,6 +83,7 @@ export const NAV_ITEMS: NavItem[] = [
     feature: "finance",
     group: "Workspace",
   },
+  { label: "CFO", to: "/cfo", icon: LineChart, feature: "finance", group: "Workspace" },
   {
     label: "Packages & Trainers",
     to: "/packages",

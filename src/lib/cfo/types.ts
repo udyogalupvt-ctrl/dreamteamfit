@@ -324,6 +324,12 @@ export interface CfoCash {
     trainerPaid: number;
     /** Subtracted only for free cash. */
     pendingTrainer: number;
+    /**
+     * The trainers' part of members' advance for unused PT days. It is already counted in
+     * trainer pay (pending or paid; a refund takes it back from the trainer), so free cash adds
+     * it back instead of subtracting it twice.
+     */
+    trainerShareInAdvance: number;
     /** Subtracted only for free cash. */
     unsettledStaffPaid: number;
   };
@@ -456,6 +462,8 @@ export interface CfoReportMeta {
   runningSince: string;
   readCount: number;
   manualBriefs: { date: ISODate; count: number };
+  /** ISO timestamp from when Refresh is allowed again (the page greys the button until then). */
+  nextRefreshAt: string;
 }
 
 /* ------------------------------------------------------------------- AI brief */
