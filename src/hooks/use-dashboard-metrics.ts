@@ -379,7 +379,7 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
     });
 
     const newClients = period.isToday
-      ? clients.data.filter((c) => joinedOnOf(c) >= format(monthStart, "yyyy-MM-dd")).length
+      ? joinedIn(format(monthStart, "yyyy-MM-dd"), today)
       : joinedIn(period.from, period.to);
     const withDob = clients.data.filter((c) => c.dateOfBirth);
     const birthdays = withDob.filter((c) => c.dateOfBirth!.slice(5) === today.slice(5)).length;

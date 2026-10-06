@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SOURCE_LABELS, joinedOnOf, normalizePhone, todayISO } from "@/lib/format";
+import { SOURCE_LABELS, joinedOnOf, latestJoinDate, normalizePhone, todayISO } from "@/lib/format";
 import {
   createClient,
   findClientsByPhone,
@@ -48,7 +48,9 @@ const schema = z.object({
   address: z.string().trim().max(300),
   emergencyContact: z.string().trim().max(120),
   notes: z.string().trim().max(1000),
-  joinedOn: z.string().refine((v) => !v || v <= todayISO(), "Joining date can't be in the future"),
+  joinedOn: z
+    .string()
+    .refine((v) => !v || v <= latestJoinDate(), "Pick a joining date within the next year"),
 });
 
 type Errors = Partial<Record<string, string>>;
@@ -308,12 +310,12 @@ export function ClientFormDialog({
             label="Joining date"
             htmlFor="c-joined"
             error={errors["joinedOn"]}
-            hint="The day they first joined the gym (for members from the old software, their old joining date)."
+            hint="The day they start at the gym (a later day is fine). For members from the old software, their old joining date."
           >
             <Input
               id="c-joined"
               type="date"
-              max={todayISO()}
+              max={latestJoinDate()}
               value={form.joinedOn || (client ? joinedOnOf(client) : "")}
               onChange={(e) => set("joinedOn", e.target.value)}
             />
