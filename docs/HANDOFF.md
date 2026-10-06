@@ -1,10 +1,11 @@
 # Handoff
 
-## 2026-10-06 (latest, updated 22:35): CFO page built on branch `cfo-v1`; joining-date fix; AI bugs 1-3 fixed
+## 2026-10-06 (latest, updated 22:50): CFO page + joining-date fix merged into main and pushed
 
-**State.** Local branches, nothing pushed or deployed:
-- `cfo-v1` = main + CFO spec/plan + joining-date fix + the CFO feature (commits c8b036d..).
-- `fix/joining-date` = main + only the joining-date fix (7049a94), so it can go live alone.
+**State.** `cfo-v1` (which includes the joining-date fix) merged into `main` (19238b7) and pushed
+to origin 2026-10-06; Vercel deploys main. Checked on main before the push: `vite build` OK,
+unit 150/150, `tsc --noEmit` clean. `fix/joining-date` is no longer needed (already in main).
+Gemini API setup (env vars, request/reply format) is now in the global `~/.claude/CLAUDE.md`.
 
 **Joining-date fix** (user report: "Joining date can't be in the future"): New member and Edit
 member accept a joining date up to a year ahead; a later joining date moves the new plan's start
@@ -78,7 +79,7 @@ Live-check scripts (session scratchpad 1a17c518…): `gemini_proxy.py` (recorder
 
 **Before it can go live (needs the user):**
 1. ~~Deploy `firestore.rules`~~ done 2026-10-06.
-2. Merge `cfo-v1` (or `fix/joining-date` first) into main and push (Vercel deploys main).
+2. ~~Merge `cfo-v1` into main and push~~ done 2026-10-06 (19238b7). Check the Vercel deploy succeeded.
 3. Vercel env for the AI summary: `CFO_AI_PROVIDER=gemini` + `GEMINI_API_KEY` (free tier) +
    `CFO_AI_MODEL=gemini-3-flash-preview` (better wording) or `gemini-3.1-flash-lite` (cheaper);
    both pass with the paid key. On the free key only the lite model answered. Without a key everything works except
@@ -189,4 +190,4 @@ Also fixed a race: "End all plans & stop entry" now appears only after PT plans 
   Bill "⋯" → Edit bill. Settings → WhatsApp shows the "Run it on the gym PC" box.
 - At the gym: run the gym-PC setup once (see the section above) if they want WhatsApp from the PC.
 
-Last updated: 2026-10-06 22:45 (AI bugs 1-3 fixed, 3fadabc; AI summary confirmed working on the user's PC)
+Last updated: 2026-10-06 22:50 (cfo-v1 merged into main and pushed, 19238b7)
