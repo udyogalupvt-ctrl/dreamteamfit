@@ -1,5 +1,14 @@
 # Handoff
 
+## 2026-10-06 (latest): CFO feature set up, not built yet
+
+`CFO_SPEC.md` (the AI CFO spec with its 10 checks) is now in the project root, and the
+two-phase "Implement CFO" workflow is in `~/.claude/CLAUDE.md` (example spec saved at
+`~/.claude/cfo/CFO_SPEC_EXAMPLE_GYM.md`). Since the spec exists, "Implement CFO" here will summarise
+it and wait for "proceed" before building.
+Claude in Chrome was NOT connected when checked (no browser tools in the session, no Claude
+native-messaging host registered in Chrome), so step 6 / browser checks need `/chrome` working first.
+
 ## 2026-10-06 (later): "WhatsApp on the gym PC" merged and pushed
 
 Branch `claude/friendly-albattani-ostipp` commit 35b7f9c (made 2 Oct, never merged) is now on
