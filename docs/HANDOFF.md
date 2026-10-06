@@ -35,21 +35,44 @@ not available right now" + the reason. `POST /api/cfo/status` says if an AI is r
 started → "Start AI summary" button (saves `aiEnabled: true`, writes the first AI summary).
 `aiEnabled` now defaults to OFF until Start is pressed.
 
-**Gemini key:** `.env` line `GEMINI_API_KEY=` held a placeholder (`GEMINI_API_KEY=` pasted
-twice), so no real Gemini call has been made yet. `CFO_AI_MODEL=gemini-3-flash-preview` is set
-there too (untested name; the status check will say if Google doesn't know it). Rechecked
-2026-10-06 21:30: still the placeholder. The same placeholder lines are an uncommitted edit in
-`.env.example` (user's edit, left out of commits; the example file should keep keys empty).
+**Gemini key + live check (2026-10-06 22:10):** the real key is in `.env` (Google's newer
+`AQ.` format, accepted). Check 9 run live against the TEST gym on the emulators (never the live
+database), through a local recorder that saved exactly what Google received:
+- `gemini-3.1-flash-lite`: **11/11 pass.** Real summary written by Gemini, every number in it is
+  on the page (Renewals tab ₹24,600, Pending dues ₹800, health cards), the request held totals
+  only (no names/phones/emails; custom category sent as "Other (custom)"), AI off → no Google
+  call + the app's own summary. Shown on /cfo at 390/1440 light+dark, no console errors.
+- `gemini-3-flash-preview` (the `.env` choice), `gemini-3.8-flash`, `3.7`, `3.5`, `flash-latest`:
+  HTTP 503 "high demand" every try, even for a 1-line "say OK". Lite models answer.
+- `gemini-2.5-flash` (the CODE DEFAULT in `src/server/ai.ts`): 404 "no longer available to new
+  users". So with `CFO_AI_MODEL` empty the summary always fails.
+
+**Bugs found by the live check (not fixed yet, small):**
+1. `DEFAULT_MODELS.gemini` in `ai.ts` is dead for new keys → change it to `gemini-3.1-flash-lite`.
+2. `checkAi()` asks only for model info (GET), which says OK even when writing is refused (2.5
+   case) → page says "Gemini is connected" + Start, then every summary fails. Fix idea: if the
+   newest `cfoBriefs/status` is a failed 404/403, report "not connected" with that reason.
+3. `brief-card.tsx` `fallbackReason`: every "off" attempt reads "not set up yet", even when the
+   server saved "switched off in CFO settings"; after switching AI off and on, the old "off"
+   attempt shows as "The last try didn't work: not set up yet". Use the saved reason.
+4. Minor: the number check refuses "late 0 to 7 days" (7 is only in the key name `late0to7`) →
+   one extra AI call; Gemini wrote "a loss of -₹8,900" (double minus).
+`.env.example` still has the user's uncommitted placeholder lines (keep keys empty there).
+Test-kit gotcha: `.env` now names the live project, so emulator builds need
+`VITE_USE_EMULATORS=1 VITE_FIREBASE_PROJECT_ID=leadsmanage-1f7cd npm run build`.
+Live-check scripts (session scratchpad 1a17c518…): `gemini_proxy.py` (recorder, :5398),
+`serve_cfo_live.sh` (key from `.env`, `LIVE_MODEL=` to pick a model), `live_check.py`, `live_page.py`.
 
 **Before it can go live (needs the user):**
 1. ~~Deploy `firestore.rules`~~ done 2026-10-06.
 2. Merge `cfo-v1` (or `fix/joining-date` first) into main and push (Vercel deploys main).
-3. Vercel env for the AI summary: `CFO_AI_PROVIDER=gemini` + `GEMINI_API_KEY` (free tier).
-   Optional: `CFO_AI_MODEL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. Without a key everything
-   works except the summary ("not set up yet").
+3. Vercel env for the AI summary: `CFO_AI_PROVIDER=gemini` + `GEMINI_API_KEY` (free tier) +
+   `CFO_AI_MODEL=gemini-3.1-flash-lite` (the only model family answering on 2026-10-06; also set
+   it in `.env`, which still says `gemini-3-flash-preview`). Without a key everything works except
+   the AI summary (the app writes its own).
 4. Owner: CFO → Settings → total gym money at the START of a date (bank + UPI + cash).
-5. The real AI provider has never been called (all tests use `fake_ai.py`): one live check
-   with the user's key is still owed (check 9).
+5. ~~Live AI check (check 9)~~ done 2026-10-06: passes on `gemini-3.1-flash-lite`; fix bugs 1-3
+   above before going live (bug 1 matters only if `CFO_AI_MODEL` is left empty).
 
 **Tests** (session scratchpad 8b942f95…, see `README_cfo_tests.md`; all run 2026-10-06 on
 commit 8d9cf5d): unit 141/141; e2e vs an independent hand calculation `cfo_local.py` 850/850;
@@ -149,4 +172,4 @@ Also fixed a race: "End all plans & stop entry" now appears only after PT plans 
   Bill "⋯" → Edit bill. Settings → WhatsApp shows the "Run it on the gym PC" box.
 - At the gym: run the gym-PC setup once (see the section above) if they want WhatsApp from the PC.
 
-Last updated: 2026-10-06 (CFO build)
+Last updated: 2026-10-06 22:15 (live Gemini check)
