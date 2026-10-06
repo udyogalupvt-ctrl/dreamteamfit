@@ -1,6 +1,6 @@
 # Handoff
 
-## 2026-10-06 (latest): CFO page built on branch `cfo-v1`; joining-date fix
+## 2026-10-06 (latest, updated 22:35): CFO page built on branch `cfo-v1`; joining-date fix; AI bugs 1-3 fixed
 
 **State.** Local branches, nothing pushed or deployed:
 - `cfo-v1` = main + CFO spec/plan + joining-date fix + the CFO feature (commits c8b036d..).
@@ -57,16 +57,17 @@ The user's pasted AI Studio sample (Interactions API, `google_search` tool, thin
 65,536 tokens) is NOT for the CFO: search lets the AI bring outside facts (spec: it only explains
 our numbers) and high thinking is slow/costly and can overrun Vercel's ~50 s request.
 
-**Bugs found by the live check (1-3 not fixed yet, small; 4 fixed):**
-1. `DEFAULT_MODELS.gemini` in `ai.ts` is dead for new keys → change it to `gemini-3.1-flash-lite`.
-2. `checkAi()` asks only for model info (GET), which says OK even when writing is refused (2.5
-   case) → page says "Gemini is connected" + Start, then every summary fails. Fix idea: if the
-   newest `cfoBriefs/status` is a failed 404/403, report "not connected" with that reason.
-3. `brief-card.tsx` `fallbackReason`: every "off" attempt reads "not set up yet", even when the
-   server saved "switched off in CFO settings"; after switching AI off and on, the old "off"
-   attempt shows as "The last try didn't work: not set up yet". Use the saved reason.
-4. FIXED 2026-10-06: the number check refused "late 0 to 7 days" (7 only in the key name).
-   Still open, cosmetic: Gemini writes "a loss of -₹8,900" (double minus).
+**Bugs found by the live check: ALL FIXED 2026-10-06 (commit 3fadabc, bug 4 earlier):**
+1. Default Gemini model (`CFO_AI_MODEL` empty) is now `gemini-3.1-flash-lite`.
+2. Failed tries now save `provider`/`model`/`httpStatus` in `cfoBriefs/status`; `/api/cfo/status`
+   reports "not connected" (`the AI model "X" can't be used with this key` / key refused) when the
+   last try for the SAME provider+model got 401/403/404. Busy/5xx/timeouts don't count; another
+   model clears it. Logic in `src/lib/cfo/ai-status.ts` (shared by server and card).
+3. Card uses the saved reason for "off" tries and hides an old "off" try once the AI is on.
+Still open, cosmetic: Gemini writes "a loss of -₹8,900" (double minus).
+**"Key was refused" on the user's PC (2026-10-06 22:30):** NOT a code bug. `npm run dev` was
+started 20:59, `.env` got the paid key 22:10, so the dev server still sent the old key. The key in
+`.env` works (direct check: model info 200, generateContent "OK"). Fix = restart `npm run dev`.
 `.env.example` still has the user's uncommitted placeholder lines (keep keys empty there).
 Test-kit gotcha: `.env` now names the live project, so emulator builds need
 `VITE_USE_EMULATORS=1 VITE_FIREBASE_PROJECT_ID=leadsmanage-1f7cd npm run build`.
@@ -82,8 +83,12 @@ Live-check scripts (session scratchpad 1a17c518…): `gemini_proxy.py` (recorder
    the AI summary (the app writes its own).
 4. Owner: CFO → Settings → total gym money at the START of a date (bank + UPI + cash).
 5. ~~Live AI check (check 9)~~ done 2026-10-06 with the paid key: 11/11 on both models above.
-   Fix bugs 1-3 before going live (bug 1 matters only if `CFO_AI_MODEL` is left empty).
+   Bugs 1-3 fixed 2026-10-06 (3fadabc).
 
+**Tests for bugs 1-3 (2026-10-06, commit 3fadabc):** unit 150/150 (`ai-status.test.ts`),
+e2e `cfo_local.py` 850/850, Start test `cfo_start_local.py` 11/11, new browser test
+`cfo_aistatus_local.py` 12/12 (fake AI mode `nowrite` = model info OK, writing 404; uses
+`serve_cfo_model2.sh`; screenshots `shots/cfo_ai_refused_*`). Run with `PYTHONIOENCODING=utf-8`.
 **Tests** (session scratchpad 8b942f95…, see `README_cfo_tests.md`; all run 2026-10-06 on
 commit 8d9cf5d): unit 141/141; e2e vs an independent hand calculation `cfo_local.py` 850/850;
 access `cfo_access_local.py` 124/124; browser `cfo_ui_local.py` 177 + 1 soft (soft check now
@@ -182,4 +187,4 @@ Also fixed a race: "End all plans & stop entry" now appears only after PT plans 
   Bill "⋯" → Edit bill. Settings → WhatsApp shows the "Run it on the gym PC" box.
 - At the gym: run the gym-PC setup once (see the section above) if they want WhatsApp from the PC.
 
-Last updated: 2026-10-06 22:20 (live Gemini check, paid key, number-check fix)
+Last updated: 2026-10-06 22:35 (AI bugs 1-3 fixed, commit 3fadabc; dev server needs restart for the new key)
