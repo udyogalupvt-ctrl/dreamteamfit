@@ -559,4 +559,8 @@ export interface CfoBriefAttempt {
   status: CfoBriefStatus;
   /** Short plain reason, no secrets, no names (≤120 chars). */
   reason: string;
+  /** Failed tries only: the provider, model and HTTP status (0 = no answer) of the last call. */
+  provider?: string;
+  model?: string;
+  httpStatus?: number;
 }

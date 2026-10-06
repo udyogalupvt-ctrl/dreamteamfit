@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Play, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { attemptReason, attemptToShow } from "@/lib/cfo/ai-status";
 import { templateBrief } from "@/lib/cfo/template";
 import type {
   CfoAiStatus,
@@ -12,26 +13,6 @@ import type {
 } from "@/lib/cfo/types";
 import { cfoErrorMessage, requestCfoBrief } from "@/services/cfo.service";
 import { clockText, dayText, whenText } from "./cfo-format";
-
-/** Why there is no summary, in the owner's words (a short phrase, no full stop). */
-function fallbackReason(attempt: CfoBriefAttempt | null, aiEnabled: boolean) {
-  if (!aiEnabled) return "switched off in CFO settings";
-  if (!attempt) return "none has been written yet";
-  switch (attempt.status) {
-    case "off":
-      return "not set up yet";
-    case "unverified":
-      return "couldn't check its numbers";
-    case "blocked":
-      return "its safety check for personal data stopped it";
-    case "skipped":
-      return "there was not enough time to write one";
-    case "failed":
-      return "the AI service didn't answer";
-    default:
-      return "none has been written yet";
-  }
-}
 
 /** Plain text with a few simple headings; nothing from the AI is ever treated as HTML. */
 function BriefText({ text }: { text: string }) {
@@ -102,8 +83,9 @@ export function BriefCard({
   const offReason =
     briefsLeft <= 0 ? "3 AI summaries were made today. You can make a new one tomorrow." : "";
   const newer = brief && brief.snapshotComputedAt !== snapshot.computedAt;
-  const failedSince =
-    attempt && attempt.status !== "ok" && (!brief || attempt.at > brief.createdAt) ? attempt : null;
+  // An "off" try from before Start is old news once the AI is on.
+  const lastTry = attemptToShow(attempt, null, aiOn);
+  const failedSince = attemptToShow(attempt, brief?.createdAt ?? null, aiOn);
 
   const askForNew = async () => {
     try {
@@ -180,8 +162,8 @@ export function BriefCard({
                 <p className="mt-0.5 text-muted-foreground">
                   {aiOn ? (
                     <>
-                      Reason: {fallbackReason(attempt, true)}. The app wrote the summary below from
-                      the same numbers.
+                      Reason: {attemptReason(lastTry)}. The app wrote the summary below from the
+                      same numbers.
                     </>
                   ) : connected ? (
                     <>
@@ -208,7 +190,7 @@ export function BriefCard({
       {failedSince && showAi ? (
         <p className="text-meta mt-2">
           The last try ({whenText(failedSince.at, now)}) didn&apos;t work:{" "}
-          {fallbackReason(failedSince, true)}. The summary above is the last good one.
+          {attemptReason(failedSince)}. The summary above is the last good one.
         </p>
       ) : null}
     </section>

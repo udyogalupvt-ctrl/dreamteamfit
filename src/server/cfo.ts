@@ -27,6 +27,7 @@ import {
 import type {
   CfoAiStatus,
   CfoBrief,
+  CfoBriefAttempt,
   CfoBriefStatus,
   CfoLanguage,
   CfoReportMeta,
@@ -41,6 +42,7 @@ import {
   computeCfo,
   verifyBriefNumbers,
 } from "@/lib/cfo/index";
+import { attemptProblem } from "@/lib/cfo/ai-status";
 import { db, json, localDate, requireFeature, requireStaff, TZ } from "./admin";
 import { aiConfig, callAi, checkAi, onEmulator } from "./ai";
 import { systemAudit } from "./audit";
@@ -246,10 +248,14 @@ const REASON = {
   noTime: "not enough time left",
 };
 
-async function saveAttempt(status: CfoBriefStatus, reason: string) {
+async function saveAttempt(
+  status: CfoBriefStatus,
+  reason: string,
+  call?: { provider: string; model: string; httpStatus: number },
+) {
   await briefs()
     .doc(CFO_BRIEF_STATUS_DOC)
-    .set({ at: new Date().toISOString(), status, reason: reason.slice(0, 120) })
+    .set({ at: new Date().toISOString(), status, reason: reason.slice(0, 120), ...call })
     .catch((e) => console.error("cfo brief status failed", short(e)));
 }
 
@@ -307,8 +313,12 @@ export async function makeBrief(
   manual: boolean,
 ): Promise<BriefResult> {
   const day = today();
-  const done = async (status: CfoBriefStatus, reason: string): Promise<BriefResult> => {
-    await saveAttempt(status, reason);
+  const done = async (
+    status: CfoBriefStatus,
+    reason: string,
+    call?: { provider: string; model: string; httpStatus: number },
+  ): Promise<BriefResult> => {
+    await saveAttempt(status, reason, call);
     return { ok: true, status, reason };
   };
   // Check that the AI can run before a press is counted against the daily limit.
@@ -336,6 +346,7 @@ export async function makeBrief(
   let calls = 0;
   let last: "none" | "network" | "numbers" = "none";
   let code = "";
+  let httpStatus = 0;
   let found: { text: string; provider: string; model: string } | null = null;
   while (calls < 2 && !found) {
     const left = deadline - Date.now();
@@ -346,6 +357,7 @@ export async function makeBrief(
     if (!result.ok) {
       last = "network";
       code = result.code;
+      httpStatus = result.status;
       continue;
     }
     const check = verifyBriefNumbers(result.text, input);
@@ -358,7 +370,11 @@ export async function makeBrief(
   if (!found) {
     if (calls === 0) return done("skipped", REASON.noTime);
     if (last === "numbers") return done("unverified", REASON.numbers);
-    return done("failed", `${REASON.noAnswer}${code ? ` (${code})` : ""}`);
+    return done("failed", `${REASON.noAnswer}${code ? ` (${code})` : ""}`, {
+      provider: cfg.provider,
+      model: cfg.model,
+      httpStatus,
+    });
   }
 
   const now = new Date();
@@ -450,7 +466,17 @@ export async function handleCfo(request: Request, url: URL): Promise<Response> {
     // Is an AI connected (provider + key set on the server)? Never the key itself.
     if (path === "/api/cfo/status") {
       const cfg = aiConfig();
-      const check = cfg ? await checkAi(cfg) : { ok: false, problem: "" };
+      let check = cfg ? await checkAi(cfg) : { ok: false, problem: "" };
+      // The model-info check can pass while writing is refused: trust the last real try too.
+      if (cfg && check.ok) {
+        const last = (await briefs().doc(CFO_BRIEF_STATUS_DOC).get()).data();
+        const problem = attemptProblem(
+          (last as CfoBriefAttempt | undefined) ?? null,
+          cfg.provider,
+          cfg.model,
+        );
+        if (problem) check = { ok: false, problem };
+      }
       const ai: CfoAiStatus = {
         connected: Boolean(cfg) && check.ok,
         provider: cfg?.provider ?? "",

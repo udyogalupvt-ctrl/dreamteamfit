@@ -35,7 +35,8 @@ const HOSTS: Record<AiProvider, string> = {
   claude: "https://api.anthropic.com",
 };
 const DEFAULT_MODELS: Record<AiProvider, string> = {
-  gemini: "gemini-2.5-flash",
+  // 2.5 models answer "no longer available to new users" (live check 2026-10-06).
+  gemini: "gemini-3.1-flash-lite",
   openai: "gpt-4.1-mini",
   // Anthropic's small, fast model (claude-api skill, 2026-10). It also accepts a temperature.
   claude: "claude-haiku-4-5",
