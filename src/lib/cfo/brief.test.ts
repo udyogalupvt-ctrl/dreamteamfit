@@ -338,7 +338,19 @@ test("numbers: Rs 90,000 does not pass when only Rs 1,90,000 is in the data (exa
   assert.deepEqual(r.unknown, ["90,000"]);
   assert.equal(verifyBriefNumbers("You earned 190 last month.", b).ok, false);
   assert.equal(verifyBriefNumbers("Runway is 2.41 months.", b).ok, false);
-  assert.equal(verifyBriefNumbers("Renewals are 7%.", b).ok, false);
+  assert.equal(verifyBriefNumbers("Renewals are 71%.", b).ok, false);
+});
+
+test("numbers: the day ranges in the data's labels pass (Gemini wrote 'late 0 to 7 days', live 2026-10-06)", () => {
+  const b = numbersInput();
+  b.dues.late0to7 = "₹1,100";
+  b.dues.late8to30 = "₹500";
+  const r = verifyBriefNumbers(
+    "Collect the ₹1,100 in dues that are late 0 to 7 days and ₹500 late 8 to 30 days.",
+    b,
+  );
+  assert.deepEqual(r, { ok: true, unknown: [] });
+  assert.equal(verifyBriefNumbers("Collect ₹1,100 that is 9 days late.", b).ok, false);
 });
 
 test("numbers: lakh, crore, K and L are never allowed, even for numbers that match", () => {

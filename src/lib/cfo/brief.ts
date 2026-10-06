@@ -259,10 +259,23 @@ function collectStrings(v: unknown, out: string[] = []): string[] {
   return out;
 }
 
-/** Every number the AI may repeat: all numbers in the data, today's parts, and 1, 2, 3. */
+function collectKeys(v: unknown, out: string[] = []): string[] {
+  if (Array.isArray(v)) for (const x of v) collectKeys(x, out);
+  else if (v && typeof v === "object")
+    for (const [k, x] of Object.entries(v)) {
+      out.push(k);
+      collectKeys(x, out);
+    }
+  return out;
+}
+
+/**
+ * Every number the AI may repeat: all numbers in the data, the day ranges in its labels
+ * ("late0to7" -> 0 and 7: the AI writes "late 0 to 7 days"), today's parts, and 1, 2, 3.
+ */
 function allowedNumbers(input: CfoBriefInput): Set<string> {
   const allowed = new Set<string>(["1", "2", "3"]);
-  for (const s of collectStrings(input)) {
+  for (const s of [...collectStrings(input), ...collectKeys(input)]) {
     for (const m of asciiDigits(s).matchAll(NUMBER_RE)) allowed.add(canon(m[0]));
   }
   for (const w of input.today.match(/[A-Za-z]{3}/g) ?? []) {
