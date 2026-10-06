@@ -67,7 +67,7 @@ import {
 } from "@/services/enrollment.service";
 import { subscribeStaff } from "@/services/staff.service";
 import { useAccess } from "@/hooks/use-access";
-import { addDaysISO } from "@/lib/format";
+import { addDaysISO, latestJoinDate } from "@/lib/format";
 import {
   cleanMemberId,
   findClientsByPhone,
@@ -409,6 +409,8 @@ export function EnrollmentWizard({
       : renewFrom < renewStart
         ? `Pick ${formatDateISO(renewStart)} or later, or choose Upgrade to change the plan earlier`
         : "";
+  // A new member who starts on a later day: the plan can't start before they join.
+  const joinStartsLater = (!existing || resuming) && client.joinedOn > todayISO();
   // The start date follows the choice: renew / upgrade date, or today (expired plan, PT only).
   useEffect(() => {
     if (!existing || resuming) return;
@@ -486,6 +488,14 @@ export function EnrollmentWizard({
     toast.success("Filled in from the old software", {
       description: `Joined ${formatDateISO(oldJoinedOn(m))}${run ? ` · ${run.name} until ${formatDateISO(run.end)}` : ""}`,
     });
+  };
+  /** A member who pays now and starts on a later day: the plan starts on the joining day too. */
+  const changeJoinedOn = (value: string) => {
+    const day = todayISO();
+    const before = client.joinedOn;
+    setClient((c) => ({ ...c, joinedOn: value === day ? "" : value }));
+    if (value > day) setStartDate(value);
+    else if (before > day && startDate === before) setStartDate(day);
   };
   const unlinkOld = () => {
     setClient((c) => ({ ...c, joinedOn: "", oldMemberId: "" }));
@@ -574,8 +584,8 @@ export function EnrollmentWizard({
       if (client.fullName.trim().length < 2) e["fullName"] = "Enter the member's name";
       if (normalizePhone(client.phone).length < 10) e["phone"] = "Enter a 10-digit mobile number";
       if (client.email && !/^\S+@\S+\.\S+$/.test(client.email)) e["email"] = "Invalid email";
-      if (client.joinedOn && client.joinedOn > todayISO())
-        e["joinedOn"] = "Joining date can't be in the future";
+      if (client.joinedOn && client.joinedOn > latestJoinDate())
+        e["joinedOn"] = "Pick a joining date within the next year";
       // Every member needs a photo: take it now, or send them the upload link.
       if (!client.profilePhotoUrl && !photoLater)
         e["photo"] = "Take the member's photo, or tick that they will send it from their phone";
@@ -596,6 +606,9 @@ export function EnrollmentWizard({
       if (ptOn && !trainer) e["trainer"] = "Pick a trainer";
       if (counsellors.length && !counsellor) e["counsellor"] = "Pick the counsellor";
       if (planDateProblem) e["planDate"] = planDateProblem;
+      if (joinStartsLater && startDate < client.joinedOn)
+        e["startDate"] =
+          `They join on ${formatDateISO(client.joinedOn)}: the plan can't start before that. Change this date or the joining date.`;
     }
     if (s === PAYMENT && paidInOld) {
       if (!gymPackage && !pt) e["package"] = "Pick a package first";
@@ -803,6 +816,7 @@ export function EnrollmentWizard({
               setPhotoLater={setPhotoLater}
               client={client}
               setClient={setClient}
+              onJoinedOnChange={changeJoinedOn}
               whatsappOptIn={whatsappOptIn}
               setWhatsappOptIn={setWhatsappOptIn}
               errors={errors}
@@ -940,6 +954,7 @@ export function EnrollmentWizard({
                     <Field
                       label="Start date"
                       htmlFor="e-start"
+                      error={errors["startDate"]}
                       hint={
                         newEnd
                           ? `${gymPackage?.durationDays} days: ends ${formatDateISO(newEnd)}`
@@ -1519,9 +1534,12 @@ function DetailsStep({
   photoLater,
   setPhotoLater,
   oldPanel,
+  onJoinedOnChange,
 }: {
   /** Old software match under the phone number (new members only). */
   oldPanel: ReactNode;
+  /** Sets the joining date (and moves the plan start with it when they start later). */
+  onJoinedOnChange: (value: string) => void;
   /** null = an existing member (the ID is already given). */
   memberNo: string | null;
   setMemberNo: (v: string) => void;
@@ -1658,7 +1676,7 @@ function DetailsStep({
         <Input
           id="e-dob"
           type="date"
-          max={new Date().toISOString().slice(0, 10)}
+          max={todayISO()}
           value={client.dateOfBirth ?? ""}
           onChange={(e) => setClient({ ...client, dateOfBirth: e.target.value || null })}
         />
@@ -1670,20 +1688,15 @@ function DetailsStep({
         hint={
           client.oldMemberId
             ? `From the old software (${client.oldMemberId})`
-            : "The day they first joined the gym"
+            : "The day they start at the gym. A later day is fine: their plan starts that day too."
         }
       >
         <Input
           id="e-joined"
           type="date"
-          max={todayISO()}
+          max={latestJoinDate()}
           value={client.joinedOn || todayISO()}
-          onChange={(e) =>
-            setClient({
-              ...client,
-              joinedOn: e.target.value === todayISO() ? "" : e.target.value,
-            })
-          }
+          onChange={(e) => onJoinedOnChange(e.target.value)}
         />
       </Field>
       <Field label="Gender" htmlFor="e-gender">

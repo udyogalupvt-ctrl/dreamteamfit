@@ -10,6 +10,7 @@ import { cert, getApps, initializeApp, type App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { isOwnerEmail } from "@/constants/owners";
+import { aiHealth } from "./ai";
 
 /** Pulls the three needed fields out of any text that contains them (e.g. JSON whose line breaks got mangled). */
 function fieldsFromText(text: string) {
@@ -114,6 +115,7 @@ export async function serverHealth() {
     ? "set"
     : "missing";
   out["cronSecret"] = (process.env["CRON_SECRET"] ?? "").trim() ? "set" : "missing";
+  Object.assign(out, aiHealth());
   return out;
 }
 

@@ -103,6 +103,52 @@ service cloud.firestore {
       allow delete: if can('finance') || can('deleteMembers') || can('deleteBills');
     }
 
+    // CFO page (Finance): the settings are saved from the page and every field is type-checked;
+    // the numbers, the full lists and the AI summaries are written by the server only.
+    function cfoSettingsOk() {
+      let d = request.resource.data;
+      let allowed = [
+          'openingBalance', 'openingDate', 'atRiskDays', 'renewalDays', 'newMemberMinVisits',
+          'ptMinVisits', 'runwayWarnMonths', 'graceDays', 'aiEnabled', 'language',
+          'updatedAt', 'updatedBy'];
+      // A save may only add or change these fields. A stray older field never blocks a save
+      // (and a save may drop it).
+      return (resource == null
+          ? d.keys().hasOnly(allowed)
+          : d.diff(resource.data).addedKeys().hasOnly(allowed)
+            && d.diff(resource.data).changedKeys().hasOnly(allowed))
+        && d.keys().hasAll([
+          'openingBalance', 'openingDate', 'atRiskDays', 'renewalDays', 'newMemberMinVisits',
+          'ptMinVisits', 'runwayWarnMonths', 'graceDays', 'aiEnabled', 'language',
+          'updatedAt', 'updatedBy'])
+        && (d.openingBalance == null || d.openingBalance is number)
+        && d.openingDate is string
+        && (d.openingDate == '' || d.openingDate.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}'))
+        && d.atRiskDays is number && d.atRiskDays >= 0
+        && d.renewalDays is number && d.renewalDays >= 0
+        && d.newMemberMinVisits is number && d.newMemberMinVisits >= 0
+        && d.ptMinVisits is number && d.ptMinVisits >= 0
+        && d.runwayWarnMonths is number && d.runwayWarnMonths >= 0
+        && d.graceDays is number && d.graceDays >= 0
+        && d.aiEnabled is bool
+        && d.language in ['English', 'Telugu', 'Hindi']
+        && d.updatedAt is timestamp
+        && d.updatedBy is string && d.updatedBy.size() <= 200;
+    }
+    match /cfoSettings/{id} {
+      allow read: if can('finance');
+      allow create, update: if can('finance') && id == 'main' && cfoSettingsOk();
+      allow delete: if false;
+    }
+    match /cfoReports/{id} {
+      allow read: if can('finance');
+      allow write: if false;
+    }
+    match /cfoBriefs/{id} {
+      allow read: if can('finance');
+      allow write: if false;
+    }
+
     // Recycle Bin: what was deleted waits here, stamped with who deleted it and when, until the
     // owner restores it or deletes it forever. Whoever may delete puts things in (under their own
     // account); a staff login reads and can undo only its own; the owner sees everything.

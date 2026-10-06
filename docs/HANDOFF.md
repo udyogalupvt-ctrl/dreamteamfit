@@ -1,5 +1,113 @@
 # Handoff
 
+## 2026-10-06 (latest, updated 22:35): CFO page built on branch `cfo-v1`; joining-date fix; AI bugs 1-3 fixed
+
+**State.** Local branches, nothing pushed or deployed:
+- `cfo-v1` = main + CFO spec/plan + joining-date fix + the CFO feature (commits c8b036d..).
+- `fix/joining-date` = main + only the joining-date fix (7049a94), so it can go live alone.
+
+**Joining-date fix** (user report: "Joining date can't be in the future"): New member and Edit
+member accept a joining date up to a year ahead; a later joining date moves the new plan's start
+with it (plan waits as pending, like an advance renewal); the plan can't start before the joining
+date; Dashboard "new members this month" counts only members joined by today; birthday pickers
+use the India date. Test: scratchpad `joindate_local.py` 9/9.
+
+**CFO** (`/cfo`, nav "CFO" after Income & Expenses; owners, "All features" and Finance logins):
+health cards, weekly AI summary, call lists (Not coming, Renewals, New members, PT chances, Dues,
+Cash) with Call / WhatsApp chat / Excel / Print, 6-month trends, "How these numbers are worked
+out", settings (opening money, alert limits, AI on/off, language). Maths in `src/lib/cfo` (pure,
+`npm run test:cfo`), server `src/server/cfo*.ts` + `ai.ts`, docs `CFO_SPEC.md`, `CFO_PLAN.md`.
+Numbers are worked out on the server each morning (last step of the morning cron) or on Refresh
+(max once per 10 min for everyone), saved in `cfoReports/latest` + `cfoReports/list-*`; the page
+reads 3 docs. ~7k reads per refresh at 1,000 members. Single-field queries only.
+
+**Live rules DEPLOYED 2026-10-06 (user OK):** `firestore.rules` from `cfo-v1` is live on
+`rebuildfitos` (ruleset a582db7c…; read back = file). It also switched on the waiting main-branch
+rules (Staff page logins edit staff/trainers, Recycle Bin page logins). The rules live before it
+are saved in the session scratchpad `live_rules_backup_2026-10-01.txt` (roll back with
+`deploy_rules.mjs <file>`). The user runs `npm run dev` on this PC against the LIVE database.
+
+**Summary without AI + Start (user request 2026-10-06):** the summary card always shows a summary.
+No AI (not connected, refused key, failed, or not started) → the app writes it from a fixed
+template (`src/lib/cfo/template.ts`, same numbers as the page, same 3 parts) under "AI summary is
+not available right now" + the reason. `POST /api/cfo/status` says if an AI is really connected
+(free model-info call checks the key and model name; never returns the key). Connected and not
+started → "Start AI summary" button (saves `aiEnabled: true`, writes the first AI summary).
+`aiEnabled` now defaults to OFF until Start is pressed.
+
+**Gemini key + live check (2026-10-06 22:10):** the real key is in `.env` (Google's newer
+`AQ.` format, accepted). Check 9 run live against the TEST gym on the emulators (never the live
+database), through a local recorder that saved exactly what Google received:
+- `gemini-3.1-flash-lite`: **11/11 pass.** Real summary written by Gemini, every number in it is
+  on the page (Renewals tab ₹24,600, Pending dues ₹800, health cards), the request held totals
+  only (no names/phones/emails; custom category sent as "Other (custom)"), AI off → no Google
+  call + the app's own summary. Shown on /cfo at 390/1440 light+dark, no console errors.
+- `gemini-3-flash-preview` (the `.env` choice), `gemini-3.8-flash`, `3.7`, `3.5`, `flash-latest`:
+  HTTP 503 "high demand" every try, even for a 1-line "say OK". Lite models answer.
+- `gemini-2.5-flash` (the CODE DEFAULT in `src/server/ai.ts`): 404 "no longer available to new
+  users". So with `CFO_AI_MODEL` empty the summary always fails.
+
+**Paid key, 2026-10-06 22:15 (user replaced the key with a paid one):** every model answers now
+(3.1-flash-lite, 3-flash-preview, 3.8-flash, even 2.5-flash; serviceTier standard). Full check
+**11/11 on `gemini-3.1-flash-lite` and 11/11 on `gemini-3-flash-preview`**, first try, ~1,300
+tokens per summary; card shown at 390/1440 light+dark, no console errors. Bug 4's "0 to 7 days"
+blocked BOTH tries on the paid key, so it is FIXED (commit below): numbers in the data's labels
+(`late0to7`, `late8to30`, `lateOver30`) now count as page numbers. Unit 142/142, e2e 850/850.
+The user's pasted AI Studio sample (Interactions API, `google_search` tool, thinkingLevel high,
+65,536 tokens) is NOT for the CFO: search lets the AI bring outside facts (spec: it only explains
+our numbers) and high thinking is slow/costly and can overrun Vercel's ~50 s request.
+
+**Bugs found by the live check: ALL FIXED 2026-10-06 (commit 3fadabc, bug 4 earlier):**
+1. Default Gemini model (`CFO_AI_MODEL` empty) is now `gemini-3.1-flash-lite`.
+2. Failed tries now save `provider`/`model`/`httpStatus` in `cfoBriefs/status`; `/api/cfo/status`
+   reports "not connected" (`the AI model "X" can't be used with this key` / key refused) when the
+   last try for the SAME provider+model got 401/403/404. Busy/5xx/timeouts don't count; another
+   model clears it. Logic in `src/lib/cfo/ai-status.ts` (shared by server and card).
+3. Card uses the saved reason for "off" tries and hides an old "off" try once the AI is on.
+Still open, cosmetic: Gemini writes "a loss of -₹8,900" (double minus).
+**"Key was refused" on the user's PC (2026-10-06 22:30):** NOT a code bug. `npm run dev` was
+started 20:59, `.env` got the paid key 22:10, so the dev server still sent the old key. The key in
+`.env` works (direct check: model info 200, generateContent "OK"). Fix = restart `npm run dev`.
+Confirmed 22:40: after the restart the user's CFO page shows "Written by Gemini" (live data).
+Live data gaps it shows: no Sep 2026 expenses entered (no profit/break-even), runway "not enough data".
+`.env.example` still has the user's uncommitted placeholder lines (keep keys empty there).
+Test-kit gotcha: `.env` now names the live project, so emulator builds need
+`VITE_USE_EMULATORS=1 VITE_FIREBASE_PROJECT_ID=leadsmanage-1f7cd npm run build`.
+Live-check scripts (session scratchpad 1a17c518…): `gemini_proxy.py` (recorder, :5398),
+`serve_cfo_live.sh` (key from `.env`, `LIVE_MODEL=` to pick a model), `live_check.py`, `live_page.py`.
+
+**Before it can go live (needs the user):**
+1. ~~Deploy `firestore.rules`~~ done 2026-10-06.
+2. Merge `cfo-v1` (or `fix/joining-date` first) into main and push (Vercel deploys main).
+3. Vercel env for the AI summary: `CFO_AI_PROVIDER=gemini` + `GEMINI_API_KEY` (free tier) +
+   `CFO_AI_MODEL=gemini-3-flash-preview` (better wording) or `gemini-3.1-flash-lite` (cheaper);
+   both pass with the paid key. On the free key only the lite model answered. Without a key everything works except
+   the AI summary (the app writes its own).
+4. Owner: CFO → Settings → total gym money at the START of a date (bank + UPI + cash).
+5. ~~Live AI check (check 9)~~ done 2026-10-06 with the paid key: 11/11 on both models above.
+   Bugs 1-3 fixed 2026-10-06 (3fadabc).
+
+**Tests for bugs 1-3 (2026-10-06, commit 3fadabc):** unit 150/150 (`ai-status.test.ts`),
+e2e `cfo_local.py` 850/850, Start test `cfo_start_local.py` 11/11, new browser test
+`cfo_aistatus_local.py` 12/12 (fake AI mode `nowrite` = model info OK, writing 404; uses
+`serve_cfo_model2.sh`; screenshots `shots/cfo_ai_refused_*`). Run with `PYTHONIOENCODING=utf-8`.
+**Tests** (session scratchpad 8b942f95…, see `README_cfo_tests.md`; all run 2026-10-06 on
+commit 8d9cf5d): unit 141/141; e2e vs an independent hand calculation `cfo_local.py` 850/850;
+access `cfo_access_local.py` 124/124; browser `cfo_ui_local.py` 177 + 1 soft (soft check now
+fixed to the real wording); summary/Start `cfo_start_local.py` 11/11; owner flow
+`cfo_owner_flow.py` 13/13; morning cron `cfo_cron_local.py` 6/6; regression `regress_cfo.sh` all
+pass. One-command run: `cfo_suite.sh`. Server for tests: `serve_cfo.sh`
+(CFO_TODAY / CFO_MIN_REFRESH_SECONDS / CFO_AI_BASE_URL work only against the emulator).
+
+## 2026-10-06: CFO feature set up, not built yet
+
+`CFO_SPEC.md` (the AI CFO spec with its 10 checks) is now in the project root, and the
+two-phase "Implement CFO" workflow is in `~/.claude/CLAUDE.md` (example spec saved at
+`~/.claude/cfo/CFO_SPEC_EXAMPLE_GYM.md`). Since the spec exists, "Implement CFO" here will summarise
+it and wait for "proceed" before building.
+Claude in Chrome was NOT connected when checked (no browser tools in the session, no Claude
+native-messaging host registered in Chrome), so step 6 / browser checks need `/chrome` working first.
+
 ## 2026-10-06 (later): "WhatsApp on the gym PC" merged and pushed
 
 Branch `claude/friendly-albattani-ostipp` commit 35b7f9c (made 2 Oct, never merged) is now on
@@ -81,4 +189,4 @@ Also fixed a race: "End all plans & stop entry" now appears only after PT plans 
   Bill "⋯" → Edit bill. Settings → WhatsApp shows the "Run it on the gym PC" box.
 - At the gym: run the gym-PC setup once (see the section above) if they want WhatsApp from the PC.
 
-Last updated: 2026-10-06
+Last updated: 2026-10-06 22:45 (AI bugs 1-3 fixed, 3fadabc; AI summary confirmed working on the user's PC)

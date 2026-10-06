@@ -17,7 +17,7 @@ export const FEATURE_META: Record<StaffFeature, { label: string; hint: string }>
   },
   finance: {
     label: "Income & expenses",
-    hint: "Expenses, profit, cash book, salaries, incentives",
+    hint: "Expenses, profit, cash book, salaries, incentives. Also opens the CFO page: members' phones, trainer pay and the AI summary",
   },
   packages: { label: "Packages & trainers", hint: "Change prices, packages and trainers" },
   classes: {
@@ -92,6 +92,7 @@ const PAGE_FEATURES: [prefix: string, feature: StaffFeature | "owner"][] = [
   ["/member-calls", "memberCalls"],
   ["/announcements", "announcements"],
   ["/expenses", "finance"],
+  ["/cfo", "finance"],
   ["/packages", "packages"],
   ["/trainers", "packages"],
   ["/pt-sessions", "classes"],

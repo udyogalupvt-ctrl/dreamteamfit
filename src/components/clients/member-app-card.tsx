@@ -22,7 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { dobPassword } from "@/constants/portal";
 import { useLive } from "@/hooks/use-live-query";
-import { formatDate } from "@/lib/format";
+import { formatDate, todayISO } from "@/lib/format";
 import { toastWithUndo } from "@/lib/undo-toast";
 import { cn } from "@/lib/utils";
 import {
@@ -193,7 +193,7 @@ export function MemberAppCard({
               id={`dob-${client.id}`}
               type="date"
               value={dob}
-              max={new Date().toISOString().slice(0, 10)}
+              max={todayISO()}
               onChange={(e) => setDob(e.target.value)}
               className="flex-1"
             />

@@ -16,6 +16,9 @@ export function addDaysISO(dateISO: string, days: number): string {
   return format(addDays(parseISO(dateISO), days), "yyyy-MM-dd");
 }
 
+/** Latest joining date staff can pick: a member may pay now and start later (up to a year). */
+export const latestJoinDate = () => addDaysISO(todayISO(), 365);
+
 export function formatDateISO(value: string | null | undefined): string {
   if (!value) return "—";
   return format(parseISO(value), "d MMM yyyy");

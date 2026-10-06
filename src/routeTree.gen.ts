@@ -20,6 +20,7 @@ import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedBiometricDevicesRouteImport } from './routes/_authenticated/biometric-devices'
 import { Route as AuthenticatedBirthdaysRouteImport } from './routes/_authenticated/birthdays'
 import { Route as AuthenticatedBookingsRouteImport } from './routes/_authenticated/bookings'
+import { Route as AuthenticatedCfoRouteImport } from './routes/_authenticated/cfo'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedDayBookRouteImport } from './routes/_authenticated/day-book'
 import { Route as AuthenticatedDietPlansRouteImport } from './routes/_authenticated/diet-plans'
@@ -101,6 +102,11 @@ const AuthenticatedBirthdaysRoute = AuthenticatedBirthdaysRouteImport.update({
 const AuthenticatedBookingsRoute = AuthenticatedBookingsRouteImport.update({
   id: '/bookings',
   path: '/bookings',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedCfoRoute = AuthenticatedCfoRouteImport.update({
+  id: '/cfo',
+  path: '/cfo',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
@@ -248,6 +254,7 @@ export interface FileRoutesByFullPath {
   '/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
   '/birthdays': typeof AuthenticatedBirthdaysRoute
   '/bookings': typeof AuthenticatedBookingsRoute
+  '/cfo': typeof AuthenticatedCfoRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/day-book': typeof AuthenticatedDayBookRoute
   '/diet-plans': typeof AuthenticatedDietPlansRoute
@@ -285,6 +292,7 @@ export interface FileRoutesByTo {
   '/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
   '/birthdays': typeof AuthenticatedBirthdaysRoute
   '/bookings': typeof AuthenticatedBookingsRoute
+  '/cfo': typeof AuthenticatedCfoRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/day-book': typeof AuthenticatedDayBookRoute
   '/diet-plans': typeof AuthenticatedDietPlansRoute
@@ -324,6 +332,7 @@ export interface FileRoutesById {
   '/_authenticated/biometric-devices': typeof AuthenticatedBiometricDevicesRoute
   '/_authenticated/birthdays': typeof AuthenticatedBirthdaysRoute
   '/_authenticated/bookings': typeof AuthenticatedBookingsRoute
+  '/_authenticated/cfo': typeof AuthenticatedCfoRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/day-book': typeof AuthenticatedDayBookRoute
   '/_authenticated/diet-plans': typeof AuthenticatedDietPlansRoute
@@ -363,6 +372,7 @@ export interface FileRouteTypes {
     | '/biometric-devices'
     | '/birthdays'
     | '/bookings'
+    | '/cfo'
     | '/dashboard'
     | '/day-book'
     | '/diet-plans'
@@ -400,6 +410,7 @@ export interface FileRouteTypes {
     | '/biometric-devices'
     | '/birthdays'
     | '/bookings'
+    | '/cfo'
     | '/dashboard'
     | '/day-book'
     | '/diet-plans'
@@ -438,6 +449,7 @@ export interface FileRouteTypes {
     | '/_authenticated/biometric-devices'
     | '/_authenticated/birthdays'
     | '/_authenticated/bookings'
+    | '/_authenticated/cfo'
     | '/_authenticated/dashboard'
     | '/_authenticated/day-book'
     | '/_authenticated/diet-plans'
@@ -552,6 +564,13 @@ declare module '@tanstack/react-router' {
       path: '/bookings'
       fullPath: '/bookings'
       preLoaderRoute: typeof AuthenticatedBookingsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/cfo': {
+      id: '/_authenticated/cfo'
+      path: '/cfo'
+      fullPath: '/cfo'
+      preLoaderRoute: typeof AuthenticatedCfoRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/dashboard': {
@@ -741,6 +760,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedBiometricDevicesRoute: typeof AuthenticatedBiometricDevicesRoute
   AuthenticatedBirthdaysRoute: typeof AuthenticatedBirthdaysRoute
   AuthenticatedBookingsRoute: typeof AuthenticatedBookingsRoute
+  AuthenticatedCfoRoute: typeof AuthenticatedCfoRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedDayBookRoute: typeof AuthenticatedDayBookRoute
   AuthenticatedDietPlansRoute: typeof AuthenticatedDietPlansRoute
@@ -773,6 +793,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBiometricDevicesRoute: AuthenticatedBiometricDevicesRoute,
   AuthenticatedBirthdaysRoute: AuthenticatedBirthdaysRoute,
   AuthenticatedBookingsRoute: AuthenticatedBookingsRoute,
+  AuthenticatedCfoRoute: AuthenticatedCfoRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedDayBookRoute: AuthenticatedDayBookRoute,
   AuthenticatedDietPlansRoute: AuthenticatedDietPlansRoute,

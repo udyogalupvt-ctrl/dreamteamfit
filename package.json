@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "start": "node .output/server/index.mjs"
+    "start": "node .output/server/index.mjs",
+    "test:cfo": "node --test \"src/lib/cfo/**/*.test.ts\""
   },
   "overrides": {
     "rolldown": "1.2.1"

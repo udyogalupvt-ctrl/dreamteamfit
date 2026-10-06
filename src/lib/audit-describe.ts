@@ -262,6 +262,27 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
       return `Trainer ${action}: ${s(d["name"])}${action === "updated" ? ` (${f.join(", ")})` : ""}`;
     case "biometricDevices":
       return `Fingerprint device ${action}: ${s(d["name"])}${action === "updated" ? ` (${f.join(", ")})` : ""}`;
+    case "cfoSettings": {
+      // What changed, never the amounts (the opening money stays out of the log).
+      const parts = [
+        f.some((k) => k === "openingBalance" || k === "openingDate") ? "opening money" : "",
+        f.some((k) =>
+          [
+            "atRiskDays",
+            "renewalDays",
+            "newMemberMinVisits",
+            "ptMinVisits",
+            "runwayWarnMonths",
+            "graceDays",
+          ].includes(k),
+        )
+          ? "alert limits"
+          : "",
+        f.some((k) => k === "aiEnabled" || k === "language") ? "AI summary" : "",
+      ].filter(Boolean);
+      if (action === "created") return "CFO settings saved";
+      return parts.length ? `CFO settings changed: ${parts.join(", ")}` : null;
+    }
     case "recycleBin":
       if (action === "created") return `Moved to Recycle Bin: ${s(d["label"])}`;
       if (action === "deleted")
@@ -296,7 +317,8 @@ export function auditLine(col: string, docId: string, before: D | null, after: D
     clientId: col === "clients" ? docId : s(doc["clientId"]),
     clientName: s(doc["clientNameSnapshot"] ?? (col === "clients" ? doc["fullName"] : "")),
     changes:
-      action === "updated"
+      // CFO settings hold the gym's money: the log says what changed, not the values.
+      action === "updated" && col !== "cfoSettings"
         ? Object.fromEntries(
             f.slice(0, 12).map((k) => [k, { from: short(before![k]), to: short(after![k]) }]),
           )

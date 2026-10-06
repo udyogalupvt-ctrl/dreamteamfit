@@ -8,6 +8,7 @@ import {
   type QueryConstraint,
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
+import { CFO_COLLECTIONS } from "@/lib/cfo/types";
 
 /**
  * Shared Firestore helpers. Feature services (packages, inquiries, clients,
@@ -62,6 +63,10 @@ export const COLLECTIONS = {
   cashDays: "cashDays",
   staffDayMarks: "staffDayMarks",
   staffPayroll: "staffPayroll",
+  /** The owner's CFO page: settings (page writes), numbers and AI summaries (server writes). */
+  cfoSettings: CFO_COLLECTIONS.settings,
+  cfoReports: CFO_COLLECTIONS.reports,
+  cfoBriefs: CFO_COLLECTIONS.briefs,
   /** Deleted records wait here until the owner restores them or deletes them for good. */
   recycleBin: "recycleBin",
   recycleBinItems: "recycleBinItems",

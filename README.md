@@ -40,6 +40,9 @@ the `VITE_*` values (used at build time) and the server values:
 | `CRON_SECRET` | any long random text; Vercel uses it to call the daily reminder jobs |
 | `APP_URL` | optional: the app's public address for links in messages, e.g. `https://dreamteamfit.vercel.app` |
 | `OPENWA_URL`, `OPENWA_SESSION_ID`, `OPENWA_API_KEY` | optional: linked-phone gateway, when not entered in Settings → WhatsApp (see WHATSAPP_SETUP.md) |
+| `CFO_AI_PROVIDER` | optional, CFO page AI summary: `gemini` (default), `openai`, `claude` or `off` |
+| `GEMINI_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | the key for the chosen provider; without it the AI summary is off and the page still shows every number |
+| `CFO_AI_MODEL` | optional model override (defaults: `gemini-2.5-flash`, `gpt-4.1-mini`, `claude-haiku-4-5`) |
 
 Firestore rules (free, any plan): `firebase deploy --only firestore:rules`.
 
