@@ -1,15 +1,44 @@
 # Handoff
 
-## 2026-10-06 (in progress): CFO build on branch `cfo-v1`
+## 2026-10-06 (latest): CFO page built on branch `cfo-v1`; joining-date fix
 
-"Implement CFO" Phase 2 is running. `CFO_SPEC.md` (with "Adjustments for this app"), the reviewed
-`CFO_PLAN.md` and the contracts `src/lib/cfo/types.ts` are committed on local branch `cfo-v1`
-(not pushed, not merged). Next: engine (`src/lib/cfo`), server (`src/server/cfo*.ts`, `ai.ts`),
-page (`/cfo`), test kit in the session scratchpad (8b942f95…), then verification of the 10 checks.
-Production rules for `cfoSettings`/`cfoReports`/`cfoBriefs` are NOT deployed (needs the user's OK;
-deploy rules before code). No AI key is set; tests use a fake AI.
+**State.** Local branches, nothing pushed or deployed:
+- `cfo-v1` = main + CFO spec/plan + joining-date fix + the CFO feature (commits c8b036d..).
+- `fix/joining-date` = main + only the joining-date fix (7049a94), so it can go live alone.
 
-## 2026-10-06 (latest): CFO feature set up, not built yet
+**Joining-date fix** (user report: "Joining date can't be in the future"): New member and Edit
+member accept a joining date up to a year ahead; a later joining date moves the new plan's start
+with it (plan waits as pending, like an advance renewal); the plan can't start before the joining
+date; Dashboard "new members this month" counts only members joined by today; birthday pickers
+use the India date. Test: scratchpad `joindate_local.py` 9/9.
+
+**CFO** (`/cfo`, nav "CFO" after Income & Expenses; owners, "All features" and Finance logins):
+health cards, weekly AI summary, call lists (Not coming, Renewals, New members, PT chances, Dues,
+Cash) with Call / WhatsApp chat / Excel / Print, 6-month trends, "How these numbers are worked
+out", settings (opening money, alert limits, AI on/off, language). Maths in `src/lib/cfo` (pure,
+`npm run test:cfo`), server `src/server/cfo*.ts` + `ai.ts`, docs `CFO_SPEC.md`, `CFO_PLAN.md`.
+Numbers are worked out on the server each morning (last step of the morning cron) or on Refresh
+(max once per 10 min for everyone), saved in `cfoReports/latest` + `cfoReports/list-*`; the page
+reads 3 docs. ~7k reads per refresh at 1,000 members. Single-field queries only.
+
+**Before it can go live (needs the user):**
+1. Deploy `firestore.rules` (new `cfoSettings`, `cfoReports`, `cfoBriefs` blocks) BEFORE the code;
+   until then the page says "CFO is being set up".
+2. Merge `cfo-v1` (or `fix/joining-date` first) into main and push (Vercel deploys main).
+3. Vercel env for the AI summary: `CFO_AI_PROVIDER=gemini` + `GEMINI_API_KEY` (free tier).
+   Optional: `CFO_AI_MODEL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. Without a key everything
+   works except the summary ("not set up yet").
+4. Owner: CFO → Settings → total gym money at the START of a date (bank + UPI + cash).
+5. The real AI provider has never been called (all tests use `fake_ai.py`): one live check
+   with the user's key is still owed (check 9).
+
+**Tests** (session scratchpad 8b942f95…, see `README_cfo_tests.md`): unit 137/137; e2e vs an
+independent hand calculation `cfo_local.py` 850/850; access `cfo_access_local.py` 116/116;
+browser `cfo_ui_local.py` 178/178; owner flow `cfo_owner_flow.py`; morning cron
+`cfo_cron_local.py`; regression `regress_cfo.sh`. Server for tests: `serve_cfo.sh`
+(CFO_TODAY / CFO_MIN_REFRESH_SECONDS / CFO_AI_BASE_URL work only against the emulator).
+
+## 2026-10-06: CFO feature set up, not built yet
 
 `CFO_SPEC.md` (the AI CFO spec with its 10 checks) is now in the project root, and the
 two-phase "Implement CFO" workflow is in `~/.claude/CLAUDE.md` (example spec saved at
@@ -99,4 +128,4 @@ Also fixed a race: "End all plans & stop entry" now appears only after PT plans 
   Bill "⋯" → Edit bill. Settings → WhatsApp shows the "Run it on the gym PC" box.
 - At the gym: run the gym-PC setup once (see the section above) if they want WhatsApp from the PC.
 
-Last updated: 2026-10-06
+Last updated: 2026-10-06 (CFO build)

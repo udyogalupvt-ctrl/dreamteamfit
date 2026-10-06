@@ -498,8 +498,17 @@ export interface CfoBriefInput {
     paidInAdvanceByMembers: string;
     monthsOfRunway: string;
   };
-  alerts: Record<"notComing" | "renewals" | "newMembersSlipping" | "ptChances", { members: string; money: string }>;
-  dues: { total: string; notDueYet: string; late0to7: string; late8to30: string; lateOver30: string };
+  alerts: Record<
+    "notComing" | "renewals" | "newMembersSlipping" | "ptChances",
+    { members: string; money: string }
+  >;
+  dues: {
+    total: string;
+    notDueYet: string;
+    late0to7: string;
+    late8to30: string;
+    lateOver30: string;
+  };
   /** Built-in category names only; custom categories are added into "Other (custom)". */
   expensesByCategoryLastMonth: Record<string, string>;
   pt: { gymShareLastMonth: string; trainerShareLastMonth: string; trainers: string };
