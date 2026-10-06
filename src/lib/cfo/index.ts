@@ -10,4 +10,5 @@ export {
   buildBriefInput,
   verifyBriefNumbers,
 } from "./brief.ts";
+export { templateBrief } from "./template.ts";
 export * from "./money.ts";

@@ -71,7 +71,8 @@ export const DEFAULT_CFO_SETTINGS: CfoSettings = {
   ptMinVisits: 12,
   runwayWarnMonths: 2,
   graceDays: 15,
-  aiEnabled: true,
+  // Off until the owner presses "Start AI summary" (shown once an AI is connected).
+  aiEnabled: false,
   language: "English",
 };
 
@@ -521,6 +522,16 @@ export interface CfoBriefInput {
     runwayWarnMonths: string;
     graceDays: string;
   };
+}
+
+/** What POST /api/cfo/status says about the AI (never the key). */
+export interface CfoAiStatus {
+  /** A provider and its key are set on the server and the provider accepts them. */
+  connected: boolean;
+  provider: string;
+  model: string;
+  /** Why a configured AI is not working ("the AI key was refused"); "" when fine or not set. */
+  problem: string;
 }
 
 export type CfoBriefStatus = "ok" | "failed" | "off" | "unverified" | "blocked" | "skipped";

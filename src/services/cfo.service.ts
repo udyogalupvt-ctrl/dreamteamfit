@@ -21,6 +21,7 @@ import {
   type CfoAlertRow,
   type CfoBrief,
   type CfoBriefAttempt,
+  type CfoAiStatus,
   type CfoBriefStatus,
   type CfoDueRow,
   type CfoLanguage,
@@ -157,6 +158,12 @@ export interface CfoBriefResult {
   ok: true;
   status: CfoBriefStatus;
   reason: string;
+}
+
+/** Is an AI connected on the server (provider + key set)? Never returns the key. */
+export async function getCfoAiStatus(): Promise<CfoAiStatus> {
+  const res = await callServer<{ ok: true; ai: CfoAiStatus }>("/api/cfo/status");
+  return res.ai;
 }
 
 const STILL_WORKING = "Still working it out. Try again in 2 minutes.";

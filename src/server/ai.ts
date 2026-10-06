@@ -209,3 +209,63 @@ export async function callAi(
     };
   }
 }
+
+/* ------------------------------------------------------------ is the AI really connected? */
+
+export interface AiCheck {
+  ok: boolean;
+  /** Plain words for the owner when it is not working (never the key). */
+  problem: string;
+}
+
+let checked: { sig: string; at: number; result: AiCheck } | null = null;
+
+/**
+ * Asks the provider about the configured model (a free metadata call, no text is written): a
+ * refused key or an unknown model name shows up here, before anyone presses Start. Remembered for
+ * 10 minutes (1 minute after a failure) on a warm server.
+ */
+export async function checkAi(cfg: AiConfig, timeoutMs = 8000): Promise<AiCheck> {
+  const sig = `${cfg.provider}|${cfg.model}|${cfg.baseUrl}|${cfg.key.length}|${cfg.key.slice(-4)}`;
+  const fresh =
+    checked &&
+    checked.sig === sig &&
+    Date.now() - checked.at < (checked.result.ok ? 600_000 : 60_000);
+  if (fresh) return checked!.result;
+
+  const model = encodeURIComponent(cfg.model);
+  const req =
+    cfg.provider === "gemini"
+      ? { url: `${cfg.baseUrl}/v1beta/models/${model}`, headers: { "x-goog-api-key": cfg.key } }
+      : cfg.provider === "openai"
+        ? {
+            url: `${cfg.baseUrl}/v1/models/${model}`,
+            headers: { Authorization: `Bearer ${cfg.key}` },
+          }
+        : {
+            url: `${cfg.baseUrl}/v1/models/${model}`,
+            headers: { "x-api-key": cfg.key, "anthropic-version": "2023-06-01" },
+          };
+  let result: AiCheck;
+  try {
+    const response = await fetch(req.url, {
+      headers: req.headers,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    // Read only enough to drain the connection; nothing from the reply is kept.
+    await response.text().catch(() => "");
+    if (response.ok) result = { ok: true, problem: "" };
+    else if (response.status === 404)
+      result = { ok: false, problem: `the AI model name "${cfg.model}" was not found` };
+    else if ([400, 401, 403].includes(response.status))
+      result = { ok: false, problem: "the AI key was refused (check the key on the server)" };
+    else if (response.status === 429)
+      result = { ok: false, problem: "the AI service is busy or over its free limit right now" };
+    else
+      result = { ok: false, problem: `the AI service answered with an error (${response.status})` };
+  } catch {
+    result = { ok: false, problem: "the AI service could not be reached" };
+  }
+  checked = { sig, at: Date.now(), result };
+  return result;
+}

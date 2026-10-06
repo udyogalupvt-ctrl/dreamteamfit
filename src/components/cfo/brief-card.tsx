@@ -1,7 +1,15 @@
-import { Sparkles } from "lucide-react";
+import { useMemo } from "react";
+import { Play, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import type { CfoBrief, CfoBriefAttempt } from "@/lib/cfo/types";
+import { templateBrief } from "@/lib/cfo/template";
+import type {
+  CfoAiStatus,
+  CfoBrief,
+  CfoBriefAttempt,
+  CfoSettings,
+  CfoSnapshot,
+} from "@/lib/cfo/types";
 import { cfoErrorMessage, requestCfoBrief } from "@/services/cfo.service";
 import { clockText, dayText, whenText } from "./cfo-format";
 
@@ -64,30 +72,36 @@ const providerName = (p: string) => PROVIDER_NAMES[p] ?? p;
 export function BriefCard({
   brief,
   attempt,
-  snapshotComputedAt,
-  hasSnapshot,
-  aiEnabled,
+  snapshot,
+  settings,
+  aiStatus,
   briefsLeft,
+  onStart,
   now,
 }: {
   brief: CfoBrief | null;
   attempt: CfoBriefAttempt | null;
-  snapshotComputedAt: string;
-  hasSnapshot: boolean;
-  aiEnabled: boolean;
+  snapshot: CfoSnapshot;
+  settings: CfoSettings;
+  /** null while the page is still asking the server. */
+  aiStatus: CfoAiStatus | null;
   /** "New AI summary" presses left today (the server allows a few a day). */
   briefsLeft: number;
+  /** Switches the AI summary on and asks for the first one. */
+  onStart: () => Promise<void>;
   now: number;
 }) {
+  const connected = aiStatus?.connected === true;
+  const aiOn = connected && settings.aiEnabled;
+  // The AI's text when there is a good one; otherwise the app writes the summary itself.
+  const showAi = aiOn && brief !== null;
+  const appText = useMemo(() => templateBrief(snapshot, settings), [snapshot, settings]);
+  const aiName = connected ? providerName(aiStatus.provider) : "";
+
   // Say why the button is off instead of letting the server refuse it.
-  const offReason = !hasSnapshot
-    ? "Work out the numbers first."
-    : !aiEnabled
-      ? "AI summary is switched off in CFO settings."
-      : briefsLeft <= 0
-        ? "3 AI summaries were made today. You can make a new one tomorrow."
-        : "";
-  const newer = brief && brief.snapshotComputedAt !== snapshotComputedAt;
+  const offReason =
+    briefsLeft <= 0 ? "3 AI summaries were made today. You can make a new one tomorrow." : "";
+  const newer = brief && brief.snapshotComputedAt !== snapshot.computedAt;
   const failedSince =
     attempt && attempt.status !== "ok" && (!brief || attempt.at > brief.createdAt) ? attempt : null;
 
@@ -96,6 +110,14 @@ export function BriefCard({
       const res = await requestCfoBrief();
       if (res.status === "ok") toast.success("New AI summary written");
       else toast.info(res.reason || "The AI summary could not be written. The numbers are fine.");
+    } catch (e) {
+      toast.error(cfoErrorMessage(e));
+    }
+  };
+
+  const start = async () => {
+    try {
+      await onStart();
     } catch (e) {
       toast.error(cfoErrorMessage(e));
     }
@@ -110,26 +132,34 @@ export function BriefCard({
             summary
           </h2>
           <p className="text-meta mt-0.5">
-            AI brief. The AI only explains; every number is worked out by the app.
+            {showAi
+              ? "AI brief. The AI only explains; every number is worked out by the app."
+              : "Written by the app from your numbers."}
           </p>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={Boolean(offReason)}
-          onClick={askForNew}
-          aria-describedby={offReason ? "cfo-brief-off" : undefined}
-        >
-          <Sparkles aria-hidden /> New AI summary
-        </Button>
+        {connected && !settings.aiEnabled ? (
+          <Button size="sm" onClick={start}>
+            <Play aria-hidden /> Start AI summary
+          </Button>
+        ) : aiOn ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={Boolean(offReason)}
+            onClick={askForNew}
+            aria-describedby={offReason ? "cfo-brief-off" : undefined}
+          >
+            <Sparkles aria-hidden /> New AI summary
+          </Button>
+        ) : null}
       </div>
-      {offReason && hasSnapshot ? (
+      {aiOn && offReason ? (
         <p id="cfo-brief-off" className="text-meta mt-2">
           {offReason}
         </p>
       ) : null}
 
-      {brief ? (
+      {showAi ? (
         <div className="mt-4 space-y-3">
           <BriefText text={brief.text} />
           <p className="text-meta">
@@ -140,18 +170,45 @@ export function BriefCard({
           </p>
         </div>
       ) : (
-        <div className="mt-4 rounded-lg border border-border bg-muted/40 p-3 text-sm">
-          <p className="font-medium">AI summary is not available right now.</p>
-          <p className="mt-0.5 text-muted-foreground">
-            Reason: {fallbackReason(attempt, aiEnabled)}. All numbers below are correct.
+        <div className="mt-4 space-y-3">
+          <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
+            {aiStatus === null ? (
+              <p className="text-muted-foreground">The app wrote this summary from your numbers.</p>
+            ) : (
+              <>
+                <p className="font-medium">AI summary is not available right now.</p>
+                <p className="mt-0.5 text-muted-foreground">
+                  {aiOn ? (
+                    <>
+                      Reason: {fallbackReason(attempt, true)}. The app wrote the summary below from
+                      the same numbers.
+                    </>
+                  ) : connected ? (
+                    <>
+                      {aiName} is connected. Press{" "}
+                      <b className="text-foreground">Start AI summary</b> to let it write this
+                      summary every week. Until then the app writes it from your numbers.
+                    </>
+                  ) : aiStatus.problem ? (
+                    `An AI key is set, but ${aiStatus.problem}. The app wrote the summary below from your numbers; a Start button appears here once the AI works.`
+                  ) : (
+                    "AI is not connected yet, so the app wrote the summary below from your numbers. When an AI key is added, a Start button appears here."
+                  )}
+                </p>
+              </>
+            )}
+          </div>
+          <BriefText text={appText} />
+          <p className="text-meta">
+            Written by the app at {clockText(new Date(snapshot.computedAt))} with these numbers.
           </p>
         </div>
       )}
 
-      {failedSince && brief ? (
+      {failedSince && showAi ? (
         <p className="text-meta mt-2">
           The last try ({whenText(failedSince.at, now)}) didn&apos;t work:{" "}
-          {fallbackReason(failedSince, aiEnabled)}. The summary above is the last good one.
+          {fallbackReason(failedSince, true)}. The summary above is the last good one.
         </p>
       ) : null}
     </section>

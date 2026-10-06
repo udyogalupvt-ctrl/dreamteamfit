@@ -25,6 +25,7 @@ import {
   cfoListDocId,
 } from "@/lib/cfo/types";
 import type {
+  CfoAiStatus,
   CfoBrief,
   CfoBriefStatus,
   CfoLanguage,
@@ -41,7 +42,7 @@ import {
   verifyBriefNumbers,
 } from "@/lib/cfo/index";
 import { db, json, localDate, requireFeature, requireStaff, TZ } from "./admin";
-import { aiConfig, callAi, onEmulator } from "./ai";
+import { aiConfig, callAi, checkAi, onEmulator } from "./ai";
 import { systemAudit } from "./audit";
 import { loadCfoInput } from "./cfo-data";
 
@@ -442,9 +443,22 @@ export async function handleCfo(request: Request, url: URL): Promise<Response> {
     if (!(await requireFeature(request, "finance"))) return json({ error: "Not allowed." }, 403);
 
     const path = url.pathname.replace(/\/+$/, "");
-    if (path !== "/api/cfo/refresh" && path !== "/api/cfo/brief")
+    if (path !== "/api/cfo/refresh" && path !== "/api/cfo/brief" && path !== "/api/cfo/status")
       return json({ error: "Not found." }, 404);
     if (request.method !== "POST") return json({ error: "Use POST." }, 405);
+
+    // Is an AI connected (provider + key set on the server)? Never the key itself.
+    if (path === "/api/cfo/status") {
+      const cfg = aiConfig();
+      const check = cfg ? await checkAi(cfg) : { ok: false, problem: "" };
+      const ai: CfoAiStatus = {
+        connected: Boolean(cfg) && check.ok,
+        provider: cfg?.provider ?? "",
+        model: cfg?.model ?? "",
+        problem: check.problem,
+      };
+      return json({ ok: true, ai });
+    }
 
     const by = user.email || user.uid;
     const deadline = startedAt + REQUEST_MS;

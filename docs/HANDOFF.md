@@ -21,9 +21,26 @@ Numbers are worked out on the server each morning (last step of the morning cron
 (max once per 10 min for everyone), saved in `cfoReports/latest` + `cfoReports/list-*`; the page
 reads 3 docs. ~7k reads per refresh at 1,000 members. Single-field queries only.
 
+**Live rules DEPLOYED 2026-10-06 (user OK):** `firestore.rules` from `cfo-v1` is live on
+`rebuildfitos` (ruleset a582db7c…; read back = file). It also switched on the waiting main-branch
+rules (Staff page logins edit staff/trainers, Recycle Bin page logins). The rules live before it
+are saved in the session scratchpad `live_rules_backup_2026-10-01.txt` (roll back with
+`deploy_rules.mjs <file>`). The user runs `npm run dev` on this PC against the LIVE database.
+
+**Summary without AI + Start (user request 2026-10-06):** the summary card always shows a summary.
+No AI (not connected, refused key, failed, or not started) → the app writes it from a fixed
+template (`src/lib/cfo/template.ts`, same numbers as the page, same 3 parts) under "AI summary is
+not available right now" + the reason. `POST /api/cfo/status` says if an AI is really connected
+(free model-info call checks the key and model name; never returns the key). Connected and not
+started → "Start AI summary" button (saves `aiEnabled: true`, writes the first AI summary).
+`aiEnabled` now defaults to OFF until Start is pressed.
+
+**Gemini key:** `.env` line `GEMINI_API_KEY=` held a placeholder (`GEMINI_API_KEY=` pasted
+twice), so no real Gemini call has been made yet. `CFO_AI_MODEL=gemini-3-flash-preview` is set
+there too (untested name; the status check will say if Google doesn't know it).
+
 **Before it can go live (needs the user):**
-1. Deploy `firestore.rules` (new `cfoSettings`, `cfoReports`, `cfoBriefs` blocks) BEFORE the code;
-   until then the page says "CFO is being set up".
+1. ~~Deploy `firestore.rules`~~ done 2026-10-06.
 2. Merge `cfo-v1` (or `fix/joining-date` first) into main and push (Vercel deploys main).
 3. Vercel env for the AI summary: `CFO_AI_PROVIDER=gemini` + `GEMINI_API_KEY` (free tier).
    Optional: `CFO_AI_MODEL`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. Without a key everything

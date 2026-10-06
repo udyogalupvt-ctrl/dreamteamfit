@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AlertTriangle, Clock, LineChart, RefreshCcw, Settings2, Wrench } from "lucide-react";
 import { toast } from "sonner";
@@ -16,18 +16,23 @@ import { ErrorState } from "@/components/common/error-state";
 import { PageHeader } from "@/components/common/page-header";
 import { StatCardSkeleton } from "@/components/common/stat-card";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
 import { useLive } from "@/hooks/use-live-query";
 import {
   CFO_LIST_KEYS,
   CFO_MAX_MANUAL_BRIEFS_PER_DAY,
   DEFAULT_CFO_SETTINGS,
+  type CfoAiStatus,
 } from "@/lib/cfo/types";
 import { indiaToday } from "@/lib/retention-dates";
 import { cn } from "@/lib/utils";
 import {
   CFO_LOADING,
   cfoErrorMessage,
+  getCfoAiStatus,
   refreshCfo,
+  requestCfoBrief,
+  saveCfoSettings,
   subscribeCfoBrief,
   subscribeCfoBriefStatus,
   subscribeCfoReport,
@@ -62,6 +67,19 @@ function CfoPage() {
   const attempt = useLive(subscribeCfoBriefStatus, CFO_LOADING, []);
   const settingsLive = useLive(subscribeCfoSettings, CFO_LOADING, []);
   const now = useNow();
+  const { user } = useAuth();
+  // Is an AI connected on the server? Asked once; the summary card shows Start when it is.
+  const [aiStatus, setAiStatus] = useState<CfoAiStatus | null>(null);
+  useEffect(() => {
+    let live = true;
+    getCfoAiStatus().then(
+      (s) => live && setAiStatus(s),
+      () => live && setAiStatus({ connected: false, provider: "", model: "", problem: "" }),
+    );
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [askRefresh, setAskRefresh] = useState(false);
@@ -119,6 +137,17 @@ function CfoPage() {
     } finally {
       if (id !== undefined) toast.dismiss(id);
     }
+  };
+
+  // "Start AI summary": switch the AI on in CFO settings, then ask for the first summary.
+  const startAi = async () => {
+    await saveCfoSettings(
+      { ...settings, aiEnabled: true },
+      user?.displayName || user?.email || "Staff",
+    );
+    const res = await requestCfoBrief();
+    if (res.status === "ok") toast.success("AI summary started");
+    else toast.info(res.reason || "The AI summary could not be written yet. The numbers are fine.");
   };
 
   const actions = (
@@ -211,10 +240,11 @@ function CfoPage() {
           <BriefCard
             brief={brief.data.value}
             attempt={attempt.data.value}
-            snapshotComputedAt={snapshot.computedAt}
-            hasSnapshot
-            aiEnabled={settings.aiEnabled}
+            snapshot={snapshot}
+            settings={settings}
+            aiStatus={aiStatus}
             briefsLeft={Math.max(0, CFO_MAX_MANUAL_BRIEFS_PER_DAY - briefsUsed)}
+            onStart={startAi}
             now={now}
           />
           <ProblemLists snapshot={snapshot} settings={settings} initialTab={tab} />
