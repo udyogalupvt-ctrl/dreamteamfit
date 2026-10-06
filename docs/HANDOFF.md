@@ -68,6 +68,8 @@ Still open, cosmetic: Gemini writes "a loss of -₹8,900" (double minus).
 **"Key was refused" on the user's PC (2026-10-06 22:30):** NOT a code bug. `npm run dev` was
 started 20:59, `.env` got the paid key 22:10, so the dev server still sent the old key. The key in
 `.env` works (direct check: model info 200, generateContent "OK"). Fix = restart `npm run dev`.
+Confirmed 22:40: after the restart the user's CFO page shows "Written by Gemini" (live data).
+Live data gaps it shows: no Sep 2026 expenses entered (no profit/break-even), runway "not enough data".
 `.env.example` still has the user's uncommitted placeholder lines (keep keys empty there).
 Test-kit gotcha: `.env` now names the live project, so emulator builds need
 `VITE_USE_EMULATORS=1 VITE_FIREBASE_PROJECT_ID=leadsmanage-1f7cd npm run build`.
@@ -187,4 +189,4 @@ Also fixed a race: "End all plans & stop entry" now appears only after PT plans 
   Bill "⋯" → Edit bill. Settings → WhatsApp shows the "Run it on the gym PC" box.
 - At the gym: run the gym-PC setup once (see the section above) if they want WhatsApp from the PC.
 
-Last updated: 2026-10-06 22:35 (AI bugs 1-3 fixed, commit 3fadabc; dev server needs restart for the new key)
+Last updated: 2026-10-06 22:45 (AI bugs 1-3 fixed, 3fadabc; AI summary confirmed working on the user's PC)
