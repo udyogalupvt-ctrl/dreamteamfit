@@ -37,7 +37,9 @@ started → "Start AI summary" button (saves `aiEnabled: true`, writes the first
 
 **Gemini key:** `.env` line `GEMINI_API_KEY=` held a placeholder (`GEMINI_API_KEY=` pasted
 twice), so no real Gemini call has been made yet. `CFO_AI_MODEL=gemini-3-flash-preview` is set
-there too (untested name; the status check will say if Google doesn't know it).
+there too (untested name; the status check will say if Google doesn't know it). Rechecked
+2026-10-06 21:30: still the placeholder. The same placeholder lines are an uncommitted edit in
+`.env.example` (user's edit, left out of commits; the example file should keep keys empty).
 
 **Before it can go live (needs the user):**
 1. ~~Deploy `firestore.rules`~~ done 2026-10-06.
@@ -49,10 +51,12 @@ there too (untested name; the status check will say if Google doesn't know it).
 5. The real AI provider has never been called (all tests use `fake_ai.py`): one live check
    with the user's key is still owed (check 9).
 
-**Tests** (session scratchpad 8b942f95…, see `README_cfo_tests.md`): unit 137/137; e2e vs an
-independent hand calculation `cfo_local.py` 850/850; access `cfo_access_local.py` 116/116;
-browser `cfo_ui_local.py` 178/178; owner flow `cfo_owner_flow.py`; morning cron
-`cfo_cron_local.py`; regression `regress_cfo.sh`. Server for tests: `serve_cfo.sh`
+**Tests** (session scratchpad 8b942f95…, see `README_cfo_tests.md`; all run 2026-10-06 on
+commit 8d9cf5d): unit 141/141; e2e vs an independent hand calculation `cfo_local.py` 850/850;
+access `cfo_access_local.py` 124/124; browser `cfo_ui_local.py` 177 + 1 soft (soft check now
+fixed to the real wording); summary/Start `cfo_start_local.py` 11/11; owner flow
+`cfo_owner_flow.py` 13/13; morning cron `cfo_cron_local.py` 6/6; regression `regress_cfo.sh` all
+pass. One-command run: `cfo_suite.sh`. Server for tests: `serve_cfo.sh`
 (CFO_TODAY / CFO_MIN_REFRESH_SECONDS / CFO_AI_BASE_URL work only against the emulator).
 
 ## 2026-10-06: CFO feature set up, not built yet
