@@ -214,20 +214,44 @@ function SinceReset({ at }: { at: Date }) {
   return (
     <p className="text-meta mt-1">
       Fresh start on {formatDate(at)}
-      {n ? ` · ${n.members} members and ${n.staff} staff registered again` : ""}
+      {n
+        ? ` · ${n.members} member${n.members === 1 ? "" : "s"} and ${n.staff} staff registered again`
+        : ""}
     </p>
   );
 }
 
+/**
+ * The gym's ZKTeco MB360 has no HTTPS switch: it reaches the app through the free Cloudflare
+ * relay (BIOMETRIC_SETUP.md). Shown first, so a machine reset to factory settings gets the right
+ * values back.
+ */
+const RELAY_HOST = "rf.rebuildfitnesskkd.workers.dev";
+
 function SetupGuide() {
   const copy = (v: string) =>
     void navigator.clipboard.writeText(v).then(() => toast.success("Copied"));
-  const rows: [string, string][] = [
-    ["Server address", serverHost()],
-    ["Server port", "443"],
-    ["HTTPS / SSL", "ON"],
-    ["Domain name", "ON (if asked)"],
-    ["Proxy server", "OFF"],
+  const tables: { title: string; rows: [string, string][] }[] = [
+    {
+      title: "This gym's machine (ZKTeco MB360, no HTTPS switch): through the relay",
+      rows: [
+        ["Server address", RELAY_HOST],
+        ["Server port", "80"],
+        ["HTTPS / SSL", "OFF (no switch)"],
+        ["Domain name", "ON"],
+        ["Proxy server", "OFF"],
+      ],
+    },
+    {
+      title: "A machine with an HTTPS switch: straight to the app",
+      rows: [
+        ["Server address", serverHost()],
+        ["Server port", "443"],
+        ["HTTPS / SSL", "ON"],
+        ["Domain name", "ON (if asked)"],
+        ["Proxy server", "OFF"],
+      ],
+    },
   ];
   return (
     <section className="surface-card space-y-4 p-4 sm:p-5">
@@ -237,29 +261,34 @@ function SetupGuide() {
           On the device: Menu → Comm. → Cloud Server Setting (also called ADMS / Webserver).
         </p>
       </div>
-      <dl className="divide-y divide-border rounded-xl border border-border">
-        {rows.map(([k, v]) => (
-          <div
-            key={k}
-            className="flex flex-col gap-1 p-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-          >
-            <dt className="text-muted-foreground">{k}</dt>
-            <dd className="flex items-center gap-2 font-mono font-semibold">
-              <span className="break-all">{v}</span>
-              {k === "Server address" ? (
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label="Copy server address"
-                  onClick={() => copy(v)}
-                >
-                  <Copy aria-hidden />
-                </Button>
-              ) : null}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      {tables.map((t) => (
+        <div key={t.title} className="space-y-2">
+          <h3 className="text-sm font-semibold">{t.title}</h3>
+          <dl className="divide-y divide-border rounded-xl border border-border">
+            {t.rows.map(([k, v]) => (
+              <div
+                key={k}
+                className="flex flex-col gap-1 p-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+              >
+                <dt className="text-muted-foreground">{k}</dt>
+                <dd className="flex items-center gap-2 font-mono font-semibold">
+                  <span className="break-all">{v}</span>
+                  {k === "Server address" ? (
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={`Copy server address ${v}`}
+                      onClick={() => copy(v)}
+                    >
+                      <Copy aria-hidden />
+                    </Button>
+                  ) : null}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ))}
       <ol className="list-decimal space-y-1 pl-5 text-sm">
         <li>
           Connect the device to the internet (LAN cable or Wi-Fi) and set its date & time correctly.
@@ -279,8 +308,8 @@ function SetupGuide() {
         </li>
       </ol>
       <p className="text-meta">
-        No HTTPS switch on the machine (e.g. ZKTeco MB360)? It connects through a relay address
-        instead (a free Cloudflare relay, port 80, domain name on). See BIOMETRIC_SETUP.md.
+        After a factory reset of the machine, enter these again and set its date and time. The relay
+        is a free Cloudflare Worker; see BIOMETRIC_SETUP.md.
       </p>
     </section>
   );

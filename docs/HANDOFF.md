@@ -1,11 +1,17 @@
 # Handoff
 
-## 2026-10-07: Machine fresh start + old-software call list (built, tested locally, NOT deployed)
+## 2026-10-07: Machine fresh start + old-software call list (pushed, live)
 
 Why: the owner wipes the MB360 so only people who come to the desk get back in, which shows
 who is really active. Old-software people who don't come back are phoned.
 
-Built on branch `machine-reset` (local commit, not pushed, not merged):
+Merged into main and pushed by the user (bfb7269); live check passed (Old software tab, device online).
+Later the same day: read-only owner sweep of the live site (62 page visits, phone + desktop): no page
+errors, console errors, error states or sideways scroll (only normal cancelled requests on
+navigation). Fix: the device setup box now shows this gym's MB360 relay settings first
+(`rf.rebuildfitnesskkd.workers.dev`, port 80, HTTPS off, domain on), since it had only the
+HTTPS/443 values the MB360 can't use. The owner shared their login in chat: they should change it.
+Built:
 - Biometric devices → "…" → "Machine was reset: start fresh" (owner only, type RESET).
   `freshStart()` in `src/server/device-import.ts` (`/api/devices/fresh-start`). It first copies
   members' and staff machine fields, saved thumbs and old machine users to
@@ -30,7 +36,7 @@ Tests (emulators only): session scratchpad 73fdee4c…: `restart_local.sh`, `ser
 Live facts (read-only, 2026-10-07): 25 members, 20 with thumbs, 1 staff thumb (keerthi M
 10024), 994 old machine users, door control ON, old software files already uploaded.
 
-Order on the day: (1) merge + push so Vercel deploys, (2) wipe the machine: Menu → Data Mgt →
+Order on the day: (1) done, (2) wipe the machine: Menu → Data Mgt →
 Delete Data → Delete All (NOT factory reset; if done, re-enter Cloud Server: ADMS, domain ON,
 rf.rebuildfitnesskkd.workers.dev, port 80), (3) check the device is online, (4) press start
 fresh, (5) Member calls → Old software → Bring in everyone not back yet, (6) register at the desk.
@@ -225,4 +231,4 @@ Also fixed a race: "End all plans & stop entry" now appears only after PT plans 
   Bill "⋯" → Edit bill. Settings → WhatsApp shows the "Run it on the gym PC" box.
 - At the gym: run the gym-PC setup once (see the section above) if they want WhatsApp from the PC.
 
-Last updated: 2026-10-07 (machine fresh start + old-software calls built on branch machine-reset, not pushed)
+Last updated: 2026-10-07 (live sweep clean; relay settings in the setup box)
