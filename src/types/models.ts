@@ -171,6 +171,8 @@ export interface BiometricDevice extends BaseDoc {
   /** "Read users from the machine" accepts the machine's upload until this time. */
   importUntil: Date | null;
   lastImportAt: Date | null;
+  /** "Machine was reset: start fresh" was last pressed at this time (null = never). */
+  freshStartAt: Date | null;
 }
 
 /** Someone registered on a fingerprint machine, found by "Read users from the machine". */

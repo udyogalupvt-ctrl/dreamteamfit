@@ -6,6 +6,7 @@ import {
   FileSpreadsheet,
   Link2,
   Loader2,
+  PhoneCall,
   ShieldCheck,
   Upload,
   UserPlus,
@@ -26,7 +27,9 @@ import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatNumber, formatPrice, normalizePhone } from "@/lib/format";
 import { tidyName, type OldDirectoryEntry } from "@/lib/old-data";
 import { subscribeClients } from "@/services/clients.service";
+import { subscribeMemberCalls, type MemberCall } from "@/services/member-calls.service";
 import {
+  addOldToCallList,
   downloadOldFile,
   listOldData,
   OLD_KIND_LABELS,
@@ -260,6 +263,27 @@ function OldMembersSection({ owner, reload }: { owner: boolean; reload: number }
   const [shown, setShown] = useState(50);
   const [syncOpen, setSyncOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const calls = useLive<MemberCall[]>(subscribeMemberCalls, [], []);
+  // Old members already on Member calls → Old software (by phone + old ID).
+  const onCallList = useMemo(
+    () =>
+      new Set(
+        calls.data
+          .filter((c) => c.segment === "old" && c.old)
+          .map((c) => `${c.phoneKey}|${c.old!.memberId}`),
+      ),
+    [calls.data],
+  );
+  const toCallList = async (entries: OldDirectoryEntry[]) => {
+    try {
+      const r = await addOldToCallList(entries.map((e) => ({ k: e.k, id: e.id })));
+      toast.success(
+        `${r.added} put on Member calls → Old software${r.already ? ` · ${r.already} already there` : ""}`,
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  };
   useEffect(() => {
     let live = true;
     oldDirectory().then(
@@ -383,13 +407,27 @@ function OldMembersSection({ owner, reload }: { owner: boolean; reload: number }
                 <TabsTrigger value="all">All ({counts.all})</TabsTrigger>
               </TabsList>
             </Tabs>
-            <SearchInput
-              value={search}
-              onValueChange={(v) => (setSearch(v), setShown(50))}
-              label="Search old members"
-              placeholder="Name, phone or old member ID"
-              containerClassName="sm:max-w-xs"
-            />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <SearchInput
+                value={search}
+                onValueChange={(v) => (setSearch(v), setShown(50))}
+                label="Search old members"
+                placeholder="Name, phone or old member ID"
+                containerClassName="sm:max-w-xs"
+              />
+              {view === "todo" && rows.some((r) => !onCallList.has(`${r.e.k}|${r.e.id}`)) ? (
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    toCallList(
+                      rows.filter((r) => !onCallList.has(`${r.e.k}|${r.e.id}`)).map((r) => r.e),
+                    )
+                  }
+                >
+                  <PhoneCall aria-hidden /> Put all shown on the call list
+                </Button>
+              ) : null}
+            </div>
           </div>
           {!rows.length ? (
             <p className="text-meta py-6 text-center">
@@ -401,7 +439,8 @@ function OldMembersSection({ owner, reload }: { owner: boolean; reload: number }
             <ul className="divide-y divide-border rounded-xl border border-border">
               {rows.slice(0, shown).map(({ e, member, running: run }) => (
                 <li key={`${e.k}-${e.id}`} className="flex flex-wrap items-center gap-3 p-3">
-                  <div className="min-w-0 flex-1">
+                  {/* At least 14rem: on a phone the buttons wrap below instead of squeezing it. */}
+                  <div className="min-w-[14rem] flex-1">
                     <p className="font-semibold">
                       {tidyName(e.n)}{" "}
                       <span className="font-mono text-xs text-muted-foreground">{e.id}</span>
@@ -425,21 +464,30 @@ function OldMembersSection({ owner, reload }: { owner: boolean; reload: number }
                       </Link>
                     </Button>
                   ) : (
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        openEnrollment({
-                          prefill: {
-                            fullName: tidyName(e.n),
-                            phone: e.k,
-                            gender: e.g,
-                            dateOfBirth: e.d || null,
-                          },
-                        })
-                      }
-                    >
-                      <UserPlus aria-hidden /> Add
-                    </Button>
+                    <>
+                      {onCallList.has(`${e.k}|${e.id}`) ? (
+                        <StatusPill tone="info">On call list</StatusPill>
+                      ) : (
+                        <Button size="sm" variant="outline" onClick={() => toCallList([e])}>
+                          <PhoneCall aria-hidden /> Call
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          openEnrollment({
+                            prefill: {
+                              fullName: tidyName(e.n),
+                              phone: e.k,
+                              gender: e.g,
+                              dateOfBirth: e.d || null,
+                            },
+                          })
+                        }
+                      >
+                        <UserPlus aria-hidden /> Add
+                      </Button>
+                    </>
                   )}
                 </li>
               ))}

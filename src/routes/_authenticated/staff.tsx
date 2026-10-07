@@ -147,7 +147,8 @@ function StaffPage() {
             const p = payOf(s);
             const trainer = isTrainerRole(s.role) ? trainerOfStaff(s, trainers.data) : null;
             // Gym logins are for the front desk and managers (and anyone who already has one).
-            const loginButton = owner && (isLoginRole(s.role) || !!a);
+            // A trainer can get one too (e.g. to add members), on top of the trainer app.
+            const loginButton = owner && (isLoginRole(s.role) || isTrainerRole(s.role) || !!a);
             return (
               <article key={s.id} className="surface-card flex flex-col gap-3 p-5">
                 <div className="flex items-start justify-between gap-2">

@@ -82,6 +82,7 @@ export function FingerprintPanel({
     const preferred = /^\d+$/.test(client.data.clientCode) ? client.data.clientCode : "";
     void freeMachineId(deviceId, preferred, client.data.id).then((v) => setPin((p) => p || v));
   }, [client.data, pin, deviceId, usable.length, devices.loading]);
+  const sameAsMemberId = !!pin && pin === client.data?.clientCode;
 
   const registered = Boolean(client.data?.firstThumbRegistered);
   useEffect(() => {
@@ -194,13 +195,19 @@ export function FingerprintPanel({
             <Field
               label="Member ID on device"
               htmlFor="fp-pin"
-              hint="A number no one else uses on the device."
+              hint={
+                sameAsMemberId
+                  ? "Same as the Member ID, so staff deal with one number."
+                  : "A number no one else uses on the device."
+              }
             >
               <Input
                 id="fp-pin"
                 inputMode="numeric"
                 value={pin}
                 disabled={active}
+                // Kept equal to the Member ID whenever the machine has it free.
+                readOnly={sameAsMemberId}
                 onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 9))}
               />
             </Field>

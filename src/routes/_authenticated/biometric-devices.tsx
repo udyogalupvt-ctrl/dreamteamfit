@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
-import { Copy, Fingerprint, MoreHorizontal, Pencil, Plus, Power } from "lucide-react";
+import { Copy, Fingerprint, MoreHorizontal, Pencil, Plus, Power, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { DeviceFormDialog } from "@/components/biometrics/device-form-dialog";
 import { DeviceUsersSection } from "@/components/biometrics/device-users-section";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingRows } from "@/components/common/loading-state";
@@ -17,10 +18,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useAccess } from "@/hooks/use-access";
 import { useLive } from "@/hooks/use-live-query";
+import { formatDate } from "@/lib/format";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import {
   deviceConnection,
+  freshStartMachine,
+  registeredSinceReset,
   setDeviceStatus,
   subscribeDevices,
 } from "@/services/biometric-devices.service";
@@ -56,6 +61,18 @@ function DevicesPage() {
   const live = useLive<BiometricDevice[]>(subscribeDevices, [], []);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<BiometricDevice | null>(null);
+  const { owner } = useAccess();
+  const [resetting, setResetting] = useState<BiometricDevice | null>(null);
+  const freshStart = async (d: BiometricDevice) => {
+    try {
+      const r = await freshStartMachine(d.id);
+      toast.success(
+        `Fresh start done: ${r.members} members and ${r.staff} staff now show "Register thumb". The old data is kept in a backup.`,
+      );
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    }
+  };
   const toggle = async (d: BiometricDevice) => {
     try {
       await setDeviceStatus(d.id, d.status === "disabled" ? "unknown" : "disabled");
@@ -143,6 +160,11 @@ function DevicesPage() {
                         <DropdownMenuItem onSelect={() => void toggle(d)}>
                           <Power aria-hidden /> {d.status === "disabled" ? "Enable" : "Disable"}
                         </DropdownMenuItem>
+                        {owner && d.integrationType === "adms" ? (
+                          <DropdownMenuItem onSelect={() => setResetting(d)}>
+                            <RotateCcw aria-hidden /> Machine was reset: start fresh
+                          </DropdownMenuItem>
+                        ) : null}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
@@ -156,6 +178,7 @@ function DevicesPage() {
                       ? "Test device — it can never activate a member."
                       : "Not linked to the cloud. Edit it and choose Cloud (ADMS) to register thumbs."}
                 </p>
+                {d.freshStartAt ? <SinceReset at={d.freshStartAt} /> : null}
                 {d.integrationType === "adms" ? <DeviceUsersSection device={d} /> : null}
               </li>
             );
@@ -164,7 +187,35 @@ function DevicesPage() {
       )}
       <SetupGuide />
       <DeviceFormDialog open={open} onOpenChange={setOpen} device={editing} />
+      <ConfirmDialog
+        open={!!resetting}
+        onOpenChange={(o) => !o && setResetting(null)}
+        title="Machine was reset: start fresh?"
+        description="Only after the machine itself was wiped (Menu → Data Mgt → Delete Data → Delete All). Everyone in the app then shows Register thumb again, and each new thumb gets the machine ID = Member ID. Plans, payments and attendance stay; the old machine data is kept in a backup. Pressed before the wipe, an old machine user could open the door as the new member with the same ID."
+        confirmLabel="Start fresh"
+        destructive
+        typeToConfirm="RESET"
+        onConfirm={() => {
+          const d = resetting;
+          setResetting(null);
+          if (d) void freshStart(d);
+        }}
+      />
     </div>
+  );
+}
+
+/** After a fresh start: how many came back and registered their thumb again. */
+function SinceReset({ at }: { at: Date }) {
+  const [n, setN] = useState<{ members: number; staff: number } | null>(null);
+  useEffect(() => {
+    void registeredSinceReset().then(setN, () => setN(null));
+  }, [at]);
+  return (
+    <p className="text-meta mt-1">
+      Fresh start on {formatDate(at)}
+      {n ? ` · ${n.members} members and ${n.staff} staff registered again` : ""}
+    </p>
   );
 }
 

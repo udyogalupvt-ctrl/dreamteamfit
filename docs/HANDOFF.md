@@ -1,5 +1,40 @@
 # Handoff
 
+## 2026-10-07: Machine fresh start + old-software call list (built, tested locally, NOT deployed)
+
+Why: the owner wipes the MB360 so only people who come to the desk get back in, which shows
+who is really active. Old-software people who don't come back are phoned.
+
+Built on branch `machine-reset` (local commit, not pushed, not merged):
+- Biometric devices → "…" → "Machine was reset: start fresh" (owner only, type RESET).
+  `freshStart()` in `src/server/device-import.ts` (`/api/devices/fresh-start`). It first copies
+  members' and staff machine fields, saved thumbs and old machine users to
+  `machineResets/{id}/items` (server only, closed by rules), then: thumb not registered, machine
+  ID cleared, members who had a thumb get a biometric-only joining (→ Members "Thumb pending"),
+  staff blocks kept, old machine users marked removed (thumbs kept in deviceUserTemplates),
+  saved thumbs moved out of biometricTemplates, unsent commands cancelled. The device card shows
+  "Fresh start on … · N members and N staff registered again".
+- Register thumb: machine ID = Member ID and locked whenever the machine has it free
+  (`fingerprint-panel.tsx`). New members keep getting the next Member ID (order of joining).
+- Member calls → "Old software" tab (`src/components/members/old-software-calls.tsx`): whole
+  old record (all plans, paid/balance/bill, address, remark…), Call / WhatsApp / Add as member,
+  call status + notes; drops off once a member here (by old ID or phone) has a thumb ("Show who
+  came back"). "Bring in everyone not back yet" = old plan runs today + no thumb here. Backup →
+  Old members rows have "Call" / "Put all shown on the call list". Server: `callList()` in
+  `src/server/old-data.ts` (`/api/old-data/call-list`, Member calls or Backup feature), rows are
+  `memberCalls/old_<phone>_<oldId>` (segment "old"), so no rules change was needed.
+- Staff page: trainers get Create login / Login & features.
+Tests (emulators only): session scratchpad 73fdee4c…: `restart_local.sh`, `serve.sh`
+(127.0.0.1, live key forced empty), `reset_local.py` 32/32, `ui_local.py` 28/28 (light/dark,
+390/1440, screenshots in `shots/`). Build + lint clean.
+Live facts (read-only, 2026-10-07): 25 members, 20 with thumbs, 1 staff thumb (keerthi M
+10024), 994 old machine users, door control ON, old software files already uploaded.
+
+Order on the day: (1) merge + push so Vercel deploys, (2) wipe the machine: Menu → Data Mgt →
+Delete Data → Delete All (NOT factory reset; if done, re-enter Cloud Server: ADMS, domain ON,
+rf.rebuildfitnesskkd.workers.dev, port 80), (3) check the device is online, (4) press start
+fresh, (5) Member calls → Old software → Bring in everyone not back yet, (6) register at the desk.
+
 ## 2026-10-06 (latest, updated 22:50): CFO page + joining-date fix merged into main and pushed
 
 **State.** `cfo-v1` (which includes the joining-date fix) merged into `main` (19238b7) and pushed
@@ -190,4 +225,4 @@ Also fixed a race: "End all plans & stop entry" now appears only after PT plans 
   Bill "⋯" → Edit bill. Settings → WhatsApp shows the "Run it on the gym PC" box.
 - At the gym: run the gym-PC setup once (see the section above) if they want WhatsApp from the PC.
 
-Last updated: 2026-10-06 22:50 (cfo-v1 merged into main and pushed, 19238b7)
+Last updated: 2026-10-07 (machine fresh start + old-software calls built on branch machine-reset, not pushed)

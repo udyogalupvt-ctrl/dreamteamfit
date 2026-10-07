@@ -28,6 +28,7 @@ export type DeviceInput = Omit<
   | "sendPhotos"
   | "importUntil"
   | "lastImportAt"
+  | "freshStartAt"
 >;
 
 export const mapDevice = (id: string, d: DocumentData): BiometricDevice => ({
@@ -49,6 +50,7 @@ export const mapDevice = (id: string, d: DocumentData): BiometricDevice => ({
   sendPhotos: d["sendPhotos"] === true,
   importUntil: d["importUntil"] ? toDate(d["importUntil"]) : null,
   lastImportAt: d["lastImportAt"] ? toDate(d["lastImportAt"]) : null,
+  freshStartAt: d["freshStartAt"] ? toDate(d["freshStartAt"]) : null,
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -211,6 +213,30 @@ export const subscribeDeviceUsers = (
 /** Asks the machine to send everyone registered on it (window of 30 minutes). */
 export const readUsersFromMachine = (deviceId: string) =>
   callServer<{ ok: true }>("/api/devices/read-users", { deviceId });
+
+/**
+ * After the machine itself was wiped: everyone registers their thumb again (owner only). The
+ * server keeps a copy of what it clears.
+ */
+export const freshStartMachine = (deviceId: string) =>
+  callServer<{
+    ok: true;
+    resetId: string;
+    members: number;
+    staff: number;
+    thumbs: number;
+    machineUsers: number;
+    commands: number;
+  }>("/api/devices/fresh-start", { deviceId });
+
+/** Members and staff with a thumb registered again since the last fresh start. */
+export async function registeredSinceReset() {
+  const [members, staff] = await Promise.all([
+    getCountFromServer(query(col(COLLECTIONS.clients), where("firstThumbRegistered", "==", true))),
+    getCountFromServer(query(col(COLLECTIONS.staff), where("firstThumbRegistered", "==", true))),
+  ]);
+  return { members: members.data().count, staff: staff.data().count };
+}
 
 /** Links a machine ID to a member or staff member; both empty = unlink. */
 export const linkMachineUser = (

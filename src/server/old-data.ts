@@ -392,10 +392,94 @@ export async function oldHistoryFor(c: DocumentData) {
   return { memberId: m.memberId, joinedOn: oldJoinedOn(m), plans };
 }
 
+/** Member calls key of one old member (one phone can hold a family). */
+const oldCallKey = (k: string, id: string) => `old_${k}_${id.replace(/[^A-Za-z0-9_-]/g, "_")}`;
+
+/**
+ * Puts old members on the Member calls page ("Old software"), with their whole old record, so
+ * the front desk can phone the ones who have not come back. Given entries = those people;
+ * none = everyone whose old plan runs today and who has no thumb in the app yet. Someone
+ * already on the list keeps their call status and notes.
+ */
+async function callList(request: Request) {
+  const user =
+    (await requireFeature(request, "memberCalls")) ?? (await requireFeature(request, "backup"));
+  if (!user) return json({ error: "This login can't use Member calls." }, 403);
+  const body = (await request.json().catch(() => ({}))) as {
+    entries?: { k?: unknown; id?: unknown }[];
+  };
+  const today = localDate();
+  let wanted: { k: string; id: string }[];
+  if (Array.isArray(body.entries)) {
+    wanted = body.entries
+      .map((e) => ({ k: oldPhoneKey(String(e.k ?? "")), id: String(e.id ?? "") }))
+      .filter((e) => e.k.length >= 6 && e.id);
+  } else {
+    const back = await db().collection("clients").where("firstThumbRegistered", "==", true).get();
+    const ids = new Set(back.docs.map((d) => String(d.data()["oldMemberId"] ?? "")));
+    const phones = new Set(
+      back.docs.map((d) =>
+        oldPhoneKey(String(d.data()["phoneNormalized"] ?? d.data()["phone"] ?? "")),
+      ),
+    );
+    wanted = (await readDirectory())
+      .filter((e) => !!e.pe && e.pe >= today && e.ps <= today && !/inactive/i.test(e.st))
+      .filter((e) => !ids.has(e.id) && !phones.has(e.k))
+      .map((e) => ({ k: e.k, id: e.id }));
+  }
+  wanted = wanted.slice(0, 2000);
+  const refs = wanted.map((e) => db().doc(`memberCalls/${oldCallKey(e.k, e.id)}`));
+  const [records, existing] = await Promise.all([
+    refs.length
+      ? db().getAll(...[...new Set(wanted.map((e) => e.k))].map((k) => db().doc(`${MEMBERS}/${k}`)))
+      : Promise.resolve([]),
+    refs.length ? db().getAll(...refs) : Promise.resolve([]),
+  ]);
+  const byPhone = new Map(
+    records.map((r) => [r.id, (r.data()?.["members"] as OldMember[] | undefined) ?? []]),
+  );
+  const had = new Set(existing.filter((d) => d.exists).map((d) => d.id));
+  const actor = actorOf(user);
+  const writer = db().bulkWriter();
+  let added = 0;
+  let already = 0;
+  wanted.forEach((e, i) => {
+    const m = byPhone.get(e.k)?.find((r) => r.memberId === e.id);
+    const ref = refs[i]!;
+    if (!m) return;
+    if (had.has(ref.id)) {
+      already += 1;
+      return;
+    }
+    had.add(ref.id);
+    added += 1;
+    void writer.set(ref, {
+      segment: "old",
+      clientId: "",
+      clientNameSnapshot: m.name,
+      phoneSnapshot: m.phone || e.k,
+      phoneKey: e.k,
+      oldMemberId: m.memberId,
+      old: m,
+      status: "not_called",
+      notes: "",
+      addedBy: actor.name,
+      addedAt: FieldValue.serverTimestamp(),
+      updatedBy: actor.name,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  });
+  await writer.close();
+  if (added)
+    await audit(actor, `Put ${added} old member${added === 1 ? "" : "s"} on the call list`);
+  return json({ added, already });
+}
+
 export async function handleOldData(request: Request, url: URL): Promise<Response> {
   const action = url.pathname.replace(/^\/api\/old-data\/?/, "").replace(/\/+$/, "");
   if (request.method === "POST" && action === "upload") return upload(request);
   if (request.method === "POST" && action === "sync") return sync(request);
+  if (request.method === "POST" && action === "call-list") return callList(request);
   if (request.method === "GET" && action === "files") return files(request);
   if (request.method === "GET" && action === "download") return download(request, url);
   if (request.method === "GET" && action === "directory") return directory(request);

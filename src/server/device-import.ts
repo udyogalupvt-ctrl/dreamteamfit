@@ -14,6 +14,7 @@
  * the machine: nobody has to scan again, and the door lock can restore it after a renewal.
  */
 import { FieldValue } from "firebase-admin/firestore";
+import { isOwnerEmail } from "@/constants/owners";
 import { db, json, localDate, requireFeature } from "./admin";
 import { systemAudit } from "./audit";
 
@@ -396,6 +397,144 @@ const command = (
   updatedAt: FieldValue.serverTimestamp(),
 });
 
+/**
+ * The machine was wiped on the machine itself (Data Mgt → Delete All), so nobody is on it any
+ * more. Everyone in the app goes back to "thumb not registered" with no machine ID, so the next
+ * registration uses their member ID again; members who had a thumb wait under "Thumb pending".
+ * Nothing is lost: first everything is copied to /machineResets/{id} (server only), the old
+ * machine user list is only marked removed, and saved thumbs move into that copy. Plans,
+ * payments and attendance stay, and a staff "Block entry" stays blocked.
+ */
+async function freshStart(device: DeviceInfo, by: string) {
+  const firestore = db();
+  const now = FieldValue.serverTimestamp();
+  const [linkedClients, thumbClients, linkedStaff, thumbStaff, templates, users, cmds] =
+    await Promise.all([
+      firestore.collection("clients").where("biometricDeviceId", "==", device.id).get(),
+      firestore.collection("clients").where("firstThumbRegistered", "==", true).get(),
+      firestore.collection("staff").where("biometricDeviceId", "==", device.id).get(),
+      firestore.collection("staff").where("firstThumbRegistered", "==", true).get(),
+      firestore.collection("biometricTemplates").where("deviceId", "==", device.id).get(),
+      firestore.collection("deviceUsers").where("deviceId", "==", device.id).get(),
+      firestore.collection("biometricCommands").where("deviceId", "==", device.id).get(),
+    ]);
+  const unique = (...lists: FirebaseFirestore.QueryDocumentSnapshot[][]) => [
+    ...new Map(lists.flat().map((d) => [d.id, d])).values(),
+  ];
+  const clients = unique(linkedClients.docs, thumbClients.docs);
+  const staff = unique(linkedStaff.docs, thumbStaff.docs);
+  const machineUsers = users.docs.filter((d) => d.data()["removed"] !== true);
+  const open = cmds.docs.filter((d) => ["pending", "sent"].includes(String(d.data()["status"])));
+
+  // 1. The copy, complete before anything changes.
+  const reset = firestore.collection("machineResets").doc();
+  const copy = firestore.bulkWriter();
+  const keep = (kind: string, d: FirebaseFirestore.QueryDocumentSnapshot) =>
+    void copy.set(reset.collection("items").doc(`${kind}_${d.id}`), {
+      kind,
+      id: d.id,
+      data: d.data(),
+    });
+  clients.forEach((d) => keep("client", d));
+  staff.forEach((d) => keep("staff", d));
+  templates.docs.forEach((d) => keep("thumb", d));
+  machineUsers.forEach((d) => keep("machineUser", d));
+  void copy.set(reset, {
+    deviceId: device.id,
+    deviceName: device.name,
+    serialNumber: device.serialNumber,
+    by,
+    at: now,
+    counts: {
+      members: clients.length,
+      staff: staff.length,
+      thumbs: templates.size,
+      machineUsers: machineUsers.length,
+      commands: open.length,
+    },
+  });
+  await copy.close();
+
+  // 2. The fresh start.
+  const writer = firestore.bulkWriter();
+  for (const c of clients) {
+    const d = c.data();
+    const hadThumb = d["firstThumbRegistered"] === true;
+    // Had a thumb: a new biometric-only joining puts them under "Thumb pending" (as the app's
+    // ensureEnrollmentForClient does). One still joining keeps theirs, with its plan steps.
+    const enrollment = hadThumb ? firestore.collection("enrollments").doc() : null;
+    if (enrollment)
+      void writer.set(enrollment, {
+        clientId: c.id,
+        clientNameSnapshot: String(d["fullName"] ?? ""),
+        status: "biometric_pending",
+        membershipId: null,
+        ptAssignmentId: null,
+        invoiceId: "",
+        paymentId: null,
+        biometricDeviceId: "",
+        biometricUserId: "",
+        firstThumbRegistered: false,
+        lastError: "",
+        machineResetId: reset.id,
+        invoiceSharedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+    void writer.update(c.ref, {
+      firstThumbRegistered: false,
+      biometricStatus: d["biometricStatus"] === "disabled" ? "disabled" : "not_enrolled",
+      biometricUserId: "",
+      biometricDeviceId: "",
+      deviceAccess: FieldValue.delete(),
+      deviceAccessChangedAt: FieldValue.delete(),
+      ...(enrollment ? { enrollmentId: enrollment.id } : {}),
+      machineResetId: reset.id,
+      updatedAt: now,
+    });
+  }
+  for (const s of staff)
+    void writer.update(s.ref, {
+      firstThumbRegistered: false,
+      biometricUserId: "",
+      biometricDeviceId: "",
+      updatedAt: now,
+    });
+  // Old machine users stay listed as removed (their thumbs stay in deviceUserTemplates).
+  for (const u of machineUsers)
+    void writer.update(u.ref, {
+      removed: true,
+      removedBy: "Machine reset",
+      machineResetId: reset.id,
+      updatedAt: now,
+    });
+  // Saved thumbs are in the copy; a new registration saves the new thumb.
+  for (const t of templates.docs) void writer.delete(t.ref);
+  for (const d of open)
+    void writer.update(d.ref, { status: "cancelled", error: "Machine reset", updatedAt: now });
+  void writer.update(firestore.doc(`biometricDevices/${device.id}`), {
+    importUntil: null,
+    freshStartAt: now,
+    freshStartBy: by,
+    freshStartId: reset.id,
+    updatedAt: now,
+  });
+  await writer.close();
+  const counts = {
+    members: clients.length,
+    staff: staff.length,
+    thumbs: templates.size,
+    machineUsers: machineUsers.length,
+    commands: open.length,
+  };
+  await systemAudit({
+    collection: "biometricDevices",
+    docId: device.id,
+    summary: `${device.name} reset to a fresh start by ${by}: ${counts.members} members and ${counts.staff} staff must register their thumb again; ${counts.thumbs} saved thumbs and ${counts.machineUsers} old machine users kept in the backup (${reset.id})`,
+  });
+  return { resetId: reset.id, ...counts };
+}
+
 async function loadDevice(deviceId: string) {
   const snap = await db().doc(`biometricDevices/${deviceId}`).get();
   const d = snap.data();
@@ -455,6 +594,12 @@ export async function handleDeviceUsers(request: Request, url: URL) {
       batch.set(firestore.collection("biometricCommands").doc(), command(device, type, cmd));
     await batch.commit();
     return json({ ok: true });
+  }
+
+  if (action === "fresh-start") {
+    if (!isOwnerEmail(user.email))
+      return json({ error: "Only the owner can reset the machine in the app." }, 403);
+    return json({ ok: true, ...(await freshStart(device, by)) });
   }
 
   const pin = String(body["pin"] ?? "").trim();

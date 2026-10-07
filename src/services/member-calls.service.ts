@@ -1,12 +1,18 @@
 import { doc, onSnapshot, serverTimestamp, setDoc } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
+import type { OldMember } from "@/lib/old-data";
 import type { CallStatus, Segment } from "@/lib/member-segments";
 import { col, COLLECTIONS, toDate } from "./firestore.service";
 
 export interface MemberCall {
   key: string;
   clientId: string;
-  segment: Segment;
+  /** "old" = someone from the old software who has not come back yet (no member here). */
+  segment: Segment | "old";
+  /** Old software rows: the whole old record, phone key and when they were put on the list. */
+  old: OldMember | null;
+  phoneKey: string;
+  addedAt: Date | null;
   status: CallStatus;
   notes: string;
   updatedBy: string;
@@ -21,7 +27,10 @@ export const subscribeMemberCalls = (ok: (x: MemberCall[]) => void, fail: (e: Er
         s.docs.map((d) => ({
           key: d.id,
           clientId: String(d.data()["clientId"] ?? ""),
-          segment: d.data()["segment"] as Segment,
+          segment: d.data()["segment"] as Segment | "old",
+          old: (d.data()["old"] as OldMember | undefined) ?? null,
+          phoneKey: String(d.data()["phoneKey"] ?? ""),
+          addedAt: d.data()["addedAt"] ? toDate(d.data()["addedAt"]) : null,
           status: (d.data()["status"] ?? "not_called") as CallStatus,
           notes: String(d.data()["notes"] ?? ""),
           updatedBy: String(d.data()["updatedBy"] ?? ""),
@@ -37,7 +46,7 @@ export async function saveMemberCall(
   input: {
     clientId: string;
     clientName: string;
-    segment: Segment;
+    segment: Segment | "old";
     status: CallStatus;
     notes: string;
   },

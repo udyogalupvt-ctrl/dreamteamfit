@@ -58,6 +58,16 @@ export const listOldData = () =>
 export const oldDirectory = () =>
   getServer<{ entries: OldDirectoryEntry[]; today: string }>("/api/old-data/directory");
 
+/**
+ * Puts old members on Member calls → Old software. No entries = everyone whose old plan runs
+ * today and who has no thumb in the app yet.
+ */
+export const addOldToCallList = (entries?: { k: string; id: string }[]) =>
+  callServer<{ added: number; already: number }>(
+    "/api/old-data/call-list",
+    entries ? { entries } : {},
+  );
+
 /** Owner: links the old records to members already in the app (by phone). */
 export const syncOldData = () =>
   callServer<{

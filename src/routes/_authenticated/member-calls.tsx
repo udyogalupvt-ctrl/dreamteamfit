@@ -10,6 +10,7 @@ import { ErrorState } from "@/components/common/error-state";
 import { LoadingRows } from "@/components/common/loading-state";
 import { PageHeader } from "@/components/common/page-header";
 import { SearchInput } from "@/components/common/search-input";
+import { OldSoftwareCalls } from "@/components/members/old-software-calls";
 import { SegmentChart } from "@/components/members/segment-chart";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { useLive } from "@/hooks/use-live-query";
@@ -47,7 +49,10 @@ import {
 } from "@/services/whatsapp-settings.service";
 
 export const Route = createFileRoute("/_authenticated/member-calls")({
-  validateSearch: z.object({ segment: z.enum(SEGMENTS).optional() }),
+  validateSearch: z.object({
+    segment: z.enum(SEGMENTS).optional(),
+    view: z.enum(["members", "old"]).optional(),
+  }),
   head: () => ({ meta: [{ title: "Member calls — REBUILD FITNESS" }] }),
   component: MemberCallsPage,
 });
@@ -57,6 +62,7 @@ const EXPIRING = [7, 15, 30];
 
 function MemberCallsPage() {
   const initial = Route.useSearch().segment ?? "inactive";
+  const [view, setView] = useState<"members" | "old">(Route.useSearch().view ?? "members");
   const [segment, setSegment] = useState<Segment>(initial);
   const [absentDays, setAbsentDays] = useState(7);
   const [expiringDays, setExpiringDays] = useState(7);
@@ -93,90 +99,110 @@ function MemberCallsPage() {
         description="Tap a bar to see who is in that group, then call or WhatsApp them and note what they said."
         breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Member calls" }]}
       />
-      {error ? <ErrorState error={error} title="Couldn't load members" /> : null}
-      <section className="surface-card space-y-4 p-4 sm:p-5">
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <label className="flex items-center gap-2">
-            Inactive after
-            <Select value={String(absentDays)} onValueChange={(v) => setAbsentDays(Number(v))}>
-              <SelectTrigger className="h-9 w-24" aria-label="Inactive after days">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ABSENT.map((d) => (
-                  <SelectItem key={d} value={String(d)}>
-                    {d} days
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-          <label className="flex items-center gap-2">
-            Expiring within
-            <Select value={String(expiringDays)} onValueChange={(v) => setExpiringDays(Number(v))}>
-              <SelectTrigger className="h-9 w-24" aria-label="Expiring within days">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {EXPIRING.map((d) => (
-                  <SelectItem key={d} value={String(d)}>
-                    {d} days
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
-        </div>
-        {loading ? (
-          <LoadingRows rows={3} />
-        ) : (
-          <SegmentChart counts={counts} total={total} selected={segment} onSelect={setSegment} />
-        )}
-      </section>
+      <Tabs value={view} onValueChange={(v) => setView(v as typeof view)}>
+        <TabsList>
+          <TabsTrigger value="members">Members</TabsTrigger>
+          <TabsTrigger value="old">Old software</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      {view === "old" ? (
+        <OldSoftwareCalls calls={calls.data} />
+      ) : (
+        <>
+          {error ? <ErrorState error={error} title="Couldn't load members" /> : null}
+          <section className="surface-card space-y-4 p-4 sm:p-5">
+            <div className="flex flex-wrap items-center gap-3 text-sm">
+              <label className="flex items-center gap-2">
+                Inactive after
+                <Select value={String(absentDays)} onValueChange={(v) => setAbsentDays(Number(v))}>
+                  <SelectTrigger className="h-9 w-24" aria-label="Inactive after days">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ABSENT.map((d) => (
+                      <SelectItem key={d} value={String(d)}>
+                        {d} days
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="flex items-center gap-2">
+                Expiring within
+                <Select
+                  value={String(expiringDays)}
+                  onValueChange={(v) => setExpiringDays(Number(v))}
+                >
+                  <SelectTrigger className="h-9 w-24" aria-label="Expiring within days">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EXPIRING.map((d) => (
+                      <SelectItem key={d} value={String(d)}>
+                        {d} days
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+            </div>
+            {loading ? (
+              <LoadingRows rows={3} />
+            ) : (
+              <SegmentChart
+                counts={counts}
+                total={total}
+                selected={segment}
+                onSelect={setSegment}
+              />
+            )}
+          </section>
 
-      <section className="space-y-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-section-title">
-            {SEGMENT_META[segment].label} · {segments[segment].length}
-          </h2>
-          <div className="grid gap-2 sm:grid-cols-[16rem_12rem]">
-            <SearchInput
-              value={search}
-              onValueChange={setSearch}
-              placeholder="Search name or phone…"
-              label="Search members"
-            />
-            <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
-              <SelectTrigger aria-label="Filter by call status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All call statuses</SelectItem>
-                {CALL_STATUSES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {CALL_STATUS_LABELS[s]}
-                  </SelectItem>
+          <section className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="text-section-title">
+                {SEGMENT_META[segment].label} · {segments[segment].length}
+              </h2>
+              <div className="grid gap-2 sm:grid-cols-[16rem_12rem]">
+                <SearchInput
+                  value={search}
+                  onValueChange={setSearch}
+                  placeholder="Search name or phone…"
+                  label="Search members"
+                />
+                <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
+                  <SelectTrigger aria-label="Filter by call status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All call statuses</SelectItem>
+                    {CALL_STATUSES.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {CALL_STATUS_LABELS[s]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {loading ? (
+              <LoadingRows rows={4} />
+            ) : !rows.length ? (
+              <EmptyState
+                icon={PhoneCall}
+                title="Nobody here"
+                description="No members in this group right now."
+              />
+            ) : (
+              <ul className="grid gap-3 lg:grid-cols-2">
+                {rows.map((m) => (
+                  <CallRow key={`${m.segment}-${m.client.id}`} m={m} call={callOf(m)} />
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        {loading ? (
-          <LoadingRows rows={4} />
-        ) : !rows.length ? (
-          <EmptyState
-            icon={PhoneCall}
-            title="Nobody here"
-            description="No members in this group right now."
-          />
-        ) : (
-          <ul className="grid gap-3 lg:grid-cols-2">
-            {rows.map((m) => (
-              <CallRow key={`${m.segment}-${m.client.id}`} m={m} call={callOf(m)} />
-            ))}
-          </ul>
-        )}
-      </section>
+              </ul>
+            )}
+          </section>
+        </>
+      )}
     </div>
   );
 }
