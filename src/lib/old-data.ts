@@ -305,6 +305,25 @@ export function oldJoinedOn(m: Pick<OldMember, "registeredOn" | "plans">) {
   return starts[0] ?? "";
 }
 
+/**
+ * The old software's plan that a plan here carries over: one that started within 10 days of it,
+ * or ended within 10 days of it (nearest start first); null when none.
+ */
+export function matchingOldPlan(m: Pick<OldMember, "plans">, start: string, end: string) {
+  const iso = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const gap = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
+  return (
+    m.plans
+      .filter(
+        (p) =>
+          iso(p.start) &&
+          iso(p.end) &&
+          ((iso(start) && gap(p.start, start) <= 10) || (iso(end) && gap(p.end, end) <= 10)),
+      )
+      .sort((a, b) => (iso(start) ? gap(a.start, start) - gap(b.start, start) : 0))[0] ?? null
+  );
+}
+
 /** The old plan still running on a day ("" end = unknown, not running). */
 export const runningOldPlan = (m: Pick<OldMember, "plans">, today: string) =>
   m.plans.find((p) => p.end >= today && p.start <= today && !/inactive/i.test(p.status)) ?? null;

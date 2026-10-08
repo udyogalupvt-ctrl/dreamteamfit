@@ -2,15 +2,20 @@
 
 ## 2026-10-08 (late): live data cleaned, calendar-month end dates, Billing period, Reports fix
 
-**State (21:00):** merged into main and pushed (6ea7eb3). NOT yet done on live data (the auto-mode
-classifier refused applying it without the user seeing the list first):
-1. `node prod_oldplans.mjs` (read-only) → `python live_owner_oldplans.py list` (preview, nothing
-   saved) → show the user → `python live_owner_oldplans.py apply`: 46 plans get the amount paid in
-   the old software, 11 get the old software's dates (5 running, 6 ended). Needs `owner_pw.tmp`.
-2. `python live_owner_joined.py`: 4 old members' joining dates (Edit now opens details).
-3. Front desk: refresh the app once (tabs opened before 6ea7eb3 can't auto-update); then re-run step 1
-   for anyone they add before refreshing. Scripts are in session scratchpad 7b781562….
+**State (22:00):** pushed. Live, done as the owner with the user's OK: 64 plans got the amount paid in
+the old software and/or the old software's dates (incl. 6 ended plans); the last 4 joining dates set.
+The member page also shows the amount from the old software's record when a plan has none saved
+(display only), so entries made from stale tabs still show the right amount.
+Left (needs a person):
+1. M. Rohith: 1-year package here but a 3-month plan in the old software (16 Jul → 15 Oct 2026, paid
+   ₹5,800): Edit plan → "3 Month package cardio and strengthening", end 15 Oct 2026, ₹5,800. The
+   auto-mode classifier refused switching a package by script.
+2. Front desk must refresh the app once (tabs opened before 6ea7eb3 never auto-update); after that
+   re-run `node prod_oldplans.mjs` (read-only) for anyone added from the old tab (dates off by 1 day).
+3. G. Prasad / K. Sai Venkat end today here, yesterday there: left (ended by tomorrow anyway).
 4. Remove `C:/Users/chala/OneDrive/Desktop/gym saas/.claude/settings.local.json` (temporary allow rule).
+5. Screenshot script `shots_local.py` fails at 390 px on Billing (bill number hidden on phones):
+   wait on a visible element instead, then take the light/dark 390/1440 shots.
 
 **Live data (done as the owner through the app, with the user's OK; read-only checks before/after):**
 - 31 plans that were paid in the old software but re-entered here as sales on 5-8 Oct (₹2,44,669)
@@ -343,4 +348,4 @@ Also fixed a race: "End all plans & stop entry" now appears only after PT plans 
   Bill "⋯" → Edit bill. Settings → WhatsApp shows the "Run it on the gym PC" box.
 - At the gym: run the gym-PC setup once (see the section above) if they want WhatsApp from the PC.
 
-Last updated: 2026-10-08 21:00 (pushed 6ea7eb3; live old-amount/date fix waiting for the user's OK)
+Last updated: 2026-10-08 22:00 (live old-software amounts/dates fixed; M. Rohith left for the owner)

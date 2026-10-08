@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PhotoLinkButtons } from "@/components/clients/photo-link-button";
 import { MemberAppCard } from "@/components/clients/member-app-card";
 import { OldHistoryCard } from "@/components/clients/old-history-card";
@@ -88,6 +88,8 @@ import { PausePlanDialog } from "@/components/clients/pause-plan-dialog";
 import { EditPlanDialog, PlanEdits } from "@/components/clients/edit-plan-dialog";
 import { OldSoftwareDialog } from "@/components/clients/old-software-dialog";
 import { undoOldSoftwareMove } from "@/services/old-software.service";
+import { lookupOldMembers } from "@/services/old-data.service";
+import { matchingOldPlan, type OldMember } from "@/lib/old-data";
 import { billOfPlan } from "@/services/plan-edit.service";
 import { canEditPlan } from "@/services/plan-edit.service";
 import {
@@ -177,6 +179,23 @@ function ClientProfilePage() {
   const [pausing, setPausing] = useState<Membership | null>(null);
   const [editing, setEditing] = useState<Membership | null>(null);
   const [oldMove, setOldMove] = useState<Membership | null>(null);
+  // The member's record in the old software (same cached lookup as the Old software record card).
+  const [oldRecord, setOldRecord] = useState<{ phone: string; members: OldMember[] }>({
+    phone: "",
+    members: [],
+  });
+  const phone = client.data?.phone ?? "";
+  useEffect(() => {
+    if (!phone) return;
+    let live = true;
+    lookupOldMembers(phone).then(
+      (r) => live && setOldRecord({ phone, members: r.members }),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [phone]);
 
   const crumbs = [
     { label: "Home", to: "/dashboard" },
@@ -217,6 +236,26 @@ function ClientProfilePage() {
     effective: effectiveMembershipStatus(m),
   }));
   const current = withStatus.find((m) => m.effective === "active") ?? null;
+  // A plan paid in the old software that was saved without the amount (e.g. from an app tab left
+  // open on an older version) shows the amount from the old software's record of the same plan.
+  // Display only: Edit / Cancel get the plan as saved.
+  const oldPerson =
+    oldRecord.phone === c.phone
+      ? (oldRecord.members.find((o) => !!c.oldMemberId && o.memberId === c.oldMemberId) ??
+        (oldRecord.members.length === 1 ? (oldRecord.members[0] ?? null) : null))
+      : null;
+  const shownPlan = <T extends Membership>(m: T): T => {
+    if (!m.paidInOldSoftware || m.oldSoftwarePaid || !oldPerson) return m;
+    const op = matchingOldPlan(oldPerson, m.startDate, m.endDate);
+    const paid = op ? Math.max(0, op.amount - op.balance) : 0;
+    if (!op || paid <= 0) return m;
+    return {
+      ...m,
+      oldSoftwarePaid: paid,
+      ...(op.balance > 0 && !m.oldSoftwareBalance ? { oldSoftwareBalance: op.balance } : {}),
+      ...(op.bill && !m.oldSoftwareBillNo ? { oldSoftwareBillNo: op.bill } : {}),
+    };
+  };
   const upcoming = withStatus.filter((m) => m.effective === "pending");
 
   return (
@@ -534,7 +573,7 @@ function ClientProfilePage() {
             <>
               {current ? (
                 <MembershipHero
-                  m={current}
+                  m={shownPlan(current)}
                   onCancel={() => setCancelling(current)}
                   onEdit={
                     can("members") && canEditPlan(current) ? () => setEditing(current) : undefined
@@ -584,8 +623,12 @@ function ClientProfilePage() {
                         {m.paidInOldSoftware ? (
                           <p className="text-meta">
                             Paid in the old software
-                            {m.oldSoftwarePaid ? ` · ${formatPrice(m.oldSoftwarePaid)}` : ""}
-                            {m.oldSoftwareBillNo ? ` · bill ${m.oldSoftwareBillNo}` : ""}
+                            {shownPlan(m).oldSoftwarePaid
+                              ? ` · ${formatPrice(shownPlan(m).oldSoftwarePaid ?? 0)}`
+                              : ""}
+                            {shownPlan(m).oldSoftwareBillNo
+                              ? ` · bill ${shownPlan(m).oldSoftwareBillNo}`
+                              : ""}
                             {/* Marked by mistake: the owner can put it back any time (not only
                                 right after), as long as the bill hasn't changed since. */}
                             {m.oldSoftwareMoveId && can("finance") ? (
@@ -629,7 +672,7 @@ function ClientProfilePage() {
                         <PlanEdits plan={m} />
                       </div>
                       <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
-                        <PlanAmount m={m} />
+                        <PlanAmount m={shownPlan(m)} />
                         <StatusPill tone={MEMBERSHIP_STATUS_META[m.effective].tone}>
                           {MEMBERSHIP_STATUS_META[m.effective].label}
                         </StatusPill>
