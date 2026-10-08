@@ -47,7 +47,25 @@ export interface OldMoveRow {
 export interface WholeEntry {
   deal: number;
   paid: number;
+  /**
+   * The old software's plans this bill covered (e.g. the annual plan and a PT month): one bill
+   * line each. Left out = one line for the plan.
+   */
+  lines?: OldDealLine[] | undefined;
 }
+
+export interface OldDealLine {
+  name: string;
+  start: string;
+  end: string;
+  /** Its price there after discount ("to pay"). */
+  amount: number;
+  paid: number;
+  bill: string;
+}
+
+/** PT / personal training plans in the old software (their price is not the gym plan's). */
+export const isOldPtPlan = (name: string) => /personal|\bpt\b|trainer/i.test(name);
 
 export interface OldMovePlan {
   error: string;
@@ -221,6 +239,12 @@ export async function previewOldMove(
   return planOldMove(bill, parts.payments, parts.payouts, amount, todayISO(), whole);
 }
 
+/** The gym plan's price in a whole entry: its non-PT lines, else the whole deal. */
+const gymPrice = (w: WholeEntry) => {
+  const gym = (w.lines ?? []).filter((l) => !isOldPtPlan(l.name));
+  return gym.length ? gym.reduce((n, l) => n + l.amount, 0) : w.deal;
+};
+
 export async function markPaidInOldSoftware(input: {
   membership: Membership;
   bill: Invoice | null;
@@ -262,7 +286,7 @@ export async function markPaidInOldSoftware(input: {
     reason,
     changes: whole
       ? [
-          `Paid in the old software: ${formatPrice(whole.paid)} (price ${formatPrice(m.priceSnapshot)} → ${formatPrice(whole.deal)})`,
+          `Paid in the old software: ${formatPrice(whole.paid)}${whole.lines?.length ? ` (${whole.lines.map((l) => l.name).join(" + ")})` : ""}; plan price ${formatPrice(m.priceSnapshot)} → ${formatPrice(gymPrice(whole))}`,
           ...(bill && takenOff
             ? [
                 `${formatPrice(takenOff)} entered here by mistake taken off this app's money (bill ${bill.invoiceNumber})`,
@@ -334,7 +358,8 @@ export async function markPaidInOldSoftware(input: {
       paidInOldSoftware: true,
       oldSoftwarePaid: amount,
       // The real deal was the old software's.
-      ...(whole ? { priceSnapshot: round(whole.deal) } : {}),
+      // The gym plan's own price there (PT lines are not part of it).
+      ...(whole ? { priceSnapshot: round(gymPrice(whole)) } : {}),
       ...(input.billNo.trim() ? { oldSoftwareBillNo: input.billNo.trim().slice(0, 40) } : {}),
       oldSoftwareMoveId: moveRef.id,
       edits: [...(Array.isArray(prev["edits"]) ? prev["edits"] : []), edit],
@@ -346,18 +371,27 @@ export async function markPaidInOldSoftware(input: {
     // Whole entry: the bill becomes the old deal, one line, its payment shown as a credit.
     const wholeBill = whole
       ? {
-          items: [
-            {
-              name: `Paid in the old software · ${m.packageNameSnapshot}`,
-              description: input.billNo.trim()
-                ? `Old software bill ${input.billNo.trim().slice(0, 40)}`
-                : "Plan bought and paid in the old software",
-              quantity: 1,
-              unitPrice: round(whole.deal),
-              total: round(whole.deal),
-              packageId: m.packageId || null,
-            },
-          ],
+          items: whole.lines?.length
+            ? whole.lines.map((l) => ({
+                name: `Paid in the old software · ${l.name}`,
+                description: `${formatDateISO(l.start)} → ${formatDateISO(l.end)}${l.bill ? ` · old bill ${l.bill}` : ""}`,
+                quantity: 1,
+                unitPrice: round(l.amount),
+                total: round(l.amount),
+                packageId: isOldPtPlan(l.name) ? null : m.packageId || null,
+              }))
+            : [
+                {
+                  name: `Paid in the old software · ${m.packageNameSnapshot}`,
+                  description: input.billNo.trim()
+                    ? `Old software bill ${input.billNo.trim().slice(0, 40)}`
+                    : "Plan bought and paid in the old software",
+                  quantity: 1,
+                  unitPrice: round(whole.deal),
+                  total: round(whole.deal),
+                  packageId: m.packageId || null,
+                },
+              ],
           subtotal: round(whole.deal),
           upgradeCredit: 0,
         }

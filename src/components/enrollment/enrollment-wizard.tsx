@@ -480,7 +480,10 @@ export function EnrollmentWizard({
   // here). Members already added (Excel import, thumb first) count too.
   const canPaidOld =
     !resuming && (Boolean(oldId) || startDate < today) && !(existing && plans.data.length > 0);
-  const paidInOld = canPaidOld && paidOld;
+  // A plan still running in the old software is carried over as it is: paid there, its own
+  // dates, amounts read-only (no discount, nothing counted today). They renew here after it ends.
+  const oldLocked = canPaidOld && !!oldRunning;
+  const paidInOld = canPaidOld && (paidOld || oldLocked);
   const oldBalance =
     oldBalanceText === ""
       ? (oldRunning?.balance ?? 0)
@@ -489,7 +492,19 @@ export function EnrollmentWizard({
   const oldPaid =
     oldPaidText === "" ? oldPaidSuggested : Math.max(0, Math.floor(Number(oldPaidText) || 0));
   const dueLeft = paidInOld ? oldBalance > 0 : balanceLeft;
-  const newEnd = gymPackage ? calculateEndDate(startDate, gymPackage.durationDays) : "";
+  const newEnd = oldLocked
+    ? oldRunning.end
+    : gymPackage
+      ? calculateEndDate(startDate, gymPackage.durationDays)
+      : "";
+  useEffect(() => {
+    if (!oldLocked) return;
+    setPaidOld(true);
+    setOldPaidText("");
+    setOldBalanceText("");
+    if (startDate !== oldRunning.start) setStartDate(oldRunning.start);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oldLocked, oldRunning?.start]);
 
   /** "Use old details": name (if empty), gender, birthday, joining date, old ID, counsellor. */
   const fillFromOld = (m: OldMember) => {
@@ -687,7 +702,12 @@ export function EnrollmentWizard({
         memberId: cleanMemberId(memberNo),
         upgrade,
         oldSoftware: paidInOld
-          ? { balance: oldBalance, paid: oldPaid, billNo: oldRunning?.bill ?? "" }
+          ? {
+              balance: oldBalance,
+              paid: oldPaid,
+              billNo: oldRunning?.bill ?? "",
+              ...(oldLocked ? { end: oldRunning.end } : {}),
+            }
           : null,
       });
       writeDraft(draftKey, null);
@@ -995,6 +1015,7 @@ export function EnrollmentWizard({
                         id="e-start"
                         type="date"
                         value={startDate}
+                        disabled={oldLocked}
                         onChange={(e) => setStartDate(e.target.value)}
                       />
                     </Field>
@@ -1200,7 +1221,8 @@ export function EnrollmentWizard({
                 {canPaidOld ? (
                   <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm">
                     <Checkbox
-                      checked={paidOld}
+                      checked={paidInOld}
+                      disabled={oldLocked}
                       onCheckedChange={(v) => setPaidOld(v === true)}
                       className="mt-0.5"
                       aria-label="Paid in the old software"
@@ -1208,9 +1230,9 @@ export function EnrollmentWizard({
                     <span>
                       <span className="block font-semibold">Paid in the old software</span>
                       <span className="text-meta">
-                        For a member moving over whose plan is already paid there. No money is taken
-                        or counted today (day book, cash and income stay as they are). Their old
-                        offer price is kept: no discount needed.
+                        {oldLocked
+                          ? `Still running in the old software until ${formatDateISO(oldRunning.end)}: it is carried over as paid there (amounts from the old software, nothing counted today). The thumb works until then; renew here after it ends.`
+                          : "For a member moving over whose plan is already paid there. No money is taken or counted today (day book, cash and income stay as they are). Their old offer price is kept: no discount needed."}
                       </span>
                     </span>
                   </label>
@@ -1233,6 +1255,7 @@ export function EnrollmentWizard({
                         inputMode="decimal"
                         min={0}
                         value={oldPaidText === "" ? oldPaid : oldPaidText}
+                        readOnly={oldLocked}
                         onChange={(e) =>
                           setOldPaidText(e.target.value === "" ? "0" : e.target.value)
                         }
@@ -1254,6 +1277,7 @@ export function EnrollmentWizard({
                         inputMode="decimal"
                         min={0}
                         value={oldBalanceText === "" ? oldBalance : oldBalanceText}
+                        readOnly={oldLocked}
                         onChange={(e) =>
                           setOldBalanceText(e.target.value === "" ? "0" : e.target.value)
                         }
