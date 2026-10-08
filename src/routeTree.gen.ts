@@ -37,6 +37,7 @@ import { Route as AuthenticatedRecycleBinRouteImport } from './routes/_authentic
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedStaffRouteImport } from './routes/_authenticated/staff'
+import { Route as AuthenticatedWhatsappRouteImport } from './routes/_authenticated/whatsapp'
 import { Route as AuthenticatedWhatsappUsageRouteImport } from './routes/_authenticated/whatsapp-usage'
 import { Route as AuthenticatedWorkoutPlansRouteImport } from './routes/_authenticated/workout-plans'
 import { Route as InvoiceTokenRouteImport } from './routes/invoice.$token'
@@ -192,6 +193,11 @@ const AuthenticatedStaffRoute = AuthenticatedStaffRouteImport.update({
   path: '/staff',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedWhatsappRoute = AuthenticatedWhatsappRouteImport.update({
+  id: '/whatsapp',
+  path: '/whatsapp',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedWhatsappUsageRoute =
   AuthenticatedWhatsappUsageRouteImport.update({
     id: '/whatsapp-usage',
@@ -271,6 +277,7 @@ export interface FileRoutesByFullPath {
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/staff': typeof AuthenticatedStaffRoute
+  '/whatsapp': typeof AuthenticatedWhatsappRoute
   '/whatsapp-usage': typeof AuthenticatedWhatsappUsageRoute
   '/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/invoice/$token': typeof InvoiceTokenRoute
@@ -309,6 +316,7 @@ export interface FileRoutesByTo {
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/staff': typeof AuthenticatedStaffRoute
+  '/whatsapp': typeof AuthenticatedWhatsappRoute
   '/whatsapp-usage': typeof AuthenticatedWhatsappUsageRoute
   '/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/invoice/$token': typeof InvoiceTokenRoute
@@ -349,6 +357,7 @@ export interface FileRoutesById {
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/staff': typeof AuthenticatedStaffRoute
+  '/_authenticated/whatsapp': typeof AuthenticatedWhatsappRoute
   '/_authenticated/whatsapp-usage': typeof AuthenticatedWhatsappUsageRoute
   '/_authenticated/workout-plans': typeof AuthenticatedWorkoutPlansRoute
   '/invoice/$token': typeof InvoiceTokenRoute
@@ -389,6 +398,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/staff'
+    | '/whatsapp'
     | '/whatsapp-usage'
     | '/workout-plans'
     | '/invoice/$token'
@@ -427,6 +437,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/staff'
+    | '/whatsapp'
     | '/whatsapp-usage'
     | '/workout-plans'
     | '/invoice/$token'
@@ -466,6 +477,7 @@ export interface FileRouteTypes {
     | '/_authenticated/reports'
     | '/_authenticated/settings'
     | '/_authenticated/staff'
+    | '/_authenticated/whatsapp'
     | '/_authenticated/whatsapp-usage'
     | '/_authenticated/workout-plans'
     | '/invoice/$token'
@@ -685,6 +697,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedStaffRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/whatsapp': {
+      id: '/_authenticated/whatsapp'
+      path: '/whatsapp'
+      fullPath: '/whatsapp'
+      preLoaderRoute: typeof AuthenticatedWhatsappRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/whatsapp-usage': {
       id: '/_authenticated/whatsapp-usage'
       path: '/whatsapp-usage'
@@ -777,6 +796,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedStaffRoute: typeof AuthenticatedStaffRoute
+  AuthenticatedWhatsappRoute: typeof AuthenticatedWhatsappRoute
   AuthenticatedWhatsappUsageRoute: typeof AuthenticatedWhatsappUsageRoute
   AuthenticatedWorkoutPlansRoute: typeof AuthenticatedWorkoutPlansRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
@@ -810,6 +830,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedStaffRoute: AuthenticatedStaffRoute,
+  AuthenticatedWhatsappRoute: AuthenticatedWhatsappRoute,
   AuthenticatedWhatsappUsageRoute: AuthenticatedWhatsappUsageRoute,
   AuthenticatedWorkoutPlansRoute: AuthenticatedWorkoutPlansRoute,
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,

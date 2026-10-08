@@ -2,14 +2,15 @@ import { doc, getDocs, query, runTransaction, serverTimestamp, where } from "@/l
 import { db } from "@/lib/firebase";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { billTaxRate, calculateInvoiceTotals, derivePaymentStatus } from "@/lib/invoice-utils";
-import type { BusinessBillingSettings, Invoice, RecordEdit } from "@/types/models";
+import type { BusinessBillingSettings, Invoice, PaymentMethod, RecordEdit } from "@/types/models";
 import { allocatePayment } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
 
 /**
  * Correcting a bill: the discount (Income & expenses only: it changes money), the day the member
  * promised to pay the balance (the reminder goes out that morning) and the note. The public bill
- * link shows the same, and payments on the bill are split again by the new total.
+ * link shows the same, and payments on the bill are split again by the new total. A discount
+ * given after the full price was paid gives the extra back (a refund payment, in the Day Book).
  */
 
 export interface BillEditForm {
@@ -43,9 +44,12 @@ export function previewBillEdit(
     if (!(f.discount >= 0)) error = "Enter the discount in rupees (0 for none).";
     else if (i.paymentStatus === "closed" || i.paymentStatus === "refunded")
       error = `This bill is ${i.paymentStatus}: its discount can't change.`;
-    else if (totals.total < i.amountPaid)
-      error = `Too big: ${formatPrice(i.amountPaid)} is already paid, so the total can't go below it.`;
   }
+  /** Paid more than the new total: given back. */
+  const refund =
+    discountChanged && !error
+      ? Math.max(0, Math.round((i.amountPaid - totals.total) * 100) / 100)
+      : 0;
   const balance = discountChanged
     ? Math.round((totals.total - i.amountPaid) * 100) / 100
     : i.balanceDue;
@@ -54,7 +58,7 @@ export function previewBillEdit(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f.dueDate)) error ||= "Pick the pay-by date.";
   }
   if (f.notes.trim() !== i.notes.trim()) changes.push("Note changed");
-  return { changes, error, discountChanged, totals, balance };
+  return { changes, error, discountChanged, totals, balance: Math.max(0, balance), refund };
 }
 
 export async function editBill(input: {
@@ -64,6 +68,9 @@ export async function editBill(input: {
   reason: string;
   canDiscount: boolean;
   by: string;
+  byUid?: string;
+  /** How the extra is given back when the member already paid more than the new total. */
+  refundMethod?: PaymentMethod;
 }) {
   const { invoice: i, form } = input;
   const pv = previewBillEdit(i, form, input.settings);
@@ -85,7 +92,11 @@ export async function editBill(input: {
     const snap = await tx.get(ref);
     if (!snap.exists()) throw new Error("This bill was removed.");
     const d = snap.data();
-    if (Number(d["amountPaid"] ?? 0) !== i.amountPaid || Number(d["total"] ?? 0) !== i.total)
+    if (
+      Number(d["amountPaid"] ?? 0) !== i.amountPaid ||
+      Number(d["total"] ?? 0) !== i.total ||
+      Number(d["discount"] ?? 0) !== i.discount
+    )
       throw new Error("A payment was just added to this bill. Open it again.");
     const shared: Record<string, unknown> = {
       notes: form.notes.trim().slice(0, 500),
@@ -99,13 +110,17 @@ export async function editBill(input: {
         tax: t.tax,
         total: t.total,
         balanceDue: t.balanceDue,
-        paymentStatus: derivePaymentStatus(t.total, i.amountPaid),
+        // A refund leaves exactly the new total paid.
+        amountPaid: t.amountPaid,
+        paymentStatus: derivePaymentStatus(t.total, t.amountPaid),
       });
       const split = {
         total: t.total,
         membershipGross: i.membershipGross,
         ptGross: i.ptGross,
         trainerShareTotal: i.trainerShareTotal,
+        subtotal: t.subtotal,
+        discount: t.discount,
       };
       pays?.docs
         .filter((p) => Number(p.data()["amount"] ?? 0) > 0)
@@ -115,6 +130,28 @@ export async function editBill(input: {
             updatedAt: serverTimestamp(),
           }),
         );
+      if (pv.refund > 0)
+        tx.set(doc(col(COLLECTIONS.payments)), {
+          clientId: i.clientId,
+          clientNameSnapshot: i.clientNameSnapshot,
+          invoiceId: i.id,
+          invoiceNumber: i.invoiceNumber,
+          membershipId: i.membershipId || null,
+          ptAssignmentId: i.ptAssignmentId || null,
+          amount: -pv.refund,
+          method: input.refundMethod ?? "Cash",
+          paymentDate: todayISO(),
+          kind: "refund",
+          note: `Discount given${edit.reason ? `: ${edit.reason}` : ""}`,
+          // Split like the bill's payments, so payments + refund = the new bill's split.
+          ...allocatePayment(split, -pv.refund),
+          createdBy: input.by,
+          createdByUid: input.byUid ?? "",
+          counsellorId: "",
+          counsellorName: "",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
       if (i.enrollmentId)
         tx.update(doc(db, COLLECTIONS.enrollments, i.enrollmentId), {
           paymentStatus: shared["paymentStatus"],

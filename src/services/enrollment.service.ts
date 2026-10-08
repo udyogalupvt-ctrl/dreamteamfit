@@ -515,7 +515,10 @@ export async function enrollMember(input: EnrollmentInput) {
         method: input.method,
         paymentDate: today,
         kind: "initial",
-        ...allocatePayment({ total: money.total, ...breakdown }, money.amountPaid),
+        ...allocatePayment(
+          { total: money.total, subtotal: money.subtotal, discount: money.discount, ...breakdown },
+          money.amountPaid,
+        ),
         ...counsellor,
         createdBy: input.staff.name,
         createdByUid: input.staff.uid,

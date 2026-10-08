@@ -1,12 +1,21 @@
-import { doc, getDocs, query, serverTimestamp, where, writeBatch } from "@/lib/firestore";
+import { doc, getDoc, getDocs, query, serverTimestamp, where, writeBatch } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
-import { formatDateISO, todayISO } from "@/lib/format";
-import type { PtAssignment, PtAssignmentStatus, RecordEdit, Trainer } from "@/types/models";
+import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
+import type {
+  PtAssignment,
+  PtAssignmentStatus,
+  RecordEdit,
+  ShareType,
+  Trainer,
+} from "@/types/models";
+import { allocatePayment } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
+import { calculateShare } from "./pt.service";
 
 /**
- * Correcting a sold PT plan: its trainer (the share moves to the new trainer's unpaid payout) or
- * its dates. The price and the share stay as sold.
+ * Correcting a sold PT plan: its trainer (the share moves to the new trainer's unpaid payout),
+ * its dates, or the trainer's share (% or ₹) when it was typed wrong. The PT price stays as sold
+ * (a lower price is a discount: Edit bill).
  */
 
 export const canEditPt = (p: Pick<PtAssignment, "status">) =>
@@ -19,6 +28,22 @@ export interface PtEditForm {
   trainer: Pick<Trainer, "id" | "name">;
   startDate: string;
   endDate: string;
+  /** The trainer's share; left out = unchanged. */
+  share?: { type: ShareType; value: number } | undefined;
+}
+
+const shareLabel = (type: ShareType, value: number, amount: number) =>
+  type === "percentage" ? `${value}% (${formatPrice(amount)})` : formatPrice(amount);
+
+/** The new share when it changes, else null. */
+export function newShareOf(p: PtAssignment, f: PtEditForm) {
+  if (!f.share || !Number.isFinite(f.share.value)) return null;
+  const s = calculateShare(p.ptPrice, f.share.type, f.share.value);
+  return s.trainerShareType === p.trainerShareType &&
+    s.trainerShareValue === p.trainerShareValue &&
+    s.trainerShareAmount === p.trainerShareAmount
+    ? null
+    : s;
 }
 
 export function ptChanges(p: PtAssignment, f: PtEditForm) {
@@ -29,6 +54,11 @@ export function ptChanges(p: PtAssignment, f: PtEditForm) {
     out.push(`Start ${formatDateISO(p.startDate)} → ${formatDateISO(f.startDate)}`);
   if (f.endDate !== p.endDate)
     out.push(`End ${formatDateISO(p.endDate)} → ${formatDateISO(f.endDate)}`);
+  const s = newShareOf(p, f);
+  if (s)
+    out.push(
+      `Trainer share ${shareLabel(p.trainerShareType, p.trainerShareValue, p.trainerShareAmount)} → ${shareLabel(s.trainerShareType, s.trainerShareValue, s.trainerShareAmount)}`,
+    );
   return out;
 }
 
@@ -50,10 +80,13 @@ export async function editPtPlan(input: {
   const trainerChanged = form.trainer.id !== p.trainerId;
   if (trainerChanged && !input.canFinance)
     throw new Error("Changing the trainer moves their share: it needs Income & expenses.");
+  const share = newShareOf(p, form);
+  if (share && !input.canFinance)
+    throw new Error("Changing the trainer's share needs Income & expenses (the owner).");
 
   const batch = writeBatch(db);
   const now = serverTimestamp();
-  if (trainerChanged) {
+  if (trainerChanged || share) {
     const payouts = await getDocs(
       query(col(COLLECTIONS.trainerPayouts), where("ptAssignmentId", "==", p.id)),
     );
@@ -62,15 +95,60 @@ export async function editPtPlan(input: {
       throw new Error(
         `${p.trainerNameSnapshot} was already paid this share. Mark that payout back to pending first (Income & expenses).`,
       );
+    if (share && payouts.docs.some((d) => d.data()["adjustment"]))
+      throw new Error(
+        "This plan's share was already cut by a cancellation: correct it on Income & expenses → trainer pay.",
+      );
     payouts.docs
       .filter((d) => d.data()["status"] !== "cancelled" && !d.data()["adjustment"])
       .forEach((d) =>
         batch.update(d.ref, {
           trainerId: form.trainer.id,
           trainerNameSnapshot: form.trainer.name,
+          ...(share
+            ? {
+                trainerShareAmount: share.trainerShareAmount,
+                gymShareAmount: share.gymShareAmount,
+              }
+            : {}),
           updatedAt: now,
         }),
       );
+  }
+  // The bill counts the trainer's share apart from gym income: it and the payments' split follow.
+  if (share && p.invoiceId) {
+    const billRef = doc(db, COLLECTIONS.invoices, p.invoiceId);
+    const [bill, pays] = await Promise.all([
+      getDoc(billRef),
+      getDocs(query(col(COLLECTIONS.payments), where("invoiceId", "==", p.invoiceId))),
+    ]);
+    if (bill.exists()) {
+      const b = bill.data();
+      const trainerShareTotal = Math.max(
+        0,
+        Math.round(
+          (Number(b["trainerShareTotal"] ?? 0) + share.trainerShareAmount - p.trainerShareAmount) *
+            100,
+        ) / 100,
+      );
+      const split = {
+        total: Number(b["total"] ?? 0),
+        membershipGross: Number(b["membershipGross"] ?? 0),
+        ptGross: Number(b["ptGross"] ?? 0),
+        trainerShareTotal,
+        subtotal: Number(b["subtotal"] ?? 0),
+        discount: Number(b["discount"] ?? 0),
+      };
+      batch.update(billRef, { trainerShareTotal, updatedAt: now });
+      pays.docs
+        .filter((x) => Number(x.data()["amount"] ?? 0) !== 0)
+        .forEach((x) =>
+          batch.update(x.ref, {
+            ...allocatePayment(split, Number(x.data()["amount"])),
+            updatedAt: now,
+          }),
+        );
+    }
   }
   const edit: RecordEdit = {
     on: todayISO(),
@@ -84,6 +162,14 @@ export async function editPtPlan(input: {
     startDate: form.startDate,
     endDate: form.endDate,
     status: ptStatusFromDates(form.startDate, form.endDate),
+    ...(share
+      ? {
+          trainerShareType: share.trainerShareType,
+          trainerShareValue: share.trainerShareValue,
+          trainerShareAmount: share.trainerShareAmount,
+          gymShareAmount: share.gymShareAmount,
+        }
+      : {}),
     edits: [...p.edits, edit],
     updatedAt: now,
   });

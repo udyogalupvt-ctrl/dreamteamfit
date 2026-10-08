@@ -239,7 +239,7 @@ function CallRow({ m, call }: { m: SegmentMember; call: MemberCall | undefined }
   return (
     <li className="surface-card space-y-3 p-4">
       <div className="flex items-start gap-3">
-        <ClientAvatar name={m.client.fullName} url={m.client.profilePhotoUrl} size={44} />
+        <ClientAvatar name={m.client.fullName} url={m.client.profilePhotoUrl} size={44} zoomable />
         <div className="min-w-0 flex-1">
           <Link
             to="/clients/$clientId"

@@ -4,12 +4,14 @@
  *   POST /api/whatsapp/send      staff: send a queued whatsappMessages doc (bill, test)
  *   POST /api/whatsapp/test      staff: check the token and phone number
  *   GET  /api/whatsapp/webhook   Meta verification
- *   POST /api/whatsapp/webhook   delivery ticks (sent / delivered / read / failed)
+ *   POST /api/whatsapp/webhook   delivery ticks (sent / delivered / read / failed) and members'
+ *                                messages (WhatsApp chats, src/server/whatsapp-chat.ts)
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { db, json, requireStaff, text } from "./admin";
 import { gatewayConfig, gatewayTest, handleGateway, sendFromPhone } from "./whatsapp-gateway";
+import { chatStatus, handleChat, receiveMessages, recordOutgoing } from "./whatsapp-chat";
 
 const env = (k: string, fallback = "") => (process.env[k] ?? fallback).trim();
 const config = () => ({
@@ -55,6 +57,8 @@ export async function sendTemplateMessage(input: {
   kind?: string;
   /** "phone": from the gym's own number even while Send from is the Cloud API (Settings test). */
   via?: "phone";
+  /** The message as the member reads it, for the member's WhatsApp chat in the app. */
+  preview?: string;
 }): Promise<
   | { ok: true; providerMessageId: string; provider: "whatsapp" | "phone" }
   | { ok: false; error: string; code: string }
@@ -106,11 +110,14 @@ export async function sendTemplateMessage(input: {
   if (!response.ok)
     return { ok: false, error: safeError(response.status, body), code: String(response.status) };
   const parsed = JSON.parse(body) as { messages?: Array<{ id?: string }> };
-  return {
-    ok: true,
-    providerMessageId: String(parsed.messages?.[0]?.id ?? ""),
-    provider: "whatsapp",
-  };
+  const providerMessageId = String(parsed.messages?.[0]?.id ?? "");
+  await recordOutgoing({
+    waId: input.to,
+    wamid: providerMessageId,
+    text: input.preview || input.bodyParams.join(" · ") || input.templateName,
+    template: input.templateName,
+  });
+  return { ok: true, providerMessageId, provider: "whatsapp" };
 }
 
 /** Server-only note of Meta's delivery reports (accepted / refused), never message content. */
@@ -237,6 +244,7 @@ async function send(request: Request) {
     // in, so the member opens their bill page (view, download PDF, print).
     buttonUrlParam: String(input.buttonUrlParam ?? ""),
     kind: String(data["type"] ?? ""),
+    preview: String(data["messagePreview"] ?? ""),
     // Only a test may try the gym's own number before it is chosen in Send from.
     ...(input.via === "phone" && String(data["type"]) === "test" ? { via: "phone" as const } : {}),
   });
@@ -302,16 +310,36 @@ async function webhook(request: Request, url: URL) {
       { merge: true },
     )
     .catch(() => undefined);
-  const body = JSON.parse(raw.toString("utf8") || "{}") as {
-    entry?: Array<{ changes?: Array<{ value?: { statuses?: Array<Record<string, unknown>> } }> }>;
+  let body: {
+    entry?: Array<{
+      changes?: Array<{
+        value?: Parameters<typeof receiveMessages>[0] & {
+          statuses?: Array<Record<string, unknown>>;
+        };
+      }>;
+    }>;
   };
+  try {
+    body = JSON.parse(raw.toString("utf8") || "{}") as typeof body;
+  } catch {
+    return text("Bad request", 400);
+  }
   const firestore = db();
   for (const entry of body.entry ?? [])
-    for (const change of entry.changes ?? [])
+    for (const change of entry.changes ?? []) {
+      // Members' messages for WhatsApp chats.
+      if (change.value?.messages?.length) await receiveMessages(change.value);
       for (const status of change.value?.statuses ?? []) {
         const providerId = String(status["id"] ?? "");
         const state = String(status["status"] ?? "");
         if (!providerId || !(state in rank)) continue;
+        const errs = status["errors"] as Array<{ title?: unknown }> | undefined;
+        await chatStatus(
+          String(status["recipient_id"] ?? ""),
+          providerId,
+          state,
+          state === "failed" ? String(errs?.[0]?.title ?? "") : undefined,
+        ).catch(() => undefined);
         const eventRef = firestore.doc(`whatsappWebhookEvents/${providerId}_${state}`);
         const matches = await firestore
           .collection("whatsappMessages")
@@ -343,6 +371,7 @@ async function webhook(request: Request, url: URL) {
           });
         });
       }
+    }
   return text("EVENT_RECEIVED");
 }
 
@@ -371,6 +400,7 @@ export function handleWhatsApp(request: Request, url: URL) {
   const action = url.pathname.replace(/^\/api\/whatsapp\/?/, "").replace(/\/+$/, "");
   if (action === "webhook") return webhook(request, url);
   if (action.startsWith("gateway")) return handleGateway(request, action);
+  if (action.startsWith("chat/")) return handleChat(request, url, action);
   if (action === "templates" && request.method === "GET") return templates(request);
   if (request.method !== "POST") return text("Method not allowed", 405);
   if (action === "send") return send(request);

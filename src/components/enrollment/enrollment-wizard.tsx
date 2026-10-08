@@ -1795,8 +1795,8 @@ function PaidSummary({ invoice }: { invoice: Invoice | null }) {
         </div>
       ))}
       <p className="text-meta">
-        Payments are permanent records. To change them, collect the balance or add a new bill in
-        Billing.
+        Made a mistake? On the member's page: Plan tab → Edit (package, dates, discount, counsellor)
+        or Payments tab → Edit (amount, mode). The bill follows.
       </p>
     </div>
   );

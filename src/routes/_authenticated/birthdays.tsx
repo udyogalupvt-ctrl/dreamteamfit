@@ -56,7 +56,7 @@ function Birthdays() {
     const wish = `Happy birthday ${first}! 🎂 Wishing you a strong and healthy year ahead from everyone at ${business.data.businessName || "the gym"}.`;
     return (
       <article className="surface-card flex items-center gap-3 p-4" key={c.id}>
-        <ClientAvatar name={c.fullName} url={c.profilePhotoUrl} size={48} />
+        <ClientAvatar name={c.fullName} url={c.profilePhotoUrl} size={48} zoomable />
         <div className="min-w-0 flex-1">
           <p className="truncate font-bold">{c.fullName}</p>
           <p className="text-meta">

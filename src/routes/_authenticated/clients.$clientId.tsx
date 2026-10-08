@@ -26,6 +26,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { MessagesSquare } from "lucide-react";
+import { normalizeWhatsAppPhone } from "@/lib/whatsapp-phone";
 import { toastWithUndo } from "@/lib/undo-toast";
 import { PageHeader } from "@/components/common/page-header";
 import { EmptyState } from "@/components/common/empty-state";
@@ -204,6 +206,8 @@ function ClientProfilePage() {
     );
 
   const c = client.data;
+  const wa = normalizeWhatsAppPhone(c.whatsappPhone || c.phone);
+  const waChatId = wa.ok ? wa.value : "";
   const withStatus = memberships.data.map((m) => ({
     ...m,
     effective: effectiveMembershipStatus(m),
@@ -292,7 +296,7 @@ function ClientProfilePage() {
       {/* Profile hero */}
       <section className="surface-card flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
         <div className="relative self-start">
-          <ClientAvatar name={c.fullName} url={c.profilePhotoUrl} size={88} />
+          <ClientAvatar name={c.fullName} url={c.profilePhotoUrl} size={88} zoomable />
           <button
             type="button"
             onClick={() => setPhotoOpen(true)}
@@ -324,6 +328,15 @@ function ClientProfilePage() {
             >
               <Phone className="size-4" aria-hidden /> {c.phone}
             </a>
+            {can("whatsappChats") && waChatId ? (
+              <Link
+                to="/whatsapp"
+                search={{ chat: waChatId }}
+                className="flex items-center gap-1.5 hover:text-foreground"
+              >
+                <MessagesSquare className="size-4" aria-hidden /> WhatsApp chat
+              </Link>
+            ) : null}
             {c.email ? (
               <a
                 href={`mailto:${c.email}`}

@@ -255,15 +255,23 @@ export async function setPayoutStatus(id: string, status: PayoutStatus) {
 /**
  * Splits a collected amount proportionally across the invoice's composition so
  * trainer share is never counted as gym income, even for partial payments.
+ *
+ * A discount (with `subtotal` and `discount` given) lowers the membership and PT parts by the same
+ * share, so a ₹2,499 plan sold for ₹1,999 counts ₹1,999 as membership income, not ₹2,499. The
+ * trainer's share stays as agreed (it was worked out on the PT price).
  */
 export function allocatePayment(
-  invoice: Pick<Invoice, "total" | "membershipGross" | "ptGross" | "trainerShareTotal">,
+  invoice: Pick<Invoice, "total" | "membershipGross" | "ptGross" | "trainerShareTotal"> &
+    Partial<Pick<Invoice, "subtotal" | "discount">>,
   amount: number,
 ) {
   const ratio = invoice.total > 0 ? amount / invoice.total : 0;
+  const subtotal = Number(invoice.subtotal ?? 0);
+  const discount = Number(invoice.discount ?? 0);
+  const keep = subtotal > 0 && discount > 0 ? Math.max(0, subtotal - discount) / subtotal : 1;
   const trainerShareAmount = round(invoice.trainerShareTotal * ratio);
-  const membershipGymAmount = round(invoice.membershipGross * ratio);
-  const ptGymAmount = round((invoice.ptGross - invoice.trainerShareTotal) * ratio);
+  const membershipGymAmount = round(invoice.membershipGross * keep * ratio);
+  const ptGymAmount = round((invoice.ptGross * keep - invoice.trainerShareTotal) * ratio);
   const gymAmount = round(amount - trainerShareAmount);
   return {
     trainerShareAmount,
@@ -308,6 +316,8 @@ export async function recordBalancePayment(
         membershipGross: Number(d["membershipGross"] ?? 0),
         ptGross: Number(d["ptGross"] ?? 0),
         trainerShareTotal: Number(d["trainerShareTotal"] ?? 0),
+        subtotal: Number(d["subtotal"] ?? 0),
+        discount: Number(d["discount"] ?? 0),
       },
       amount,
     );

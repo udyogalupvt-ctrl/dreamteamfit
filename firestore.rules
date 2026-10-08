@@ -247,6 +247,16 @@ service cloud.firestore {
       allow read, write: if can('announcements');
     }
 
+    // WhatsApp chats (members' messages and replies): written only by the server.
+    match /waChats/{waId} {
+      allow read: if can('whatsappChats');
+      allow write: if false;
+      match /messages/{messageId} {
+        allow read: if can('whatsappChats');
+        allow write: if false;
+      }
+    }
+
     match /whatsappWebhookEvents/{eventId} {
       allow read: if isStaff();
       allow write: if false;

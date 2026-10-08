@@ -235,7 +235,12 @@ function ClientsPage() {
                   <TableRow key={c.id} className="cursor-pointer" onClick={() => open(c.id)}>
                     <TableCell>
                       <div className="flex min-w-0 items-center gap-3">
-                        <ClientAvatar name={c.fullName} url={c.profilePhotoUrl} size={36} />
+                        <ClientAvatar
+                          name={c.fullName}
+                          url={c.profilePhotoUrl}
+                          size={36}
+                          zoomable
+                        />
                         <div className="min-w-0">
                           <Link
                             to="/clients/$clientId"
@@ -287,15 +292,20 @@ function ClientsPage() {
           <ul className="grid gap-3 md:hidden">
             {filtered.map((c) => (
               <li key={c.id} className="min-w-0 space-y-2">
-                <Link
-                  to="/clients/$clientId"
-                  params={{ clientId: c.id }}
-                  className="surface-card flex items-center gap-3 p-4 transition-colors active:bg-accent"
-                >
-                  <ClientAvatar name={c.fullName} url={c.profilePhotoUrl} size={48} />
+                <div className="surface-card relative flex items-center gap-3 p-4 transition-colors has-[a:active]:bg-accent">
+                  {/* The photo opens full screen; the rest of the card opens the member. */}
+                  <div className="relative z-10">
+                    <ClientAvatar name={c.fullName} url={c.profilePhotoUrl} size={48} zoomable />
+                  </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="truncate font-semibold">{c.fullName}</p>
+                      <Link
+                        to="/clients/$clientId"
+                        params={{ clientId: c.id }}
+                        className="truncate font-semibold after:absolute after:inset-0 after:rounded-[inherit] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
+                      >
+                        {c.fullName}
+                      </Link>
                       <StatusPill tone={STATE_PILL[stateOf(c)].tone}>
                         {STATE_PILL[stateOf(c)].label}
                       </StatusPill>
@@ -313,7 +323,7 @@ function ClientsPage() {
                     </p>
                   </div>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                </Link>
+                </div>
                 {isSetupPending(c) ? (
                   <Button className="h-11 w-full" onClick={() => resumeSetup(c)}>
                     <Fingerprint aria-hidden /> Finish joining — register thumb

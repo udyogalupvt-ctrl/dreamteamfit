@@ -13,6 +13,7 @@ import {
   LineChart,
   Megaphone,
   MessageCircle,
+  MessagesSquare,
   Package,
   PhoneCall,
   ReceiptIndianRupee,
@@ -53,6 +54,13 @@ export const NAV_ITEMS: NavItem[] = [
     to: "/member-calls",
     icon: PhoneCall,
     feature: "memberCalls",
+    group: "Workspace",
+  },
+  {
+    label: "WhatsApp",
+    to: "/whatsapp",
+    icon: MessagesSquare,
+    feature: "whatsappChats",
     group: "Workspace",
   },
   {

@@ -180,6 +180,7 @@ async function deliver(
         bodyParams,
         buttonUrlParam,
         kind,
+        preview: bodyParams.join(" · "),
       })
     : ({ ok: false, error: "Invalid WhatsApp number.", code: "invalid_number" } as const);
   const now = FieldValue.serverTimestamp();

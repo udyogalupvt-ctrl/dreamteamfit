@@ -300,3 +300,74 @@
     display: none;
   }
 }
+
+/* WhatsApp chats: WhatsApp's own colours (light and dark) and its system font, only on that page. */
+.wa-theme {
+  --wa-app: #f0f2f5;
+  --wa-panel: #ffffff;
+  --wa-header: #f0f2f5;
+  --wa-hover: #f5f6f6;
+  --wa-selected: #f0f2f5;
+  --wa-divider: #e9edef;
+  --wa-text: #111b21;
+  --wa-muted: #5b6a73;
+  --wa-icon: #54656f;
+  --wa-input: #ffffff;
+  --wa-search: #f0f2f5;
+  --wa-green: #008069;
+  --wa-accent: #00a884;
+  --wa-badge: #008069;
+  --wa-badge-text: #ffffff;
+  --wa-in: #ffffff;
+  --wa-out: #d9fdd3;
+  --wa-meta: #5b6a73;
+  --wa-meta-out: #5b6a73;
+  --wa-tick-read: #027eb5;
+  --wa-chip: #ffffff;
+  --wa-chip-text: #54656f;
+  --wa-notice: #ffeecd;
+  --wa-notice-text: #54656f;
+  --wa-quote-in: #f5f6f6;
+  --wa-quote-out: #d1f4cc;
+  --wa-wall: #efeae2;
+  --wa-doodle: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22180%22 height=%22180%22 viewBox=%220 0 180 180%22%3E%3Cg fill=%22none%22 stroke=%22%23c9bfae%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E %3Cpath d=%22M14 30h22M10 24v12M40 24v12M6 27v6M44 27v6%22/%3E %3Cpath d=%22M122 22c-4-6-14-3-12 4 1 5 12 11 12 11s11-6 12-11c2-7-8-10-12-4z%22/%3E %3Cpath d=%22M76 62h10v4a5 5 0 0 1-10 0z M78 58h6v4h-6z M76 70v14a3 3 0 0 0 3 3h4a3 3 0 0 0 3-3V70%22/%3E %3Cpath d=%22M150 80l3 7 7 1-5 5 1 7-6-4-6 4 1-7-5-5 7-1z%22/%3E %3Ccircle cx=%2230%22 cy=%22110%22 r=%229%22/%3E%3Cpath d=%22M30 104v6l4 3%22/%3E %3Cpath d=%22M98 132l8-8m-4 12l12-12m-2 14l8-8%22/%3E %3Cpath d=%22M150 150c6 0 8-8 0-10-8 2-6 10 0 10z M150 140v-6%22/%3E %3Cpath d=%22M50 160c4-10 14-10 18 0%22/%3E%3Ccircle cx=%2259%22 cy=%22150%22 r=%224%22/%3E %3Cpath d=%22M120 170h16M128 162v16%22/%3E %3Cpath d=%22M8 72c5-3 9 3 14 0s9 3 14 0%22/%3E %3C/g%3E%3C/svg%3E");
+  --wa-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+  font-family: "Segoe UI", "Helvetica Neue", Helvetica, "Lucida Grande", Arial, Ubuntu, Cantarell, "Fira Sans", sans-serif;
+  color: var(--wa-text);
+}
+.dark .wa-theme {
+  --wa-app: #0c1317;
+  --wa-panel: #111b21;
+  --wa-header: #202c33;
+  --wa-hover: #202c33;
+  --wa-selected: #2a3942;
+  --wa-divider: #222d34;
+  --wa-text: #e9edef;
+  --wa-muted: #9aa7ae;
+  --wa-icon: #aebac1;
+  --wa-input: #2a3942;
+  --wa-search: #202c33;
+  --wa-green: #00a884;
+  --wa-accent: #00a884;
+  --wa-badge: #00a884;
+  --wa-badge-text: #111b21;
+  --wa-in: #202c33;
+  --wa-out: #005c4b;
+  --wa-meta: #a5b1b8;
+  --wa-meta-out: #c2d6d1;
+  --wa-tick-read: #53bdeb;
+  --wa-chip: #182229;
+  --wa-chip-text: #8696a0;
+  --wa-notice: #182229;
+  --wa-notice-text: #ffd279;
+  --wa-quote-in: #1d282f;
+  --wa-quote-out: #025144;
+  --wa-wall: #0b141a;
+  --wa-doodle: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22180%22 height=%22180%22 viewBox=%220 0 180 180%22%3E%3Cg fill=%22none%22 stroke=%22%231c2a33%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E %3Cpath d=%22M14 30h22M10 24v12M40 24v12M6 27v6M44 27v6%22/%3E %3Cpath d=%22M122 22c-4-6-14-3-12 4 1 5 12 11 12 11s11-6 12-11c2-7-8-10-12-4z%22/%3E %3Cpath d=%22M76 62h10v4a5 5 0 0 1-10 0z M78 58h6v4h-6z M76 70v14a3 3 0 0 0 3 3h4a3 3 0 0 0 3-3V70%22/%3E %3Cpath d=%22M150 80l3 7 7 1-5 5 1 7-6-4-6 4 1-7-5-5 7-1z%22/%3E %3Ccircle cx=%2230%22 cy=%22110%22 r=%229%22/%3E%3Cpath d=%22M30 104v6l4 3%22/%3E %3Cpath d=%22M98 132l8-8m-4 12l12-12m-2 14l8-8%22/%3E %3Cpath d=%22M150 150c6 0 8-8 0-10-8 2-6 10 0 10z M150 140v-6%22/%3E %3Cpath d=%22M50 160c4-10 14-10 18 0%22/%3E%3Ccircle cx=%2259%22 cy=%22150%22 r=%224%22/%3E %3Cpath d=%22M120 170h16M128 162v16%22/%3E %3Cpath d=%22M8 72c5-3 9 3 14 0s9 3 14 0%22/%3E %3C/g%3E%3C/svg%3E");
+  --wa-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+}
+.wa-wallpaper {
+  background-color: var(--wa-wall);
+  background-image: var(--wa-doodle);
+  background-size: 180px 180px;
+}

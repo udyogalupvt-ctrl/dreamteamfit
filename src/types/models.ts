@@ -1066,6 +1066,7 @@ export const STAFF_FEATURES = [
   "daybook",
   "attendance",
   "memberCalls",
+  "whatsappChats",
   "announcements",
   "finance",
   "packages",

@@ -11,6 +11,10 @@ export const FEATURE_META: Record<StaffFeature, { label: string; hint: string }>
   },
   attendance: { label: "Attendance", hint: "Member and staff attendance" },
   memberCalls: { label: "Member calls", hint: "Inactive, expiring, renewal and payment-due lists" },
+  whatsappChats: {
+    label: "WhatsApp chats",
+    hint: "Read and reply to messages members send to the gym's WhatsApp number",
+  },
   announcements: {
     label: "WhatsApp announcements",
     hint: "Send a message to active, inactive or not-renewed members, or any number (Meta charges each)",
@@ -76,6 +80,7 @@ export const DEFAULT_STAFF_FEATURES: StaffFeature[] = [
   "daybook",
   "attendance",
   "memberCalls",
+  "whatsappChats",
 ];
 
 /** Which feature a page belongs to. "owner" = owners only. Pages not listed are open to all staff. */
@@ -90,6 +95,7 @@ const PAGE_FEATURES: [prefix: string, feature: StaffFeature | "owner"][] = [
   ["/day-book", "daybook"],
   ["/attendance", "attendance"],
   ["/member-calls", "memberCalls"],
+  ["/whatsapp", "whatsappChats"],
   ["/announcements", "announcements"],
   ["/expenses", "finance"],
   ["/cfo", "finance"],
