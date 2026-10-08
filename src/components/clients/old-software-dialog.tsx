@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { History } from "lucide-react";
 import { Field, FormDialog } from "@/components/common/form-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useAccess } from "@/hooks/use-access";
@@ -12,40 +13,40 @@ import { toastWithUndo } from "@/lib/undo-toast";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { lookupOldMembers } from "@/services/old-data.service";
 import {
+  isOldPtPlan,
   markPaidInOldSoftware,
   previewOldMove,
   undoOldSoftwareMove,
+  type OldDealLine,
   type OldMovePlan,
 } from "@/services/old-software.service";
 import type { Invoice, Membership } from "@/types/models";
 
-/** From the old software's records: its price for the plan, what was paid there, its bill no. */
-export type OldSuggestion = { amount: number; paid: number; bill: string; plan?: string };
-
 const paidOf = (p: Pick<OldPlan, "amount" | "balance">) =>
   Math.max(0, (p.amount || 0) - (p.balance || 0));
+const dayGap = (a: string, b: string) =>
+  Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
+const keyOf = (p: Pick<OldPlan, "name" | "start" | "end">) => `${p.name}|${p.start}|${p.end}`;
 
-/** The old software's plan for the same days as this plan (the member's own record first). */
-function matchOldPlan(members: OldMember[], oldMemberId: string, m: Membership) {
-  const mine = members.find((x) => x.memberId && x.memberId === oldMemberId);
-  const plans = (mine ? [mine] : members).flatMap((x) => x.plans);
-  const days = (a: string, b: string) =>
-    Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
-  return (
+/**
+ * The old plans this bill most likely covered: those starting within a week of this plan (a PT
+ * plan only when the bill has PT). The owner can change the ticks.
+ */
+function preselect(plans: OldPlan[], m: Membership, billHasPt: boolean) {
+  return new Set(
     plans
-      .filter(
-        (p) => p.start && p.end && p.start <= m.endDate && p.end >= m.startDate && p.amount > 0,
-      )
-      .sort((a, b) => days(a.start, m.startDate) - days(b.start, m.startDate))[0] ?? null
+      .filter((p) => p.amount > 0 && p.start && dayGap(p.start, m.startDate) <= 7)
+      .filter((p) => (isOldPtPlan(p.name) ? billHasPt : true))
+      .map(keyOf),
   );
 }
 
 /**
  * "Paid in the old software?": a plan entered here as a new sale although the member bought it in
- * the old software. The money comes off this app's collections (today's / this month's Collected,
- * Day Book, income, CFO, incentives). Two cases:
- * - the whole entry was a re-entry (usual): everything recorded here for the bill comes off, and
- *   the plan and bill become the old software's deal (its price, what was paid there);
+ * the old software. Shows the member's whole old-software record (every plan, price, what was paid)
+ * so the owner decides with everything in view. Two cases:
+ * - the whole entry here was a re-entry (usual): everything recorded here for the bill comes off,
+ *   and the bill becomes the old plans it covered (ticked), the plan price the old gym plan's;
  * - only part was paid there: just that part comes off, the rest stays as money paid here.
  */
 export function OldSoftwareDialog({
@@ -54,17 +55,15 @@ export function OldSoftwareDialog({
   memberName,
   memberPhone,
   oldMemberId,
-  suggested,
   onClose,
   onDone,
 }: {
   membership: Membership | null;
   bill: Invoice | null;
   memberName: string;
-  /** To find the member in the old software's records when no suggestion is given. */
-  memberPhone?: string;
-  oldMemberId?: string;
-  suggested?: OldSuggestion | null;
+  /** To find the member in the old software's records. */
+  memberPhone?: string | undefined;
+  oldMemberId?: string | undefined;
   onClose: () => void;
   onDone?: () => void;
 }) {
@@ -73,54 +72,88 @@ export function OldSoftwareDialog({
   const { user } = useAuth();
   const money = can("finance");
   const [mode, setMode] = useState<"whole" | "part">("whole");
+  const [record, setRecord] = useState<OldMember | null>(null);
+  const [looking, setLooking] = useState(false);
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [deal, setDeal] = useState("");
   const [paidThere, setPaidThere] = useState("");
   const [amount, setAmount] = useState("");
   const [billNo, setBillNo] = useState("");
   const [reason, setReason] = useState("");
-  const [found, setFound] = useState<OldSuggestion | null>(null);
   const [plan, setPlan] = useState<OldMovePlan | null>(null);
   const [error, setError] = useState("");
+  const billHasPt = !!(bill && (bill.ptAssignmentId || bill.ptGross > 0));
 
-  // What the old software says: given, or looked up by the member's phone.
+  // The member's old-software record (by phone; their linked old ID first).
   useEffect(() => {
     if (!membership) return;
-    setFound(suggested ?? null);
-    if (suggested || !memberPhone) return;
-    let live = true;
-    lookupOldMembers(memberPhone).then(
-      (r) => {
-        const p = live ? matchOldPlan(r.members, oldMemberId ?? "", membership) : null;
-        if (p)
-          setFound({
-            amount: p.amount,
-            paid: paidOf(p),
-            bill: p.bill,
-            plan: `${p.name} ${formatDateISO(p.start)} → ${formatDateISO(p.end)}`,
-          });
-      },
-      () => undefined,
-    );
-    return () => {
-      live = false;
-    };
-  }, [membership, suggested, memberPhone, oldMemberId]);
-
-  useEffect(() => {
-    if (!membership) return;
+    setRecord(null);
+    setTicked(new Set());
     setMode("whole");
-    setDeal(found ? String(found.amount) : "");
-    setPaidThere(found ? String(found.paid) : "");
-    setAmount(String(Math.min(found?.paid || bill?.amountPaid || 0, bill?.amountPaid ?? 0) || ""));
-    setBillNo(found?.bill ?? "");
+    setDeal("");
+    setPaidThere("");
+    setAmount(String(bill?.amountPaid || ""));
+    setBillNo("");
     setReason("");
     setError("");
     setPlan(null);
-  }, [membership, bill, found]);
+    if (!memberPhone) return;
+    let live = true;
+    setLooking(true);
+    lookupOldMembers(memberPhone)
+      .then(
+        (r) => {
+          if (!live) return;
+          const person =
+            r.members.find((x) => x.memberId && x.memberId === oldMemberId) ??
+            (r.members.length === 1 ? r.members[0]! : null) ??
+            r.members.find((x) =>
+              x.plans.some((p) => p.start && dayGap(p.start, membership.startDate) <= 7),
+            ) ??
+            null;
+          setRecord(person);
+          if (person) {
+            const pre = preselect(person.plans, membership, billHasPt);
+            setTicked(pre);
+            const first = person.plans.find((p) => pre.has(keyOf(p)) && p.bill);
+            setBillNo(first?.bill ?? "");
+          }
+        },
+        () => undefined,
+      )
+      .finally(() => live && setLooking(false));
+    return () => {
+      live = false;
+    };
+  }, [membership, bill, memberPhone, oldMemberId, billHasPt]);
 
+  const lines: OldDealLine[] = useMemo(
+    () =>
+      (record?.plans ?? [])
+        .filter((p) => ticked.has(keyOf(p)))
+        .map((p) => ({
+          name: p.name,
+          start: p.start,
+          end: p.end,
+          amount: p.amount,
+          paid: paidOf(p),
+          bill: p.bill,
+        })),
+    [record, ticked],
+  );
+  const fromRecord = !!record && lines.length > 0;
+  const whole =
+    mode === "whole"
+      ? fromRecord
+        ? {
+            deal: lines.reduce((n, l) => n + l.amount, 0),
+            paid: lines.reduce((n, l) => n + l.paid, 0),
+            lines,
+          }
+        : { deal: Number(deal), paid: Number(paidThere) }
+      : null;
   const value = Number(amount);
-  const whole = mode === "whole" ? { deal: Number(deal), paid: Number(paidThere) } : null;
-  const wholeKey = whole ? `${whole.deal}|${whole.paid}` : "";
+  const wholeKey = whole ? `${whole.deal}|${whole.paid}|${lines.length}` : "";
   useEffect(() => {
     if (!membership) return;
     let live = true;
@@ -140,6 +173,19 @@ export function OldSoftwareDialog({
   if (!membership) return null;
   const m = membership;
   const takenOff = plan ? plan.remove.reduce((n, p) => n + p.amount, 0) : 0;
+  const gymLines = lines.filter((l) => !isOldPtPlan(l.name));
+  const newPrice = whole
+    ? gymLines.length
+      ? gymLines.reduce((n, l) => n + l.amount, 0)
+      : whole.deal
+    : m.priceSnapshot;
+  const toggle = (p: OldPlan) =>
+    setTicked((s) => {
+      const n = new Set(s);
+      if (n.has(keyOf(p))) n.delete(keyOf(p));
+      else n.add(keyOf(p));
+      return n;
+    });
 
   const save = async () => {
     setError("");
@@ -160,7 +206,7 @@ export function OldSoftwareDialog({
         "Marked as paid in the old software",
         () => undoOldSoftwareMove(r.moveId, money),
         whole
-          ? `${formatPrice(takenOff)} taken off this app's money. Plan price is now ${formatPrice(whole.deal)}.`
+          ? `${formatPrice(takenOff)} taken off this app's money; ${formatPrice(whole.paid)} paid in the old software.`
           : `${formatPrice(value)} taken off this app's money (Collected, Day Book, income).`,
       );
     } catch (e) {
@@ -193,20 +239,56 @@ export function OldSoftwareDialog({
             This changes money: it needs the owner's login (Income & expenses).
           </p>
         ) : null}
-        {found?.plan || found ? (
-          <p className="rounded-xl bg-info/10 p-3 text-sm">
-            Old software: {found.plan ? `${found.plan}, ` : ""}price {formatPrice(found.amount)},
-            paid <b>{formatPrice(found.paid)}</b>
-            {found.bill ? ` (bill ${found.bill})` : ""}.
-          </p>
-        ) : null}
         {bill ? (
           <p className="rounded-xl bg-muted p-3 text-sm">
-            Bill {bill.invoiceNumber} here: total {formatPrice(bill.total)}, recorded as paid here{" "}
+            Entered here: bill {bill.invoiceNumber}
+            {bill.items.length ? ` (${bill.items.map((i) => i.name).join(" + ")})` : ""}, total{" "}
+            {formatPrice(bill.total)}, recorded as paid here{" "}
             <b className="tabular-nums">{formatPrice(plan?.paidHere ?? bill.amountPaid)}</b>
             {bill.balanceDue > 0 ? `, ${formatPrice(bill.balanceDue)} owed` : ""}.
           </p>
         ) : null}
+
+        {/* The old software's record: everything, so the decision is made with it in view. */}
+        <section className="rounded-xl border border-border" aria-label="Old software record">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border p-3">
+            <p className="font-semibold">Old software record</p>
+            <p className="text-meta">
+              {looking
+                ? "Looking up…"
+                : record
+                  ? `${record.name} · ID ${record.memberId} · ${record.plans.length} plan${record.plans.length === 1 ? "" : "s"} · paid ${formatPrice(record.plans.reduce((n, p) => n + paidOf(p), 0))}`
+                  : "No record found for this phone"}
+            </p>
+          </div>
+          {record?.plans.length ? (
+            <ul className="divide-y divide-border">
+              {record.plans.map((p) => (
+                <li key={keyOf(p)}>
+                  <label className="flex cursor-pointer items-start gap-3 p-3 text-sm">
+                    <Checkbox
+                      checked={ticked.has(keyOf(p))}
+                      onCheckedChange={() => toggle(p)}
+                      disabled={!money || mode !== "whole"}
+                      className="mt-0.5"
+                      aria-label={`This bill covered ${p.name} ${p.start}`}
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-medium">{p.name}</span>
+                      <span className="text-meta block">
+                        {formatDateISO(p.start)} → {formatDateISO(p.end)} · price{" "}
+                        {formatPrice(p.price)}
+                        {p.discount ? ` · discount ${formatPrice(p.discount)}` : ""} · to pay{" "}
+                        {formatPrice(p.amount)} · paid {formatPrice(paidOf(p))}
+                        {p.bill ? ` · bill ${p.bill}` : ""}
+                      </span>
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
 
         <RadioGroup
           value={mode}
@@ -219,8 +301,8 @@ export function OldSoftwareDialog({
             <span>
               <span className="block font-semibold">The whole entry here was a mistake</span>
               <span className="text-meta">
-                Everything recorded here for this bill (gym and PT) comes off. The plan and bill
-                become the old software's price and payment.
+                Everything recorded here for this bill comes off. The bill becomes the ticked old
+                plans, with what was paid there.
               </span>
             </span>
           </label>
@@ -233,9 +315,13 @@ export function OldSoftwareDialog({
           </label>
         </RadioGroup>
 
-        {mode === "whole" ? (
+        {mode === "whole" && !fromRecord ? (
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Old software price ₹" htmlFor="old-deal">
+            <Field
+              label="Old software price ₹"
+              htmlFor="old-deal"
+              hint={record ? "Tick the old plans above, or type it." : undefined}
+            >
               <Input
                 id="old-deal"
                 type="number"
@@ -247,15 +333,7 @@ export function OldSoftwareDialog({
                 className="tabular-nums"
               />
             </Field>
-            <Field
-              label="Paid there ₹"
-              htmlFor="old-paid"
-              hint={
-                whole && whole.deal > whole.paid
-                  ? `${formatPrice(whole.deal - whole.paid)} stays owed here`
-                  : undefined
-              }
-            >
+            <Field label="Paid there ₹" htmlFor="old-paid">
               <Input
                 id="old-paid"
                 type="number"
@@ -268,7 +346,8 @@ export function OldSoftwareDialog({
               />
             </Field>
           </div>
-        ) : (
+        ) : null}
+        {mode === "part" ? (
           <Field
             label="Paid in the old software ₹"
             htmlFor="old-amount"
@@ -285,7 +364,7 @@ export function OldSoftwareDialog({
               className="tabular-nums"
             />
           </Field>
-        )}
+        ) : null}
         <Field label="Old software bill no. (optional)" htmlFor="old-bill">
           <Input
             id="old-bill"
@@ -315,11 +394,15 @@ export function OldSoftwareDialog({
               {whole ? (
                 <>
                   <li>
-                    Plan price {formatPrice(m.priceSnapshot)} → {formatPrice(whole.deal)}
+                    Plan price {formatPrice(m.priceSnapshot)} → {formatPrice(newPrice)}
                   </li>
                   <li>
-                    Bill becomes one line: {formatPrice(whole.deal)}, "Paid in the old software"{" "}
-                    {formatPrice(whole.paid)}, still owed {formatPrice(plan.after.balanceDue)}
+                    Bill becomes{" "}
+                    {fromRecord
+                      ? lines.map((l) => `${l.name} ${formatPrice(l.amount)}`).join(" + ")
+                      : formatPrice(whole.deal)}
+                    , "Paid in the old software" {formatPrice(whole.paid)}, still owed{" "}
+                    {formatPrice(plan.after.balanceDue)}
                   </li>
                 </>
               ) : (

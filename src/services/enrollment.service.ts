@@ -108,6 +108,11 @@ export interface EnrollmentInput {
     paid?: number;
     /** The old software's bill number, when known. */
     billNo?: string;
+    /**
+     * The old plan's own last day, when it is still running there: the plan here ends the same
+     * day (the thumb works until then; they renew here after).
+     */
+    end?: string;
   } | null;
 }
 
@@ -263,8 +268,11 @@ export async function enrollMember(input: EnrollmentInput) {
   // The plan runs from the date staff chose with the member, whether or not the thumb is
   // registered yet; the thumb only opens the door.
   const membershipStatus = input.startDate > today ? "pending" : "active";
+  const oldEnd = old?.end && /^\d{4}-\d{2}-\d{2}$/.test(old.end) ? old.end : "";
+  if (oldEnd && oldEnd < input.startDate)
+    throw new Error("The old plan ends before it starts: check the old software's dates.");
   const planEnd = input.gymPackage
-    ? calculateEndDate(input.startDate, input.gymPackage.durationDays)
+    ? oldEnd || calculateEndDate(input.startDate, input.gymPackage.durationDays)
     : "";
   const planSummary =
     membershipRef && input.gymPackage && membershipStatus === "active"
@@ -339,7 +347,7 @@ export async function enrollMember(input: EnrollmentInput) {
 
     let endDate = "";
     if (membershipRef && input.gymPackage) {
-      endDate = calculateEndDate(input.startDate, input.gymPackage.durationDays);
+      endDate = oldEnd || calculateEndDate(input.startDate, input.gymPackage.durationDays);
       prevActive.forEach((id) =>
         tx.update(doc(db, COLLECTIONS.memberships, id), { status: "expired", updatedAt: now }),
       );

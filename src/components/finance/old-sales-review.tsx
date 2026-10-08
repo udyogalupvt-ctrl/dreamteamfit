@@ -15,7 +15,13 @@ import { mapMembership } from "@/services/memberships.service";
 import type { OldSaleSuspect } from "@/lib/old-data";
 import type { Invoice, Membership } from "@/types/models";
 
-type Open = { m: Membership; bill: Invoice | null; s: OldSaleSuspect } | null;
+type Open = {
+  m: Membership;
+  bill: Invoice | null;
+  s: OldSaleSuspect;
+  phone: string;
+  oldMemberId: string;
+} | null;
 
 /**
  * Income & expenses: sales since the 1st of last month that look like plans paid in the old
@@ -46,15 +52,18 @@ export function OldSalesReview() {
 
   const check = async (s: OldSaleSuspect) => {
     try {
-      const [m, b] = await Promise.all([
+      const [m, b, c] = await Promise.all([
         getDoc(doc(db, COLLECTIONS.memberships, s.membershipId)),
         getDoc(doc(db, COLLECTIONS.invoices, s.invoiceId)),
+        getDoc(doc(db, COLLECTIONS.clients, s.clientId)),
       ]);
       if (!m.exists()) throw new Error("This plan no longer exists.");
       setOpen({
         m: mapMembership(m.id, m.data()),
         bill: b.exists() ? mapInvoice(b.id, b.data()) : null,
         s,
+        phone: String(c.data()?.["phone"] ?? ""),
+        oldMemberId: String(c.data()?.["oldMemberId"] ?? ""),
       });
     } catch (e) {
       toast.error((e as Error).message);
@@ -125,16 +134,8 @@ export function OldSalesReview() {
         membership={open?.m ?? null}
         bill={open?.bill ?? null}
         memberName={open?.s.clientName ?? ""}
-        suggested={
-          open?.s.old
-            ? {
-                amount: open.s.old.amount,
-                paid: open.s.old.paid,
-                bill: open.s.old.bill,
-                plan: `${open.s.old.plan} ${formatDateISO(open.s.old.start)} → ${formatDateISO(open.s.old.end)}`,
-              }
-            : null
-        }
+        memberPhone={open?.phone}
+        oldMemberId={open?.oldMemberId}
         onClose={() => setOpen(null)}
         onDone={() => void load()}
       />
