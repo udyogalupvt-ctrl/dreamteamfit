@@ -1,6 +1,7 @@
 import {
   doc,
   documentId,
+  getDoc,
   getDocs,
   query,
   serverTimestamp,
@@ -14,6 +15,7 @@ import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import {
   diffOldRows,
   oldMoneySplit,
+  oldPartnerOf,
   oldRowsTotal,
   planOldBackfill,
   type OldBackfill,
@@ -195,6 +197,66 @@ export const oldRowsChange = (before: OldPayRow[], after: OldPayRow[]) =>
     ? `Paid in the old software: ${describeOldRows(before)} (${formatPrice(oldRowsTotal(before))}) → ${describeOldRows(after)} (${formatPrice(oldRowsTotal(after))})`
     : `Paid in the old software: ${describeOldRows(after)}, counted on ${after.length > 1 ? "those days" : "that day"}`;
 
+/** A plan's other half when it was one old plan ("PT + floor"): see oldPartnerOf. */
+export interface OldPartner {
+  id: string;
+  /** Gym partner: its package price. PT partner: its PT price. */
+  price: number;
+  trainerShare: number;
+  oldSoftwarePaid: number;
+  /** The partner already has old-software payments of its own. */
+  hasRows: boolean;
+}
+
+const factOf = (id: string, x: DocumentData) => ({
+  id,
+  clientId: String(x["clientId"] ?? ""),
+  enrollmentId: String(x["enrollmentId"] ?? ""),
+  invoiceId: String(x["invoiceId"] ?? ""),
+  paid: Number(x["oldSoftwarePaid"] ?? 0) || 0,
+});
+
+/**
+ * For a plan with no old-software payments yet: the other plan of the same old plan, if any (gym
+ * plan → its PT plan; PT plan → its gym plan), so its money is counted once and split by both.
+ */
+export async function findOldPartner(
+  kind: "gym" | "pt",
+  planId: string,
+): Promise<OldPartner | null> {
+  const mine = await getDoc(
+    doc(db, kind === "gym" ? COLLECTIONS.memberships : COLLECTIONS.ptAssignments, planId),
+  );
+  if (!mine.exists()) return null;
+  const me = factOf(planId, mine.data());
+  const snap = await getDocs(
+    query(
+      col(kind === "gym" ? COLLECTIONS.ptAssignments : COLLECTIONS.memberships),
+      where("clientId", "==", me.clientId),
+    ),
+  );
+  const others = snap.docs.filter((d) => d.data()["paidInOldSoftware"] === true);
+  const hit =
+    kind === "gym"
+      ? others.find((d) => oldPartnerOf(factOf(d.id, d.data()), [me]))
+      : (() => {
+          const g = oldPartnerOf(
+            me,
+            others.map((d) => factOf(d.id, d.data())),
+          );
+          return g ? others.find((d) => d.id === g.id) : undefined;
+        })();
+  if (!hit) return null;
+  const x = hit.data();
+  return {
+    id: hit.id,
+    price: Number(kind === "gym" ? x["ptPrice"] : x["priceSnapshot"]) || 0,
+    trainerShare: kind === "gym" ? Number(x["trainerShareAmount"] ?? 0) || 0 : 0,
+    oldSoftwarePaid: Number(x["oldSoftwarePaid"] ?? 0) || 0,
+    hasRows: (await readOldRows(kind === "gym" ? "pt" : "gym", hit.id)).length > 0,
+  };
+}
+
 /* ------------------------------------------------------------------ owner tool */
 
 const RUN_KIND = "dates";
@@ -206,11 +268,18 @@ export interface OldMoneyPreview extends OldBackfill {
 
 /** Reads every plan paid in the old software and works out what the tool would add. */
 async function readBackfill(today = todayISO()) {
-  const [gyms, pts, pays] = await Promise.all([
+  const [gyms, pts, pays, refunds] = await Promise.all([
     getDocs(query(col(COLLECTIONS.memberships), where("paidInOldSoftware", "==", true))),
     getDocs(query(col(COLLECTIONS.ptAssignments), where("paidInOldSoftware", "==", true))),
     getDocs(query(col(COLLECTIONS.payments), where("oldSoftware", "==", true))),
+    getDocs(query(col(COLLECTIONS.payments), where("kind", "==", "refund"))),
   ]);
+  // Cancellations that gave money back: that plan was really paid (not entered twice).
+  const refundedCancel = new Set(
+    refunds.docs.map((d) => String(d.data()["cancelId"] ?? "")).filter(Boolean),
+  );
+  const refundedOf = (x: DocumentData) =>
+    x["status"] === "cancelled" && refundedCancel.has(String(x["cancelId"] ?? ""));
   const countedGym = new Set<string>();
   const countedPt = new Set<string>();
   pays.docs.forEach((d) => {
@@ -252,6 +321,7 @@ async function readBackfill(today = todayISO()) {
         price: Number(x["priceSnapshot"] ?? 0) || 0,
         trainerShare: 0,
         counted: countedGym.has(d.id),
+        refunded: refundedOf(x),
       };
     }),
     ...pts.docs.map((d): OldPlanFact => {
@@ -271,6 +341,7 @@ async function readBackfill(today = todayISO()) {
         price: Number(x["ptPrice"] ?? 0) || 0,
         trainerShare: Number(x["trainerShareAmount"] ?? 0) || 0,
         counted: countedPt.has(d.id),
+        refunded: refundedOf(x),
       };
     }),
   ];
@@ -306,7 +377,10 @@ export async function applyOldMoneyDates(input: {
   const { plan } = await readBackfill();
   if (!plan.add.length) throw new Error("Nothing to add: every old-software plan is counted.");
   const runRef = doc(col(COLLECTIONS.oldSoftwareMoves));
-  const refs = plan.add.map(() => doc(col(COLLECTIONS.payments)));
+  // One fixed record per plan: counting twice (two tabs, a double tap) writes the same record.
+  const refs = plan.add.map((a) =>
+    doc(db, COLLECTIONS.payments, `old-${a.membershipId ?? a.ptAssignmentId ?? ""}`),
+  );
   // Firestore takes up to 500 writes at once (each write here also logs one line): 200 a time.
   for (let i = 0; i < plan.add.length; i += 200) {
     const batch = writeBatch(db);

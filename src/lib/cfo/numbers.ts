@@ -100,6 +100,7 @@ export function computeCfo(
   const payments = input.payments.map((p) => ({
     day: toDay(p.paymentDate),
     amount: fin(p.amount),
+    old: p.oldSoftware === true,
   }));
   const oldBills = input.bills
     .filter((b) => b.paymentsTracked === false)
@@ -327,7 +328,8 @@ export function computeCfo(
   if (cashSet) {
     const d = opening as number;
     const pay = roundRupee(
-      sum(payments.filter((p) => p.day !== null && p.day >= d).map((p) => p.amount)),
+      // Money paid in the old software never came into this gym's cash.
+      sum(payments.filter((p) => !p.old && p.day !== null && p.day >= d).map((p) => p.amount)),
     );
     const old = roundRupee(
       sum(oldBills.filter((p) => p.day !== null && p.day >= d).map((p) => p.amount)),

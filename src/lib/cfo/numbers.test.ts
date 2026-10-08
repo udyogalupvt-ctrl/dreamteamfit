@@ -476,6 +476,22 @@ test("cash: adding one payment and one expense changes balance and runway exactl
   assert.equal(after.balance! - before.balance!, 600);
 });
 
+test("cash: money paid in the old software counts as received on its day, never as cash here", () => {
+  const base = scenarioA();
+  const opening = { openingBalance: 10000, openingDate: "2026-09-01" };
+  const before = run(base, opening);
+  const more: CfoInput = {
+    ...base,
+    payments: [
+      ...base.payments,
+      payment({ id: "old1", amount: 5800, paymentDate: "2026-09-12", oldSoftware: true }),
+    ],
+  };
+  const after = run(more, opening);
+  assert.equal(after.snapshot.cash.balance, before.snapshot.cash.balance);
+  assert.equal(month(after, "2026-09").received - month(before, "2026-09").received, 5800);
+});
+
 test("cash: opening date today and in the future do not break anything", () => {
   const c = run(scenarioA(), { openingBalance: 500, openingDate: "2026-10-06" });
   assert.equal(c.snapshot.cash.balance, 500);

@@ -5,6 +5,7 @@ import {
   defaultOldRows,
   diffOldRows,
   oldMoneySplit,
+  oldPartnerOf,
   planOldBackfill,
   type OldPlanFact,
 } from "./old-money.ts";
@@ -87,12 +88,13 @@ test("rows: dates, amounts and the future are checked", () => {
   assert.match(checkOldRows(many, today), /12/);
 });
 
-test("default rows: one payment on the plan's start day, never in the future", () => {
+test("default rows: one payment on the plan's start day; a later start needs the real day", () => {
   assert.deepEqual(defaultOldRows("2026-08-12", 5800, "2026-10-08"), [
     { date: "2026-08-12", amount: 5800, method: "Other" },
   ]);
+  // Never "today": staff must give the day it was paid there.
   assert.deepEqual(defaultOldRows("2026-10-20", 5800, "2026-10-08"), [
-    { date: "2026-10-08", amount: 5800, method: "Other" },
+    { date: "", amount: 5800, method: "Other" },
   ]);
   assert.deepEqual(defaultOldRows("2026-08-12", 0, "2026-10-08"), []);
 });
@@ -248,9 +250,76 @@ test("backfill: never a second payment for a gym plan whose PT partner already h
   );
 });
 
-test("backfill: a plan starting in the future is counted today", () => {
+test("backfill: a plan starting after today is left for staff to date (never counted today)", () => {
   const b = planOldBackfill([gym({ startDate: "2026-10-20" })], "2026-10-08");
-  assert.equal(b.add[0]!.date, "2026-10-08");
+  assert.equal(b.add.length, 0);
+  assert.deepEqual(
+    b.skipped.map((s) => s.reason),
+    ["later-start"],
+  );
+});
+
+test("backfill: one old plan whose gym plan was cancelled here still splits gym + PT", () => {
+  const b = planOldBackfill(
+    [
+      gym({ status: "cancelled", paid: 15000, price: 10000 }),
+      pt({ paid: 15000, price: 5000, trainerShare: 2500 }),
+    ],
+    "2026-10-08",
+  );
+  assert.equal(b.add.length, 1);
+  assert.equal(b.add[0]!.membershipId, "g1");
+  assert.equal(b.add[0]!.ptAssignmentId, "p1");
+  assert.equal(b.add[0]!.split.trainerShareAmount, 2500);
+  assert.equal(b.add[0]!.split.membershipGymAmount, 10000);
+});
+
+test("backfill: a cancelled plan that had money given back here was really paid: counted", () => {
+  const b = planOldBackfill(
+    [gym({ status: "cancelled", refunded: true, paid: 12000 })],
+    "2026-10-08",
+  );
+  assert.equal(b.add.length, 1);
+  assert.equal(b.total, 12000);
+});
+
+test("backfill: a pair is skipped only when both plans were cancelled", () => {
+  const b = planOldBackfill(
+    [gym({ status: "cancelled", paid: 5000 }), pt({ status: "cancelled", paid: 5000 })],
+    "2026-10-08",
+  );
+  assert.equal(b.add.length, 0);
+  assert.deepEqual(
+    b.skipped.map((s) => [s.id, s.reason]),
+    [
+      ["g1", "cancelled"],
+      ["p1", "with-gym-plan"],
+    ],
+  );
+});
+
+test("backfill: a second PT plan of the same old plan is never a second payment", () => {
+  const b = planOldBackfill(
+    [gym({ paid: 15000 }), pt({ id: "p1", paid: 15000 }), pt({ id: "p2", paid: 15000 })],
+    "2026-10-08",
+  );
+  assert.equal(b.add.length, 1);
+  assert.equal(b.total, 15000);
+  assert.deepEqual(
+    b.skipped.map((s) => [s.id, s.reason]),
+    [["p2", "with-gym-plan"]],
+  );
+});
+
+test("partner: the gym plan a PT plan was one old plan with", () => {
+  const g = gym({ paid: 5000 });
+  assert.equal(oldPartnerOf(pt({ paid: 5000 }), [g])?.id, "g1");
+  assert.equal(oldPartnerOf(pt({ paid: 0 }), [g])?.id, "g1");
+  // Its own amount: a separate old plan.
+  assert.equal(oldPartnerOf(pt({ paid: 6000 }), [g]), null);
+  // Not joined together and not on the same bill.
+  assert.equal(oldPartnerOf(pt({ paid: 5000, enrollmentId: "e9" }), [g]), null);
+  assert.equal(oldPartnerOf(pt({ paid: 5000, clientId: "c9" }), [g]), null);
 });
 
 test("backfill: the bill number and plan name travel with the payment", () => {

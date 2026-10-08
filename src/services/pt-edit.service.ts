@@ -10,7 +10,14 @@ import type {
 } from "@/types/models";
 import { allocatePayment } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
-import { oldRowsChange, readOldRows, resplitOldRows, writeOldRows } from "./old-money.service";
+import {
+  findOldPartner,
+  oldRowsChange,
+  readOldRows,
+  resplitOldRows,
+  rowOf,
+  writeOldRows,
+} from "./old-money.service";
 import { checkOldRows, diffOldRows, oldRowsTotal, type OldPayRow } from "@/lib/old-money";
 import { calculateShare } from "./pt.service";
 
@@ -115,6 +122,11 @@ export async function editPtPlan(input: {
     throw new Error("Changing the trainer's share needs Income & expenses (the owner).");
   const rowsChanged = oldRowsChangeOf(p, form);
   if (rowsChanged) {
+    // Old-software money changes past income (the months it was paid in): the owner's.
+    if (!input.canFinance)
+      throw new Error(
+        "Changing what was paid in the old software changes past income: it needs the owner's login (Income & expenses).",
+      );
     const bad = checkOldRows(form.oldRows!.after, todayISO());
     if (bad) throw new Error(bad);
   }
@@ -133,7 +145,24 @@ export async function editPtPlan(input: {
         .join()
   )
     throw new Error("Its old-software payments were just changed. Close and open Edit again.");
+  const shown = new Map((form.oldRows?.before ?? []).map((r) => [r.id ?? "", r] as const));
+  if (
+    rowsChanged &&
+    oldRecs.some((r) => {
+      const was = shown.get(r.id);
+      const cur = rowOf(r);
+      return (
+        !was || was.amount !== cur.amount || was.date !== cur.date || was.method !== cur.method
+      );
+    })
+  )
+    throw new Error("Its old-software payments were just changed. Close and open Edit again.");
   const gymId = oldRecs.map((r) => String(r.data["membershipId"] ?? "")).find(Boolean) ?? "";
+  // No payments yet, but one old plan with the gym plan: its money goes on the gym plan's.
+  if (rowsChanged && !oldRecs.length && (await findOldPartner("pt", p.id)))
+    throw new Error(
+      "This PT plan was one old plan with the gym plan: change what was paid there in Edit plan.",
+    );
   if (rowsChanged && gymId)
     throw new Error(
       "This PT plan was one old plan with the gym plan: change what was paid there in Edit plan.",

@@ -22,9 +22,10 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const monthName = (m: string) => `${MONTHS[Number(m.slice(5, 7)) - 1] ?? ""} ${m.slice(0, 4)}`;
 
 const WHY: Record<OldSkipReason, string> = {
-  cancelled: "cancelled here, not counted",
+  cancelled: "cancelled here with nothing given back (usually entered twice): not counted",
   "no-amount": "no amount paid there saved: add it in Edit plan",
   "no-date": "no start date",
+  "later-start": "starts after today: give the day it was paid there in Edit plan",
   "with-gym-plan": "counted with its gym plan (one old plan)",
   "with-pt-plan": "counted with its PT plan (one old plan)",
 };

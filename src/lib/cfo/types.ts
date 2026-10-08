@@ -192,6 +192,8 @@ export interface CfoPayment {
   kind: "initial" | "balance" | "refund";
   cancelId: string | null;
   invoiceId: string;
+  /** Paid in the old software: received on its day, but never cash in this gym's hands. */
+  oldSoftware?: boolean;
 }
 
 export interface CfoExpense {

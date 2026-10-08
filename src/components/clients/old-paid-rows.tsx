@@ -21,12 +21,15 @@ export function OldPaidRows({
   rows,
   onChange,
   disabled,
+  note,
   error,
 }: {
   id: string;
   rows: OldPayRow[];
   onChange: (rows: OldPayRow[]) => void;
   disabled?: boolean | undefined;
+  /** Shown instead of the usual line (e.g. why it can't be changed here). */
+  note?: string | undefined;
   error?: string | undefined;
 }) {
   const today = todayISO();
@@ -81,7 +84,8 @@ export function OldPaidRows({
               </SelectContent>
             </Select>
           </label>
-          {many ? (
+          {/* A part, or a row not saved yet, can go (never the only saved payment). */}
+          {!disabled && (many || !r.id) ? (
             <Button
               type="button"
               variant="ghost"
@@ -96,21 +100,25 @@ export function OldPaidRows({
         </div>
       ))}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="-ml-2"
-          onClick={() =>
-            onChange([
-              ...rows,
-              { date: rows[rows.length - 1]?.date || today, amount: 0, method: "Other" },
-            ])
-          }
-        >
-          <Plus aria-hidden />{" "}
-          {rows.length ? "Paid in parts? Add a part" : "Add what was paid there"}
-        </Button>
+        {disabled ? (
+          <span />
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="-ml-2"
+            onClick={() =>
+              onChange([
+                ...rows,
+                { date: rows[rows.length - 1]?.date || today, amount: 0, method: "Other" },
+              ])
+            }
+          >
+            <Plus aria-hidden />{" "}
+            {rows.length ? "Paid in parts? Add a part" : "Add what was paid there"}
+          </Button>
+        )}
         {many ? (
           <span className="text-sm font-semibold tabular-nums">
             Total paid there {formatPrice(oldRowsTotal(rows))}
@@ -121,6 +129,8 @@ export function OldPaidRows({
         <p role="alert" className="text-xs font-medium text-destructive">
           {error}
         </p>
+      ) : note ? (
+        <p className="text-meta">{note}</p>
       ) : (
         <p className="text-meta">
           Counted in Collected on the day it was paid there, not in today&rsquo;s cash or the Day

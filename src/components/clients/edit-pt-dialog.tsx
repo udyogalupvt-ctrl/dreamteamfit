@@ -28,6 +28,7 @@ import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { checkOldRows, defaultOldRows, type OldPayRow } from "@/lib/old-money";
 import { OldPaidRows } from "@/components/clients/old-paid-rows";
 import { subscribeClientPayments } from "@/services/finance.service";
+import { findOldPartner, type OldPartner } from "@/services/old-money.service";
 import type {
   Invoice,
   Payment,
@@ -76,6 +77,23 @@ export function EditPtDialog({
     [],
     [oldOpen, pt?.clientId],
   );
+  // No payments of its own yet: was it one old plan with the gym plan ("PT + floor")?
+  const [gymPartner, setGymPartner] = useState<OldPartner | null>(null);
+  const noRows =
+    oldOpen &&
+    !pays.loading &&
+    !pays.data.some((p) => p.oldSoftware && p.ptAssignmentId === pt?.id);
+  useEffect(() => {
+    setGymPartner(null);
+    if (!noRows || !pt) return;
+    let live = true;
+    void findOldPartner("pt", pt.id)
+      .then((g) => live && setGymPartner(g))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [noRows, pt]);
   useEffect(() => {
     if (!pt) return;
     setDiscount("");
@@ -107,18 +125,22 @@ export function EditPtDialog({
   const today = todayISO();
   const mine = pays.data.filter((p) => p.oldSoftware && p.ptAssignmentId === pt.id);
   // One old plan with the gym plan ("PT + floor"): its money is on the gym plan's payment.
-  const withGym = mine.some((p) => !!p.membershipId);
+  const withGym = mine.some((p) => !!p.membershipId) || !!gymPartner;
   const saved: OldPayRow[] = mine
     .map((p) => ({ id: p.id, date: p.paymentDate, amount: p.amount, method: p.method }))
     .sort((a, b) => a.date.localeCompare(b.date));
+  // Only the owner changes what was paid there (it changes past income).
+  const rowsLocked = !money;
   const followed =
     oldRows === null &&
     saved.length === 1 &&
     saved[0]!.date === pt.startDate &&
-    start !== pt.startDate
-      ? [{ ...saved[0]!, date: start && start <= today ? start : today }]
+    start !== pt.startDate &&
+    !!start &&
+    start <= today
+      ? [{ ...saved[0]!, date: start }]
       : null;
-  const rowsAfter = withGym ? null : (oldRows ?? followed);
+  const rowsAfter = withGym || rowsLocked ? null : (oldRows ?? followed);
   const shownRows =
     rowsAfter ??
     (saved.length ? saved : defaultOldRows(start || pt.startDate, pt.oldSoftwarePaid ?? 0, today));
@@ -127,7 +149,10 @@ export function EditPtDialog({
     startDate: start,
     endDate: end,
     share: money ? { type: shareType, value: shareNumber } : undefined,
-    oldRows: pt.paidInOldSoftware && rowsAfter ? { before: saved, after: rowsAfter } : undefined,
+    oldRows:
+      pt.paidInOldSoftware && rowsAfter && (rowsAfter.length || saved.length)
+        ? { before: saved, after: rowsAfter }
+        : undefined,
   };
   const rowsError = form.oldRows ? checkOldRows(form.oldRows.after, today) : "";
   // Like gym plans: the usual end is calendar months from the start (the package's length).
@@ -211,6 +236,7 @@ export function EditPtDialog({
               !changes.length ||
               shareBad ||
               !!rowsError ||
+              (pt.paidInOldSoftware && pays.loading) ||
               !!billPv?.error ||
               (discountChanged && !money)
             }
@@ -323,8 +349,10 @@ export function EditPtDialog({
         {pt.paidInOldSoftware ? (
           withGym ? (
             <p className="text-meta rounded-lg border border-border p-3">
-              Paid in the old software together with the gym plan (one old plan):{" "}
-              {saved.map((r) => `${formatPrice(r.amount)} on ${formatDateISO(r.date)}`).join(" + ")}
+              Paid in the old software together with the gym plan (one old plan)
+              {saved.length
+                ? `: ${saved.map((r) => `${formatPrice(r.amount)} on ${formatDateISO(r.date)}`).join(" + ")}`
+                : ""}
               . Change it in Edit plan.
             </p>
           ) : (
@@ -332,8 +360,11 @@ export function EditPtDialog({
               id="pt-oldpaid"
               rows={shownRows}
               onChange={setOldRows}
-              disabled={pays.loading}
+              disabled={pays.loading || rowsLocked}
               error={rowsError}
+              note={
+                rowsLocked ? "Only the owner can change this (it changes past income)." : undefined
+              }
             />
           )
         ) : null}

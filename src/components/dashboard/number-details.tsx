@@ -141,7 +141,11 @@ function MoneyList({
   const total = rows.reduce((n, r) => n + r.amount, 0);
   const byMethod = useMemo(() => {
     const m = new Map<string, number>();
-    rows.forEach((r) => m.set(r.method || "Other", (m.get(r.method || "Other") ?? 0) + r.amount));
+    // Old-software money has its own chip: it never came in here as cash / UPI.
+    rows.forEach((r) => {
+      const key = r.kind === "old" ? "Old software" : r.method || "Other";
+      m.set(key, (m.get(key) ?? 0) + r.amount);
+    });
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [rows]);
   return (

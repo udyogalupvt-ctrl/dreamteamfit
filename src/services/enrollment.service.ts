@@ -222,7 +222,11 @@ export async function enrollMember(input: EnrollmentInput) {
   if (old?.rows?.length) {
     const bad = checkOldRows(old.rows, todayISO());
     if (bad) throw new Error(bad);
-  }
+  } else if (oldRows.some((r) => !r.date))
+    // A plan that starts later has no start day to count it on (never "today").
+    throw new Error(
+      "This plan starts after today: give the day it was paid in the old software (Paid in parts or on another day?).",
+    );
   const oldPaid = old
     ? old.rows?.length
       ? oldRowsTotal(old.rows)

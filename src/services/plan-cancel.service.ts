@@ -45,7 +45,8 @@ export interface RefundPart {
 /**
  * What was actually paid for each plan: its bill's payments shared out by price, so a discount or
  * a part payment counts (₹2,500 gym + ₹12,000 PT − ₹2,500 discount, ₹12,000 paid → gym ₹2,069,
- * PT ₹9,931). A plan without a bill here (e.g. from the old software) counts at its price.
+ * PT ₹9,931). A plan without a bill here counts at its price; one paid in the old software at what
+ * was paid there, when that is known.
  */
 export function paidForPlans(
   invoices: Pick<
@@ -64,11 +65,13 @@ export function paidForPlans(
     const bill = invoices.find((i) => i.membershipId === m.id);
     paid[m.id] = bill
       ? share(bill, bill.membershipGross || m.priceSnapshot)
-      : Math.max(0, m.priceSnapshot);
+      : Math.max(0, m.paidInOldSoftware && m.oldSoftwarePaid ? m.oldSoftwarePaid : m.priceSnapshot);
   }
   for (const p of pts) {
     const bill = invoices.find((i) => i.ptAssignmentId === p.id);
-    paid[p.id] = bill ? share(bill, bill.ptGross || p.ptPrice) : Math.max(0, p.ptPrice);
+    paid[p.id] = bill
+      ? share(bill, bill.ptGross || p.ptPrice)
+      : Math.max(0, p.paidInOldSoftware && p.oldSoftwarePaid ? p.oldSoftwarePaid : p.ptPrice);
   }
   return paid;
 }

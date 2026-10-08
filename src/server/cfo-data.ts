@@ -190,6 +190,7 @@ function payment(s: Snap): CfoPayment {
     kind: pick(d["kind"], PAYMENT_KINDS, "initial"),
     cancelId: idOrNull(d["cancelId"]),
     invoiceId: str(d["invoiceId"]),
+    ...(d["oldSoftware"] === true ? { oldSoftware: true } : {}),
   };
 }
 

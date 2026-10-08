@@ -19,6 +19,7 @@ import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { checkOldRows, defaultOldRows, type OldPayRow } from "@/lib/old-money";
 import { OldPaidRows } from "@/components/clients/old-paid-rows";
 import { subscribeClientPayments } from "@/services/finance.service";
+import { findOldPartner, type OldPartner } from "@/services/old-money.service";
 import { billCredits } from "@/lib/invoice-utils";
 import {
   DEFAULT_BILLING_SETTINGS,
@@ -83,6 +84,23 @@ export function EditPlanDialog({
     [],
     [oldOpen, client.id],
   );
+  // No payments of its own yet: is its money on the PT plan of the same old plan?
+  const [partner, setPartner] = useState<OldPartner | null>(null);
+  const noRows =
+    oldOpen &&
+    !pays.loading &&
+    !pays.data.some((p) => p.oldSoftware && p.membershipId === membership?.id);
+  useEffect(() => {
+    setPartner(null);
+    if (!noRows || !membership) return;
+    let live = true;
+    void findOldPartner("gym", membership.id)
+      .then((p) => live && setPartner(p))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [noRows, membership]);
 
   const [pkgId, setPkgId] = useState("");
   const [start, setStart] = useState("");
@@ -151,15 +169,20 @@ export function EditPlanDialog({
     .filter((p) => p.oldSoftware && p.membershipId === m.id)
     .map((p) => ({ id: p.id, date: p.paymentDate, amount: p.amount, method: p.method }))
     .sort((a, b) => a.date.localeCompare(b.date));
-  // One payment on the old start day follows a corrected start day.
+  // Only the owner changes what was paid there (it changes past income); its money may be on the
+  // PT plan of the same old plan.
+  const rowsLocked = !can("finance") || !!partner?.hasRows;
+  // One payment on the old start day follows a corrected start day (not into the future).
   const followed =
     oldRows === null &&
     saved.length === 1 &&
     saved[0]!.date === m.startDate &&
-    start !== m.startDate
-      ? [{ ...saved[0]!, date: start && start <= today ? start : today }]
+    start !== m.startDate &&
+    !!start &&
+    start <= today
+      ? [{ ...saved[0]!, date: start }]
       : null;
-  const rowsAfter = oldRows ?? followed;
+  const rowsAfter = rowsLocked ? null : (oldRows ?? followed);
   const shownRows =
     rowsAfter ??
     (saved.length ? saved : defaultOldRows(start || m.startDate, m.oldSoftwarePaid ?? 0, today));
@@ -169,7 +192,10 @@ export function EditPlanDialog({
     endDate: end,
     counsellor,
     discount: discountValue,
-    oldRows: m.paidInOldSoftware && rowsAfter ? { before: saved, after: rowsAfter } : undefined,
+    oldRows:
+      m.paidInOldSoftware && rowsAfter && (rowsAfter.length || saved.length)
+        ? { before: saved, after: rowsAfter }
+        : undefined,
   };
   const rowsError = form.oldRows ? checkOldRows(form.oldRows.after, today) : "";
   const preview = previewPlanEdit(m, form, bill, settings.data);
@@ -239,6 +265,7 @@ export function EditPlanDialog({
   const blocked =
     !!preview.error ||
     !preview.changes.length ||
+    (m.paidInOldSoftware && pays.loading) ||
     (preview.discountChanged && !money) ||
     !!(bc && bc.refund > 0 && !money) ||
     !!(bc?.newBalance && !payBy);
@@ -306,8 +333,15 @@ export function EditPlanDialog({
             id="plan-oldpaid"
             rows={shownRows}
             onChange={setOldRows}
-            disabled={pays.loading}
+            disabled={pays.loading || rowsLocked}
             error={rowsError}
+            note={
+              partner?.hasRows
+                ? "Paid together with the PT plan (one old plan): change it in Edit PT plan."
+                : !can("finance")
+                  ? "Only the owner can change this (it changes past income)."
+                  : undefined
+            }
           />
         ) : null}
         <div className="grid items-start gap-4 sm:grid-cols-2">

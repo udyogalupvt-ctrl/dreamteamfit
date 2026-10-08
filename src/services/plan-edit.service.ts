@@ -22,7 +22,14 @@ import type {
 import { staffDiscountOf } from "./bill-edit.service";
 import { allocatePayment } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
-import { oldRowsChange, readOldRows, resplitOldRows, writeOldRows } from "./old-money.service";
+import {
+  findOldPartner,
+  oldRowsChange,
+  readOldRows,
+  resplitOldRows,
+  rowOf,
+  writeOldRows,
+} from "./old-money.service";
 import { checkOldRows, diffOldRows, oldRowsTotal, type OldPayRow } from "@/lib/old-money";
 
 /**
@@ -296,6 +303,11 @@ export async function editMembership(input: PlanEditInput) {
   const billForPays = bc?.bill ?? counsellorBill;
   // Read first (a transaction can't query): the member's other plans and the bill's payments.
   const rowsChange = preview.oldRowsChanged && form.oldRows ? form.oldRows : null;
+  // Old-software money changes past income (the months it was paid in): the owner's.
+  if (rowsChange && !input.canRefund)
+    throw new Error(
+      "Changing what was paid in the old software changes past income: it needs the owner's login (Income & expenses).",
+    );
   const [plansSnap, paysSnap, oldRecs] = await Promise.all([
     getDocs(query(col(COLLECTIONS.memberships), where("clientId", "==", client.id))),
     billForPays
@@ -318,8 +330,15 @@ export async function editMembership(input: PlanEditInput) {
         .join()
   )
     throw new Error("Its old-software payments were just changed. Close and open Edit again.");
-  // An old payment shared with the PT plan (one old plan for both) keeps that link and split.
-  const ptLinked = oldRecs.map((r) => String(r.data["ptAssignmentId"] ?? "")).find(Boolean) ?? "";
+  // An old payment shared with the PT plan (one old plan for both) keeps that link and split; a
+  // plan counted for the first time finds its PT plan of the same old plan.
+  const partner = rowsChange && !oldRecs.length ? await findOldPartner("gym", m.id) : null;
+  if (partner?.hasRows)
+    throw new Error(
+      "This plan was one old plan with its PT plan, and the money is on the PT plan: change it in Edit PT plan.",
+    );
+  const ptLinked =
+    oldRecs.map((r) => String(r.data["ptAssignmentId"] ?? "")).find(Boolean) ?? partner?.id ?? "";
   const counsellorFields = {
     counsellorId: form.counsellor?.id ?? "",
     counsellorName: form.counsellor?.name ?? "",
@@ -357,13 +376,19 @@ export async function editMembership(input: PlanEditInput) {
     const recSnaps = await Promise.all(
       oldRecs.map((r) => tx.get(doc(db, COLLECTIONS.payments, r.id))),
     );
+    // As the dialog showed them (else someone changed them meanwhile).
+    const shown = new Map((rowsChange?.before ?? []).map((r) => [r.id ?? "", r] as const));
     if (
-      recSnaps.some(
-        (x, i) =>
+      recSnaps.some((x, i) => {
+        const was = rowsChange ? shown.get(x.id) : oldRecs[i] && rowOf(oldRecs[i]!);
+        return (
           !x.exists() ||
-          Number(x.data()["amount"] ?? 0) !== Number(oldRecs[i]!.data["amount"] ?? 0) ||
-          x.data()["paymentDate"] !== oldRecs[i]!.data["paymentDate"],
-      )
+          !was ||
+          Number(x.data()["amount"] ?? 0) !== was.amount ||
+          x.data()["paymentDate"] !== was.date ||
+          (x.data()["method"] ?? "Other") !== was.method
+        );
+      })
     )
       throw new Error("Its old-software payments were just changed. Close and open Edit again.");
     const ptSnap = ptLinked ? await tx.get(doc(db, COLLECTIONS.ptAssignments, ptLinked)) : null;
@@ -394,6 +419,9 @@ export async function editMembership(input: PlanEditInput) {
         reason,
       );
     else if (oldBasis.pt && recs.length) resplitOldRows(tx, recs, oldBasis);
+    // The PT plan of the same old plan shows the same amount paid there.
+    if (rowsChange && ptSnap?.exists() && Number(ptSnap.data()["oldSoftwarePaid"] ?? 0) > 0)
+      tx.update(ptSnap.ref, { oldSoftwarePaid: preview.oldPaid, updatedAt: now });
 
     tx.update(planRef, {
       packageId: form.pkg.id,

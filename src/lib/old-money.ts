@@ -106,12 +106,15 @@ export function checkOldRows(rows: OldPayRow[], today: string): string {
 export const oldRowsTotal = (rows: Pick<OldPayRow, "amount">[]) =>
   round(rows.reduce((n, r) => n + (Number(r.amount) || 0), 0));
 
-/** A plan's rows before staff change anything: all of it paid on its start day. */
+/**
+ * A plan's rows before staff change anything: all of it paid on its start day. A plan that starts
+ * after today has no such day yet: the date is left empty for staff to give (never "today").
+ */
 export function defaultOldRows(start: string, amount: number, today: string): OldPayRow[] {
   if (!(amount > 0)) return [];
   return [
     {
-      date: ISO.test(start) && start <= today ? start : today,
+      date: ISO.test(start) && start <= today ? start : "",
       amount: round(amount),
       method: "Other",
     },
@@ -164,6 +167,8 @@ export interface OldPlanFact {
   trainerShare: number;
   /** Already has its old-software payment record(s). */
   counted: boolean;
+  /** Cancelled here with money given back: it was really paid (not a plan entered twice). */
+  refunded?: boolean;
 }
 
 export interface OldBackfillItem {
@@ -179,7 +184,7 @@ export interface OldBackfillItem {
 }
 
 export type OldSkipReason =
-  "cancelled" | "no-amount" | "no-date" | "with-gym-plan" | "with-pt-plan";
+  "cancelled" | "no-amount" | "no-date" | "later-start" | "with-gym-plan" | "with-pt-plan";
 
 export interface OldBackfill {
   add: OldBackfillItem[];
@@ -197,20 +202,29 @@ export interface OldBackfill {
   }[];
 }
 
-/** The gym plan a PT plan was one old plan with: joined together, or on the same bill. */
-const partnerOf = (p: OldPlanFact, gyms: OldPlanFact[]) =>
-  gyms.find(
-    (g) =>
-      g.clientId === p.clientId &&
-      g.status !== "cancelled" &&
-      ((p.enrollmentId && g.enrollmentId === p.enrollmentId) ||
-        (p.invoiceId && g.invoiceId === p.invoiceId)) &&
-      (p.paid <= 0 || round(p.paid) === round(g.paid)),
-  ) ?? null;
+/**
+ * The gym plan a PT plan was one old plan with ("PT + floor charges"): joined together or on the
+ * same bill, and no amount of its own (or the same amount). Cancelled plans count too: the split
+ * still needs both prices.
+ */
+export function oldPartnerOf<
+  T extends Pick<OldPlanFact, "clientId" | "enrollmentId" | "invoiceId" | "paid">,
+>(p: T, gyms: T[]): T | null {
+  return (
+    gyms.find(
+      (g) =>
+        g.clientId === p.clientId &&
+        ((!!p.enrollmentId && g.enrollmentId === p.enrollmentId) ||
+          (!!p.invoiceId && g.invoiceId === p.invoiceId)) &&
+        (p.paid <= 0 || round(p.paid) === round(g.paid)),
+    ) ?? null
+  );
+}
 
 /**
  * Which plans get an old-software payment: one per old plan (a gym + PT plan that were one old
- * plan share it), on its start day (today for a plan that starts later), for what was paid there.
+ * plan share it), on its start day, for what was paid there. A plan that starts after today is
+ * left for staff to date; a plan cancelled here is left for the owner (usually entered twice).
  */
 export function planOldBackfill(plans: OldPlanFact[], today: string): OldBackfill {
   const out: OldBackfill = { add: [], total: 0, months: [], counted: 0, skipped: [] };
@@ -218,21 +232,31 @@ export function planOldBackfill(plans: OldPlanFact[], today: string): OldBackfil
     out.skipped.push({ id: p.id, kind: p.kind, clientName: p.clientName, label: p.name, reason });
   const gyms = plans.filter((p) => p.kind === "gym");
   const pts = plans.filter((p) => p.kind === "pt");
-  const withGym = new Map<string, OldPlanFact>();
+  /** Cancelled here with nothing given back: usually entered twice, for the owner to decide. */
+  const isOff = (p: OldPlanFact) => p.status === "cancelled" && !p.refunded;
+  // Each gym plan's PT partner (the first one); any other PT plan of the same old plan is in it.
+  const partner = new Map<string, OldPlanFact>();
+  const paired = new Set<string>();
   for (const p of pts) {
-    if (p.status === "cancelled") continue;
-    const g = partnerOf(p, gyms);
-    if (g) withGym.set(g.id, p);
+    const g = oldPartnerOf(p, gyms);
+    if (!g) continue;
+    paired.add(p.id);
+    if (!partner.has(g.id)) partner.set(g.id, p);
   }
-  const usedPt = new Set<string>();
-  const item = (lead: OldPlanFact, gym: OldPlanFact | null, pt: OldPlanFact | null): void => {
-    const why: OldSkipReason | null =
-      lead.status === "cancelled"
-        ? "cancelled"
-        : !(lead.paid > 0)
-          ? "no-amount"
-          : !ISO.test(lead.startDate)
-            ? "no-date"
+  const item = (
+    lead: OldPlanFact,
+    gym: OldPlanFact | null,
+    pt: OldPlanFact | null,
+    cancelled: boolean,
+  ): void => {
+    const why: OldSkipReason | null = cancelled
+      ? "cancelled"
+      : !(lead.paid > 0)
+        ? "no-amount"
+        : !ISO.test(lead.startDate)
+          ? "no-date"
+          : lead.startDate > today
+            ? "later-start"
             : null;
     if (why) {
       skip(lead, why);
@@ -244,7 +268,7 @@ export function planOldBackfill(plans: OldPlanFact[], today: string): OldBackfil
       membershipId: gym?.id ?? null,
       ptAssignmentId: pt?.id ?? null,
       label: lead.name,
-      date: lead.startDate <= today ? lead.startDate : today,
+      date: lead.startDate,
       amount: round(lead.paid),
       billNo: lead.billNo,
       split: oldMoneySplit(lead.paid, {
@@ -254,12 +278,9 @@ export function planOldBackfill(plans: OldPlanFact[], today: string): OldBackfil
     });
   };
   for (const g of gyms) {
-    const p = withGym.get(g.id) ?? null;
-    if (p) usedPt.add(p.id);
+    const p = partner.get(g.id) ?? null;
     if (g.counted) {
       out.counted += 1;
-      // Its PT partner's money is in the gym plan's payment.
-      if (p && !p.counted) skip(p, "with-gym-plan");
       continue;
     }
     // Its PT partner has its own payment for the same amount: that was this old plan's money.
@@ -267,18 +288,20 @@ export function planOldBackfill(plans: OldPlanFact[], today: string): OldBackfil
       skip(g, "with-pt-plan");
       continue;
     }
-    item(g, g, p && !p.counted ? p : null);
+    // One old plan: left out only when both were cancelled here.
+    item(g, g, p && !p.counted ? p : null, isOff(g) && (!p || isOff(p)));
   }
   for (const p of pts) {
-    if (usedPt.has(p.id)) {
-      if (p.counted) out.counted += 1;
-      continue;
-    }
     if (p.counted) {
       out.counted += 1;
       continue;
     }
-    item(p, null, p);
+    // One old plan with a gym plan: its money is in (or left out with) the gym plan's payment.
+    if (paired.has(p.id)) {
+      if (!out.add.some((a) => a.ptAssignmentId === p.id)) skip(p, "with-gym-plan");
+      continue;
+    }
+    item(p, null, p, isOff(p));
   }
   out.total = round(out.add.reduce((n, a) => n + a.amount, 0));
   const months = new Map<string, { amount: number; plans: number }>();

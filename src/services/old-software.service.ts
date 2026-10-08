@@ -487,7 +487,8 @@ function oldPaymentOfMove(
   clientName: string,
 ): { row: OldPayRow; link: OldPayLink } | null {
   const row = defaultOldRows(m.startDate, amount, todayISO())[0];
-  if (!row) return null;
+  // A plan that starts later: no day to count it on yet (Edit plan gives it; never "today").
+  if (!row?.date) return null;
   return {
     row,
     link: {

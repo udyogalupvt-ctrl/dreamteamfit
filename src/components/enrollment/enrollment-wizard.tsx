@@ -686,7 +686,10 @@ export function EnrollmentWizard({
         else if (oldRowsTotal(oldRows) !== oldPaid)
           e["oldRows"] =
             `The parts add up to ${formatPrice(oldRowsTotal(oldRows))}, but ${formatPrice(oldPaid)} was paid there.`;
-      }
+      } else if (oldPaid > 0 && startDate > todayISO())
+        // No start day to count it on yet (never "today"): the day it was paid there.
+        e["oldRows"] =
+          "This plan starts after today: give the day it was paid in the old software.";
       if (oldBalance > 0 && !nextPaymentDate) e["nextPaymentDate"] = "When will the rest be paid?";
       else if (oldBalance > 0 && nextPaymentDate < todayISO())
         e["nextPaymentDate"] = "Pick today or a later date";
@@ -1359,12 +1362,16 @@ export function EnrollmentWizard({
                             error={errors["oldRows"]}
                           />
                         ) : (
-                          <p className="text-meta">
-                            {formatPrice(oldPaid)} is counted in Collected on{" "}
-                            {formatDateISO(
-                              startDate && startDate <= todayISO() ? startDate : todayISO(),
-                            )}{" "}
-                            (the plan&rsquo;s first day), not in today&rsquo;s cash.{" "}
+                          <p
+                            className={
+                              errors["oldRows"]
+                                ? "text-xs font-medium text-destructive"
+                                : "text-meta"
+                            }
+                          >
+                            {startDate > todayISO()
+                              ? "This plan starts after today, so give the day it was paid there."
+                              : `${formatPrice(oldPaid)} is counted in Collected on ${formatDateISO(startDate)} (the plan's first day), not in today's cash.`}{" "}
                             <button
                               type="button"
                               className="font-semibold text-primary underline-offset-2 hover:underline"
@@ -1372,7 +1379,9 @@ export function EnrollmentWizard({
                                 setOldRows(defaultOldRows(startDate, oldPaid, todayISO()))
                               }
                             >
-                              Paid in parts or on another day?
+                              {startDate > todayISO()
+                                ? "Give the day"
+                                : "Paid in parts or on another day?"}
                             </button>
                           </p>
                         )}
