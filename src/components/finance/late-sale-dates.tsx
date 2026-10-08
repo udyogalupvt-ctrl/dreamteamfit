@@ -24,7 +24,7 @@ const monthName = (m: string) => `${MONTHS[Number(m.slice(5, 7)) - 1] ?? ""} ${m
 
 const WHY: Record<LateSkipReason, (openFrom: string) => string> = {
   "before-open": (from) =>
-    `the plan started before ${formatDateISO(from)}: the Day Book has carried that month forward`,
+    `it is before ${formatDateISO(from)}, which the Day Book has already carried forward`,
   cancelled: () => "the plan was cancelled",
   upgrade: () => "an upgrade: paid on the day it was made",
   "date-set": () => "its day was already chosen by staff (paid that day, or set by hand)",
@@ -187,6 +187,12 @@ export function LateSaleDates() {
                         Typed in {formatDateISO(m.from)} → counts on <b>{formatDateISO(m.to)}</b>{" "}
                         (first day)
                       </span>
+                      {m.cashOn ? (
+                        <span className="text-meta block">
+                          The cash stays in the Day Book on {formatDateISO(m.cashOn)}: its opening
+                          cash was typed in after the plan started.
+                        </span>
+                      ) : null}
                     </label>
                     <Link
                       to="/clients/$clientId"

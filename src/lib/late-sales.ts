@@ -9,7 +9,10 @@
  *   plan's first day, exactly like the owner's own "change the payment date" correction, with Undo.
  *
  * Money moves only inside the Day Book's open days (from the 1st of last month, `openFrom`): cash
- * in the drawer today stays the same; only the day it came in changes.
+ * in the drawer today stays the same; only the day it came in changes. One exception is kept out:
+ * cash moved to before a day whose opening cash was typed in (the Day Book's first day) would
+ * vanish from the drawer, so that cash stays in the Day Book on the day it was typed in
+ * (`cashOn`) while Collected counts it on the plan's first day.
  *
  * Pure maths only (no database): relative imports, unit-tested with `node --test`.
  */
@@ -90,9 +93,11 @@ export interface LateMove {
   /** The day it was typed in (counted now) → the plan's first day. */
   from: string;
   to: string;
+  /** Cash that stays in the Day Book drawer on this day (= `from`): see the note at the top. */
+  cashOn?: string;
 }
 
-export interface LateSkip extends Omit<LateMove, "to"> {
+export interface LateSkip extends Omit<LateMove, "to" | "cashOn"> {
   start: string;
   reason: LateSkipReason;
 }
@@ -110,7 +115,12 @@ export interface LatePlan {
  * payments are left alone (they were paid on their own day), and so is everything in the list of
  * reasons in `LateSkipReason`.
  */
-export function planLateSales(facts: LateSaleFact[], openFrom: string): LatePlan {
+export function planLateSales(
+  facts: LateSaleFact[],
+  openFrom: string,
+  /** Days whose opening cash was typed in the Day Book (the drawer restarts there). */
+  openingDays: readonly string[] = [],
+): LatePlan {
   const move: LateMove[] = [];
   const skipped: LateSkip[] = [];
   for (const f of facts) {
@@ -141,7 +151,11 @@ export function planLateSales(facts: LateSaleFact[], openFrom: string): LatePlan
                 ? "before-open"
                 : null;
     if (reason) skipped.push({ ...row, start: f.startDate, reason });
-    else move.push({ ...row, to: f.startDate });
+    else {
+      const crosses =
+        f.method === "Cash" && openingDays.some((o) => o > f.startDate && o <= f.paymentDate);
+      move.push({ ...row, to: f.startDate, ...(crosses ? { cashOn: f.paymentDate } : {}) });
+    }
   }
   move.sort((a, b) => b.from.localeCompare(a.from) || a.clientName.localeCompare(b.clientName));
   return {

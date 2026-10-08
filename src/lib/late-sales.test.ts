@@ -155,6 +155,41 @@ test("a plan from last month typed in this month: the months' totals change, the
   );
 });
 
+test("cash moved past a typed Day Book opening stays in the drawer on the day it was typed in", () => {
+  const r = planLateSales(
+    [
+      fact({
+        paymentId: "cash",
+        method: "Cash",
+        startDate: "2026-10-02",
+        paymentDate: "2026-10-08",
+      }),
+      fact({ paymentId: "upi", method: "UPI", startDate: "2026-10-02", paymentDate: "2026-10-08" }),
+      fact({
+        paymentId: "after",
+        method: "Cash",
+        startDate: "2026-10-06",
+        paymentDate: "2026-10-08",
+      }),
+      fact({
+        paymentId: "onday",
+        method: "Cash",
+        startDate: "2026-10-05",
+        paymentDate: "2026-10-08",
+      }),
+    ],
+    OPEN,
+    ["2026-10-05"],
+  );
+  const by = Object.fromEntries(r.move.map((m) => [m.paymentId, m]));
+  assert.equal(by["cash"]!.cashOn, "2026-10-08");
+  assert.equal(by["cash"]!.to, "2026-10-02");
+  // Not cash, or not crossing the opening day (cash on the opening day itself counts after it).
+  assert.equal(by["upi"]!.cashOn, undefined);
+  assert.equal(by["after"]!.cashOn, undefined);
+  assert.equal(by["onday"]!.cashOn, undefined);
+});
+
 test("undo puts back only payments still on the day the run gave them", () => {
   const item = { paymentId: "p1", from: "2026-10-08", to: "2026-10-02" };
   assert.equal(lateUndoable(item, { paymentDate: "2026-10-02", amount: 1699 }), true);

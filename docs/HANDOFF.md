@@ -1,6 +1,50 @@
 # Handoff
 
-Last updated: 2026-10-09
+Last updated: 2026-10-09 (evening)
+
+## 2026-10-09 (evening): sales typed in after the plan started count on the plan's first day
+
+**State:** branch `late-sale-dates` (local commits, NOT merged or pushed). Waiting for the user's OK to
+merge into main and push (Vercel deploys from main). No Firestore rules change needed.
+
+User's report: A. Sharath Kumar's plan runs 2 Oct → 1 Nov but his ₹1,699 counted as "yesterday"
+(8 Oct, the day he was typed in). Rule (user, 2026-10-09): "we don't know when he paid, so the
+plan's start day is the day he paid". He slipped through because he was entered as a normal sale
+(not "Paid in the old software") and the "Paid in the old software?" review list only flags plans
+that started 7+ days before payment (his was 6).
+Also: the money list showed ₹1,699 but his member page showed "Price ₹1,999" (package price; ₹300
+discount was on the bill).
+
+Built:
+- Checkout (`enrollment.service.ts`, `enrollment-wizard.tsx`): a plan that started before today
+  dates its joining payment AND trainer payout on the plan's first day ("When was it paid?":
+  first day (default) / Today → `paidToday: true`). Upgrades stay today. Not before the 1st of
+  last month (Day Book carried forward) → today. Maths `src/lib/late-sales.ts` `saleMoneyDay`.
+- Owner tool, Income & expenses → Profit & income → "Sales typed in after the plan started":
+  Check → tick list (untick ones really paid that day) → Move → Undo (run in `oldSoftwareMoves`
+  kind `late-dates`; each payment gets a correction line with `tool: "late-sale-dates"`).
+  Leaves alone: upgrades, cancelled plans, closed/refunded/missing bills, plans marked paid in the
+  old software, dates set by hand / `paidToday`, plans that started before the 1st of last month.
+  Cash moved to before a typed Day Book opening (`cashDays.openingOverride`, e.g. the Day Book's
+  first day) keeps `cashDate` = day typed in, so cash in hand today never changes
+  (`cash-book.ts` uses `cashDate || paymentDate`).
+- Member page plan card / history, PT rows, PT tab, member app: what the member pays for the plan
+  (`src/lib/plan-money.ts`: its share of the bill's discount / credit / payments): "Paid ₹1,699 ·
+  package ₹1,999 · ₹300 discount".
+- Upgrade credit for unused days = what was paid for the plan × unused ÷ days (was package price).
+- Money list (Dashboard): "typed in <day>" instead of a time when a payment counts on another day.
+- Front desk may correct payments typed in today even when they count on an earlier day.
+- Tests: unit 196/196 (`npm run test:cfo`, new `late-sales.test.ts`, `plan-money.test.ts`);
+  emulator suite `latedates_local.py` (session scratchpad 7f906952…, run `bash regress.sh
+  latedates_local.py`); screenshots light/dark 390/1440 in that scratchpad's `shots/`.
+
+### Next
+1. User OK → merge `late-sale-dates` into main and push.
+2. Owner, once it is live: Income & expenses → Profit & income → "Sales typed in after the plan
+   started" → Check → untick any sale really paid on the day it was typed in → Move. A. Sharath
+   Kumar's ₹1,699 then counts on 2 Oct. Undo is on the same card.
+3. Still open from earlier: M. Rohith's package (owner), remove `.claude/settings.local.json`
+   temporary allow rule, `shots_local.py` 390 px Billing fix.
 
 ## 2026-10-09: item 5 built: old-software money counted on its real dates (gym and PT)
 

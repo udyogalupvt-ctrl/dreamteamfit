@@ -73,7 +73,7 @@ const shortDay = (iso: string) => {
  * expense from their own pocket. Each day's closing becomes the next day's opening.
  */
 export function buildCashBook(
-  payments: Pick<Payment, "amount" | "method" | "paymentDate" | "oldSoftware">[],
+  payments: Pick<Payment, "amount" | "method" | "paymentDate" | "oldSoftware" | "cashDate">[],
   manual: Pick<ManualIncome, "amount" | "method" | "date">[],
   expenses: Pick<
     Expense,
@@ -85,10 +85,11 @@ export function buildCashBook(
   const inByDay = new Map<string, number>();
   const outByDay = new Map<string, number>();
   const add = (m: Map<string, number>, d: string, n: number) => d && m.set(d, (m.get(d) ?? 0) + n);
-  // Money paid in the old software never came into this drawer.
+  // Money paid in the old software never came into this drawer. `cashDate`: cash that stayed in
+  // the drawer on the day it was typed in although Collected counts it earlier (late-sales.ts).
   payments
     .filter((p) => p.method === "Cash" && !p.oldSoftware)
-    .forEach((p) => add(inByDay, p.paymentDate, p.amount));
+    .forEach((p) => add(inByDay, p.cashDate || p.paymentDate, p.amount));
   manual.filter((m) => m.method === "Cash").forEach((m) => add(inByDay, m.date, m.amount));
   for (const e of expenses) {
     if (e.paidBy === "Gym" && e.paymentMethod === "Cash") add(outByDay, e.date, e.amount);

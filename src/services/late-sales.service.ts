@@ -1,4 +1,5 @@
 import {
+  deleteField,
   doc,
   documentId,
   getDoc,
@@ -55,9 +56,14 @@ async function byIds(name: CollectionName, ids: string[]) {
 /** Every joining payment from the 1st of last month on, with its plan and bill. */
 async function readLate(today: string): Promise<LatePlan & { openFrom: string }> {
   const openFrom = cashOpenFrom(today);
-  const pays = await getDocs(
-    query(col(COLLECTIONS.payments), where("paymentDate", ">=", openFrom)),
-  );
+  const [pays, days] = await Promise.all([
+    getDocs(query(col(COLLECTIONS.payments), where("paymentDate", ">=", openFrom))),
+    // Days whose opening cash was typed in the Day Book (its first day, corrections).
+    getDocs(query(col(COLLECTIONS.cashDays), where(documentId(), ">=", openFrom))),
+  ]);
+  const openingDays = days.docs
+    .filter((d) => typeof d.data()["openingOverride"] === "number")
+    .map((d) => d.id);
   const joining = pays.docs.filter((d) => {
     const x = d.data();
     return x["kind"] === "initial" && Number(x["amount"]) > 0 && x["oldSoftware"] !== true;
@@ -108,7 +114,7 @@ async function readLate(today: string): Promise<LatePlan & { openFrom: string }>
         x["paidToday"] === true || dateSetByHand(Array.isArray(x["edits"]) ? x["edits"] : []),
     };
   });
-  return { ...planLateSales(facts, openFrom), openFrom };
+  return { ...planLateSales(facts, openFrom, openingDays), openFrom };
 }
 
 /** Owner tool preview: which payments move, and where. Nothing changes. */
@@ -171,6 +177,8 @@ export async function applyLateSales(input: {
         };
         tx.update(s.ref, {
           paymentDate: m.to,
+          // Cash past a typed Day Book opening stays in the drawer on the day it was typed in.
+          ...(m.cashOn ? { cashDate: m.cashOn } : {}),
           edits: [...(Array.isArray(x["edits"]) ? x["edits"] : []), edit],
           lateRunId: runRef.id,
           updatedAt: serverTimestamp(),
@@ -187,6 +195,7 @@ export async function applyLateSales(input: {
           to: m.to,
           amount: m.amount,
           clientName: m.clientName,
+          ...(m.cashOn ? { cashOn: m.cashOn } : {}),
         })),
         total: Math.round(all.reduce((n, m) => n + m.amount, 0) * 100) / 100,
         count: all.length,
@@ -280,6 +289,7 @@ export async function undoLateSales(
         };
         tx.update(s.ref, {
           paymentDate: m.from,
+          ...(x["cashDate"] !== undefined ? { cashDate: deleteField() } : {}),
           edits: [...(Array.isArray(x["edits"]) ? x["edits"] : []), edit],
           lateRunId: "",
           updatedAt: serverTimestamp(),
