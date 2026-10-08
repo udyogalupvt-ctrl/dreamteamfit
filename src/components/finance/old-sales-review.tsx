@@ -125,7 +125,16 @@ export function OldSalesReview() {
         membership={open?.m ?? null}
         bill={open?.bill ?? null}
         memberName={open?.s.clientName ?? ""}
-        suggested={open?.s.old ? { paid: open.s.old.paid, bill: open.s.old.bill } : null}
+        suggested={
+          open?.s.old
+            ? {
+                amount: open.s.old.amount,
+                paid: open.s.old.paid,
+                bill: open.s.old.bill,
+                plan: `${open.s.old.plan} ${formatDateISO(open.s.old.start)} → ${formatDateISO(open.s.old.end)}`,
+              }
+            : null
+        }
         onClose={() => setOpen(null)}
         onDone={() => void load()}
       />
