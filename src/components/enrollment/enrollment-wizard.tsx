@@ -1268,7 +1268,7 @@ export function EnrollmentWizard({
                       <span className="text-meta">
                         {oldLocked
                           ? `Still running in the old software until ${formatDateISO(oldRunning.end)}: it is carried over as paid there (amounts from the old software, nothing counted today). The thumb works until then; renew here after it ends.`
-                          : "For a member moving over whose plan is already paid there. No money is taken or counted today (day book, cash and income stay as they are). Their old offer price is kept: no discount needed."}
+                          : "For a member moving over whose plan is already paid there. No money is taken today: what they paid there counts on the day they paid it, never in today's cash or the Day Book. Their old offer price is kept: no discount needed."}
                       </span>
                     </span>
                   </label>

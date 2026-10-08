@@ -1,5 +1,55 @@
 # Handoff
 
+Last updated: 2026-10-09
+
+## 2026-10-09: item 5 built: old-software money counted on its real dates (gym and PT)
+
+**State:** branch `old-money-dates` merged into main and pushed 2026-10-09 with the user's OK (Vercel
+deploys from main).
+No Firestore rules change needed (payments and `oldSoftwareMoves` rules already cover it).
+
+What it does (user's rule 2026-10-08: count on the real date, never in the Day Book drawer):
+- Plans paid in the old software get `payments` docs `oldSoftware: true`, `invoiceId: ""`, linked to
+  the plan(s), dated when paid there: the plan's start day, or part payments (rows: day, amount,
+  mode). They count in Collected / month totals / income / Reports / CFO "received" by date; NOT in
+  the Day Book drawer or carry-forward, CFO cash balance, incentives (counsellor ""), trainer
+  payouts (none made), the "Paid in the old software?" suspects. No Edit / Undo as a payment.
+- Maths: `src/lib/old-money.ts` (split gym / PT trainer share / one old plan for both, row checks,
+  diff, backfill plan; unit tests in `old-money.test.ts`, run by `npm run test:cfo`).
+  DB: `src/services/old-money.service.ts`. UI rows editor: `src/components/clients/old-paid-rows.tsx`.
+- Where rows are made: joining form ("Paid in parts or on another day?"; a plan starting after
+  today must be given the day: never "today"), Add-it-here dialog, Edit plan / Edit PT plan (rows
+  changeable by the OWNER only: it changes past income; a single row follows a corrected start
+  day), the owner's "Paid in the old software?" move (its Undo removes them).
+- One old plan = one payment: gym + PT joined together or on the same bill share one payment
+  (Edit PT plan then says "change it in Edit plan"); never two.
+- Owner tool: Income & expenses → Profit & income → "Old-software money on its real dates":
+  Check (month table + "not added" list with reasons) → Count (fixed ids `old-<planId>`, run kept
+  in `oldSoftwareMoves` kind "dates") → Undo (removes the run's untouched payments).
+- Day Book: Collected / Who paid = money taken here; "Paid in the old software · ₹X" listed apart.
+  Dashboard money list: "Old software" chip and rows. Cancel refund share uses what was paid there.
+- Checks: money review agent (12 findings, all fixed in 4dabe03 except the limits below); emulator
+  suite `olddates_local.py` 46/46 on fcebdcf, 64/64 on 4dabe03 (incl. later start, pairs, refunded
+  cancel, Count twice, front-desk read-only, Dashboard chip); unit 179/179; tsc,
+  eslint (changed files), build OK. Screenshots light/dark 390/1440 in session scratchpad
+  1bd8724d…/shots. Re-run: `bash <scratchpad 1bd8724d…>/regress.sh olddates_local.py` (~7 min).
+- Known limits (left on purpose): a cancelled old plan keeps its old money (it was paid; plans
+  entered twice should be undone, not cancelled; the owner tool leaves cancelled-without-refund
+  plans out and lists them); CFO "earned" income for old plans still uses the package price, not
+  the amount paid there; an imported legacy bill (`paymentsTracked: false`) for the same plan would
+  count twice (the app never makes those now).
+
+### Next
+1. Done: merged + pushed. Open front-desk tabs pick up the new version when idle (or press "New
+   version · Refresh").
+2. Owner, once now that it is live: Income & expenses → Profit & income → "Old-software money on its real
+   dates" → Check → read the month table and the "not added" list → Count. Undo if it looks wrong.
+3. Then fix the "not added" ones: no amount saved (Edit plan → add what was paid there), starts
+   after today (give the day), cancelled (decide: usually entered twice, leave out).
+4. Kalyan Devaraju (PT + floor as one old plan): amount stays on the gym plan only (as before).
+5. Still open from earlier: M. Rohith's package (owner), remove `.claude/settings.local.json`
+   temporary allow rule, `shots_local.py` 390 px Billing fix.
+
 ## 2026-10-08 (night, round 3): door fix for old plans, PT discount, New version button
 
 Done (branch work merged to main, see git log): Plan tab "Still running in the old software, but
@@ -22,7 +72,7 @@ PT amount ("Personal training + floor charges" is one old plan: its amount is on
 put it on both, or item 5 would count it twice). M. Rohith's package (1 year here, 3 months there)
 is for the owner.
 
-**NEXT: item 5, money of old-software plans on its real day (gym AND PT).** User's rule
+**DONE 2026-10-09 (see the top section): item 5, money of old-software plans on its real day (gym AND PT).** User's rule
 (2026-10-08): COUNT ON THE REAL DATE (Collected / month totals / CFO), never as today, and KEEP IT
 OUT OF THE DAY BOOK CASH DRAWER. User: "first check if there is a better way, it must help the gym
 work smoothly" → better than staff typing dates for ~150 old plans:
