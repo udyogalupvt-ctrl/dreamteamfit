@@ -89,7 +89,7 @@ import { EditPlanDialog, PlanEdits } from "@/components/clients/edit-plan-dialog
 import { OldSoftwareDialog } from "@/components/clients/old-software-dialog";
 import { undoOldSoftwareMove } from "@/services/old-software.service";
 import { lookupOldMembers } from "@/services/old-data.service";
-import { matchingOldPlan, runningOldPlan, type OldMember } from "@/lib/old-data";
+import { isOldPtPlanName, matchingOldPlan, runningOldPlan, type OldMember } from "@/lib/old-data";
 import { AddOldPlanDialog } from "@/components/clients/add-old-plan-dialog";
 import { billOfPlan } from "@/services/plan-edit.service";
 import { canEditPlan } from "@/services/plan-edit.service";
@@ -114,8 +114,10 @@ import type {
   GroupClass,
   Invoice,
   Membership,
+  PtAssignment,
   WorkoutAssignment,
 } from "@/types/models";
+import { subscribeClientPtAssignments } from "@/services/pt.service";
 import type { StatTone } from "@/types";
 import { CLOUDINARY_CLIENT_FOLDER } from "@/constants/navigation";
 
@@ -138,6 +140,12 @@ function ClientProfilePage() {
   ]);
   const memberships = useLive<Membership[]>(
     (ok, fail) => subscribeClientMemberships(clientId, ok, fail),
+    [],
+    [clientId],
+  );
+  // PT plans count too: a running PT plan opens the door as well.
+  const ptPlans = useLive<PtAssignment[]>(
+    (ok, fail) => subscribeClientPtAssignments(clientId, ok, fail),
     [],
     [clientId],
   );
@@ -250,12 +258,16 @@ function ClientProfilePage() {
   // started yet): the door is shut although they paid. Offer to add that plan as paid there.
   const todayDay = new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10);
   const oldRun = oldPerson ? runningOldPlan(oldPerson, todayDay) : null;
-  const liveHere = withStatus.filter((m) => m.status !== "cancelled");
+  const liveHere = [...withStatus, ...ptPlans.data].filter((m) => m.status !== "cancelled");
   const missingOldRun =
     oldRun &&
     can("members") &&
+    !memberships.loading &&
+    !ptPlans.loading &&
     !liveHere.some((m) => m.startDate <= todayDay && m.endDate >= todayDay) &&
-    !liveHere.some((m) => m.startDate <= oldRun.start && m.endDate >= oldRun.start)
+    !(isOldPtPlanName(oldRun.name) ? ptPlans.data : withStatus).some(
+      (m) => m.status !== "cancelled" && m.startDate <= oldRun.start && m.endDate >= oldRun.start,
+    )
       ? oldRun
       : null;
   const shownPlan = <T extends Membership>(m: T): T => {

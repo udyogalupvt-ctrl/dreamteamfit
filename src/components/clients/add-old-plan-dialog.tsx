@@ -14,7 +14,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useLive } from "@/hooks/use-live-query";
 import { addDaysISO, formatDateISO, formatPrice, todayISO } from "@/lib/format";
-import { matchStaffName, type OldPlan } from "@/lib/old-data";
+import { isOldPtPlanName, matchStaffName, type OldPlan } from "@/lib/old-data";
 import {
   DEFAULT_BILLING_SETTINGS,
   subscribeBusinessSettings,
@@ -28,9 +28,6 @@ import type { Client } from "@/types/models";
 
 const oldDays = (p: OldPlan) =>
   Math.round((Date.parse(p.end) - Date.parse(p.start)) / 86_400_000) + 1;
-
-/** A personal-training plan in the old software ("1 month alt pt", "PERSONAL TRAINING DAILY"). */
-export const isOldPtPlanName = (name: string) => /\bpt\b|personal\s*training/i.test(name);
 
 /**
  * The one package here most like the old plan: the same length and, for gym plans, cardio +
@@ -86,11 +83,9 @@ export function AddOldPlanDialog({
   const ptPackages = useLive(open && pt ? subscribePtPackages : null, [], [open, pt]);
   const trainers = useLive(open && pt ? subscribeTrainers : null, [], [open, pt]);
   const staff = useLive(open ? subscribeStaff : null, [], [open]);
-  const settings = useLive(
-    open ? subscribeBusinessSettings : null,
-    DEFAULT_BILLING_SETTINGS,
-    [open],
-  );
+  const settings = useLive(open ? subscribeBusinessSettings : null, DEFAULT_BILLING_SETTINGS, [
+    open,
+  ]);
   const gymList = useMemo(() => packages.data.filter((p) => p.isActive), [packages.data]);
   const ptList = useMemo(() => ptPackages.data.filter((p) => p.isActive), [ptPackages.data]);
   const trainerList = useMemo(

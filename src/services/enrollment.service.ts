@@ -180,11 +180,21 @@ export async function enrollMember(input: EnrollmentInput) {
   // one with plans here before or after it (an older plan that ended, or the renewal entered while
   // the old plan still runs). A plan here running on its first day means it was paid here.
   if (old && input.existingClient) {
-    const here = await getDocs(
-      query(col(COLLECTIONS.memberships), where("clientId", "==", input.existingClient.id)),
-    );
+    // Gym plans against gym plans, PT against PT (a PT plan here doesn't stop the gym plan).
+    const [plansHere, ptHere] = await Promise.all([
+      input.gymPackage
+        ? getDocs(
+            query(col(COLLECTIONS.memberships), where("clientId", "==", input.existingClient.id)),
+          )
+        : null,
+      input.pt
+        ? getDocs(
+            query(col(COLLECTIONS.ptAssignments), where("clientId", "==", input.existingClient.id)),
+          )
+        : null,
+    ]);
     if (
-      here.docs.some(
+      [...(plansHere?.docs ?? []), ...(ptHere?.docs ?? [])].some(
         (d) =>
           d.data()["status"] !== "cancelled" &&
           String(d.data()["startDate"] ?? "") <= input.startDate &&

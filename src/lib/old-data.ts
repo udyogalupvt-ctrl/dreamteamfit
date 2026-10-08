@@ -324,6 +324,9 @@ export function matchingOldPlan(m: Pick<OldMember, "plans">, start: string, end:
   );
 }
 
+/** A personal-training plan in the old software ("1 month alt pt", "PERSONAL TRAINING DAILY"). */
+export const isOldPtPlanName = (name: string) => /\bpt\b|personal\s*training/i.test(name);
+
 /** The old plan still running on a day ("" end = unknown, not running). */
 export const runningOldPlan = (m: Pick<OldMember, "plans">, today: string) =>
   m.plans.find((p) => p.end >= today && p.start <= today && !/inactive/i.test(p.status)) ?? null;
