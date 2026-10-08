@@ -56,8 +56,9 @@ Built:
 2. Owner, once it is live: Income & expenses → Profit & income → "Sales typed in after the plan
    started" → Check → untick any sale really paid on the day it was typed in → Move. A. Sharath
    Kumar's ₹1,699 then counts on 2 Oct. Undo is on the same card.
-3. Still open from earlier: M. Rohith's package (owner), remove `.claude/settings.local.json`
-   temporary allow rule, `shots_local.py` 390 px Billing fix.
+3. Still open from earlier: M. Rohith's package (owner: Edit plan → "3 Month package cardio and
+   strengthening", end 15 Oct 2026, ₹5,800), `shots_local.py` 390 px Billing fix (test script only).
+   The temporary `.claude/settings.local.json` allow rule is already gone (checked 2026-10-09).
 
 ## 2026-10-09: item 5 built: old-software money counted on its real dates (gym and PT)
 
