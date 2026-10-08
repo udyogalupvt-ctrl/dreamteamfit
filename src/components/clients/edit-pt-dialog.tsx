@@ -24,8 +24,18 @@ import {
   DEFAULT_BILLING_SETTINGS,
   subscribeBusinessSettings,
 } from "@/services/business-settings.service";
-import { formatDateISO, formatPrice } from "@/lib/format";
-import type { Invoice, PaymentMethod, PtAssignment, ShareType, Trainer } from "@/types/models";
+import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
+import { checkOldRows, defaultOldRows, type OldPayRow } from "@/lib/old-money";
+import { OldPaidRows } from "@/components/clients/old-paid-rows";
+import { subscribeClientPayments } from "@/services/finance.service";
+import type {
+  Invoice,
+  Payment,
+  PaymentMethod,
+  PtAssignment,
+  ShareType,
+  Trainer,
+} from "@/types/models";
 
 /**
  * "Edit PT plan": the trainer (owner: the share moves with it), the dates, the share, and the
@@ -45,7 +55,8 @@ export function EditPtDialog({
   const { user } = useAuth();
   const trainers = useLive<Trainer[]>(open ? subscribeTrainers : null, [], [open]);
   const ptPackages = useLive(open ? subscribePtPackages : null, [], [open]);
-  const [oldPaid, setOldPaid] = useState("");
+  /** Paid in the old software: the rows as changed here; null = as saved. */
+  const [oldRows, setOldRows] = useState<OldPayRow[] | null>(null);
   const [trainerId, setTrainerId] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -58,10 +69,17 @@ export function EditPtDialog({
   const settings = useLive(open ? subscribeBusinessSettings : null, DEFAULT_BILLING_SETTINGS, [
     open,
   ]);
+  // Its old-software payments (when and how much was paid there).
+  const oldOpen = open && !!pt?.paidInOldSoftware;
+  const pays = useLive<Payment[]>(
+    oldOpen && pt ? (ok, fail) => subscribeClientPayments(pt.clientId, ok, fail) : null,
+    [],
+    [oldOpen, pt?.clientId],
+  );
   useEffect(() => {
     if (!pt) return;
     setDiscount("");
-    setOldPaid("");
+    setOldRows(null);
     setRefundMethod("Cash");
     setTrainerId(pt.trainerId);
     setStart(pt.startDate);
@@ -86,13 +104,32 @@ export function EditPtDialog({
     name: pt.trainerNameSnapshot,
   };
   const shareNumber = shareValue.trim() === "" ? Number.NaN : Number(shareValue);
+  const today = todayISO();
+  const mine = pays.data.filter((p) => p.oldSoftware && p.ptAssignmentId === pt.id);
+  // One old plan with the gym plan ("PT + floor"): its money is on the gym plan's payment.
+  const withGym = mine.some((p) => !!p.membershipId);
+  const saved: OldPayRow[] = mine
+    .map((p) => ({ id: p.id, date: p.paymentDate, amount: p.amount, method: p.method }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const followed =
+    oldRows === null &&
+    saved.length === 1 &&
+    saved[0]!.date === pt.startDate &&
+    start !== pt.startDate
+      ? [{ ...saved[0]!, date: start && start <= today ? start : today }]
+      : null;
+  const rowsAfter = withGym ? null : (oldRows ?? followed);
+  const shownRows =
+    rowsAfter ??
+    (saved.length ? saved : defaultOldRows(start || pt.startDate, pt.oldSoftwarePaid ?? 0, today));
   const form = {
     trainer,
     startDate: start,
     endDate: end,
     share: money ? { type: shareType, value: shareNumber } : undefined,
-    oldPaid: oldPaid.trim() === "" ? undefined : Number(oldPaid),
+    oldRows: pt.paidInOldSoftware && rowsAfter ? { before: saved, after: rowsAfter } : undefined,
   };
+  const rowsError = form.oldRows ? checkOldRows(form.oldRows.after, today) : "";
   // Like gym plans: the usual end is calendar months from the start (the package's length).
   const pkgDays = ptPackages.data.find((x) => x.id === pt.ptPackageId)?.durationDays ?? 0;
   const usual = pkgDays && /^\d{4}-\d{2}-\d{2}$/.test(start) ? planEndDate(start, pkgDays) : "";
@@ -132,7 +169,8 @@ export function EditPtDialog({
     setError("");
     const by = user?.displayName || user?.email || "Staff";
     try {
-      if (planChanges.length) await editPtPlan({ pt, form, reason, canFinance: money, by });
+      if (planChanges.length)
+        await editPtPlan({ pt, form, reason, canFinance: money, by, byUid: user?.uid ?? "" });
       if (discountChanged && bill && billForm)
         await editBill({
           invoice: bill,
@@ -169,7 +207,13 @@ export function EditPtDialog({
           </Button>
           <Button
             onClick={() => save()}
-            disabled={!changes.length || shareBad || !!billPv?.error || (discountChanged && !money)}
+            disabled={
+              !changes.length ||
+              shareBad ||
+              !!rowsError ||
+              !!billPv?.error ||
+              (discountChanged && !money)
+            }
           >
             <Pencil aria-hidden /> Save changes
           </Button>
@@ -277,23 +321,21 @@ export function EditPtDialog({
           </div>
         </Field>
         {pt.paidInOldSoftware ? (
-          <Field
-            label="Paid in the old software (₹)"
-            htmlFor="pt-oldpaid"
-            hint="What they paid there for this PT plan (their old bill). Not counted in this app's money."
-          >
-            <Input
+          withGym ? (
+            <p className="text-meta rounded-lg border border-border p-3">
+              Paid in the old software together with the gym plan (one old plan):{" "}
+              {saved.map((r) => `${formatPrice(r.amount)} on ${formatDateISO(r.date)}`).join(" + ")}
+              . Change it in Edit plan.
+            </p>
+          ) : (
+            <OldPaidRows
               id="pt-oldpaid"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              step="1"
-              placeholder="0"
-              value={oldPaid === "" ? String(pt.oldSoftwarePaid ?? "") : oldPaid}
-              onChange={(e) => setOldPaid(e.target.value === "" ? "0" : e.target.value)}
-              className="max-w-48 tabular-nums"
+              rows={shownRows}
+              onChange={setOldRows}
+              disabled={pays.loading}
+              error={rowsError}
             />
-          </Field>
+          )
         ) : null}
         {discountEditable && bill ? (
           <Field

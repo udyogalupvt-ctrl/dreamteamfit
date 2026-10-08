@@ -955,6 +955,12 @@ export interface Payment extends BaseDoc {
   counsellorId: string;
   counsellorName: string;
   note: string;
+  /**
+   * Paid in the old gym software (no bill here): counted in Collected / income on `paymentDate`,
+   * never in the Day Book drawer or incentives; changed only through its plan.
+   */
+  oldSoftware?: boolean;
+  oldSoftwareBillNo?: string;
   /** Corrections made later (wrong mode, amount, date), oldest first. */
   edits: RecordEdit[];
 }

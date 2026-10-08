@@ -199,6 +199,7 @@ export function OldSoftwareDialog({
         reason,
         canFinance: money,
         by: { uid: user?.uid ?? "", name: user?.displayName || user?.email || "Staff" },
+        clientName: memberName,
       });
       onClose();
       onDone?.();

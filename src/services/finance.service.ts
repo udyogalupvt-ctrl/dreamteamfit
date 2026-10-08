@@ -55,6 +55,9 @@ export const mapPayment = (id: string, d: DocumentData): Payment => ({
   counsellorId: d["counsellorId"] ?? "",
   counsellorName: d["counsellorName"] ?? "",
   note: String(d["note"] ?? ""),
+  ...(d["oldSoftware"] === true
+    ? { oldSoftware: true, oldSoftwareBillNo: String(d["oldSoftwareBillNo"] ?? "") }
+    : {}),
   edits: Array.isArray(d["edits"]) ? d["edits"] : [],
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
@@ -363,7 +366,8 @@ export async function undoBalancePayment(paymentId: string) {
     const pay = await tx.get(payRef);
     if (!pay.exists()) throw new Error("That payment was already removed.");
     const p = pay.data();
-    if (p["kind"] !== "balance") throw new Error("Only a balance payment can be undone here.");
+    if (p["kind"] !== "balance" || p["oldSoftware"] === true || !p["invoiceId"])
+      throw new Error("Only a balance payment can be undone here.");
     const invRef = doc(db, COLLECTIONS.invoices, String(p["invoiceId"]));
     const inv = await tx.get(invRef);
     if (!inv.exists()) throw new Error("Its bill was not found.");

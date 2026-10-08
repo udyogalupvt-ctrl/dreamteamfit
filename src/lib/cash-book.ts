@@ -68,12 +68,12 @@ const shortDay = (iso: string) => {
 };
 
 /**
- * Daily cash register. Cash in = member payments paid in cash. Cash out =
+ * Daily cash register. Cash in = member payments paid in cash here (not the old software's). Cash out =
  * expenses paid in cash from the gym, and money paid back in cash to someone who paid an
  * expense from their own pocket. Each day's closing becomes the next day's opening.
  */
 export function buildCashBook(
-  payments: Pick<Payment, "amount" | "method" | "paymentDate">[],
+  payments: Pick<Payment, "amount" | "method" | "paymentDate" | "oldSoftware">[],
   manual: Pick<ManualIncome, "amount" | "method" | "date">[],
   expenses: Pick<
     Expense,
@@ -85,7 +85,10 @@ export function buildCashBook(
   const inByDay = new Map<string, number>();
   const outByDay = new Map<string, number>();
   const add = (m: Map<string, number>, d: string, n: number) => d && m.set(d, (m.get(d) ?? 0) + n);
-  payments.filter((p) => p.method === "Cash").forEach((p) => add(inByDay, p.paymentDate, p.amount));
+  // Money paid in the old software never came into this drawer.
+  payments
+    .filter((p) => p.method === "Cash" && !p.oldSoftware)
+    .forEach((p) => add(inByDay, p.paymentDate, p.amount));
   manual.filter((m) => m.method === "Cash").forEach((m) => add(inByDay, m.date, m.amount));
   for (const e of expenses) {
     if (e.paidBy === "Gym" && e.paymentMethod === "Cash") add(outByDay, e.date, e.amount);

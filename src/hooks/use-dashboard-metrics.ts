@@ -96,7 +96,8 @@ export interface MoneyRow {
   at: Date;
   amount: number;
   method: string;
-  kind: "initial" | "balance" | "refund" | "bill";
+  /** old = paid in the old software (counted on its day, no bill here, not in the drawer). */
+  kind: "initial" | "balance" | "refund" | "bill" | "old";
   bill: string;
 }
 /** One line of a "more numbers" card's list. */
@@ -706,8 +707,12 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
             at: p.createdAt,
             amount: p.amount,
             method: p.method,
-            kind: p.kind,
-            bill: p.invoiceNumber,
+            kind: p.oldSoftware ? ("old" as const) : p.kind,
+            bill: p.oldSoftware
+              ? p.oldSoftwareBillNo
+                ? `old bill ${p.oldSoftwareBillNo}`
+                : ""
+              : p.invoiceNumber,
           })),
         ...monthInvoices.data
           .filter(
@@ -772,6 +777,9 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
       const shares = payments.data
         .filter((p) => p.paymentDate >= from && p.paymentDate <= to && p.trainerShareAmount !== 0)
         .sort((a, b) => b.paymentDate.localeCompare(a.paymentDate));
+      const oldShares = shares
+        .filter((p) => p.oldSoftware)
+        .reduce((n, p) => n + p.trainerShareAmount, 0);
       const due = openInvoices.data
         .filter((i) => i.paymentStatus !== "refunded" && i.balanceDue > 0)
         .sort((a, b) => (a.dueDate || "9").localeCompare(b.dueDate || "9"));
@@ -862,11 +870,13 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
           })),
         },
         "trainer-payable": {
-          summary: `${signed(statMoney.trainerPayable)} owed to trainers ${statLabel}`,
+          summary: `${signed(statMoney.trainerPayable)} owed to trainers ${statLabel}${
+            oldShares ? ` (${formatPrice(oldShares)} of it settled in the old software)` : ""
+          }`,
           rows: shares.map((p) => ({
             id: p.id,
             title: p.clientNameSnapshot || "Member",
-            sub: `${formatDateISO(p.paymentDate)}${p.invoiceNumber ? ` · ${p.invoiceNumber}` : ""}${p.kind === "refund" ? " · refund" : ""}`,
+            sub: `${formatDateISO(p.paymentDate)}${p.invoiceNumber ? ` · ${p.invoiceNumber}` : ""}${p.kind === "refund" ? " · refund" : ""}${p.oldSoftware ? " · paid in the old software, trainer settled there" : ""}`,
             right: signed(p.trainerShareAmount),
             minus: p.trainerShareAmount < 0,
             clientId: p.clientId,

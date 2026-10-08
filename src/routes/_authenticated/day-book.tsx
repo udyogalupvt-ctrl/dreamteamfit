@@ -121,12 +121,16 @@ function DayBookPage() {
     [base],
   );
 
-  const paid = payments.data
+  const inPeriod = payments.data
     .filter((p) => p.paymentDate >= start && p.paymentDate <= end)
     .sort(
       (a, b) =>
         b.paymentDate.localeCompare(a.paymentDate) || b.createdAt.getTime() - a.createdAt.getTime(),
     );
+  // Money paid in the old software on these days: counted in the month's totals, never here.
+  const paid = inPeriod.filter((p) => !p.oldSoftware);
+  const paidOld = inPeriod.filter((p) => p.oldSoftware);
+  const paidOldTotal = paidOld.reduce((n, p) => n + p.amount, 0);
   const spent = expenses.data.filter((e) => e.date >= start && e.date <= end);
   const book = useMemo(
     () => buildCashBook(payments.data, [], expenses.data, days.data, today),
@@ -169,6 +173,17 @@ function DayBookPage() {
       "Collected by": p.createdBy,
       Counsellor: p.counsellorName,
     })),
+    ...(paidOld.length
+      ? {
+          "Paid in the old software": paidOld.map((p) => ({
+            Date: p.paymentDate,
+            Member: p.clientNameSnapshot,
+            "Old bill": p.oldSoftwareBillNo ?? "",
+            Amount: p.amount,
+            "Paid by": p.method,
+          })),
+        }
+      : {}),
     Expenses: spent.map((e) => ({
       Date: e.date,
       Title: e.title,
@@ -401,6 +416,35 @@ function DayBookPage() {
               <p className="text-meta p-4">No payments in this period.</p>
             )}
           </section>
+
+          {paidOld.length ? (
+            <section className="surface-card overflow-hidden">
+              <div className="border-b border-border p-4">
+                <h2 className="text-section-title">
+                  Paid in the old software · {formatPrice(paidOldTotal)}
+                </h2>
+                <p className="text-meta mt-1">
+                  Plans paid in the old software, on the day they were paid there. Counted in the
+                  month&rsquo;s Collected, not in this cash drawer. Change them from the
+                  member&rsquo;s plan.
+                </p>
+              </div>
+              <ul className="divide-y divide-border">
+                {paidOld.map((p) => (
+                  <li key={p.id} className="flex items-baseline justify-between gap-3 px-4 py-2.5">
+                    <span className="min-w-0">
+                      <span className="font-semibold">{p.clientNameSnapshot}</span>
+                      <span className="text-meta block">
+                        {formatDateISO(p.paymentDate)} · {p.method}
+                        {p.oldSoftwareBillNo ? ` · old bill ${p.oldSoftwareBillNo}` : ""}
+                      </span>
+                    </span>
+                    <span className="font-bold tabular-nums">{formatPrice(p.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           <section className="surface-card overflow-hidden">
             <div className="flex items-center justify-between gap-3 border-b border-border p-4">

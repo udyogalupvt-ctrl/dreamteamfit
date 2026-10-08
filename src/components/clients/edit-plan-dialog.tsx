@@ -16,6 +16,9 @@ import { useAccess } from "@/hooks/use-access";
 import { useAuth } from "@/hooks/use-auth";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
+import { checkOldRows, defaultOldRows, type OldPayRow } from "@/lib/old-money";
+import { OldPaidRows } from "@/components/clients/old-paid-rows";
+import { subscribeClientPayments } from "@/services/finance.service";
 import { billCredits } from "@/lib/invoice-utils";
 import {
   DEFAULT_BILLING_SETTINGS,
@@ -38,6 +41,7 @@ import {
   type GymPackage,
   type Invoice,
   type Membership,
+  type Payment,
   type PaymentMethod,
   type Staff,
 } from "@/types/models";
@@ -72,6 +76,13 @@ export function EditPlanDialog({
   const settings = useLive(open ? subscribeBusinessSettings : null, DEFAULT_BILLING_SETTINGS, [
     open,
   ]);
+  // Its old-software payments (when and how much was paid there).
+  const oldOpen = open && !!membership?.paidInOldSoftware;
+  const pays = useLive<Payment[]>(
+    oldOpen ? (ok, fail) => subscribeClientPayments(client.id, ok, fail) : null,
+    [],
+    [oldOpen, client.id],
+  );
 
   const [pkgId, setPkgId] = useState("");
   const [start, setStart] = useState("");
@@ -79,7 +90,8 @@ export function EditPlanDialog({
   const [counsellorId, setCounsellorId] = useState("");
   /** Text, so the box can be empty while typing; "" = unchanged. */
   const [discount, setDiscount] = useState("");
-  const [oldPaid, setOldPaid] = useState("");
+  /** Paid in the old software: the rows as changed here; null = as saved. */
+  const [oldRows, setOldRows] = useState<OldPayRow[] | null>(null);
   const [reason, setReason] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("Cash");
   const [payBy, setPayBy] = useState("");
@@ -91,7 +103,7 @@ export function EditPlanDialog({
     setEnd(membership.endDate);
     setCounsellorId(membership.counsellorId);
     setDiscount("");
-    setOldPaid("");
+    setOldRows(null);
     setReason("");
     setMethod("Cash");
     setPayBy(todayISO());
@@ -134,15 +146,32 @@ export function EditPlanDialog({
   const bill = billOfPlan(m, invoices);
   const billDiscount = bill ? staffDiscountOf(bill) : 0;
   const discountValue = discount.trim() === "" ? undefined : Number(discount);
-  const oldPaidValue = oldPaid.trim() === "" ? undefined : Number(oldPaid);
+  const today = todayISO();
+  const saved: OldPayRow[] = pays.data
+    .filter((p) => p.oldSoftware && p.membershipId === m.id)
+    .map((p) => ({ id: p.id, date: p.paymentDate, amount: p.amount, method: p.method }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  // One payment on the old start day follows a corrected start day.
+  const followed =
+    oldRows === null &&
+    saved.length === 1 &&
+    saved[0]!.date === m.startDate &&
+    start !== m.startDate
+      ? [{ ...saved[0]!, date: start && start <= today ? start : today }]
+      : null;
+  const rowsAfter = oldRows ?? followed;
+  const shownRows =
+    rowsAfter ??
+    (saved.length ? saved : defaultOldRows(start || m.startDate, m.oldSoftwarePaid ?? 0, today));
   const form = {
     pkg,
     startDate: start,
     endDate: end,
     counsellor,
     discount: discountValue,
-    oldPaid: oldPaidValue,
+    oldRows: m.paidInOldSoftware && rowsAfter ? { before: saved, after: rowsAfter } : undefined,
   };
+  const rowsError = form.oldRows ? checkOldRows(form.oldRows.after, today) : "";
   const preview = previewPlanEdit(m, form, bill, settings.data);
   const discountEditable =
     !!bill &&
@@ -273,23 +302,13 @@ export function EditPlanDialog({
           </Field>
         ) : null}
         {m.paidInOldSoftware ? (
-          <Field
-            label="Paid in the old software (₹)"
-            htmlFor="plan-oldpaid"
-            hint="What they paid there for this plan (their old bill). Not counted in this app's money."
-          >
-            <Input
-              id="plan-oldpaid"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              step="1"
-              placeholder="0"
-              value={oldPaid === "" ? String(m.oldSoftwarePaid ?? "") : oldPaid}
-              onChange={(e) => setOldPaid(e.target.value === "" ? "0" : e.target.value)}
-              className="max-w-48 tabular-nums"
-            />
-          </Field>
+          <OldPaidRows
+            id="plan-oldpaid"
+            rows={shownRows}
+            onChange={setOldRows}
+            disabled={pays.loading}
+            error={rowsError}
+          />
         ) : null}
         <div className="grid items-start gap-4 sm:grid-cols-2">
           <Field label="Start date" htmlFor="plan-start">

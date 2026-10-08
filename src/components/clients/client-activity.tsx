@@ -158,11 +158,14 @@ export function ClientActivity({
     payments.data.forEach((p) =>
       add("payments", p.id, {
         at: p.createdAt,
-        title:
-          p.kind === "refund"
+        title: p.oldSoftware
+          ? `Paid in the old software: ${formatPrice(p.amount)} on ${formatDateISO(p.paymentDate)}`
+          : p.kind === "refund"
             ? `Refund ${formatPrice(-p.amount)} given back by ${p.method}`
             : `Payment ${formatPrice(p.amount)} by ${p.method}`,
-        detail: `${p.invoiceNumber}${p.kind === "balance" ? " · balance" : ""}`,
+        detail: p.oldSoftware
+          ? `Counted on that day, not in the cash drawer${p.oldSoftwareBillNo ? ` · old bill ${p.oldSoftwareBillNo}` : ""}`
+          : `${p.invoiceNumber}${p.kind === "balance" ? " · balance" : ""}`,
         group: "money",
         actor: p.createdBy || "from records",
       }),

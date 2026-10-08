@@ -154,6 +154,8 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
         return action === "created"
           ? `Refund ${money(-Number(d["amount"]))} given back by ${s(d["method"])}${d["note"] ? ` (${s(d["note"])})` : ""}`
           : `Refund ${money(-Number(d["amount"]))} ${action === "deleted" ? "removed" : "edited"}`;
+      if (d["oldSoftware"] === true && action !== "updated")
+        return `Paid in the old software ${action === "deleted" ? "removed" : "counted"}: ${money(d["amount"])} on ${s(d["paymentDate"])}`;
       if (action === "created")
         return `Payment ${money(d["amount"])} by ${s(d["method"])} (${s(d["invoiceNumber"])})`;
       if (action === "deleted")

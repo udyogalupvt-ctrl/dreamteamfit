@@ -23,7 +23,8 @@ const round = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 /** What this login may change on a payment. */
 export function paymentEditRights(p: Payment, can: { billing: boolean; finance: boolean }) {
   const today = todayISO();
-  const mayEdit = can.finance || (can.billing && p.paymentDate === today);
+  // Paid in the old software: changed from its plan (Edit plan / Edit PT plan), not here.
+  const mayEdit = !p.oldSoftware && (can.finance || (can.billing && p.paymentDate === today));
   const cashOpen = p.paymentDate >= cashOpenFrom(today);
   return {
     mayEdit,
@@ -65,6 +66,10 @@ export async function editPayment(input: {
   const { payment: p, form } = input;
   const today = todayISO();
   const rights = paymentEditRights(p, input.can);
+  if (p.oldSoftware)
+    throw new Error(
+      "This was paid in the old software: change it from the member's plan (Edit plan).",
+    );
   if (!rights.mayEdit)
     throw new Error("Only today's payments can be changed here. Ask the owner for older ones.");
   const changes = paymentChanges(p, form);

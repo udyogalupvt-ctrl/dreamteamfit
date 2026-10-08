@@ -36,6 +36,7 @@ const KIND: Record<MoneyRow["kind"], string> = {
   balance: "Balance paid",
   refund: "Refund given back",
   bill: "Paid on bill",
+  old: "Paid in the old software",
 };
 
 const money = (n: number) => (n < 0 ? `−${formatPrice(-n)}` : formatPrice(n));
@@ -166,9 +167,11 @@ function MoneyList({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold">{r.name || "Member"}</span>
                   <span className="text-meta block">
-                    {oneDay
-                      ? format(r.at, "h:mm a")
-                      : `${formatDateISO(r.date)}, ${format(r.at, "h:mm a")}`}{" "}
+                    {r.kind === "old"
+                      ? formatDateISO(r.date)
+                      : oneDay
+                        ? format(r.at, "h:mm a")
+                        : `${formatDateISO(r.date)}, ${format(r.at, "h:mm a")}`}{" "}
                     · {r.method} · {KIND[r.kind]}
                     {r.bill ? ` · ${r.bill}` : ""}
                   </span>

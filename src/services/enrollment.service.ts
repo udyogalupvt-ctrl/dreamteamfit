@@ -34,6 +34,8 @@ import type {
 import type { ClientInput } from "./clients.service";
 import { claimMemberId, mapClient } from "./clients.service";
 import { allocatePayment } from "./finance.service";
+import { oldPaymentData } from "./old-money.service";
+import { checkOldRows, defaultOldRows, oldRowsTotal, type OldPayRow } from "@/lib/old-money";
 import { col, COLLECTIONS, toDate } from "./firestore.service";
 import { mapInvoice } from "./invoices.service";
 import { calculateEndDate } from "./memberships.service";
@@ -108,6 +110,11 @@ export interface EnrollmentInput {
     paid?: number;
     /** The old software's bill number, when known. */
     billNo?: string;
+    /**
+     * When it was paid there (part payments: one row each). Left out = all of `paid` on the start
+     * day. Counted in Collected on those days, never in today's cash.
+     */
+    rows?: OldPayRow[];
     /**
      * The old plan's own last day, when it is still running there: the plan here ends the same
      * day (the thumb works until then; they renew here after).
@@ -206,7 +213,21 @@ export async function enrollMember(input: EnrollmentInput) {
       );
   }
   const oldBalance = old ? Math.max(0, Math.round(old.balance || 0)) : 0;
-  const oldPaid = old ? Math.max(0, Math.round(old.paid || 0)) : 0;
+  // Paid there in parts: the parts are what was paid.
+  const oldRows = old
+    ? old.rows?.length
+      ? old.rows
+      : defaultOldRows(input.startDate, Math.max(0, Math.round(old.paid || 0)), todayISO())
+    : [];
+  if (old?.rows?.length) {
+    const bad = checkOldRows(old.rows, todayISO());
+    if (bad) throw new Error(bad);
+  }
+  const oldPaid = old
+    ? old.rows?.length
+      ? oldRowsTotal(old.rows)
+      : Math.max(0, Math.round(old.paid || 0))
+    : 0;
   const oldFields = old
     ? {
         paidInOldSoftware: true,
@@ -578,6 +599,24 @@ export async function enrollMember(input: EnrollmentInput) {
         createdAt: now,
         updatedAt: now,
       });
+    }
+    // Paid in the old software: counted on the day(s) it was paid there, never in today's cash.
+    if (old && oldRows.length) {
+      const link = {
+        clientId: clientRef.id,
+        clientName: fullName,
+        membershipId: membershipRef?.id ?? null,
+        ptAssignmentId: ptRef?.id ?? null,
+        billNo: old.billNo ? String(old.billNo) : "",
+        basis: {
+          gym: input.gymPackage ? { price: input.gymPackage.price } : null,
+          pt: share ? { price: share.ptPrice, trainerShare: share.trainerShareAmount } : null,
+        },
+      };
+      const sorted = [...oldRows].sort((a, b) => a.date.localeCompare(b.date));
+      sorted.forEach((r, i) =>
+        tx.set(doc(col(COLLECTIONS.payments)), oldPaymentData(r, link, i === 0, input.staff)),
+      );
     }
     tx.set(enrollmentRef, {
       clientId: clientRef.id,

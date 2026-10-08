@@ -14,12 +14,15 @@ import { billTaxRate, calculateInvoiceTotals } from "@/lib/invoice-utils";
 import type { Invoice, Membership, MembershipEdit } from "@/types/models";
 import { allocatePayment, cashOpenFrom } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
+import { oldPaymentData, readOldRows, type OldPayLink } from "./old-money.service";
+import { defaultOldRows, type OldPayRow } from "@/lib/old-money";
 
 /**
  * "Paid in the old software": a plan that was entered as a sale here (a payment dated the day it
  * was typed in) although the member had paid for it in the old software. The money is moved out
- * of this app's collections (Collected, Day Book, income, reports, CFO, incentives all add up
- * payments), exactly as if the plan had been saved with "Paid in the old software" ticked:
+ * of this app's sales of that day (Collected, Day Book, income, reports, CFO, incentives all add up
+ * payments), exactly as if the plan had been saved with "Paid in the old software" ticked (its
+ * money then counts on the day it was paid there: old-money.service.ts):
  *
  * - the bill's payments are taken off (up to the amount paid in the old software; a payment that
  *   was partly real money keeps the rest), the bill keeps its link and shows the old amount as
@@ -256,6 +259,7 @@ export async function markPaidInOldSoftware(input: {
   /** Income & expenses (owner): it changes money. */
   canFinance: boolean;
   by: { uid: string; name: string };
+  clientName?: string;
 }) {
   const { membership: m, bill } = input;
   if (!input.canFinance)
@@ -365,6 +369,22 @@ export async function markPaidInOldSoftware(input: {
       edits: [...(Array.isArray(prev["edits"]) ? prev["edits"] : []), edit],
       updatedAt: now,
     });
+    // 2b. The money paid there, counted on the day it was paid there (not today).
+    const pay = oldPaymentOfMove(
+      m,
+      bill,
+      amount,
+      whole,
+      !!bill && plan.after.amountPaid <= 0,
+      input.clientName ?? "",
+    );
+    if (pay)
+      tx.set(
+        doc(col(COLLECTIONS.payments)),
+        oldPaymentData(pay.row, { ...pay.link, billNo: input.billNo.trim() }, true, input.by, {
+          oldMoveId: moveRef.id,
+        }),
+      );
     if (!bill || !billRef) return;
     // 3. The bill and its link.
     const b = billSnap?.data() ?? {};
@@ -454,6 +474,41 @@ export async function markPaidInOldSoftware(input: {
   return { moveId: moveRef.id, plan };
 }
 
+/**
+ * The money paid there, counted on the plan's start day (the old software took it that day):
+ * split like the bill was (gym / PT / trainer), linked to the PT plan too when it moved with it.
+ */
+function oldPaymentOfMove(
+  m: Membership,
+  bill: Invoice | null,
+  amount: number,
+  whole: WholeEntry | null,
+  ptMoved: boolean,
+  clientName: string,
+): { row: OldPayRow; link: OldPayLink } | null {
+  const row = defaultOldRows(m.startDate, amount, todayISO())[0];
+  if (!row) return null;
+  return {
+    row,
+    link: {
+      clientId: m.clientId,
+      clientName: clientName || bill?.clientNameSnapshot || "",
+      membershipId: m.id,
+      ptAssignmentId: ptMoved && bill?.ptAssignmentId ? bill.ptAssignmentId : null,
+      billNo: "",
+      basis: whole
+        ? { gym: { price: whole.deal }, pt: null }
+        : {
+            gym: { price: bill ? bill.membershipGross : m.priceSnapshot },
+            pt:
+              bill && bill.ptGross > 0
+                ? { price: bill.ptGross, trainerShare: bill.trainerShareTotal }
+                : null,
+          },
+    },
+  };
+}
+
 /** Undo: puts the plan, bill, link, payments and trainer shares back exactly as they were. */
 export async function undoOldSoftwareMove(moveId: string, canFinance: boolean) {
   if (!canFinance)
@@ -466,9 +521,22 @@ export async function undoOldSoftwareMove(moveId: string, canFinance: boolean) {
   const before = (mv["before"] ?? {}) as Record<string, OldMoveRow | OldMoveRow[] | null>;
   const one = (k: string) => before[k] as OldMoveRow | null;
   const many = (k: string) => (before[k] as OldMoveRow[] | undefined) ?? [];
+  // The plan goes back to being a sale here: its old-software payments (counted on the day paid
+  // there) go, or the money would count twice.
+  const planIds = [one("membership")?.id, one("ptAssignment")?.id].filter(Boolean) as string[];
+  const oldPays = (
+    await Promise.all([
+      ...(one("membership") ? [readOldRows("gym", one("membership")!.id)] : []),
+      ...(one("ptAssignment") ? [readOldRows("pt", one("ptAssignment")!.id)] : []),
+    ])
+  ).flat();
+  const oldPayIds = [...new Set(oldPays.map((p) => p.id))];
   await runTransaction(db, async (tx) => {
     const fresh = await tx.get(ref);
     if (fresh.data()?.["undone"]) throw new Error("Already undone.");
+    const oldPaySnaps = await Promise.all(
+      oldPayIds.map((id) => tx.get(doc(db, COLLECTIONS.payments, id))),
+    );
     const inv = one("invoice");
     if (inv) {
       const now = await tx.get(doc(db, COLLECTIONS.invoices, inv.id));
@@ -488,6 +556,13 @@ export async function undoOldSoftwareMove(moveId: string, canFinance: boolean) {
     put(COLLECTIONS.enrollments, one("enrollment"));
     many("payments").forEach((r) => put(COLLECTIONS.payments, r));
     many("payouts").forEach((r) => put(COLLECTIONS.trainerPayouts, r));
-    tx.update(ref, { undone: true, undoneAt: serverTimestamp() });
+    oldPaySnaps.forEach((p) => p.exists() && tx.delete(p.ref));
+    tx.update(ref, {
+      undone: true,
+      undoneAt: serverTimestamp(),
+      ...(planIds.length
+        ? { oldPaymentsRemoved: oldPaySnaps.filter((p) => p.exists()).length }
+        : {}),
+    });
   });
 }

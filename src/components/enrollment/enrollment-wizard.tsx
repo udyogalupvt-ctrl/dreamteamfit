@@ -68,6 +68,8 @@ import {
 import { subscribeStaff } from "@/services/staff.service";
 import { useAccess } from "@/hooks/use-access";
 import { addDaysISO, latestJoinDate } from "@/lib/format";
+import { checkOldRows, defaultOldRows, oldRowsTotal, type OldPayRow } from "@/lib/old-money";
+import { OldPaidRows } from "@/components/clients/old-paid-rows";
 import {
   cleanMemberId,
   findClientsByPhone,
@@ -243,6 +245,8 @@ export function EnrollmentWizard({
   const [oldBalanceText, setOldBalanceText] = useState(restored?.oldBalance ?? "");
   // What they really paid in the old software (offers there differ from today's prices).
   const [oldPaidText, setOldPaidText] = useState(restored?.oldPaid ?? "");
+  /** Paid in the old software in parts / on another day; null = all of it on the start day. */
+  const [oldRows, setOldRows] = useState<OldPayRow[] | null>(null);
   // The old software's record(s) for the phone typed (Backup page data).
   const [oldFound, setOldFound] = useState<{ members: OldMember[]; today: string }>({
     members: [],
@@ -518,6 +522,7 @@ export function EnrollmentWizard({
     if (!oldLocked) return;
     setPaidOld(true);
     setOldPaidText("");
+    setOldRows(null);
     setOldBalanceText("");
     if (startDate !== oldRunning.start) setStartDate(oldRunning.start);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -559,6 +564,7 @@ export function EnrollmentWizard({
     setPaidOld(false);
     setOldBalanceText("");
     setOldPaidText("");
+    setOldRows(null);
   };
 
   // Keep an unsaved draft so an accidental close never loses what staff typed.
@@ -674,6 +680,13 @@ export function EnrollmentWizard({
       if (!gymPackage && !pt) e["package"] = "Pick a package first";
       if (oldPaid <= 0 && oldBalance <= 0)
         e["oldPaid"] = "Type what they paid in the old software (their old bill)";
+      else if (oldRows) {
+        const bad = checkOldRows(oldRows, todayISO());
+        if (bad) e["oldRows"] = bad;
+        else if (oldRowsTotal(oldRows) !== oldPaid)
+          e["oldRows"] =
+            `The parts add up to ${formatPrice(oldRowsTotal(oldRows))}, but ${formatPrice(oldPaid)} was paid there.`;
+      }
       if (oldBalance > 0 && !nextPaymentDate) e["nextPaymentDate"] = "When will the rest be paid?";
       else if (oldBalance > 0 && nextPaymentDate < todayISO())
         e["nextPaymentDate"] = "Pick today or a later date";
@@ -726,6 +739,7 @@ export function EnrollmentWizard({
               paid: oldPaid,
               billNo: oldRunning?.bill ?? "",
               ...(oldLocked ? { end: oldRunning.end } : {}),
+              ...(oldRows && oldPaid > 0 ? { rows: oldRows } : {}),
             }
           : null,
       });
@@ -1334,6 +1348,35 @@ export function EnrollmentWizard({
                           ))}
                         </div>
                       </Field>
+                    ) : null}
+                    {oldPaid > 0 ? (
+                      <div className="col-span-2">
+                        {oldRows ? (
+                          <OldPaidRows
+                            id="e-oldrows"
+                            rows={oldRows}
+                            onChange={(r) => setOldRows(r.length ? r : null)}
+                            error={errors["oldRows"]}
+                          />
+                        ) : (
+                          <p className="text-meta">
+                            {formatPrice(oldPaid)} is counted in Collected on{" "}
+                            {formatDateISO(
+                              startDate && startDate <= todayISO() ? startDate : todayISO(),
+                            )}{" "}
+                            (the plan&rsquo;s first day), not in today&rsquo;s cash.{" "}
+                            <button
+                              type="button"
+                              className="font-semibold text-primary underline-offset-2 hover:underline"
+                              onClick={() =>
+                                setOldRows(defaultOldRows(startDate, oldPaid, todayISO()))
+                              }
+                            >
+                              Paid in parts or on another day?
+                            </button>
+                          </p>
+                        )}
+                      </div>
                     ) : null}
                   </div>
                 ) : (

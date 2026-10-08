@@ -256,13 +256,15 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
             <span>
               <b>{formatPrice(p.amount)}</b> · {p.method} · {formatDateISO(p.paymentDate)}{" "}
               <span className="text-meta">
-                (
-                {p.kind === "refund"
-                  ? "refund given back"
-                  : p.kind === "balance"
-                    ? "balance payment"
-                    : "at checkout"}{" "}
-                · {p.invoiceNumber || "no bill"})
+                {p.oldSoftware
+                  ? `(paid in the old software${p.oldSoftwareBillNo ? ` · old bill ${p.oldSoftwareBillNo}` : ""} · not in the cash drawer)`
+                  : `(${
+                      p.kind === "refund"
+                        ? "refund given back"
+                        : p.kind === "balance"
+                          ? "balance payment"
+                          : "at checkout"
+                    } · ${p.invoiceNumber || "no bill"})`}
               </span>
               {p.note ? <span className="text-meta block">{p.note}</span> : null}
               <EditLines edits={p.edits} />
@@ -284,7 +286,7 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
                 </Button>
               ) : null}
               {/* A balance payment entered by mistake can be taken back the same day. */}
-              {p.kind === "balance" && p.paymentDate === todayISO() ? (
+              {p.kind === "balance" && !p.oldSoftware && p.paymentDate === todayISO() ? (
                 <Button variant="ghost" size="sm" onClick={() => setUndoing(p)}>
                   <RotateCcw aria-hidden /> Undo
                 </Button>

@@ -22,6 +22,8 @@ import type {
 import { staffDiscountOf } from "./bill-edit.service";
 import { allocatePayment } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
+import { oldRowsChange, readOldRows, resplitOldRows, writeOldRows } from "./old-money.service";
+import { checkOldRows, diffOldRows, oldRowsTotal, type OldPayRow } from "@/lib/old-money";
 
 /**
  * Correcting a plan after it was sold: wrong package, wrong start / end date, wrong counsellor,
@@ -70,6 +72,11 @@ export interface PlanEditForm {
   discount?: number | undefined;
   /** Plan paid in the old software: what was paid there (₹). Left out = unchanged. */
   oldPaid?: number | undefined;
+  /**
+   * Plan paid in the old software: when and how much was paid there, as saved (`before`, with
+   * record ids) and as wanted (`after`). Left out = unchanged. Wins over `oldPaid`.
+   */
+  oldRows?: { before: OldPayRow[]; after: OldPayRow[] } | undefined;
 }
 
 export interface BillChange {
@@ -103,6 +110,8 @@ export interface PlanEditPreview {
   /** Plan paid in the old software: the amount paid there after saving, and if it changes. */
   oldPaid: number;
   oldPaidChanged: boolean;
+  /** Its old-software payment records change (`form.oldRows`). */
+  oldRowsChanged: boolean;
   status: MembershipStatus;
 }
 
@@ -144,12 +153,17 @@ export function previewPlanEdit(
   if (discountChanged)
     changes.push(`Discount ${formatPrice(oldDiscount)} → ${formatPrice(newDiscount)}`);
   const oldPaidBefore = m.oldSoftwarePaid ?? 0;
+  const rows = m.paidInOldSoftware && form.oldRows ? form.oldRows : null;
+  const oldRowsChanged = !!rows && diffOldRows(rows.before, rows.after).changed;
   const oldPaid =
-    !m.paidInOldSoftware || form.oldPaid === undefined || !Number.isFinite(form.oldPaid)
-      ? oldPaidBefore
-      : Math.round(form.oldPaid);
+    rows && oldRowsChanged
+      ? oldRowsTotal(rows.after)
+      : !m.paidInOldSoftware || form.oldPaid === undefined || !Number.isFinite(form.oldPaid)
+        ? oldPaidBefore
+        : Math.round(form.oldPaid);
   const oldPaidChanged = oldPaid !== oldPaidBefore;
-  if (oldPaidChanged)
+  if (rows && oldRowsChanged) changes.push(oldRowsChange(rows.before, rows.after));
+  else if (oldPaidChanged)
     changes.push(
       `Paid in the old software ${formatPrice(oldPaidBefore)} → ${formatPrice(oldPaid)}`,
     );
@@ -171,6 +185,8 @@ export function previewPlanEdit(
       "This plan is an upgrade: its start date stays (the old plan ends the day before it). Change the end date instead.";
   else if (newDiscount < 0) error = "The discount can't be below ₹0.";
   else if (oldPaid < 0) error = "The amount paid in the old software can't be below ₹0.";
+  else if (rows && oldRowsChanged && checkOldRows(rows.after, today))
+    error = checkOldRows(rows.after, today);
 
   let billChange: BillChange | null = null;
   let billNote = "";
@@ -239,6 +255,7 @@ export function previewPlanEdit(
     counsellorChanged,
     oldPaid,
     oldPaidChanged,
+    oldRowsChanged,
   };
 }
 
@@ -278,12 +295,31 @@ export async function editMembership(input: PlanEditInput) {
   const counsellorBill = preview.counsellorChanged && !m.paidInOldSoftware ? input.bill : null;
   const billForPays = bc?.bill ?? counsellorBill;
   // Read first (a transaction can't query): the member's other plans and the bill's payments.
-  const [plansSnap, paysSnap] = await Promise.all([
+  const rowsChange = preview.oldRowsChanged && form.oldRows ? form.oldRows : null;
+  const [plansSnap, paysSnap, oldRecs] = await Promise.all([
     getDocs(query(col(COLLECTIONS.memberships), where("clientId", "==", client.id))),
     billForPays
       ? getDocs(query(col(COLLECTIONS.payments), where("invoiceId", "==", billForPays.id)))
       : Promise.resolve(null),
+    // Rows changed, or a new price that a payment shared with the PT plan is split by.
+    rowsChange || (m.paidInOldSoftware && form.pkg.price !== m.priceSnapshot)
+      ? readOldRows("gym", m.id)
+      : Promise.resolve([]),
   ]);
+  if (
+    rowsChange &&
+    oldRecs
+      .map((r) => r.id)
+      .sort()
+      .join() !==
+      rowsChange.before
+        .map((r) => r.id ?? "")
+        .sort()
+        .join()
+  )
+    throw new Error("Its old-software payments were just changed. Close and open Edit again.");
+  // An old payment shared with the PT plan (one old plan for both) keeps that link and split.
+  const ptLinked = oldRecs.map((r) => String(r.data["ptAssignmentId"] ?? "")).find(Boolean) ?? "";
   const counsellorFields = {
     counsellorId: form.counsellor?.id ?? "",
     counsellorName: form.counsellor?.name ?? "",
@@ -318,6 +354,46 @@ export async function editMembership(input: PlanEditInput) {
         Number(freshBill.data()?.["discount"] ?? 0) !== bc.bill.discount)
     )
       throw new Error("A payment was just added to this bill. Close and open Edit again.");
+    const recSnaps = await Promise.all(
+      oldRecs.map((r) => tx.get(doc(db, COLLECTIONS.payments, r.id))),
+    );
+    if (
+      recSnaps.some(
+        (x, i) =>
+          !x.exists() ||
+          Number(x.data()["amount"] ?? 0) !== Number(oldRecs[i]!.data["amount"] ?? 0) ||
+          x.data()["paymentDate"] !== oldRecs[i]!.data["paymentDate"],
+      )
+    )
+      throw new Error("Its old-software payments were just changed. Close and open Edit again.");
+    const ptSnap = ptLinked ? await tx.get(doc(db, COLLECTIONS.ptAssignments, ptLinked)) : null;
+    const oldBasis = {
+      gym: { price: form.pkg.price },
+      pt: ptSnap?.exists()
+        ? {
+            price: Number(ptSnap.data()["ptPrice"] ?? 0),
+            trainerShare: Number(ptSnap.data()["trainerShareAmount"] ?? 0),
+          }
+        : null,
+    };
+    const recs = recSnaps.map((x) => ({ id: x.id, data: x.data() ?? {} }));
+    if (rowsChange)
+      writeOldRows(
+        tx,
+        recs,
+        rowsChange.after,
+        {
+          clientId: m.clientId,
+          clientName: client.fullName,
+          membershipId: m.id,
+          ptAssignmentId: ptSnap?.exists() ? ptSnap.id : null,
+          billNo: m.oldSoftwareBillNo ?? "",
+          basis: oldBasis,
+        },
+        input.by,
+        reason,
+      );
+    else if (oldBasis.pt && recs.length) resplitOldRows(tx, recs, oldBasis);
 
     tx.update(planRef, {
       packageId: form.pkg.id,

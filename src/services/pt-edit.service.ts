@@ -10,6 +10,8 @@ import type {
 } from "@/types/models";
 import { allocatePayment } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
+import { oldRowsChange, readOldRows, resplitOldRows, writeOldRows } from "./old-money.service";
+import { checkOldRows, diffOldRows, oldRowsTotal, type OldPayRow } from "@/lib/old-money";
 import { calculateShare } from "./pt.service";
 
 /**
@@ -35,13 +37,21 @@ export interface PtEditForm {
   share?: { type: ShareType; value: number } | undefined;
   /** Plan paid in the old software: what was paid there (₹). Left out = unchanged. */
   oldPaid?: number | undefined;
+  /** Plan paid in the old software: when and how much (as saved / as wanted). Wins over oldPaid. */
+  oldRows?: { before: OldPayRow[]; after: OldPayRow[] } | undefined;
 }
+
+/** The old-software rows change (`form.oldRows`). */
+export const oldRowsChangeOf = (p: PtAssignment, f: PtEditForm) =>
+  !!p.paidInOldSoftware && !!f.oldRows && diffOldRows(f.oldRows.before, f.oldRows.after).changed;
 
 /** The amount paid in the old software after saving (unchanged when not given). */
 export const newOldPaidOf = (p: PtAssignment, f: PtEditForm) =>
-  !p.paidInOldSoftware || f.oldPaid === undefined || !Number.isFinite(f.oldPaid)
-    ? (p.oldSoftwarePaid ?? 0)
-    : Math.round(f.oldPaid);
+  oldRowsChangeOf(p, f)
+    ? oldRowsTotal(f.oldRows!.after)
+    : !p.paidInOldSoftware || f.oldPaid === undefined || !Number.isFinite(f.oldPaid)
+      ? (p.oldSoftwarePaid ?? 0)
+      : Math.round(f.oldPaid);
 
 const shareLabel = (type: ShareType, value: number, amount: number) =>
   type === "percentage" ? `${value}% (${formatPrice(amount)})` : formatPrice(amount);
@@ -71,7 +81,8 @@ export function ptChanges(p: PtAssignment, f: PtEditForm) {
       `Trainer share ${shareLabel(p.trainerShareType, p.trainerShareValue, p.trainerShareAmount)} → ${shareLabel(s.trainerShareType, s.trainerShareValue, s.trainerShareAmount)}`,
     );
   const oldPaid = newOldPaidOf(p, f);
-  if (oldPaid !== (p.oldSoftwarePaid ?? 0))
+  if (oldRowsChangeOf(p, f)) out.push(oldRowsChange(f.oldRows!.before, f.oldRows!.after));
+  else if (oldPaid !== (p.oldSoftwarePaid ?? 0))
     out.push(
       `Paid in the old software ${formatPrice(p.oldSoftwarePaid ?? 0)} → ${formatPrice(oldPaid)}`,
     );
@@ -85,6 +96,7 @@ export async function editPtPlan(input: {
   /** Moving the trainer's share needs Income & expenses. */
   canFinance: boolean;
   by: string;
+  byUid?: string;
 }) {
   const { pt: p, form } = input;
   if (!canEditPt(p)) throw new Error("Only a running or upcoming PT plan can be changed.");
@@ -101,9 +113,61 @@ export async function editPtPlan(input: {
   const share = newShareOf(p, form);
   if (share && !input.canFinance)
     throw new Error("Changing the trainer's share needs Income & expenses (the owner).");
+  const rowsChanged = oldRowsChangeOf(p, form);
+  if (rowsChanged) {
+    const bad = checkOldRows(form.oldRows!.after, todayISO());
+    if (bad) throw new Error(bad);
+  }
+  // Its old-software payments: saved as changed, or split again for a new trainer share.
+  const oldRecs =
+    p.paidInOldSoftware && (rowsChanged || share) ? await readOldRows("pt", p.id) : [];
+  if (
+    rowsChanged &&
+    oldRecs
+      .map((r) => r.id)
+      .sort()
+      .join() !==
+      form
+        .oldRows!.before.map((r) => r.id ?? "")
+        .sort()
+        .join()
+  )
+    throw new Error("Its old-software payments were just changed. Close and open Edit again.");
+  const gymId = oldRecs.map((r) => String(r.data["membershipId"] ?? "")).find(Boolean) ?? "";
+  if (rowsChanged && gymId)
+    throw new Error(
+      "This PT plan was one old plan with the gym plan: change what was paid there in Edit plan.",
+    );
+  const gymPrice = gymId
+    ? Number((await getDoc(doc(db, COLLECTIONS.memberships, gymId))).data()?.["priceSnapshot"] ?? 0)
+    : 0;
 
   const batch = writeBatch(db);
   const now = serverTimestamp();
+  const ptBasis = {
+    gym: gymId ? { price: gymPrice } : null,
+    pt: {
+      price: p.ptPrice,
+      trainerShare: share ? share.trainerShareAmount : p.trainerShareAmount,
+    },
+  };
+  if (rowsChanged)
+    writeOldRows(
+      batch,
+      oldRecs,
+      form.oldRows!.after,
+      {
+        clientId: p.clientId,
+        clientName: p.clientNameSnapshot,
+        membershipId: null,
+        ptAssignmentId: p.id,
+        billNo: p.oldSoftwareBillNo ?? "",
+        basis: ptBasis,
+      },
+      { uid: input.byUid ?? "", name: input.by },
+      input.reason.trim(),
+    );
+  else if (share && oldRecs.length) resplitOldRows(batch, oldRecs, ptBasis);
   if (trainerChanged || share) {
     const payouts = await getDocs(
       query(col(COLLECTIONS.trainerPayouts), where("ptAssignmentId", "==", p.id)),
