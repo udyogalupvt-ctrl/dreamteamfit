@@ -199,7 +199,7 @@ export function EditPtDialog({
             </SelectContent>
           </Select>
         </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid items-start gap-4 sm:grid-cols-2">
           <Field label="Start date" htmlFor="pt-start">
             <Input
               id="pt-start"

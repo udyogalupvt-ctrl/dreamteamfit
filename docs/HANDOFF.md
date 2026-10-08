@@ -11,23 +11,37 @@ member with a gym plan verified. Tests: `round3_local.py` (15 checks).
 Live: members blocked although their plan runs in the old software: `prod_blocked.mjs` (read-only)
 → `live_owner_addold.py list|apply` (keeps the app's suggestion, skips unclear ones).
 
-**NEXT (user decided 2026-10-08): item 5, old-software payments with their real dates.**
-Rule chosen by the user: COUNT ON THE REAL DATE (Collected / month totals / CFO on the day really
-paid, never as today) and KEEP OUT OF THE DAY BOOK CASH DRAWER. Plan:
-1. Joining "Paid in the old software": rows of payments (date, amount, method, + add row; partial
-   payments); first row prefilled from the old data (amount paid, date = plan start, editable).
-   Existing paid-there plans: same rows in Edit plan (and on PT plans).
-2. Storage: one "old software bill" per old plan (invoice `oldSoftware: true`, number `OLD-<bill>`,
-   items = the old deal, invoiceDate = first payment date, no public link / WhatsApp) + payment docs
-   `oldSoftware: true` with the real paymentDate/method and the usual allocatePayment split. PT:
-   decide the trainer share (payout marked paid in the old software vs share 0) so trainerPayable
-   stays consistent.
-3. Totals: buildFinanceSummary counts them by date (Dashboard, Billing, Reports, CFO server
-   `cfo-data.ts`). Day Book (`src/lib/cash-book.ts`, `day-book.tsx`) excludes them from cash in hand
-   and lists them apart. Check incentives, PT report, trainer pages, member app, recycle bin,
-   payment edit/refund paths, old-sales review (must not flag them).
-4. The 31 "whole entry" corrections keep their before-copies in `oldSoftwareMoves`; once dates are
-   entered their money can count on the real dates.
+Also done tonight: PT plans work like gym plans (calendar-month end when the start changes,
+"Paid in the old software (₹)" shown + editable, ended paid-there PT plans correctable). Live: 5
+blocked members got their old plan (R.KAVITHA, B.Vasanth Kumar, B.Vinay, K. Mothilal (PT),
+P.Shiva Kumar (thumb still to register)); a duplicate PT plan I created for K. Mothilal was undone
+(the copy from the old front-desk tab cancelled, the complete one kept); 4 PT plans got the old
+software's dates/amount (`prod_oldpts.mjs` / `live_owner_oldpts.py`). `prod_blocked.mjs` now
+counts PT plans: 0 members blocked. Left on purpose: K. Sai Venkat (ends today), Kalyan Devaraju's
+PT amount ("Personal training + floor charges" is one old plan: its amount is on the gym plan; never
+put it on both, or item 5 would count it twice). M. Rohith's package (1 year here, 3 months there)
+is for the owner.
+
+**NEXT: item 5, money of old-software plans on its real day (gym AND PT).** User's rule
+(2026-10-08): COUNT ON THE REAL DATE (Collected / month totals / CFO), never as today, and KEEP IT
+OUT OF THE DAY BOOK CASH DRAWER. User: "first check if there is a better way, it must help the gym
+work smoothly" → better than staff typing dates for ~150 old plans:
+1. Dates come from the old record by themselves: one payment per old plan on the old plan's start
+   date (the old software renews and takes the money that day), amount = paid there. Staff only
+   change it for part payments: rows (date, amount, method, + add) in Edit plan / Edit PT plan and
+   in the joining form when "Paid in the old software" is ticked.
+2. Owner tool on Income & expenses: "Count old-software money on its real dates": preview by
+   month (how much Aug / Sep / Oct change), apply in one go, Undo (keep before-copies like
+   `oldSoftwareMoves`). New entries count by themselves.
+3. Storage: payment docs `oldSoftware: true`, real paymentDate, usual allocatePayment split
+   (gym → membership income; PT → gym share + trainer share, no trainer payout because the trainer
+   was settled in the old software), linked to the plan (membershipId / ptAssignmentId); a plan's
+   balance bill stays as it is. One old plan = one amount (combined "PT + floor" plans only once).
+4. Totals: buildFinanceSummary counts them by date (Dashboard, Billing, Reports, CFO server
+   `cfo-data.ts`). Day Book (`src/lib/cash-book.ts`, `day-book.tsx`) leaves them out of cash in hand
+   and shows them apart. Check incentives (probably leave out: sold in the old software), PT report,
+   trainer page, member app, recycle bin, payment edit/refund (block normal edit: edit via the plan),
+   old-sales review (must not flag them).
 5. Money-critical: effort Extra high, a separate reviewer agent, tests for every total by date.
 
 ## 2026-10-08 (late): live data cleaned, calendar-month end dates, Billing period, Reports fix
@@ -378,4 +392,4 @@ Also fixed a race: "End all plans & stop entry" now appears only after PT plans 
   Bill "⋯" → Edit bill. Settings → WhatsApp shows the "Run it on the gym PC" box.
 - At the gym: run the gym-PC setup once (see the section above) if they want WhatsApp from the PC.
 
-Last updated: 2026-10-08 22:00 (live old-software amounts/dates fixed; M. Rohith left for the owner)
+Last updated: 2026-10-08 night (round 3 live: door fix, PT parity; next = item 5 payment dates)

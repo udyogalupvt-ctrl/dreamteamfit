@@ -291,7 +291,7 @@ export function EditPlanDialog({
             />
           </Field>
         ) : null}
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid items-start gap-4 sm:grid-cols-2">
           <Field label="Start date" htmlFor="plan-start">
             <Input
               id="plan-start"
