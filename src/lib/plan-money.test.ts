@@ -111,3 +111,28 @@ test("upgrade credit base: what the member paid for the plan", () => {
   );
   assert.equal(planSoldFor("gym", { price: 7000, paidInOldSoftware: true }, null), 7000);
 });
+
+test("a sale here later marked 'paid in the old software': the whole plan, not just the old part", () => {
+  // ₹2,000 plan: ₹500 paid in the old software (a credit on the bill), ₹1,500 paid here.
+  const part = bill({
+    subtotal: 2000,
+    discount: 500,
+    total: 1500,
+    amountPaid: 1500,
+    membershipGross: 2000,
+    oldSoftwareCredit: 500,
+  });
+  const plan = { price: 2000, paidInOldSoftware: true, oldSoftwarePaid: 500 };
+  assert.equal(planSoldFor("gym", plan, part), 2000);
+  // The whole entry: the old deal ₹2,000, ₹1,500 paid there, ₹500 still owed here.
+  const whole = bill({
+    subtotal: 2000,
+    discount: 1500,
+    total: 500,
+    amountPaid: 0,
+    balanceDue: 500,
+    membershipGross: 2000,
+    oldSoftwareCredit: 1500,
+  });
+  assert.equal(planSoldFor("gym", { ...plan, oldSoftwarePaid: 1500 }, whole), 2000);
+});

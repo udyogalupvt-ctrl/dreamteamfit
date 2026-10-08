@@ -966,11 +966,6 @@ export interface Payment extends BaseDoc {
    * that day, never moved to the plan's first day.
    */
   paidToday?: boolean;
-  /**
-   * Cash that is in the Day Book drawer on this day, not on `paymentDate` (a sale typed in after
-   * its plan started, moved to the plan's first day across a typed Day Book opening).
-   */
-  cashDate?: string;
   /** Corrections made later (wrong mode, amount, date), oldest first. */
   edits: RecordEdit[];
 }

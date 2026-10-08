@@ -46,9 +46,18 @@ export async function oldSaleSuspects(request: Request) {
   const from = firstOfLastMonth(today);
   const pays = await db().collection("payments").where("paymentDate", ">=", from).get();
   // Money taken here for a plan, by bill.
+  // `typed`: the days the payments were typed in. A sale typed in after its plan started counts on
+  // the plan's first day (late-sales.ts), so how late it was is read from when it was typed in.
   const byBill = new Map<
     string,
-    { membershipId: string; clientId: string; paid: number; dates: string[]; by: string }
+    {
+      membershipId: string;
+      clientId: string;
+      paid: number;
+      dates: string[];
+      typed: string[];
+      by: string;
+    }
   >();
   for (const d of pays.docs) {
     const p = d.data();
@@ -60,10 +69,15 @@ export async function oldSaleSuspects(request: Request) {
       clientId: String(p["clientId"] ?? ""),
       paid: 0,
       dates: [],
+      typed: [],
       by: String(p["createdBy"] ?? ""),
     };
     row.paid += amount;
-    if (amount > 0) row.dates.push(String(p["paymentDate"] ?? ""));
+    if (amount > 0) {
+      row.dates.push(String(p["paymentDate"] ?? ""));
+      const at = (p["createdAt"] as { toDate?: () => Date } | undefined)?.toDate?.();
+      row.typed.push(at ? localDate(at) : String(p["paymentDate"] ?? ""));
+    }
     byBill.set(bill, row);
   }
   const rows = [...byBill.entries()].filter(([, r]) => r.paid > 0);
@@ -98,7 +112,7 @@ export async function oldSaleSuspects(request: Request) {
     if (["cancelled"].includes(String(m["status"]))) continue;
     const start = String(m["startDate"] ?? "");
     const end = String(m["endDate"] ?? "");
-    const firstPaid = [...r.dates].sort()[0] ?? today;
+    const firstPaid = [...r.typed].sort()[0] ?? today;
     const records = (old.get(oldPhoneKey(String(c["phone"] ?? "")))?.["members"] ??
       []) as OldMember[];
     const person =
@@ -118,7 +132,7 @@ export async function oldSaleSuspects(request: Request) {
         `Old software: ${oldPlan.name} ${oldPlan.start} → ${oldPlan.end}, paid ₹${paidOf(oldPlan).toLocaleString("en-IN")}${oldPlan.bill ? ` (bill ${oldPlan.bill})` : ""}`,
       );
     const late = days(start, firstPaid);
-    if (late >= 7) reasons.push(`Plan started ${late} days before it was paid here`);
+    if (late >= 7) reasons.push(`Plan started ${late} days before it was typed in here`);
     const discount = Number(b["discount"] ?? 0) - Number(b["upgradeCredit"] ?? 0);
     if (discount > 0) reasons.push(`Discount ₹${discount.toLocaleString("en-IN")} on the bill`);
     if (oldPlan && Math.abs(Number(b["total"] ?? 0) - oldPlan.amount) < 1)

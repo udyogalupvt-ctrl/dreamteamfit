@@ -1,5 +1,5 @@
+import { format } from "date-fns";
 import {
-  deleteField,
   doc,
   documentId,
   getDoc,
@@ -16,10 +16,12 @@ import {
   dateSetByHand,
   LATE_TOOL,
   lateUndoable,
+  openingsBetween,
   planLateSales,
   type LateMove,
   type LatePlan,
   type LateSaleFact,
+  type OpeningDays,
 } from "@/lib/late-sales";
 import type { RecordEdit } from "@/types/models";
 import { cashOpenFrom } from "./finance.service";
@@ -39,6 +41,11 @@ const REASON = "Typed in after the plan started: counted on the plan's first day
 const CHUNK = 100;
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
+/** The day a record was typed in (its createdAt, in the gym's time); "" = not known. */
+const typedDay = (v: unknown) => {
+  const at = (v as { toDate?: () => Date } | null | undefined)?.toDate?.();
+  return at && !Number.isNaN(at.getTime()) ? format(at, "yyyy-MM-dd") : "";
+};
 const same = (a: number, b: number) => Math.abs(a - b) < 0.005;
 
 async function byIds(name: CollectionName, ids: string[]) {
@@ -53,17 +60,32 @@ async function byIds(name: CollectionName, ids: string[]) {
   return out;
 }
 
+/**
+ * Days whose opening money was typed in: the Day Book's opening cash (its first day, corrections)
+ * and the CFO's opening balance (all gym money at the start of its day).
+ */
+async function readOpenings(openFrom: string): Promise<OpeningDays> {
+  const [days, cfo] = await Promise.all([
+    getDocs(query(col(COLLECTIONS.cashDays), where(documentId(), ">=", openFrom))),
+    getDoc(doc(db, COLLECTIONS.cfoSettings, "main")),
+  ]);
+  const cfoDay = str(cfo.data()?.["openingDate"]);
+  return {
+    cash: days.docs.filter((d) => typeof d.data()["openingOverride"] === "number").map((d) => d.id),
+    all: cfoDay && typeof cfo.data()?.["openingBalance"] === "number" ? [cfoDay] : [],
+  };
+}
+
 /** Every joining payment from the 1st of last month on, with its plan and bill. */
 async function readLate(today: string): Promise<LatePlan & { openFrom: string }> {
   const openFrom = cashOpenFrom(today);
-  const [pays, days] = await Promise.all([
+  const [pays, openings, upgraded] = await Promise.all([
     getDocs(query(col(COLLECTIONS.payments), where("paymentDate", ">=", openFrom))),
-    // Days whose opening cash was typed in the Day Book (its first day, corrections).
-    getDocs(query(col(COLLECTIONS.cashDays), where(documentId(), ">=", openFrom))),
+    readOpenings(openFrom),
+    // Plans that were upgraded: their `upgradedTo` plan is an upgrade (even with no credit).
+    getDocs(query(col(COLLECTIONS.memberships), where("upgradedTo", ">", ""))),
   ]);
-  const openingDays = days.docs
-    .filter((d) => typeof d.data()["openingOverride"] === "number")
-    .map((d) => d.id);
+  const upgrades = new Set(upgraded.docs.map((d) => str(d.data()["upgradedTo"])));
   const joining = pays.docs.filter((d) => {
     const x = d.data();
     return x["kind"] === "initial" && Number(x["amount"]) > 0 && x["oldSoftware"] !== true;
@@ -102,6 +124,7 @@ async function readLate(today: string): Promise<LatePlan & { openFrom: string }>
       planStatus: str(plan?.["status"]),
       paidInOldSoftware: gym?.["paidInOldSoftware"] === true || pt?.["paidInOldSoftware"] === true,
       paymentDate: str(x["paymentDate"]),
+      typedOn: typedDay(x["createdAt"]),
       amount: Number(x["amount"]) || 0,
       method: str(x["method"]),
       kind: str(x["kind"]),
@@ -109,12 +132,14 @@ async function readLate(today: string): Promise<LatePlan & { openFrom: string }>
       invoiceId: str(x["invoiceId"]),
       invoiceNumber: str(x["invoiceNumber"]),
       billStatus: bill ? str(bill["paymentStatus"]) : "missing",
-      upgradeCredit: Number(bill?.["upgradeCredit"] ?? 0) || 0,
+      upgrade:
+        (Number(bill?.["upgradeCredit"] ?? 0) || 0) > 0 ||
+        upgrades.has(str(x["membershipId"]) || "-"),
       dateSetByHand:
         x["paidToday"] === true || dateSetByHand(Array.isArray(x["edits"]) ? x["edits"] : []),
     };
   });
-  return { ...planLateSales(facts, openFrom, openingDays), openFrom };
+  return { ...planLateSales(facts, openFrom, openings), openFrom };
 }
 
 /** Owner tool preview: which payments move, and where. Nothing changes. */
@@ -132,8 +157,8 @@ export interface LateRun {
 }
 
 /**
- * Moves the chosen payments (the preview's `move` rows the owner left ticked) to their plan's first
- * day. Each one is checked again first: a payment changed since the preview is left as it is.
+ * Moves the chosen payments (the preview's `move` rows the owner left ticked) to the day they
+ * should count on. Each one is checked again first: a payment changed since the preview is left.
  */
 export async function applyLateSales(input: {
   paymentIds: string[];
@@ -177,8 +202,6 @@ export async function applyLateSales(input: {
         };
         tx.update(s.ref, {
           paymentDate: m.to,
-          // Cash past a typed Day Book opening stays in the drawer on the day it was typed in.
-          ...(m.cashOn ? { cashDate: m.cashOn } : {}),
           edits: [...(Array.isArray(x["edits"]) ? x["edits"] : []), edit],
           lateRunId: runRef.id,
           updatedAt: serverTimestamp(),
@@ -186,29 +209,32 @@ export async function applyLateSales(input: {
         ok.push(m);
       });
       const all = [...moved, ...ok];
-      // The run lists what really moved (each part adds its own).
-      tx.set(runRef, {
-        kind: RUN_KIND,
-        items: all.map((m) => ({
-          paymentId: m.paymentId,
-          from: m.from,
-          to: m.to,
-          amount: m.amount,
-          clientName: m.clientName,
-          ...(m.cashOn ? { cashOn: m.cashOn } : {}),
-        })),
-        total: Math.round(all.reduce((n, m) => n + m.amount, 0) * 100) / 100,
-        count: all.length,
-        by: input.by.name,
-        byUid: input.by.uid,
-        undone: false,
-        createdAt: serverTimestamp(),
-      });
+      // The run lists what really moved (each part adds its own); none moved: no run.
+      if (all.length)
+        tx.set(runRef, {
+          kind: RUN_KIND,
+          items: all.map((m) => ({
+            paymentId: m.paymentId,
+            from: m.from,
+            to: m.to,
+            amount: m.amount,
+            method: m.method,
+            clientName: m.clientName,
+          })),
+          total: Math.round(all.reduce((n, m) => n + m.amount, 0) * 100) / 100,
+          count: all.length,
+          by: input.by.name,
+          byUid: input.by.uid,
+          undone: false,
+          createdAt: serverTimestamp(),
+        });
       return { ok, changed: part.length - ok.length };
     });
     moved.push(...res.ok);
     changed += res.changed;
   }
+  if (!moved.length)
+    throw new Error("Nothing moved: these payments changed since the check. Check again.");
   return {
     runId: runRef.id,
     count: moved.length,
@@ -217,7 +243,7 @@ export async function applyLateSales(input: {
   };
 }
 
-/** The tool's last run (for its Undo), or null. */
+/** The tool's newest run that is not taken back (for its Undo), or null. */
 export async function lastLateRun(): Promise<LateRun | null> {
   // Runs are few: no index needed for the newest one.
   const snap = await getDocs(
@@ -235,13 +261,15 @@ export async function lastLateRun(): Promise<LateRun | null> {
         undone: x["undone"] === true,
       };
     })
+    .filter((r) => !r.undone && r.count > 0)
     .sort((a, b) => (b.at?.getTime() ?? 0) - (a.at?.getTime() ?? 0));
   return runs[0] ?? null;
 }
 
 /**
- * Undo of a run: each payment goes back to the day it was typed in, unless it was changed since
- * (its date or amount) or that day is now in a month the Day Book has carried forward.
+ * Undo of a run: each payment goes back to the day it counted on before, unless it was moved since,
+ * that day is now in a month the Day Book has carried forward, or an opening amount was typed in
+ * between since (it would be counted twice or lost).
  */
 export async function undoLateSales(
   runId: string,
@@ -259,7 +287,9 @@ export async function undoLateSales(
     paymentId: string;
     from: string;
     to: string;
+    method?: string;
   }[];
+  const openings = await readOpenings(openFrom);
   let restored = 0;
   for (let i = 0; i < Math.max(1, items.length); i += CHUNK) {
     const part = items.slice(i, i + CHUNK);
@@ -277,19 +307,19 @@ export async function undoLateSales(
           x["lateRunId"] !== runId ||
           m.from < openFrom ||
           m.to < openFrom ||
+          openingsBetween(m.from, m.to, m.method ?? str(x["method"]), openings).length ||
           !lateUndoable(m, { paymentDate: str(x["paymentDate"]), amount: Number(x["amount"]) })
         )
           return;
         const edit: RecordEdit = {
           on: today,
           by: input.by.name,
-          reason: "Undo: back to the day it was typed in",
+          reason: "Undo: back to the day it counted on before",
           changes: [`Date ${formatDateISO(m.to)} → ${formatDateISO(m.from)}`],
           tool: LATE_TOOL,
         };
         tx.update(s.ref, {
           paymentDate: m.from,
-          ...(x["cashDate"] !== undefined ? { cashDate: deleteField() } : {}),
           edits: [...(Array.isArray(x["edits"]) ? x["edits"] : []), edit],
           lateRunId: "",
           updatedAt: serverTimestamp(),

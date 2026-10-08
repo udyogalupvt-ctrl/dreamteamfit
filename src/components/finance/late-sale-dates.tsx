@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useAccess } from "@/hooks/use-access";
 import { useAuth } from "@/hooks/use-auth";
 import { formatDateISO, formatPrice } from "@/lib/format";
-import { monthChanges, type LatePlan, type LateSkipReason } from "@/lib/late-sales";
+import { monthChanges, type LatePlan, type LateSkip, type LateSkipReason } from "@/lib/late-sales";
 import {
   applyLateSales,
   lastLateRun,
@@ -22,9 +22,11 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 /** "2026-09" → "Sep 2026". */
 const monthName = (m: string) => `${MONTHS[Number(m.slice(5, 7)) - 1] ?? ""} ${m.slice(0, 4)}`;
 
-const WHY: Record<LateSkipReason, (openFrom: string) => string> = {
+const WHY: Record<LateSkipReason, (openFrom: string, s: LateSkip) => string> = {
   "before-open": (from) =>
     `it is before ${formatDateISO(from)}, which the Day Book has already carried forward`,
+  counted: (_from, s) =>
+    `opening money was typed for ${formatDateISO(s.openingDay ?? "")} (Day Book or CFO), so moving it would count it twice or lose it`,
   cancelled: () => "the plan was cancelled",
   upgrade: () => "an upgrade: paid on the day it was made",
   "date-set": () => "its day was already chosen by staff (paid that day, or set by hand)",
@@ -98,7 +100,7 @@ export function LateSaleDates() {
     try {
       const r = await undoLateSales(run.id, { canFinance: money, by });
       toast.success("Taken back", {
-        description: `${r.restored} payment${r.restored === 1 ? "" : "s"} back on the day they were typed in${r.kept ? `; ${r.kept} changed since were kept` : ""}.`,
+        description: `${r.restored} payment${r.restored === 1 ? "" : "s"} back on the day they counted on before${r.kept ? `; ${r.kept} changed since were kept` : ""}.`,
       });
       setRun(await lastLateRun());
       if (preview) setPreview(await previewLateSales());
@@ -184,13 +186,20 @@ export function LateSaleDates() {
                         {m.invoiceNumber ? ` · ${m.invoiceNumber}` : ""}
                       </span>
                       <span className="block">
-                        Typed in {formatDateISO(m.from)} → counts on <b>{formatDateISO(m.to)}</b>{" "}
-                        (first day)
+                        {m.from === m.typedOn
+                          ? `Typed in ${formatDateISO(m.from)}`
+                          : `Counted on ${formatDateISO(m.from)} (typed in ${formatDateISO(m.typedOn)})`}{" "}
+                        → counts on <b>{formatDateISO(m.to)}</b>{" "}
+                        {m.opening
+                          ? ""
+                          : m.to === m.typedOn
+                            ? "(the day it was typed in)"
+                            : "(first day)"}
                       </span>
-                      {m.cashOn ? (
+                      {m.opening ? (
                         <span className="text-meta block">
-                          The cash stays in the Day Book on {formatDateISO(m.cashOn)}: its opening
-                          cash was typed in after the plan started.
+                          Not the plan&rsquo;s first day: opening money was typed for{" "}
+                          {formatDateISO(m.opening)}, so earlier money is already in it.
                         </span>
                       ) : null}
                     </label>
@@ -228,7 +237,7 @@ export function LateSaleDates() {
               <li key={s.paymentId}>
                 {s.clientName || "Member"} · {formatPrice(s.amount)} typed in{" "}
                 {formatDateISO(s.from)}, plan from {formatDateISO(s.start)}:{" "}
-                {WHY[s.reason](preview.openFrom)}
+                {WHY[s.reason](preview.openFrom, s)}
               </li>
             ))}
           </ul>
@@ -253,7 +262,7 @@ export function LateSaleDates() {
         open={confirm === "apply"}
         onOpenChange={(o) => !o && setConfirm(null)}
         title={`Move ${chosen.length} payment${chosen.length === 1 ? "" : "s"} (${formatPrice(chosenTotal)})?`}
-        description={`Each one counts in Collected on its plan's first day instead of the day it was typed in. Bills and amounts don't change; cash in the drawer today stays the same.${monthsText ? ` Month totals: ${monthsText}.` : ""} You can undo it.`}
+        description={`Each one counts in Collected (and counsellors' sales) on its new day instead of the day it was typed in. Bills and amounts don't change; cash in the drawer today stays the same.${monthsText ? ` Month totals: ${monthsText}.` : ""} You can undo it.`}
         confirmLabel="Move them"
         onConfirm={() => void apply()}
       />
@@ -261,7 +270,7 @@ export function LateSaleDates() {
         open={confirm === "undo"}
         onOpenChange={(o) => !o && setConfirm(null)}
         title="Take back the last move?"
-        description="Each payment goes back to the day it was typed in. Payments changed since keep their date."
+        description="Each payment goes back to the day it counted on before. Payments changed since keep their date."
         confirmLabel="Take back"
         destructive
         onConfirm={() => void undo()}

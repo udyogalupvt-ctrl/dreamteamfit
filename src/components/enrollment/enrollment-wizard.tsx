@@ -178,6 +178,8 @@ interface Draft {
   oldPaid?: string;
   /** A plan that started before today: the member paid today (not on its first day). */
   paidToday?: boolean;
+  /** The day the draft was last saved. */
+  savedOn?: string;
 }
 
 const draftStorageKey = (key: string) => `rf.enrollment-draft.${key}`;
@@ -233,7 +235,14 @@ export function EnrollmentWizard({
   const [ptPackageId, setPtPackageId] = useState(restored?.ptPackageId ?? "");
   const [trainerId, setTrainerId] = useState(restored?.trainerId ?? "");
   const [shareOverride, setShareOverride] = useState(restored?.shareOverride ?? null);
-  const [startDate, setStartDate] = useState(restored?.startDate ?? todayISO());
+  // A draft left from an earlier day keeps a start date it chose, but not that day's "today" (its
+  // money would count on that old day).
+  const [startDate, setStartDate] = useState(() =>
+    restored?.startDate &&
+    !(restored.savedOn && restored.savedOn < todayISO() && restored.startDate === restored.savedOn)
+      ? restored.startDate
+      : todayISO(),
+  );
   const [discount, setDiscount] = useState(restored?.discount ?? 0);
   const [amountPaid, setAmountPaid] = useState<number | null>(restored?.amountPaid ?? null);
   const [method, setMethod] = useState<PaymentMethod>(restored?.method ?? "UPI");
@@ -632,6 +641,7 @@ export function EnrollmentWizard({
             oldBalance: oldBalanceText,
             oldPaid: oldPaidText,
             paidToday,
+            savedOn: todayISO(),
           }
         : null,
     );
@@ -1483,7 +1493,7 @@ export function EnrollmentWizard({
                         hint={
                           paidToday
                             ? `Counted in today's Collected${method === "Cash" ? " and today's Day Book cash" : ""}.`
-                            : `The plan started on ${formatDateISO(startDate)}, before today: the money counts on that day, not today.`
+                            : `The plan started on ${formatDateISO(startDate)}, before today: the money counts on that day, not today.${method === "Cash" ? " Cash handed over now? Choose Today, so it is in today's Day Book cash." : ""}`
                         }
                       >
                         <div className="flex flex-wrap gap-1.5" role="radiogroup" id="e-moneyday">

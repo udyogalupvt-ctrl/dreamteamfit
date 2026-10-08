@@ -23,18 +23,31 @@ Built:
 - Owner tool, Income & expenses → Profit & income → "Sales typed in after the plan started":
   Check → tick list (untick ones really paid that day) → Move → Undo (run in `oldSoftwareMoves`
   kind `late-dates`; each payment gets a correction line with `tool: "late-sale-dates"`).
-  Leaves alone: upgrades, cancelled plans, closed/refunded/missing bills, plans marked paid in the
-  old software, dates set by hand / `paidToday`, plans that started before the 1st of last month.
-  Cash moved to before a typed Day Book opening (`cashDays.openingOverride`, e.g. the Day Book's
-  first day) keeps `cashDate` = day typed in, so cash in hand today never changes
-  (`cash-book.ts` uses `cashDate || paymentDate`).
+  Target day: the plan's first day if it started before the day the payment was typed in
+  (createdAt), else the day typed in (also fixes a plan whose start was corrected later).
+  Leaves alone: upgrades (credit on the bill, or a plan named in another plan's `upgradedTo`),
+  cancelled plans, closed/refunded/missing bills, plans marked paid in the old software, dates set
+  by hand / `paidToday`, anything before the 1st of last month. Never moves money across a day whose
+  opening money was typed in (Day Book `cashDays.openingOverride` for cash, CFO `openingBalance` +
+  `openingDate` for all): it stops on that day instead, so cash in hand and CFO money today never
+  change. Undo re-checks the same. A run that moved nothing is not saved; Undo is offered for the
+  newest run not taken back.
 - Member page plan card / history, PT rows, PT tab, member app: what the member pays for the plan
   (`src/lib/plan-money.ts`: its share of the bill's discount / credit / payments): "Paid ₹1,699 ·
   package ₹1,999 · ₹300 discount".
 - Upgrade credit for unused days = what was paid for the plan × unused ÷ days (was package price).
 - Money list (Dashboard): "typed in <day>" instead of a time when a payment counts on another day.
 - Front desk may correct payments typed in today even when they count on an earlier day.
-- Tests: unit 196/196 (`npm run test:cfo`, new `late-sales.test.ts`, `plan-money.test.ts`);
+- "Paid in the old software?" review (`server/old-sales.ts`) now judges lateness by the day typed
+  in, so back-dated sales are still flagged.
+- A joining draft left from an earlier day no longer keeps that day as "today" (`savedOn`).
+- Money review agent (10 findings): fixed 2, 3, 7, 8, 9 and a bug in my first Day Book fix
+  (`cashDate`, removed). Kept on purpose: checkout cash dated on the plan's first day may fall
+  before a typed Day Book opening (paid then = in that count; the hint says "cash handed over now?
+  choose Today"); first-day default also for existing members (the reported member is one);
+  counsellor incentives follow the payment's month (confirm text says so); the tool does not move
+  the trainer payout's date (informational only, like Edit payment).
+- Tests: unit 200/200 (`npm run test:cfo`, new `late-sales.test.ts`, `plan-money.test.ts`);
   emulator suite `latedates_local.py` (session scratchpad 7f906952…, run `bash regress.sh
   latedates_local.py`); screenshots light/dark 390/1440 in that scratchpad's `shots/`.
 

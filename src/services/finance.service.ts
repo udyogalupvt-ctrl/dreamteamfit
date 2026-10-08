@@ -55,7 +55,6 @@ export const mapPayment = (id: string, d: DocumentData): Payment => ({
   counsellorId: d["counsellorId"] ?? "",
   counsellorName: d["counsellorName"] ?? "",
   note: String(d["note"] ?? ""),
-  ...(typeof d["cashDate"] === "string" && d["cashDate"] ? { cashDate: d["cashDate"] } : {}),
   ...(d["oldSoftware"] === true
     ? { oldSoftware: true, oldSoftwareBillNo: String(d["oldSoftwareBillNo"] ?? "") }
     : {}),

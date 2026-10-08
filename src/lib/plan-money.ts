@@ -68,8 +68,9 @@ export function planMoney(
 
 /**
  * What the member paid for a plan, for crediting its unused days on an upgrade: the price less its
- * discount; a plan paid in the old software: what it cost there (paid + balance); no bill: the
- * package price.
+ * discount; a plan carried over from the old software (its bill here is only the balance): what it
+ * cost there (paid + balance); no bill: the package price. A sale here later marked "paid in the
+ * old software" keeps the whole plan on its bill (the old money is a credit on it): its bill counts.
  */
 export function planSoldFor(
   kind: "gym" | "pt",
@@ -81,7 +82,8 @@ export function planSoldFor(
   },
   bill: PlanBill | null | undefined,
 ) {
-  if (plan.paidInOldSoftware) {
+  const movedFromHere = bill && (Number(bill.oldSoftwareCredit) || 0) > 0;
+  if (plan.paidInOldSoftware && !movedFromHere) {
     const there =
       Math.max(0, Number(plan.oldSoftwarePaid) || 0) +
       Math.max(0, Number(plan.oldSoftwareBalance) || 0);

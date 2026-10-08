@@ -66,7 +66,8 @@ const fact = (over: Partial<LateSaleFact> = {}): LateSaleFact => ({
   invoiceId: "b1",
   invoiceNumber: "RF-2026-000076",
   billStatus: "paid",
-  upgradeCredit: 0,
+  typedOn: "",
+  upgrade: false,
   dateSetByHand: false,
   ...over,
 });
@@ -107,7 +108,7 @@ test("left as they are, each with its reason", () => {
     [
       fact({ paymentId: "o", paidInOldSoftware: true }),
       fact({ paymentId: "c", planStatus: "cancelled" }),
-      fact({ paymentId: "u", upgradeCredit: 400 }),
+      fact({ paymentId: "u", upgrade: true }),
       fact({ paymentId: "x", billStatus: "closed" }),
       fact({ paymentId: "r", billStatus: "refunded" }),
       fact({ paymentId: "m", billStatus: "missing" }),
@@ -155,39 +156,63 @@ test("a plan from last month typed in this month: the months' totals change, the
   );
 });
 
-test("cash moved past a typed Day Book opening stays in the drawer on the day it was typed in", () => {
+test("never moved across a typed opening: Day Book opening for cash, CFO opening for all", () => {
   const r = planLateSales(
     [
-      fact({
-        paymentId: "cash",
-        method: "Cash",
-        startDate: "2026-10-02",
-        paymentDate: "2026-10-08",
-      }),
-      fact({ paymentId: "upi", method: "UPI", startDate: "2026-10-02", paymentDate: "2026-10-08" }),
-      fact({
-        paymentId: "after",
-        method: "Cash",
-        startDate: "2026-10-06",
-        paymentDate: "2026-10-08",
-      }),
-      fact({
-        paymentId: "onday",
-        method: "Cash",
-        startDate: "2026-10-05",
-        paymentDate: "2026-10-08",
-      }),
+      fact({ paymentId: "cash", method: "Cash" }),
+      fact({ paymentId: "upi" }),
+      fact({ paymentId: "after", method: "Cash", startDate: "2026-10-06" }),
+      fact({ paymentId: "onday", method: "Cash", startDate: "2026-10-05" }),
     ],
     OPEN,
-    ["2026-10-05"],
+    { cash: ["2026-10-05"], all: [] },
   );
   const by = Object.fromEntries(r.move.map((m) => [m.paymentId, m]));
-  assert.equal(by["cash"]!.cashOn, "2026-10-08");
-  assert.equal(by["cash"]!.to, "2026-10-02");
-  // Not cash, or not crossing the opening day (cash on the opening day itself counts after it).
-  assert.equal(by["upi"]!.cashOn, undefined);
-  assert.equal(by["after"]!.cashOn, undefined);
-  assert.equal(by["onday"]!.cashOn, undefined);
+  // Cash stops at the Day Book's opening day (it was in the drawer from then on).
+  assert.equal(by["cash"]!.to, "2026-10-05");
+  assert.equal(by["cash"]!.opening, "2026-10-05");
+  // Not cash, or not crossing the opening day (money on the opening day itself counts after it).
+  assert.equal(by["upi"]!.to, "2026-10-02");
+  assert.equal(by["upi"]!.opening, undefined);
+  assert.equal(by["after"]!.to, "2026-10-06");
+  assert.equal(by["onday"]!.to, "2026-10-05");
+  assert.equal(by["onday"]!.opening, undefined);
+
+  const cfo = planLateSales([fact()], OPEN, { cash: [], all: ["2026-10-04", "2026-10-03"] });
+  assert.equal(cfo.move[0]!.to, "2026-10-04");
+  assert.equal(cfo.move[0]!.opening, "2026-10-04");
+});
+
+test("an opening typed on the day it was saved: nothing to move, left with its reason", () => {
+  const r = planLateSales([fact({ method: "Cash", paymentDate: "2026-10-05" })], OPEN, {
+    cash: ["2026-10-05"],
+    all: [],
+  });
+  assert.deepEqual(r.move, []);
+  assert.equal(r.skipped[0]!.reason, "counted");
+  assert.equal(r.skipped[0]!.openingDay, "2026-10-05");
+});
+
+test("a plan whose start was corrected later: its money follows (never after the day typed in)", () => {
+  // Typed in on 8 Oct, dated on the old start 2 Oct, start corrected to 6 Oct.
+  const later = fact({ typedOn: "2026-10-08", paymentDate: "2026-10-02", startDate: "2026-10-06" });
+  const r = planLateSales([later], OPEN);
+  assert.deepEqual([r.move[0]!.from, r.move[0]!.to], ["2026-10-02", "2026-10-06"]);
+  // Start corrected to after the day it was typed in: back to the day it was typed in.
+  const after = planLateSales([{ ...later, startDate: "2026-10-12" }], OPEN);
+  assert.deepEqual([after.move[0]!.from, after.move[0]!.to], ["2026-10-02", "2026-10-08"]);
+  // Moving forward past a typed opening would count that money twice: left alone.
+  const crossing = planLateSales([later], OPEN, { cash: [], all: ["2026-10-04"] });
+  assert.deepEqual(crossing.move, []);
+  assert.equal(crossing.skipped[0]!.reason, "counted");
+  // Already on the right day: nothing.
+  assert.deepEqual(planLateSales([{ ...later, paymentDate: "2026-10-06" }], OPEN).move, []);
+});
+
+test("a new sale dated on its plan's first day is not offered again", () => {
+  const r = planLateSales([fact({ typedOn: "2026-10-08", paymentDate: "2026-10-02" })], OPEN);
+  assert.deepEqual(r.move, []);
+  assert.deepEqual(r.skipped, []);
 });
 
 test("undo puts back only payments still on the day the run gave them", () => {

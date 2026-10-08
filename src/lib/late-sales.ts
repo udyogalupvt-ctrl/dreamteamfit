@@ -5,14 +5,15 @@
  *
  * - New sales: the joining / renewal checkout dates its payment on the plan's first day (staff can
  *   pick "Paid today" instead). Not an upgrade: that money is paid when the upgrade is made.
- * - Sales saved before: the owner's tool (Income & expenses) moves each joining payment to its
- *   plan's first day, exactly like the owner's own "change the payment date" correction, with Undo.
+ * - Sales saved before: the owner's tool (Income & expenses) moves each joining payment to the day
+ *   it should count on, exactly like the owner's own "change the payment date" correction, with
+ *   Undo: the plan's first day when the plan started before the day it was typed in, else the day
+ *   it was typed in (a plan whose start was corrected later).
  *
- * Money moves only inside the Day Book's open days (from the 1st of last month, `openFrom`): cash
- * in the drawer today stays the same; only the day it came in changes. One exception is kept out:
- * cash moved to before a day whose opening cash was typed in (the Day Book's first day) would
- * vanish from the drawer, so that cash stays in the Day Book on the day it was typed in
- * (`cashOn`) while Collected counts it on the plan's first day.
+ * Money moves only inside the Day Book's open days (from the 1st of last month, `openFrom`), and
+ * the tool never moves money already saved across a day whose opening money was typed in (the
+ * Day Book's opening cash, the CFO's opening balance): it counts on that day instead, so cash in
+ * the drawer and the CFO's money today stay exactly the same.
  *
  * Pure maths only (no database): relative imports, unit-tested with `node --test`.
  */
@@ -63,6 +64,8 @@ export interface LateSaleFact {
   planStatus: string;
   paidInOldSoftware: boolean;
   paymentDate: string;
+  /** The day it was typed in (its createdAt); "" = not known (then its payment date). */
+  typedOn: string;
   amount: number;
   method: string;
   kind: string;
@@ -71,7 +74,8 @@ export interface LateSaleFact {
   invoiceNumber: string;
   /** The bill's payment status; "missing" = the bill is gone. */
   billStatus: string;
-  upgradeCredit: number;
+  /** An upgrade (credit on the bill, or a plan that another plan was upgraded into). */
+  upgrade: boolean;
   /**
    * Its day was already chosen: set by hand (Edit payment), or staff said at the checkout that
    * the member paid that day. Theirs stays.
@@ -79,8 +83,16 @@ export interface LateSaleFact {
   dateSetByHand: boolean;
 }
 
+/** Days whose opening money was typed in: money saved after one never moves to before it. */
+export interface OpeningDays {
+  /** Day Book opening cash (cash payments only). */
+  cash: readonly string[];
+  /** CFO opening balance (all money). */
+  all: readonly string[];
+}
+
 export type LateSkipReason =
-  "before-open" | "cancelled" | "upgrade" | "date-set" | "bill-closed" | "old-software";
+  "before-open" | "cancelled" | "upgrade" | "date-set" | "bill-closed" | "old-software" | "counted";
 
 export interface LateMove {
   paymentId: string;
@@ -90,16 +102,23 @@ export interface LateMove {
   invoiceNumber: string;
   amount: number;
   method: string;
-  /** The day it was typed in (counted now) → the plan's first day. */
+  /** The day it was typed in. */
+  typedOn: string;
+  /** The day it counts on now → the day it should count on. */
   from: string;
   to: string;
-  /** Cash that stays in the Day Book drawer on this day (= `from`): see the note at the top. */
-  cashOn?: string;
+  /**
+   * Set when `to` is an opening day instead of the plan's first day (money before that day was
+   * in the opening amount typed for it).
+   */
+  opening?: string;
 }
 
-export interface LateSkip extends Omit<LateMove, "to" | "cashOn"> {
+export interface LateSkip extends Omit<LateMove, "to" | "opening"> {
   start: string;
   reason: LateSkipReason;
+  /** "counted": the opening day in the way. */
+  openingDay?: string;
 }
 
 export interface LatePlan {
@@ -111,22 +130,24 @@ export interface LatePlan {
 }
 
 /**
- * Which joining payments were typed in after their plan started, and where each one goes. Balance
+ * Which joining payments count on the wrong day, and where each one goes: the plan's first day
+ * when the plan started before the day it was typed in, else the day it was typed in. Balance
  * payments are left alone (they were paid on their own day), and so is everything in the list of
  * reasons in `LateSkipReason`.
  */
 export function planLateSales(
   facts: LateSaleFact[],
   openFrom: string,
-  /** Days whose opening cash was typed in the Day Book (the drawer restarts there). */
-  openingDays: readonly string[] = [],
+  openings: OpeningDays = { cash: [], all: [] },
 ): LatePlan {
   const move: LateMove[] = [];
   const skipped: LateSkip[] = [];
   for (const f of facts) {
     if (f.kind !== "initial" || !(f.amount > 0) || f.oldSoftware || !f.invoiceId) continue;
-    if (!ISO.test(f.startDate) || !ISO.test(f.paymentDate) || f.startDate >= f.paymentDate)
-      continue;
+    if (!ISO.test(f.startDate) || !ISO.test(f.paymentDate)) continue;
+    const typedOn = ISO.test(f.typedOn) ? f.typedOn : f.paymentDate;
+    const target = f.startDate < typedOn ? f.startDate : typedOn;
+    if (target === f.paymentDate) continue;
     const row = {
       paymentId: f.paymentId,
       clientId: f.clientId,
@@ -135,27 +156,38 @@ export function planLateSales(
       invoiceNumber: f.invoiceNumber,
       amount: round(f.amount),
       method: f.method,
+      typedOn,
       from: f.paymentDate,
     };
+    // Opening days between where it counts now and where it should: it can't cross them.
+    const backward = target < f.paymentDate;
+    const between = openingsBetween(f.paymentDate, target, f.method, openings);
+    const last = between[between.length - 1];
+    // Moving back: stop at the latest opening day in the way. Moving forward past one: leave it.
+    const to = backward && last ? last : target;
     const reason: LateSkipReason | null = f.paidInOldSoftware
       ? "old-software"
       : f.planStatus === "cancelled"
         ? "cancelled"
-        : f.upgradeCredit > 0
+        : f.upgrade
           ? "upgrade"
           : ["closed", "refunded", "missing"].includes(f.billStatus)
             ? "bill-closed"
             : f.dateSetByHand
               ? "date-set"
-              : f.startDate < openFrom || f.paymentDate < openFrom
+              : to < openFrom || f.paymentDate < openFrom
                 ? "before-open"
-                : null;
-    if (reason) skipped.push({ ...row, start: f.startDate, reason });
-    else {
-      const crosses =
-        f.method === "Cash" && openingDays.some((o) => o > f.startDate && o <= f.paymentDate);
-      move.push({ ...row, to: f.startDate, ...(crosses ? { cashOn: f.paymentDate } : {}) });
-    }
+                : last && (!backward || to === f.paymentDate)
+                  ? "counted"
+                  : null;
+    if (reason)
+      skipped.push({
+        ...row,
+        start: f.startDate,
+        reason,
+        ...(reason === "counted" && last ? { openingDay: last } : {}),
+      });
+    else move.push({ ...row, to, ...(to !== target ? { opening: to } : {}) });
   }
   move.sort((a, b) => b.from.localeCompare(a.from) || a.clientName.localeCompare(b.clientName));
   return {
@@ -164,6 +196,18 @@ export function planLateSales(
     total: round(move.reduce((n, m) => n + m.amount, 0)),
     months: monthChanges(move),
   };
+}
+
+/**
+ * Typed opening days that money moving between two days would cross, oldest first (an opening day
+ * counts what came in before it, so money on the later of the two days is "after" it).
+ */
+export function openingsBetween(a: string, b: string, method: string, openings: OpeningDays) {
+  const lo = a < b ? a : b;
+  const hi = a < b ? b : a;
+  return [...openings.all, ...(method === "Cash" ? openings.cash : [])]
+    .filter((o) => o > lo && o <= hi)
+    .sort();
 }
 
 /** How each month's total changes when these payments move (only months that change). */
@@ -182,7 +226,7 @@ export function monthChanges(moves: readonly Pick<LateMove, "from" | "to" | "amo
     .map(([month, change]) => ({ month, change }));
 }
 
-/** Undo of a run: only payments still on the day the run put them (nobody changed them since). */
+/** Undo of a run: only payments still on the day the run put them (nobody moved them since). */
 export function lateUndoable(
   item: { paymentId: string; from: string; to: string },
   now: { paymentDate: string; amount: number } | null,
