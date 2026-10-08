@@ -87,6 +87,7 @@ import { subscribeClientMemberships, undoLastPause } from "@/services/membership
 import { PausePlanDialog } from "@/components/clients/pause-plan-dialog";
 import { EditPlanDialog, PlanEdits } from "@/components/clients/edit-plan-dialog";
 import { OldSoftwareDialog } from "@/components/clients/old-software-dialog";
+import { undoOldSoftwareMove } from "@/services/old-software.service";
 import { billOfPlan } from "@/services/plan-edit.service";
 import { canEditPlan } from "@/services/plan-edit.service";
 import {
@@ -586,6 +587,34 @@ function ClientProfilePage() {
                             Paid in the old software
                             {m.oldSoftwarePaid ? ` · ${formatPrice(m.oldSoftwarePaid)}` : ""}
                             {m.oldSoftwareBillNo ? ` · bill ${m.oldSoftwareBillNo}` : ""}
+                            {/* Marked by mistake: the owner can put it back any time (not only
+                                right after), as long as the bill hasn't changed since. */}
+                            {m.oldSoftwareMoveId && can("finance") ? (
+                              <>
+                                {" · "}
+                                <button
+                                  type="button"
+                                  className="cursor-pointer font-semibold underline underline-offset-2 hover:text-foreground"
+                                  onClick={() =>
+                                    void undoOldSoftwareMove(m.oldSoftwareMoveId!, true).then(
+                                      () =>
+                                        toast.success("Put back as paid here", {
+                                          description:
+                                            "The payment counts in this app's money again.",
+                                        }),
+                                      (e: unknown) =>
+                                        toast.error(
+                                          e instanceof Error && !("code" in e)
+                                            ? e.message
+                                            : firestoreErrorMessage(e),
+                                        ),
+                                    )
+                                  }
+                                >
+                                  Undo
+                                </button>
+                              </>
+                            ) : null}
                           </p>
                         ) : can("finance") &&
                           m.status !== "cancelled" &&

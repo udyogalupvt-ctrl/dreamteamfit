@@ -301,6 +301,8 @@ export interface Membership extends BaseDoc {
   /** What the member paid in the old software for this plan (₹, kept for reference). */
   oldSoftwarePaid?: number;
   oldSoftwareBillNo?: string;
+  /** Set when the owner moved this plan's money out ("Paid in the old software?"): Undo uses it. */
+  oldSoftwareMoveId?: string;
   /** The bill this plan was sold on. */
   invoiceId?: string;
   /** Upgraded to another plan: this one ended early, its unused days were credited there. */
