@@ -39,8 +39,20 @@ export interface OldMoveRow {
   data: DocumentData;
 }
 
+/**
+ * "The whole entry was a mistake": everything recorded here for this bill (gym and PT) was a plan
+ * the member had already bought in the old software. `deal` = the old software's price for it,
+ * `paid` = what they paid there (deal − paid stays owed here).
+ */
+export interface WholeEntry {
+  deal: number;
+  paid: number;
+}
+
 export interface OldMovePlan {
   error: string;
+  /** The whole bill is replaced by the old software's deal. */
+  whole: boolean;
   /** What the bill paid here (money in this app). */
   paidHere: number;
   /** Payments taken off (whole) and payments lowered (part was real money). */
@@ -67,10 +79,12 @@ export function planOldMove(
   payouts: OldMoveRow[],
   amount: number,
   today = todayISO(),
+  whole: WholeEntry | null = null,
 ): OldMovePlan {
   const empty = { total: 0, amountPaid: 0, balanceDue: 0, credit: 0, discount: 0, tax: 0 };
   const out: OldMovePlan = {
     error: "",
+    whole: !!whole,
     paidHere: 0,
     remove: [],
     lower: [],
@@ -99,6 +113,38 @@ export function planOldMove(
     return fail(`Bill ${bill.invoiceNumber} is ${bill.paymentStatus}: it can't change.`);
   if (payments.some((p) => Number(p.data["amount"] ?? 0) < 0))
     return fail("Money was given back on this bill: undo that refund first.");
+  const lockedFrom = cashOpenFrom(today);
+  if (whole) {
+    const deal = round(whole.deal);
+    const paid = round(whole.paid);
+    if (!(deal > 0)) return fail("Enter the old software's price for this plan.");
+    if (!(paid >= 0) || paid > deal)
+      return fail("What they paid there can't be more than the old software's price.");
+    out.remove = positive.map((p) => ({ id: p.id, amount: p.amount, date: p.date }));
+    const closedDay = out.remove.find((p) => p.date < lockedFrom);
+    if (closedDay)
+      return fail(
+        `A payment of ${formatDateISO(closedDay.date)} is in a closed Day Book month (before ${formatDateISO(lockedFrom)}): it can't be moved.`,
+      );
+    const owed = round(deal - paid);
+    out.after = {
+      total: owed,
+      amountPaid: 0,
+      balanceDue: owed,
+      credit: paid,
+      discount: paid,
+      tax: 0,
+    };
+    const paidShare = payouts.find((p) => p.data["status"] === "paid" && !p.data["adjustment"]);
+    if (paidShare)
+      return fail(
+        `${String(paidShare.data["trainerNameSnapshot"] ?? "The trainer")} was already paid the PT share from this bill here. Mark that payout back to pending first (Income & expenses).`,
+      );
+    out.cancelPayouts = payouts
+      .filter((p) => p.data["status"] === "pending" && !p.data["adjustment"])
+      .map((p) => p.id);
+    return out;
+  }
   if (!(x > 0)) return fail("Enter the amount they paid in the old software.");
   if (x > out.paidHere)
     return fail(
@@ -112,7 +158,6 @@ export function planOldMove(
     else out.lower.push({ id: p.id, from: p.amount, to: round(p.amount - take), date: p.date });
     left = round(left - take);
   }
-  const lockedFrom = cashOpenFrom(today);
   const closed = [...out.remove, ...out.lower].find((p) => p.date < lockedFrom);
   if (closed)
     return fail(
@@ -167,15 +212,21 @@ async function readBillParts(billId: string) {
 }
 
 /** For the dialog: the bill's payments and payouts, and what the move would do. */
-export async function previewOldMove(bill: Invoice | null, amount: number) {
+export async function previewOldMove(
+  bill: Invoice | null,
+  amount: number,
+  whole: WholeEntry | null = null,
+) {
   const parts = bill ? await readBillParts(bill.id) : { payments: [], payouts: [] };
-  return planOldMove(bill, parts.payments, parts.payouts, amount);
+  return planOldMove(bill, parts.payments, parts.payouts, amount, todayISO(), whole);
 }
 
 export async function markPaidInOldSoftware(input: {
   membership: Membership;
   bill: Invoice | null;
   amount: number;
+  /** The whole entry was a re-entry of the old software's plan (see WholeEntry). */
+  whole?: WholeEntry | null;
   billNo: string;
   reason: string;
   /** Income & expenses (owner): it changes money. */
@@ -188,9 +239,12 @@ export async function markPaidInOldSoftware(input: {
   if (m.paidInOldSoftware)
     throw new Error("This plan is already marked as paid in the old software.");
   const parts = bill ? await readBillParts(bill.id) : { payments: [], payouts: [] };
-  const plan = planOldMove(bill, parts.payments, parts.payouts, input.amount);
-  if (bill && plan.error) throw new Error(plan.error);
-  const amount = bill ? round(input.amount) : Math.max(0, round(input.amount));
+  const whole = input.whole ?? null;
+  const plan = planOldMove(bill, parts.payments, parts.payouts, input.amount, todayISO(), whole);
+  if (plan.error && (bill || whole)) throw new Error(plan.error);
+  // What the plan shows as paid in the old software.
+  const amount = whole ? round(whole.paid) : Math.max(0, round(input.amount));
+  const takenOff = round([...plan.remove].reduce((n, p) => n + p.amount, 0));
   const today = todayISO();
   const reason = input.reason.trim().slice(0, 300);
   const now = serverTimestamp();
@@ -206,12 +260,21 @@ export async function markPaidInOldSoftware(input: {
     on: today,
     by: input.by.name,
     reason,
-    changes: [
-      `Marked as paid in the old software (${formatPrice(amount)})` +
-        (bill && plan.remove.length + plan.lower.length
-          ? `: taken off this app's money (bill ${bill.invoiceNumber})`
-          : ""),
-    ],
+    changes: whole
+      ? [
+          `Paid in the old software: ${formatPrice(whole.paid)} (price ${formatPrice(m.priceSnapshot)} → ${formatPrice(whole.deal)})`,
+          ...(bill && takenOff
+            ? [
+                `${formatPrice(takenOff)} entered here by mistake taken off this app's money (bill ${bill.invoiceNumber})`,
+              ]
+            : []),
+        ]
+      : [
+          `Marked as paid in the old software (${formatPrice(amount)})` +
+            (bill && plan.remove.length + plan.lower.length
+              ? `: taken off this app's money (bill ${bill.invoiceNumber})`
+              : ""),
+        ],
   };
 
   await runTransaction(db, async (tx) => {
@@ -270,6 +333,8 @@ export async function markPaidInOldSoftware(input: {
     tx.update(planRef, {
       paidInOldSoftware: true,
       oldSoftwarePaid: amount,
+      // The real deal was the old software's.
+      ...(whole ? { priceSnapshot: round(whole.deal) } : {}),
       ...(input.billNo.trim() ? { oldSoftwareBillNo: input.billNo.trim().slice(0, 40) } : {}),
       oldSoftwareMoveId: moveRef.id,
       edits: [...(Array.isArray(prev["edits"]) ? prev["edits"] : []), edit],
@@ -278,7 +343,27 @@ export async function markPaidInOldSoftware(input: {
     if (!bill || !billRef) return;
     // 3. The bill and its link.
     const b = billSnap?.data() ?? {};
+    // Whole entry: the bill becomes the old deal, one line, its payment shown as a credit.
+    const wholeBill = whole
+      ? {
+          items: [
+            {
+              name: `Paid in the old software · ${m.packageNameSnapshot}`,
+              description: input.billNo.trim()
+                ? `Old software bill ${input.billNo.trim().slice(0, 40)}`
+                : "Plan bought and paid in the old software",
+              quantity: 1,
+              unitPrice: round(whole.deal),
+              total: round(whole.deal),
+              packageId: m.packageId || null,
+            },
+          ],
+          subtotal: round(whole.deal),
+          upgradeCredit: 0,
+        }
+      : {};
     const money = {
+      ...wholeBill,
       discount: plan.after.discount,
       tax: plan.after.tax,
       total: plan.after.total,
@@ -290,10 +375,13 @@ export async function markPaidInOldSoftware(input: {
     };
     tx.update(billRef, {
       ...money,
+      ...(whole ? { membershipGross: round(whole.deal), ptGross: 0, trainerShareTotal: 0 } : {}),
       paidInOldSoftware: plan.after.amountPaid <= 0,
       notes: [
         String(b["notes"] ?? ""),
-        `${formatDateISO(today)}: ${formatPrice(amount)} was paid in the old software${reason ? ` (${reason})` : ""}`,
+        whole
+          ? `${formatDateISO(today)}: entered here again by mistake (${formatPrice(takenOff)} taken off); paid ${formatPrice(amount)} in the old software${reason ? ` (${reason})` : ""}`
+          : `${formatDateISO(today)}: ${formatPrice(amount)} was paid in the old software${reason ? ` (${reason})` : ""}`,
       ]
         .filter(Boolean)
         .join(" · "),

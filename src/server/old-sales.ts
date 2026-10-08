@@ -153,7 +153,14 @@ export async function oldSaleSuspects(request: Request) {
           }
         : null,
       reasons,
-      strength: oldPlan ? "strong" : "check",
+      // Strong only when it is the same plan: same start or end (±7 days) and about as long
+      // (a 1-month old plan is not the same as an annual plan here).
+      strength:
+        oldPlan &&
+        (Math.abs(days(oldPlan.start, start)) <= 7 || Math.abs(days(oldPlan.end, end)) <= 7) &&
+        days(oldPlan.start, oldPlan.end) >= 0.8 * days(start, end)
+          ? "strong"
+          : "check",
     });
   }
   out.sort(

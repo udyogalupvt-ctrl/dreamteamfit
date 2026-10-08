@@ -749,6 +749,8 @@ function ClientProfilePage() {
         membership={oldMove}
         bill={oldMove ? billOfPlan(oldMove, invoices.data) : null}
         memberName={c.fullName}
+        memberPhone={c.phone}
+        oldMemberId={c.oldMemberId ?? ""}
         onClose={() => setOldMove(null)}
       />
       <EditPlanDialog
