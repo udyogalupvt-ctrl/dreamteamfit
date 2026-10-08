@@ -79,6 +79,7 @@ export function EditPlanDialog({
   const [counsellorId, setCounsellorId] = useState("");
   /** Text, so the box can be empty while typing; "" = unchanged. */
   const [discount, setDiscount] = useState("");
+  const [oldPaid, setOldPaid] = useState("");
   const [reason, setReason] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("Cash");
   const [payBy, setPayBy] = useState("");
@@ -90,6 +91,7 @@ export function EditPlanDialog({
     setEnd(membership.endDate);
     setCounsellorId(membership.counsellorId);
     setDiscount("");
+    setOldPaid("");
     setReason("");
     setMethod("Cash");
     setPayBy(todayISO());
@@ -132,7 +134,15 @@ export function EditPlanDialog({
   const bill = billOfPlan(m, invoices);
   const billDiscount = bill ? staffDiscountOf(bill) : 0;
   const discountValue = discount.trim() === "" ? undefined : Number(discount);
-  const form = { pkg, startDate: start, endDate: end, counsellor, discount: discountValue };
+  const oldPaidValue = oldPaid.trim() === "" ? undefined : Number(oldPaid);
+  const form = {
+    pkg,
+    startDate: start,
+    endDate: end,
+    counsellor,
+    discount: discountValue,
+    oldPaid: oldPaidValue,
+  };
   const preview = previewPlanEdit(m, form, bill, settings.data);
   const discountEditable =
     !!bill &&
@@ -258,6 +268,25 @@ export function EditPlanDialog({
               placeholder={String(billDiscount)}
               value={discount === "" ? String(billDiscount) : discount}
               onChange={(e) => setDiscount(e.target.value)}
+              className="max-w-48 tabular-nums"
+            />
+          </Field>
+        ) : null}
+        {m.paidInOldSoftware ? (
+          <Field
+            label="Paid in the old software (₹)"
+            htmlFor="plan-oldpaid"
+            hint="What they paid there for this plan (their old bill). Not counted in this app's money."
+          >
+            <Input
+              id="plan-oldpaid"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step="1"
+              placeholder="0"
+              value={oldPaid === "" ? String(m.oldSoftwarePaid ?? "") : oldPaid}
+              onChange={(e) => setOldPaid(e.target.value === "" ? "0" : e.target.value)}
               className="max-w-48 tabular-nums"
             />
           </Field>

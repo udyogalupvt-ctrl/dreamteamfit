@@ -9,6 +9,7 @@ import {
   writeBatch,
   type DocumentData,
 } from "@/lib/firestore";
+import { planEndDate } from "@/lib/plan-dates";
 import { db } from "@/lib/firebase";
 import { addDaysISO, todayISO } from "@/lib/format";
 import type { GymPackage, Membership, MembershipPause, MembershipSummary } from "@/types/models";
@@ -32,6 +33,9 @@ export const mapMembership = (id: string, d: DocumentData): Membership => ({
   ...(d["cancelledOn"] ? { cancelledOn: String(d["cancelledOn"]) } : {}),
   ...(d["paidInOldSoftware"] === true ? { paidInOldSoftware: true } : {}),
   ...(Number(d["oldSoftwarePaid"]) > 0 ? { oldSoftwarePaid: Number(d["oldSoftwarePaid"]) } : {}),
+  ...(Number(d["oldSoftwareBalance"]) > 0
+    ? { oldSoftwareBalance: Number(d["oldSoftwareBalance"]) }
+    : {}),
   ...(d["oldSoftwareBillNo"] ? { oldSoftwareBillNo: String(d["oldSoftwareBillNo"]) } : {}),
   ...(d["oldSoftwareMoveId"] ? { oldSoftwareMoveId: String(d["oldSoftwareMoveId"]) } : {}),
   ...(d["invoiceId"] ? { invoiceId: String(d["invoiceId"]) } : {}),
@@ -71,9 +75,13 @@ export function subscribeMemberships(
   );
 }
 
-/** End date = start + durationDays (e.g. 23 Sep + 30 days = 23 Oct). */
+/**
+ * A plan's last day: calendar months ending the day before (24 Jul + 30 days → 23 Aug, annual
+ * 12 Aug 2026 → 11 Aug 2027), like the old software; other lengths are that many days. The plan
+ * covers its last day. See src/lib/plan-dates.ts.
+ */
 export const calculateEndDate = (startDate: string, durationDays: number) =>
-  addDaysISO(startDate, durationDays);
+  planEndDate(startDate, durationDays);
 
 export type PreviousAction = "expired" | "cancelled";
 

@@ -1,5 +1,46 @@
 # Handoff
 
+## 2026-10-08 (late): live data cleaned, calendar-month end dates, Billing period, Reports fix
+
+**Live data (done as the owner through the app, with the user's OK; read-only checks before/after):**
+- 31 plans that were paid in the old software but re-entered here as sales on 5-8 Oct (₹2,44,669)
+  were marked "Paid in the old software" (whole entry: bill = old deal, payments off, PT share
+  cancelled). Each has Undo on the plan (`oldSoftwareMoves`).
+- 1 duplicate bill (member deleted with "keep bills" and re-added, same phone, ₹5,800) moved to
+  the Recycle Bin.
+- 60 old members' plans set to the old software's own dates (most were 1 day long; 6-month plans
+  2-3 days short; one 12+1-month plan 30 days short; one wrongly entered as annual → 1 month).
+  2 plans ending today were left (today already used; one has a renewal from tomorrow).
+- "Joined this month": 3 of 7 old members got their old joining date; 4 are waiting for thumb
+  registration and could not be edited (Edit reopened the joining steps) → fixed in code (Edit
+  always opens details); finish them after deploy (scratchpad `live_owner_joined.py`).
+- Live after: Collected today ₹24,496 (was ₹90,089), this month ₹1,16,879 (was ₹3,67,348).
+  CFO page refreshes its numbers each morning (or Refresh on the page).
+- Read-only scripts (session scratchpad): prod_old_check / prod_sweep / prod_dates / prod_joined.
+  Owner-browser scripts used once each with a narrow allow rule that was removed afterwards.
+
+**Evening round (same branch):** front-desk tabs left open since the morning kept running the
+old app after the 15:31 deploy, so ~10 old members added after 4 pm were saved the old way (no
+amount paid there, start+365 end dates). Fixes: (1) open tabs now check `/api/version` (build id
+from vite `define` `__APP_BUILD__`, no DB read) every 5 min / when shown, and load the new version
+by themselves when no popup is open and nothing was typed for 20 s, else a Refresh toast; tabs
+still on the OLD bundle need ONE manual refresh. (2) A plan paid in the old software shows "Paid
+in the old software ₹X" (package price as a note) on the Plan tab and history. (3) Edit plan has
+"Paid in the old software (₹)" and works on ended paid-there plans (dates as in the old
+software). (4) Joining suggests the old plan that started within 10 days (not only a running one)
+and refuses ₹0 paid there. (5) Member page opens on Plan. (6) Billing list = the period's bills +
+every older bill with money due; search looks at all loaded bills. Live: 46 plans were missing
+the amount paid there, 11 had other dates (5 running, 6 ended): `live_owner_oldplans.py` (session
+scratchpad, input from read-only `prod_oldplans.mjs`). Tests: `oldpaid_local.py` (18 checks).
+
+**Code (branch `member-delete-money-guard`):** plan end dates follow calendar months, last day =
+day before (src/lib/plan-dates.ts, unit-tested; 30/60/90/180/360 days = months, 365 = 1 year, other
+lengths = that many days); Billing has the Dashboard's period dropdown (cards + bill list); Reports
+"Collected" = payments by the day received (was bill amounts by bill date); Delete member warns
+about "keep bills" when the same phone exists (double counting); Edit on a thumb-pending member
+opens details; WhatsApp usage default rates = Meta India from 1 Oct 2026 incl. GST (utility ≈ ₹0.14,
+marketing ≈ ₹1.02; chat replies: first 1,000/month free, then utility rate).
+
 ## 2026-10-08: WhatsApp chats, photo full screen, corrections, old-software money, security audit
 
 Branches (local only, NOT pushed, NOT deployed): `members-wa-inbox-audit` (commit e427506) and on top of it
@@ -292,4 +333,4 @@ Also fixed a race: "End all plans & stop entry" now appears only after PT plans 
   Bill "⋯" → Edit bill. Settings → WhatsApp shows the "Run it on the gym PC" box.
 - At the gym: run the gym-PC setup once (see the section above) if they want WhatsApp from the PC.
 
-Last updated: 2026-10-08 (WhatsApp chats, corrections, old-software money, security audit)
+Last updated: 2026-10-08 late (live data cleaned; dates, Billing period, Reports)

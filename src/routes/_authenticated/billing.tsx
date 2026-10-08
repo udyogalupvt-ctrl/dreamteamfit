@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { z } from "zod";
 import { CreateBillDialog } from "@/components/billing/create-bill-dialog";
+import { usePeriodPicker } from "@/components/dashboard/period-picker";
 import { InvoiceActions } from "@/components/billing/invoice-actions";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
@@ -80,28 +81,34 @@ function BillingPage() {
       error: recent.error ?? due.error,
     };
   }, [recent, due]);
+  // The period the cards and the bill list show (same choices as the Dashboard).
+  const { period, picker } = usePeriodPicker("month");
+  const paymentsFrom = period.from < monthStart ? period.from : monthStart;
   const payments = useLive<Payment[]>(
-    (ok, fail) => subscribePaymentsSince(monthStart, ok, fail),
+    (ok, fail) => subscribePaymentsSince(paymentsFrom, ok, fail),
     [],
-    [monthStart],
+    [paymentsFrom],
   );
   const clients = useLive(subscribeClients, [], []);
   const packages = useLive(subscribePackages, [], []);
   const settings = useLive(subscribeBusinessSettings, DEFAULT_BILLING_SETTINGS, []);
   const [open, setOpen] = useState(Boolean(searchParams.create));
   const [search, setSearch] = useState("");
-  const [date, setDate] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
-  // A date before the loaded months: load the older bills.
+  // A period before the loaded months: load the older bills.
   useEffect(() => {
-    if (date && date < since) setOlder(true);
-  }, [date, since]);
+    if (period.from < since) setOlder(true);
+  }, [period.from, since]);
 
+  // The period's bills, plus every older bill still owing money (it must not drop out of sight).
+  // A search looks through every loaded bill.
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     return invoices.data.filter(
       (i) =>
-        (!date || i.invoiceDate === date) &&
+        (q ||
+          (i.invoiceDate >= period.from && i.invoiceDate <= period.to) ||
+          (i.balanceDue > 0 && i.paymentStatus !== "refunded")) &&
         (status === "all" ||
           (status === "due"
             ? i.balanceDue > 0 && i.paymentStatus !== "refunded"
@@ -111,39 +118,34 @@ function BillingPage() {
             v.toLowerCase().includes(q),
           )),
     );
-  }, [invoices.data, search, date, status]);
+  }, [invoices.data, search, period.from, period.to, status]);
 
-  const today = todayISO();
-  const todayMoney = buildFinanceSummary(payments.data, invoices.data, [], [], today, today);
-  const collectedToday = todayMoney.gross;
-  const collectedMonth = buildFinanceSummary(
-    payments.data,
-    invoices.data,
-    [],
-    [],
-    monthStart,
-    today,
-  ).gross;
+  // Same sums as the Dashboard (payments by the day they were received).
+  const money = buildFinanceSummary(payments.data, invoices.data, [], [], period.from, period.to);
+  const billsInPeriod = invoices.data.filter(
+    (i) => i.invoiceDate >= period.from && i.invoiceDate <= period.to,
+  );
+  const billed = billsInPeriod.reduce((n, i) => n + i.total, 0);
   const dueInvoices = invoices.data.filter(
     (i) => i.paymentStatus !== "refunded" && i.balanceDue > 0,
   );
   const outstanding = dueInvoices.reduce((n, i) => n + i.balanceDue, 0);
   const cards = [
     {
-      id: "today",
-      label: "Collected today",
-      value: formatPrice(collectedToday),
-      hint: todayMoney.refunded
-        ? `after ${formatPrice(todayMoney.refunded)} refunded`
-        : "all payments received today",
+      id: "collected",
+      label: `Collected · ${period.label}`,
+      value: formatPrice(money.gross),
+      hint: money.refunded
+        ? `after ${formatPrice(money.refunded)} given back · gym income ${formatPrice(money.gymIncome)}`
+        : `gym income ${formatPrice(money.gymIncome)}`,
       icon: CalendarDays,
       tone: "success" as const,
     },
     {
-      id: "month",
-      label: "This month",
-      value: formatPrice(collectedMonth),
-      hint: "payments received",
+      id: "bills",
+      label: `Bills · ${period.label}`,
+      value: String(billsInPeriod.length),
+      hint: `${formatPrice(billed)} billed`,
       icon: CircleDollarSign,
       tone: "primary" as const,
     },
@@ -151,7 +153,7 @@ function BillingPage() {
       id: "due",
       label: "Balance due",
       value: formatPrice(outstanding),
-      hint: `${dueInvoices.length} bill${dueInvoices.length === 1 ? "" : "s"} not fully paid`,
+      hint: `${dueInvoices.length} bill${dueInvoices.length === 1 ? "" : "s"} not fully paid (any date)`,
       icon: WalletCards,
       tone: "warning" as const,
     },
@@ -172,6 +174,10 @@ function BillingPage() {
         }
       />
       {error ? <ErrorState error={error} title="Couldn't load billing data" /> : null}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-section-title">Numbers · {period.label}</h2>
+        {picker}
+      </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         {cards.map((m, i) => (
           <StatCard key={m.id} metric={m} className={cn(i === 2 && "col-span-2 lg:col-span-1")} />
@@ -216,13 +222,6 @@ function BillingPage() {
                 </button>
               ))}
             </div>
-            <Input
-              type="date"
-              aria-label="Filter by bill date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-40 shrink-0"
-            />
           </div>
         </div>
 
@@ -363,12 +362,18 @@ function BillingPage() {
             </ul>
           </>
         )}
-        {!older && !invoices.loading ? (
+        {!invoices.loading && filtered.length ? (
           <p className="text-meta flex flex-wrap items-center gap-2">
-            Showing bills since {formatDateISO(since)} and every bill with a balance due.
-            <Button size="sm" variant="ghost" onClick={() => setOlder(true)}>
-              Show older bills
-            </Button>
+            {search.trim()
+              ? older
+                ? "Searched every bill."
+                : `Searched the bills since ${formatDateISO(since)} and every bill with a balance due.`
+              : `Showing the bills of: ${period.label}, and every older bill with a balance due. Search finds any bill.`}
+            {search.trim() && !older ? (
+              <Button size="sm" variant="ghost" onClick={() => setOlder(true)}>
+                Search older bills too
+              </Button>
+            ) : null}
           </p>
         ) : null}
       </section>

@@ -44,8 +44,12 @@ export const Route = createFileRoute("/_authenticated/whatsapp-usage")({
 type Period = "today" | "month" | "last" | "custom";
 type Template = { name: string; status: string; category: string };
 type Rates = { utility: number; marketing: number };
-/** Approximate Meta prices for India (₹ per delivered message). Edit to match your Meta bill. */
-const DEFAULT_RATES: Rates = { utility: 0.12, marketing: 0.79 };
+/**
+ * Meta's India prices from 1 Oct 2026, ₹ per delivered message INCLUDING 18% GST: utility ₹0.1150
+ * (+GST ≈ ₹0.14), marketing ₹0.8631 (+GST ≈ ₹1.02). Replies in WhatsApp chats (service messages):
+ * the first 1,000 a month per number are free, then the utility rate. Edit to match your Meta bill.
+ */
+const DEFAULT_RATES: Rates = { utility: 0.14, marketing: 1.02 };
 
 const KINDS: { type: string; label: string; template: keyof WhatsAppSettings }[] = [
   { type: "invoice", label: "Bills after payment", template: "invoiceTemplate" },
@@ -184,7 +188,10 @@ function WhatsAppUsagePage() {
           <p className="text-stat tabular-nums">{formatPrice(Math.round(totalCost * 100) / 100)}</p>
         </div>
         <div className="surface-card col-span-2 p-4 lg:col-span-1">
-          <p className="text-meta">₹ per message (edit to match your Meta bill)</p>
+          <p className="text-meta">
+            ₹ per message incl. 18% GST (Meta India, from 1 Oct 2026). Chat replies: first 1,000 a
+            month free. Edit to match your Meta bill.
+          </p>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <label className="text-sm">
               Utility

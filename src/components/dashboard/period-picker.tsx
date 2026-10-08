@@ -22,9 +22,9 @@ const CHOICES = [
 type Choice = (typeof CHOICES)[number][0];
 
 /** "Showing: Today / Yesterday / Last 5 days / This month / a date / a range" for the dashboard. */
-export function usePeriodPicker() {
+export function usePeriodPicker(initial: Choice = "today") {
   const today = todayISO();
-  const [choice, setChoice] = useState<Choice>("today");
+  const [choice, setChoice] = useState<Choice>(initial);
   const [day, setDay] = useState(addDaysISO(today, -1));
   const [from, setFrom] = useState(addDaysISO(today, -6));
   const [to, setTo] = useState(today);

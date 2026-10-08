@@ -1,4 +1,5 @@
 import { doc, getDocs, query, runTransaction, serverTimestamp, where } from "@/lib/firestore";
+import { planEndDate } from "@/lib/plan-dates";
 import { db } from "@/lib/firebase";
 import { addDaysISO, formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import {
@@ -32,9 +33,14 @@ import { col, COLLECTIONS } from "./firestore.service";
  * is re-checked (every plan write does that). Each correction is listed on the plan.
  */
 
-/** A plan that can still be corrected: running or waiting to start, not ended by an upgrade. */
-export const canEditPlan = (m: Pick<Membership, "status" | "upgradedTo">) =>
-  ["active", "pending", "biometric_pending"].includes(m.status) && !m.upgradedTo;
+/**
+ * A plan that can still be corrected: running or waiting to start, not ended by an upgrade. A plan
+ * paid in the old software can be corrected after it ended too (no bill or money here changes).
+ */
+export const canEditPlan = (m: Pick<Membership, "status" | "upgradedTo" | "paidInOldSoftware">) =>
+  (["active", "pending", "biometric_pending"].includes(m.status) ||
+    (m.paidInOldSoftware === true && m.status === "expired")) &&
+  !m.upgradedTo;
 
 /** Days added by pauses (they moved the end date forward). */
 export const pausedDays = (m: Pick<Membership, "pauses">) =>
@@ -42,7 +48,7 @@ export const pausedDays = (m: Pick<Membership, "pauses">) =>
 
 /** End date for a start and a package: its days, plus the days the plan was paused. */
 export const standardEnd = (startDate: string, durationDays: number, paused: number) =>
-  addDaysISO(startDate, durationDays + paused);
+  addDaysISO(planEndDate(startDate, durationDays), paused);
 
 /** Plan status from its dates (same rule as the nightly job). */
 export const statusFromDates = (start: string, end: string, today = todayISO()) =>
@@ -62,6 +68,8 @@ export interface PlanEditForm {
    * Lower total than what was paid = the extra is given back as a refund.
    */
   discount?: number | undefined;
+  /** Plan paid in the old software: what was paid there (₹). Left out = unchanged. */
+  oldPaid?: number | undefined;
 }
 
 export interface BillChange {
@@ -92,6 +100,9 @@ export interface PlanEditPreview {
   discountChanged: boolean;
   /** The counsellor is changed: their bill and payments follow (incentives count from those). */
   counsellorChanged: boolean;
+  /** Plan paid in the old software: the amount paid there after saving, and if it changes. */
+  oldPaid: number;
+  oldPaidChanged: boolean;
   status: MembershipStatus;
 }
 
@@ -132,6 +143,16 @@ export function previewPlanEdit(
   const discountChanged = !!bill && newDiscount !== oldDiscount;
   if (discountChanged)
     changes.push(`Discount ${formatPrice(oldDiscount)} → ${formatPrice(newDiscount)}`);
+  const oldPaidBefore = m.oldSoftwarePaid ?? 0;
+  const oldPaid =
+    !m.paidInOldSoftware || form.oldPaid === undefined || !Number.isFinite(form.oldPaid)
+      ? oldPaidBefore
+      : Math.round(form.oldPaid);
+  const oldPaidChanged = oldPaid !== oldPaidBefore;
+  if (oldPaidChanged)
+    changes.push(
+      `Paid in the old software ${formatPrice(oldPaidBefore)} → ${formatPrice(oldPaid)}`,
+    );
 
   const status =
     m.status === "biometric_pending"
@@ -149,6 +170,7 @@ export function previewPlanEdit(
     error =
       "This plan is an upgrade: its start date stays (the old plan ends the day before it). Change the end date instead.";
   else if (newDiscount < 0) error = "The discount can't be below ₹0.";
+  else if (oldPaid < 0) error = "The amount paid in the old software can't be below ₹0.";
 
   let billChange: BillChange | null = null;
   let billNote = "";
@@ -215,6 +237,8 @@ export function previewPlanEdit(
     status,
     discountChanged,
     counsellorChanged,
+    oldPaid,
+    oldPaidChanged,
   };
 }
 
@@ -282,7 +306,8 @@ export async function editMembership(input: PlanEditInput) {
       f["endDate"] !== m.endDate ||
       f["startDate"] !== m.startDate ||
       (f["packageId"] ?? "") !== m.packageId ||
-      Number(f["priceSnapshot"] ?? 0) !== m.priceSnapshot
+      Number(f["priceSnapshot"] ?? 0) !== m.priceSnapshot ||
+      Number(f["oldSoftwarePaid"] ?? 0) !== (m.oldSoftwarePaid ?? 0)
     )
       throw new Error("This plan was just changed by someone else. Close and open Edit again.");
     if (
@@ -304,6 +329,7 @@ export async function editMembership(input: PlanEditInput) {
       status: preview.status,
       counsellorId: form.counsellor?.id ?? "",
       counsellorName: form.counsellor?.name ?? "",
+      ...(preview.oldPaidChanged ? { oldSoftwarePaid: preview.oldPaid } : {}),
       edits: [...(Array.isArray(f["edits"]) ? f["edits"] : []), edit],
       updatedAt: now,
     });
@@ -415,7 +441,11 @@ export async function editMembership(input: PlanEditInput) {
     // The member's plan summary: the plan running today (latest start), with the new dates.
     const plans = plansSnap.docs
       .map((d) => ({ id: d.id, d: d.data() }))
-      .filter(({ d }) => ["active", "pending", "biometric_pending"].includes(String(d["status"])))
+      .filter(({ id, d }) =>
+        ["active", "pending", "biometric_pending"].includes(
+          id === m.id ? preview.status : String(d["status"]),
+        ),
+      )
       .map(({ id, d }) =>
         id === m.id
           ? {
