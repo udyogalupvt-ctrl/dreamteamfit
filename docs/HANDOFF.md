@@ -1,5 +1,35 @@
 # Handoff
 
+## 2026-10-08 (night, round 3): door fix for old plans, PT discount, New version button
+
+Done (branch work merged to main, see git log): Plan tab "Still running in the old software, but
+not in this app → Add it here" (`add-old-plan-dialog.tsx`: gym or PT plan, package/trainer
+suggested, old dates/amount/bill, no money today; enrollment allows a paid-there plan unless a plan
+here covers its first day); Edit PT plan has "Discount (₹)" (owner; via editBill, refund if
+overpaid); top bar "New version · Refresh" button (`src/lib/app-version.ts`); PT-only add for a
+member with a gym plan verified. Tests: `round3_local.py` (15 checks).
+Live: members blocked although their plan runs in the old software: `prod_blocked.mjs` (read-only)
+→ `live_owner_addold.py list|apply` (keeps the app's suggestion, skips unclear ones).
+
+**NEXT (user decided 2026-10-08): item 5, old-software payments with their real dates.**
+Rule chosen by the user: COUNT ON THE REAL DATE (Collected / month totals / CFO on the day really
+paid, never as today) and KEEP OUT OF THE DAY BOOK CASH DRAWER. Plan:
+1. Joining "Paid in the old software": rows of payments (date, amount, method, + add row; partial
+   payments); first row prefilled from the old data (amount paid, date = plan start, editable).
+   Existing paid-there plans: same rows in Edit plan (and on PT plans).
+2. Storage: one "old software bill" per old plan (invoice `oldSoftware: true`, number `OLD-<bill>`,
+   items = the old deal, invoiceDate = first payment date, no public link / WhatsApp) + payment docs
+   `oldSoftware: true` with the real paymentDate/method and the usual allocatePayment split. PT:
+   decide the trainer share (payout marked paid in the old software vs share 0) so trainerPayable
+   stays consistent.
+3. Totals: buildFinanceSummary counts them by date (Dashboard, Billing, Reports, CFO server
+   `cfo-data.ts`). Day Book (`src/lib/cash-book.ts`, `day-book.tsx`) excludes them from cash in hand
+   and lists them apart. Check incentives, PT report, trainer pages, member app, recycle bin,
+   payment edit/refund paths, old-sales review (must not flag them).
+4. The 31 "whole entry" corrections keep their before-copies in `oldSoftwareMoves`; once dates are
+   entered their money can count on the real dates.
+5. Money-critical: effort Extra high, a separate reviewer agent, tests for every total by date.
+
 ## 2026-10-08 (late): live data cleaned, calendar-month end dates, Billing period, Reports fix
 
 **State (22:00):** pushed. Live, done as the owner with the user's OK: 64 plans got the amount paid in

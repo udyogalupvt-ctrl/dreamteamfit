@@ -18,11 +18,27 @@ import { useLive } from "@/hooks/use-live-query";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { subscribeTrainers } from "@/services/pt.service";
 import { editPtPlan, ptChanges } from "@/services/pt-edit.service";
+import { editBill, previewBillEdit, staffDiscountOf } from "@/services/bill-edit.service";
+import {
+  DEFAULT_BILLING_SETTINGS,
+  subscribeBusinessSettings,
+} from "@/services/business-settings.service";
 import { formatPrice } from "@/lib/format";
-import type { PtAssignment, ShareType, Trainer } from "@/types/models";
+import type { Invoice, PaymentMethod, PtAssignment, ShareType, Trainer } from "@/types/models";
 
-/** "Edit PT plan": the trainer (owner: the share moves with it), the dates and the share. */
-export function EditPtDialog({ pt, onClose }: { pt: PtAssignment | null; onClose: () => void }) {
+/**
+ * "Edit PT plan": the trainer (owner: the share moves with it), the dates, the share, and the
+ * discount on its bill (owner; like Edit bill: a member who paid more gets the extra back).
+ */
+export function EditPtDialog({
+  pt,
+  bill,
+  onClose,
+}: {
+  pt: PtAssignment | null;
+  bill: Invoice | null;
+  onClose: () => void;
+}) {
   const open = !!pt;
   const { can } = useAccess();
   const { user } = useAuth();
@@ -33,9 +49,16 @@ export function EditPtDialog({ pt, onClose }: { pt: PtAssignment | null; onClose
   const [shareType, setShareType] = useState<ShareType>("percentage");
   const [shareValue, setShareValue] = useState("");
   const [reason, setReason] = useState("");
+  const [discount, setDiscount] = useState("");
+  const [refundMethod, setRefundMethod] = useState<PaymentMethod>("Cash");
   const [error, setError] = useState("");
+  const settings = useLive(open ? subscribeBusinessSettings : null, DEFAULT_BILLING_SETTINGS, [
+    open,
+  ]);
   useEffect(() => {
     if (!pt) return;
+    setDiscount("");
+    setRefundMethod("Cash");
     setTrainerId(pt.trainerId);
     setStart(pt.startDate);
     setEnd(pt.endDate);
@@ -70,20 +93,45 @@ export function EditPtDialog({ pt, onClose }: { pt: PtAssignment | null; onClose
     (!(shareNumber >= 0) ||
       (shareType === "percentage" && shareNumber > 100) ||
       (shareType !== "percentage" && shareNumber > pt.ptPrice));
-  const changes = ptChanges(pt, form);
+  const planChanges = ptChanges(pt, form);
+  // The discount on the PT plan's bill (a plan paid in the old software has none here).
+  const discountEditable =
+    !!bill &&
+    !pt.paidInOldSoftware &&
+    bill.paymentStatus !== "closed" &&
+    bill.paymentStatus !== "refunded";
+  const billDiscount = bill ? staffDiscountOf(bill) : 0;
+  const billForm =
+    bill && discountEditable && discount.trim() !== ""
+      ? { discount: Number(discount), dueDate: bill.dueDate, notes: bill.notes }
+      : null;
+  const billPv = bill && billForm ? previewBillEdit(bill, billForm, settings.data) : null;
+  const discountChanged = !!billPv?.discountChanged;
+  const changes = [...planChanges, ...(discountChanged ? (billPv?.changes ?? []) : [])];
 
   const save = async () => {
     setError("");
+    const by = user?.displayName || user?.email || "Staff";
     try {
-      await editPtPlan({
-        pt,
-        form,
-        reason,
-        canFinance: money,
-        by: user?.displayName || user?.email || "Staff",
-      });
+      if (planChanges.length) await editPtPlan({ pt, form, reason, canFinance: money, by });
+      if (discountChanged && bill && billForm)
+        await editBill({
+          invoice: bill,
+          form: billForm,
+          settings: settings.data,
+          reason: reason || "PT discount",
+          canDiscount: money,
+          by,
+          byUid: user?.uid ?? "",
+          refundMethod,
+        });
       onClose();
-      toast.success("PT plan updated", { description: changes.join(" · ") });
+      toast.success("PT plan updated", {
+        description:
+          billPv?.refund && discountChanged
+            ? `${formatPrice(billPv.refund)} recorded as money given back.`
+            : changes.join(" · "),
+      });
     } catch (e) {
       setError(e instanceof Error && !("code" in e) ? e.message : firestoreErrorMessage(e));
     }
@@ -94,13 +142,16 @@ export function EditPtDialog({ pt, onClose }: { pt: PtAssignment | null; onClose
       open
       onOpenChange={(o) => !o && onClose()}
       title="Edit PT plan"
-      description={`${pt.ptPackageNameSnapshot} for ${pt.clientNameSnapshot} · PT price ${formatPrice(pt.ptPrice)}. A lower price is a discount: Edit bill.`}
+      description={`${pt.ptPackageNameSnapshot} for ${pt.clientNameSnapshot} · PT price ${formatPrice(pt.ptPrice)}.`}
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
-          <Button onClick={() => save()} disabled={!changes.length || shareBad}>
+          <Button
+            onClick={() => save()}
+            disabled={!changes.length || shareBad || !!billPv?.error || (discountChanged && !money)}
+          >
             <Pencil aria-hidden /> Save changes
           </Button>
         </>
@@ -187,6 +238,46 @@ export function EditPtDialog({ pt, onClose }: { pt: PtAssignment | null; onClose
             />
           </div>
         </Field>
+        {discountEditable && bill ? (
+          <Field
+            label="Discount (₹)"
+            htmlFor="pt-discount"
+            error={billPv?.error || undefined}
+            hint={
+              !money
+                ? "Only the owner's login (Income & expenses) can change a discount."
+                : `On bill ${bill.invoiceNumber} (total ${formatPrice(bill.total)}, paid ${formatPrice(bill.amountPaid)}). If they paid more than the new total, the extra is given back.`
+            }
+          >
+            <Input
+              id="pt-discount"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="1"
+              disabled={!money}
+              value={discount === "" ? String(billDiscount) : discount}
+              onChange={(e) => setDiscount(e.target.value === "" ? "0" : e.target.value)}
+              className="max-w-48 tabular-nums"
+            />
+          </Field>
+        ) : null}
+        {discountChanged && (billPv?.refund ?? 0) > 0 ? (
+          <Field label={`Give back ${formatPrice(billPv?.refund ?? 0)} by`} htmlFor="pt-refund">
+            <Select value={refundMethod} onValueChange={(v) => setRefundMethod(v as PaymentMethod)}>
+              <SelectTrigger id="pt-refund" className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(["Cash", "UPI", "Card", "Bank Transfer"] as PaymentMethod[]).map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {m}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        ) : null}
         <Field label="Why the change? (optional)" htmlFor="pt-reason">
           <Input
             id="pt-reason"

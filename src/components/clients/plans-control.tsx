@@ -477,7 +477,19 @@ export function ClientPtPlans({ client, invoices }: { client: Client; invoices: 
           );
         })}
       </ul>
-      <EditPtDialog pt={editing} onClose={() => setEditing(null)} />
+      <EditPtDialog
+        pt={editing}
+        bill={
+          editing
+            ? (invoices.find(
+                (i) =>
+                  (editing.invoiceId && i.id === editing.invoiceId) ||
+                  i.ptAssignmentId === editing.id,
+              ) ?? null)
+            : null
+        }
+        onClose={() => setEditing(null)}
+      />
       <CancelPlansDialog
         client={client}
         plans={[]}

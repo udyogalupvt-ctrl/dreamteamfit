@@ -16,6 +16,7 @@ import { AuthProvider } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { startPwa } from "@/lib/pwa";
+import { markNewVersion } from "@/lib/app-version";
 
 // Installable app: listen for the browser's install offer and register the service worker.
 startPwa();
@@ -85,7 +86,10 @@ function useNewVersion() {
       try {
         const r = await fetch("/api/version", { cache: "no-store" });
         const build = r.ok ? String(((await r.json()) as { build?: unknown }).build ?? "") : "";
-        if (build && build !== __APP_BUILD__) newer = build;
+        if (build && build !== __APP_BUILD__) {
+          newer = build;
+          markNewVersion();
+        }
       } catch {
         // Offline: asked again later.
       }

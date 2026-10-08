@@ -176,19 +176,23 @@ export function enrollmentTotals(
 export async function enrollMember(input: EnrollmentInput) {
   if (!input.gymPackage && !input.pt) throw new Error("Select a gym package or a PT package.");
   const old = input.oldSoftware ?? null;
-  // A member already in the app (Excel import, thumb first) may still be moving over, but not one
-  // with a plan here: renewing here is paid here.
+  // A member already in the app (Excel import, thumb first) may still be moving over, and so may
+  // one with plans here before or after it (an older plan that ended, or the renewal entered while
+  // the old plan still runs). A plan here running on its first day means it was paid here.
   if (old && input.existingClient) {
     const here = await getDocs(
-      query(
-        col(COLLECTIONS.memberships),
-        where("clientId", "==", input.existingClient.id),
-        limit(1),
-      ),
+      query(col(COLLECTIONS.memberships), where("clientId", "==", input.existingClient.id)),
     );
-    if (!here.empty)
+    if (
+      here.docs.some(
+        (d) =>
+          d.data()["status"] !== "cancelled" &&
+          String(d.data()["startDate"] ?? "") <= input.startDate &&
+          String(d.data()["endDate"] ?? "") >= input.startDate,
+      )
+    )
       throw new Error(
-        "This member already has a plan in this app: a renewal here is paid here, not in the old software.",
+        "This member already has a plan in this app from that day: a renewal here is paid here, not in the old software.",
       );
   }
   const oldBalance = old ? Math.max(0, Math.round(old.balance || 0)) : 0;
@@ -391,7 +395,11 @@ export async function enrollMember(input: EnrollmentInput) {
         trainerNameSnapshot: input.pt.trainer.name,
         ...share,
         startDate: input.startDate,
-        endDate: calculateEndDate(input.startDate, input.pt.pkg.durationDays),
+        // A PT plan carried over alone from the old software keeps its own last day there.
+        endDate:
+          oldEnd && !input.gymPackage
+            ? oldEnd
+            : calculateEndDate(input.startDate, input.pt.pkg.durationDays),
         status: input.startDate > today ? "pending" : "active",
         invoiceId: invoiceRef?.id ?? "",
         enrollmentId: enrollmentRef.id,

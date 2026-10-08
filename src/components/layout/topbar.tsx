@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Bell, ChevronDown, CreditCard, Fingerprint, Phone, RefreshCcw } from "lucide-react";
 import { GlobalSearch } from "@/components/layout/global-search";
 import { InstallAppButton } from "@/components/layout/install-app-button";
+import { useNewVersionReady } from "@/lib/app-version";
 import { MobileNavDrawer } from "@/components/layout/mobile-nav";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { UserMenu } from "@/components/layout/user-menu";
@@ -93,6 +94,9 @@ export function Topbar() {
             <GlobalSearch compact />
           </div>
 
+          {/* Only while a newer version is live than this tab: one tap loads it. */}
+          <NewVersionButton />
+
           {/* Only until the app is installed. */}
           <InstallAppButton />
 
@@ -182,4 +186,20 @@ function writeSeen(v: Record<string, number>) {
   } catch {
     /* private mode: badge just shows again next visit */
   }
+}
+
+/** "New version": the live app was updated after this tab was opened. Tapping loads it. */
+function NewVersionButton() {
+  const ready = useNewVersionReady();
+  if (!ready) return null;
+  return (
+    <Button
+      size="sm"
+      onClick={() => window.location.reload()}
+      className="animate-in fade-in"
+      aria-label="New version of the app: refresh to load it"
+    >
+      <RefreshCcw aria-hidden /> <span className="max-sm:hidden">New version ·</span> Refresh
+    </Button>
+  );
 }

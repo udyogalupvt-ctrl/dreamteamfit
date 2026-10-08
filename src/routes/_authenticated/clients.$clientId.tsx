@@ -89,7 +89,8 @@ import { EditPlanDialog, PlanEdits } from "@/components/clients/edit-plan-dialog
 import { OldSoftwareDialog } from "@/components/clients/old-software-dialog";
 import { undoOldSoftwareMove } from "@/services/old-software.service";
 import { lookupOldMembers } from "@/services/old-data.service";
-import { matchingOldPlan, type OldMember } from "@/lib/old-data";
+import { matchingOldPlan, runningOldPlan, type OldMember } from "@/lib/old-data";
+import { AddOldPlanDialog } from "@/components/clients/add-old-plan-dialog";
 import { billOfPlan } from "@/services/plan-edit.service";
 import { canEditPlan } from "@/services/plan-edit.service";
 import {
@@ -179,6 +180,7 @@ function ClientProfilePage() {
   const [pausing, setPausing] = useState<Membership | null>(null);
   const [editing, setEditing] = useState<Membership | null>(null);
   const [oldMove, setOldMove] = useState<Membership | null>(null);
+  const [addOld, setAddOld] = useState(false);
   // The member's record in the old software (same cached lookup as the Old software record card).
   const [oldRecord, setOldRecord] = useState<{ phone: string; members: OldMember[] }>({
     phone: "",
@@ -243,6 +245,18 @@ function ClientProfilePage() {
     oldRecord.phone === c.phone
       ? (oldRecord.members.find((o) => !!c.oldMemberId && o.memberId === c.oldMemberId) ??
         (oldRecord.members.length === 1 ? (oldRecord.members[0] ?? null) : null))
+      : null;
+  // Still running in the old software but no plan here for today (only a later one, or none
+  // started yet): the door is shut although they paid. Offer to add that plan as paid there.
+  const todayDay = new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10);
+  const oldRun = oldPerson ? runningOldPlan(oldPerson, todayDay) : null;
+  const liveHere = withStatus.filter((m) => m.status !== "cancelled");
+  const missingOldRun =
+    oldRun &&
+    can("members") &&
+    !liveHere.some((m) => m.startDate <= todayDay && m.endDate >= todayDay) &&
+    !liveHere.some((m) => m.startDate <= oldRun.start && m.endDate >= oldRun.start)
+      ? oldRun
       : null;
   const shownPlan = <T extends Membership>(m: T): T => {
     if (!m.paidInOldSoftware || m.oldSoftwarePaid || !oldPerson) return m;
@@ -554,6 +568,33 @@ function ClientProfilePage() {
           <div className="flex justify-end empty:hidden">
             <EndAllPlansButton client={c} memberships={memberships.data} invoices={invoices.data} />
           </div>
+          {missingOldRun ? (
+            <section
+              role="alert"
+              className="flex flex-col gap-3 rounded-2xl border border-warning/50 bg-warning/10 p-4 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="text-sm">
+                <p className="font-semibold">
+                  Still running in the old software, but not in this app: the door stays shut
+                </p>
+                <p className="text-meta tabular-nums">
+                  {missingOldRun.name} · {formatDateISO(missingOldRun.start)} →{" "}
+                  {formatDateISO(missingOldRun.end)} · paid{" "}
+                  {formatPrice(Math.max(0, missingOldRun.amount - missingOldRun.balance))}
+                </p>
+              </div>
+              <Button onClick={() => setAddOld(true)} className="shrink-0">
+                Add it here
+              </Button>
+              <AddOldPlanDialog
+                client={c}
+                plan={missingOldRun}
+                others={oldPerson?.plans ?? []}
+                open={addOld}
+                onClose={() => setAddOld(false)}
+              />
+            </section>
+          ) : null}
           {memberships.loading ? (
             <Shimmer className="h-32 w-full rounded-2xl" />
           ) : memberships.error ? (

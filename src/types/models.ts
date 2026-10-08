@@ -921,6 +921,8 @@ export interface PtAssignment extends BaseDoc, ShareSnapshot {
   status: PtAssignmentStatus;
   invoiceId: string;
   enrollmentId: string | null;
+  /** Moved over from the old gym software: sold and paid there, not a sale here. */
+  paidInOldSoftware?: boolean;
   /** Set when cancelled: the day, why, and the id shared by everything that cancellation did. */
   cancelledOn?: string;
   cancelReason?: string;
