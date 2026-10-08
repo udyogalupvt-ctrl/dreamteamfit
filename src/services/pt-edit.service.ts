@@ -18,8 +18,11 @@ import { calculateShare } from "./pt.service";
  * (a lower price is a discount: Edit bill).
  */
 
-export const canEditPt = (p: Pick<PtAssignment, "status">) =>
-  p.status === "active" || p.status === "pending";
+/** Running or upcoming; a PT plan paid in the old software can be corrected after it ended too. */
+export const canEditPt = (p: Pick<PtAssignment, "status" | "paidInOldSoftware">) =>
+  p.status === "active" ||
+  p.status === "pending" ||
+  (p.paidInOldSoftware === true && p.status === "completed");
 
 export const ptStatusFromDates = (start: string, end: string, today = todayISO()) =>
   (end < today ? "completed" : start <= today ? "active" : "pending") as PtAssignmentStatus;
@@ -30,7 +33,15 @@ export interface PtEditForm {
   endDate: string;
   /** The trainer's share; left out = unchanged. */
   share?: { type: ShareType; value: number } | undefined;
+  /** Plan paid in the old software: what was paid there (₹). Left out = unchanged. */
+  oldPaid?: number | undefined;
 }
+
+/** The amount paid in the old software after saving (unchanged when not given). */
+export const newOldPaidOf = (p: PtAssignment, f: PtEditForm) =>
+  !p.paidInOldSoftware || f.oldPaid === undefined || !Number.isFinite(f.oldPaid)
+    ? (p.oldSoftwarePaid ?? 0)
+    : Math.round(f.oldPaid);
 
 const shareLabel = (type: ShareType, value: number, amount: number) =>
   type === "percentage" ? `${value}% (${formatPrice(amount)})` : formatPrice(amount);
@@ -59,6 +70,11 @@ export function ptChanges(p: PtAssignment, f: PtEditForm) {
     out.push(
       `Trainer share ${shareLabel(p.trainerShareType, p.trainerShareValue, p.trainerShareAmount)} → ${shareLabel(s.trainerShareType, s.trainerShareValue, s.trainerShareAmount)}`,
     );
+  const oldPaid = newOldPaidOf(p, f);
+  if (oldPaid !== (p.oldSoftwarePaid ?? 0))
+    out.push(
+      `Paid in the old software ${formatPrice(p.oldSoftwarePaid ?? 0)} → ${formatPrice(oldPaid)}`,
+    );
   return out;
 }
 
@@ -72,6 +88,8 @@ export async function editPtPlan(input: {
 }) {
   const { pt: p, form } = input;
   if (!canEditPt(p)) throw new Error("Only a running or upcoming PT plan can be changed.");
+  const oldPaid = newOldPaidOf(p, form);
+  if (oldPaid < 0) throw new Error("The amount paid in the old software can't be below ₹0.");
   const changes = ptChanges(p, form);
   if (!changes.length) throw new Error("Nothing was changed.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(form.startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(form.endDate))
@@ -162,6 +180,7 @@ export async function editPtPlan(input: {
     startDate: form.startDate,
     endDate: form.endDate,
     status: ptStatusFromDates(form.startDate, form.endDate),
+    ...(oldPaid !== (p.oldSoftwarePaid ?? 0) ? { oldSoftwarePaid: oldPaid } : {}),
     ...(share
       ? {
           trainerShareType: share.trainerShareType,

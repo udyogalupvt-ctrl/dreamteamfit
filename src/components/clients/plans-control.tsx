@@ -445,14 +445,33 @@ export function ClientPtPlans({ client, invoices }: { client: Client; invoices: 
                   With {p.trainerNameSnapshot} · {formatDateISO(p.startDate)} →{" "}
                   {formatDateISO(p.endDate)}
                 </p>
+                {p.paidInOldSoftware ? (
+                  <p className="text-meta">
+                    Paid in the old software
+                    {p.oldSoftwarePaid ? ` · ${formatPrice(p.oldSoftwarePaid)}` : ""}
+                    {p.oldSoftwareBillNo ? ` · bill ${p.oldSoftwareBillNo}` : ""}
+                  </p>
+                ) : null}
                 {p.status === "cancelled" ? <CancelNote plan={p} /> : null}
                 <EditLines edits={p.edits} />
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
-                <span className="font-semibold tabular-nums">{formatPrice(p.ptPrice)}</span>
+                {p.paidInOldSoftware && p.oldSoftwarePaid ? (
+                  <span className="text-right">
+                    <span className="block font-semibold tabular-nums">
+                      {formatPrice(p.oldSoftwarePaid)}
+                    </span>
+                    <span className="text-meta block tabular-nums">
+                      paid there · package {formatPrice(p.ptPrice)}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="font-semibold tabular-nums">{formatPrice(p.ptPrice)}</span>
+                )}
                 <StatusPill tone={meta.tone}>{meta.label}</StatusPill>
                 <RestorePlanButton client={client} kind="pt" plan={p} />
-                {ptOpen(p) && can("members") ? (
+                {(ptOpen(p) || (p.paidInOldSoftware && p.status !== "cancelled")) &&
+                can("members") ? (
                   <Button
                     variant="ghost"
                     size="icon-sm"

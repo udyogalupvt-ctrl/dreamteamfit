@@ -16,14 +16,15 @@ import { useAccess } from "@/hooks/use-access";
 import { useAuth } from "@/hooks/use-auth";
 import { useLive } from "@/hooks/use-live-query";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import { subscribeTrainers } from "@/services/pt.service";
+import { subscribePtPackages, subscribeTrainers } from "@/services/pt.service";
+import { planEndDate } from "@/lib/plan-dates";
 import { editPtPlan, ptChanges } from "@/services/pt-edit.service";
 import { editBill, previewBillEdit, staffDiscountOf } from "@/services/bill-edit.service";
 import {
   DEFAULT_BILLING_SETTINGS,
   subscribeBusinessSettings,
 } from "@/services/business-settings.service";
-import { formatPrice } from "@/lib/format";
+import { formatDateISO, formatPrice } from "@/lib/format";
 import type { Invoice, PaymentMethod, PtAssignment, ShareType, Trainer } from "@/types/models";
 
 /**
@@ -43,6 +44,8 @@ export function EditPtDialog({
   const { can } = useAccess();
   const { user } = useAuth();
   const trainers = useLive<Trainer[]>(open ? subscribeTrainers : null, [], [open]);
+  const ptPackages = useLive(open ? subscribePtPackages : null, [], [open]);
+  const [oldPaid, setOldPaid] = useState("");
   const [trainerId, setTrainerId] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -58,6 +61,7 @@ export function EditPtDialog({
   useEffect(() => {
     if (!pt) return;
     setDiscount("");
+    setOldPaid("");
     setRefundMethod("Cash");
     setTrainerId(pt.trainerId);
     setStart(pt.startDate);
@@ -87,6 +91,21 @@ export function EditPtDialog({
     startDate: start,
     endDate: end,
     share: money ? { type: shareType, value: shareNumber } : undefined,
+    oldPaid: oldPaid.trim() === "" ? undefined : Number(oldPaid),
+  };
+  // Like gym plans: the usual end is calendar months from the start (the package's length).
+  const pkgDays = ptPackages.data.find((x) => x.id === pt.ptPackageId)?.durationDays ?? 0;
+  const usual = pkgDays && /^\d{4}-\d{2}-\d{2}$/.test(start) ? planEndDate(start, pkgDays) : "";
+  const extraDays =
+    usual && end
+      ? Math.round(
+          (new Date(`${end}T00:00:00`).getTime() - new Date(`${usual}T00:00:00`).getTime()) /
+            86_400_000,
+        )
+      : 0;
+  const changeStart = (v: string) => {
+    setStart(v);
+    if (pkgDays && /^\d{4}-\d{2}-\d{2}$/.test(v)) setEnd(planEndDate(v, pkgDays));
   };
   const shareBad =
     money &&
@@ -186,10 +205,20 @@ export function EditPtDialog({
               id="pt-start"
               type="date"
               value={start}
-              onChange={(e) => setStart(e.target.value)}
+              onChange={(e) => changeStart(e.target.value)}
             />
           </Field>
-          <Field label="End date" htmlFor="pt-end">
+          <Field
+            label="End date"
+            htmlFor="pt-end"
+            hint={
+              !usual
+                ? undefined
+                : extraDays === 0
+                  ? `${pkgDays} days`
+                  : `${extraDays > 0 ? `${extraDays} extra` : `${-extraDays} fewer`} day${Math.abs(extraDays) === 1 ? "" : "s"} than usual (${formatDateISO(usual)})`
+            }
+          >
             <Input
               id="pt-end"
               type="date"
@@ -197,6 +226,15 @@ export function EditPtDialog({
               value={end}
               onChange={(e) => setEnd(e.target.value)}
             />
+            {usual && extraDays !== 0 ? (
+              <button
+                type="button"
+                className="cursor-pointer justify-self-start text-sm font-semibold underline underline-offset-2"
+                onClick={() => setEnd(usual)}
+              >
+                Use {formatDateISO(usual)}
+              </button>
+            ) : null}
           </Field>
         </div>
         <Field
@@ -238,6 +276,25 @@ export function EditPtDialog({
             />
           </div>
         </Field>
+        {pt.paidInOldSoftware ? (
+          <Field
+            label="Paid in the old software (₹)"
+            htmlFor="pt-oldpaid"
+            hint="What they paid there for this PT plan (their old bill). Not counted in this app's money."
+          >
+            <Input
+              id="pt-oldpaid"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step="1"
+              placeholder="0"
+              value={oldPaid === "" ? String(pt.oldSoftwarePaid ?? "") : oldPaid}
+              onChange={(e) => setOldPaid(e.target.value === "" ? "0" : e.target.value)}
+              className="max-w-48 tabular-nums"
+            />
+          </Field>
+        ) : null}
         {discountEditable && bill ? (
           <Field
             label="Discount (₹)"

@@ -67,6 +67,8 @@ export const mapPtAssignment = (id: string, d: DocumentData): PtAssignment => ({
   ...(d["cancelledOn"] ? { cancelledOn: String(d["cancelledOn"]) } : {}),
   enrollmentId: d["enrollmentId"] ?? null,
   ...(d["paidInOldSoftware"] === true ? { paidInOldSoftware: true } : {}),
+  ...(Number(d["oldSoftwarePaid"]) > 0 ? { oldSoftwarePaid: Number(d["oldSoftwarePaid"]) } : {}),
+  ...(d["oldSoftwareBillNo"] ? { oldSoftwareBillNo: String(d["oldSoftwareBillNo"]) } : {}),
   edits: Array.isArray(d["edits"]) ? d["edits"] : [],
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
