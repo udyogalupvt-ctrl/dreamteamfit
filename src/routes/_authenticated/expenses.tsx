@@ -4,6 +4,7 @@ import { StaffPaySection } from "@/components/finance/staff-pay-section";
 import { PtReportSection } from "@/components/finance/pt-report-section";
 import { OldSalesReview } from "@/components/finance/old-sales-review";
 import { OldMoneyDates } from "@/components/finance/old-money-dates";
+import { LateSaleDates } from "@/components/finance/late-sale-dates";
 import { SettleDialog } from "@/components/expenses/settle-dialog";
 import { StatusPill } from "@/components/common/status-pill";
 import { HandCoins } from "lucide-react";
@@ -118,6 +119,7 @@ function ExpensesPage() {
         </div>
       </Tabs>
       {section === "income" ? <OldSalesReview /> : null}
+      {section === "income" ? <LateSaleDates /> : null}
       {section === "income" ? <OldMoneyDates /> : null}
       {section === "income" ? (
         <IncomeSection />

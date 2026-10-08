@@ -92,6 +92,7 @@ import { lookupOldMembers } from "@/services/old-data.service";
 import { isOldPtPlanName, matchingOldPlan, runningOldPlan, type OldMember } from "@/lib/old-data";
 import { AddOldPlanDialog } from "@/components/clients/add-old-plan-dialog";
 import { billOfPlan } from "@/services/plan-edit.service";
+import { PlanPriceAmount, PlanPriceLine } from "@/components/clients/plan-price";
 import { canEditPlan } from "@/services/plan-edit.service";
 import {
   subscribeClientWorkoutAssignments,
@@ -627,6 +628,7 @@ function ClientProfilePage() {
               {current ? (
                 <MembershipHero
                   m={shownPlan(current)}
+                  bill={billOfPlan(current, invoices.data)}
                   onCancel={() => setCancelling(current)}
                   onEdit={
                     can("members") && canEditPlan(current) ? () => setEditing(current) : undefined
@@ -725,7 +727,7 @@ function ClientProfilePage() {
                         <PlanEdits plan={m} />
                       </div>
                       <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
-                        <PlanAmount m={shownPlan(m)} />
+                        <PlanAmount m={shownPlan(m)} bill={billOfPlan(m, invoices.data)} />
                         <StatusPill tone={MEMBERSHIP_STATUS_META[m.effective].tone}>
                           {MEMBERSHIP_STATUS_META[m.effective].label}
                         </StatusPill>
@@ -762,7 +764,7 @@ function ClientProfilePage() {
         </TabsContent>
 
         <TabsContent value="pt">
-          <ClientPtSection client={c} />
+          <ClientPtSection client={c} invoices={invoices.data} />
         </TabsContent>
         <TabsContent value="billing" className="space-y-4">
           {invoices.loading ? (
@@ -879,12 +881,15 @@ const MORE_TABS = [
 
 function MembershipHero({
   m,
+  bill,
   onCancel,
   onEdit,
   onPause,
   onUndoPause,
 }: {
   m: Membership;
+  /** The plan's bill: the price shown is what the member pays (after discount). */
+  bill: Invoice | null;
   onCancel: () => void;
   /** Only for logins allowed to change members' plans. */
   onEdit: (() => void) | undefined;
@@ -934,9 +939,7 @@ function MembershipHero({
             </span>
           </p>
         ) : (
-          <p className="text-sm">
-            Price <span className="font-semibold tabular-nums">{formatPrice(m.priceSnapshot)}</span>
-          </p>
+          <PlanPriceLine kind="gym" price={m.priceSnapshot} bill={bill} />
         )}
         <div className="flex flex-wrap gap-1">
           {onEdit ? (
@@ -973,9 +976,14 @@ function MembershipHero({
   );
 }
 
-/** A plan's amount in the history: what was paid in the old software for plans paid there. */
-function PlanAmount({ m }: { m: Membership }) {
-  if (!m.paidInOldSoftware || !m.oldSoftwarePaid)
+/**
+ * A plan's amount in the history: what the member pays for it (its bill, after discount), or what
+ * was paid in the old software for plans paid there.
+ */
+function PlanAmount({ m, bill }: { m: Membership; bill: Invoice | null }) {
+  if (!m.paidInOldSoftware)
+    return <PlanPriceAmount kind="gym" price={m.priceSnapshot} bill={bill} />;
+  if (!m.oldSoftwarePaid)
     return <span className="font-semibold tabular-nums">{formatPrice(m.priceSnapshot)}</span>;
   return (
     <span className="text-right">

@@ -1,3 +1,4 @@
+import { format } from "date-fns";
 import { doc, runTransaction, serverTimestamp } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
@@ -13,8 +14,9 @@ import { COLLECTIONS } from "./firestore.service";
  * a note. The bill's paid / balance follow the new amount, the membership / PT / trainer split is
  * worked out again, and the Day Book shows the corrected line.
  *
- * Who: the front desk (Billing) fixes today's payments; older ones need Income & expenses, since
- * they change cash already counted and handed over. Payments before the 1st of last month keep
+ * Who: the front desk (Billing) fixes today's payments (and ones typed in today for a plan that
+ * had started, which count on its first day); older ones need Income & expenses, since they change
+ * cash already counted and handed over. Payments before the 1st of last month keep
  * their amount, mode and date (the Day Book carries that cash forward); only the note changes.
  */
 
@@ -24,7 +26,12 @@ const round = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 export function paymentEditRights(p: Payment, can: { billing: boolean; finance: boolean }) {
   const today = todayISO();
   // Paid in the old software: changed from its plan (Edit plan / Edit PT plan), not here.
-  const mayEdit = !p.oldSoftware && (can.finance || (can.billing && p.paymentDate === today));
+  const typedToday =
+    p.createdAt instanceof Date &&
+    !Number.isNaN(p.createdAt.getTime()) &&
+    format(p.createdAt, "yyyy-MM-dd") === today;
+  const mayEdit =
+    !p.oldSoftware && (can.finance || (can.billing && (p.paymentDate === today || typedToday)));
   const cashOpen = p.paymentDate >= cashOpenFrom(today);
   return {
     mayEdit,

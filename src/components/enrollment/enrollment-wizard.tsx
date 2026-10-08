@@ -69,6 +69,9 @@ import { subscribeStaff } from "@/services/staff.service";
 import { useAccess } from "@/hooks/use-access";
 import { addDaysISO, latestJoinDate } from "@/lib/format";
 import { checkOldRows, defaultOldRows, oldRowsTotal, type OldPayRow } from "@/lib/old-money";
+import { saleMoneyDay } from "@/lib/late-sales";
+import { planSoldFor } from "@/lib/plan-money";
+import { cashOpenFrom } from "@/services/finance.service";
 import { OldPaidRows } from "@/components/clients/old-paid-rows";
 import {
   cleanMemberId,
@@ -173,6 +176,8 @@ interface Draft {
   paidOld?: boolean;
   oldBalance?: string;
   oldPaid?: string;
+  /** A plan that started before today: the member paid today (not on its first day). */
+  paidToday?: boolean;
 }
 
 const draftStorageKey = (key: string) => `rf.enrollment-draft.${key}`;
@@ -232,6 +237,7 @@ export function EnrollmentWizard({
   const [discount, setDiscount] = useState(restored?.discount ?? 0);
   const [amountPaid, setAmountPaid] = useState<number | null>(restored?.amountPaid ?? null);
   const [method, setMethod] = useState<PaymentMethod>(restored?.method ?? "UPI");
+  const [paidToday, setPaidToday] = useState(restored?.paidToday ?? false);
   const [notes, setNotes] = useState(restored?.notes ?? "");
   const access = useAccess();
   const [counsellorId, setCounsellorId] = useState(
@@ -388,8 +394,28 @@ export function EnrollmentWizard({
   const upgradeFrom = upgradeDate || today;
   // Unused days of the running plan from the day the new plan takes over.
   const unusedDays = running ? Math.max(0, daysBetween(upgradeFrom, running.endDate)) : 0;
+  // Unused days are credited at what the member paid for the plan (after its discount), not the
+  // package price: ₹1,699 paid for 30 days, 23 unused → ₹1,302 (not ₹1,532).
+  const runningBillId = running?.invoiceId ?? "";
+  const runningBill = useLive<Invoice | null>(
+    runningBillId ? (ok, fail) => subscribeInvoice(runningBillId, ok, fail) : null,
+    null,
+    [runningBillId],
+  );
+  const runningPaid = running
+    ? planSoldFor(
+        "gym",
+        {
+          price: running.priceSnapshot,
+          paidInOldSoftware: running.paidInOldSoftware,
+          oldSoftwarePaid: running.oldSoftwarePaid,
+          oldSoftwareBalance: running.oldSoftwareBalance,
+        },
+        runningBill.data,
+      )
+    : 0;
   const autoCredit = running
-    ? Math.round((running.priceSnapshot * unusedDays) / Math.max(1, running.durationDaysSnapshot))
+    ? Math.round((runningPaid * unusedDays) / Math.max(1, running.durationDaysSnapshot))
     : 0;
   const [creditText, setCreditText] = useState("");
   // Upgrading is only offered while nothing is queued after the running plan.
@@ -446,6 +472,16 @@ export function EnrollmentWizard({
     [gymPackage, pt, discount, amountPaid, settings.data, upgrade?.credit, upgrade?.membershipId],
   );
   const paid = amountPaid ?? totals.total;
+  // A plan typed in after it started: its money counts on the plan's first day, unless the member
+  // paid today (user's rule: we don't know when they paid). Upgrades are paid when they are made.
+  const lateDay = saleMoneyDay({
+    startDate,
+    today,
+    openFrom: cashOpenFrom(today),
+    upgrade: upgrading,
+    paidToday: false,
+  });
+  const lateSale = lateDay !== today;
   const maxDiscount = maxDiscountFor({ gymPackage, pt });
   // Shown while typing, and continuing is blocked until it is fixed.
   const discountProblem =
@@ -595,6 +631,7 @@ export function EnrollmentWizard({
             paidOld,
             oldBalance: oldBalanceText,
             oldPaid: oldPaidText,
+            paidToday,
           }
         : null,
     );
@@ -623,6 +660,7 @@ export function EnrollmentWizard({
     paidOld,
     oldBalanceText,
     oldPaidText,
+    paidToday,
   ]);
 
   const startFresh = () => {
@@ -641,6 +679,7 @@ export function EnrollmentWizard({
     setMemberNo("");
     setPaidOld(false);
     setOldBalanceText("");
+    setPaidToday(false);
     setStep(firstStep);
   };
 
@@ -729,6 +768,7 @@ export function EnrollmentWizard({
         discount: paidInOld ? 0 : discount,
         amountPaid: paidInOld ? 0 : paid,
         method,
+        paidToday: lateSale && paidToday,
         notes,
         settings: settings.data,
         staff: { uid: user?.uid ?? "", name: user?.displayName || user?.email || "Staff" },
@@ -998,6 +1038,7 @@ export function EnrollmentWizard({
                     setUpgradeDate={setUpgradeDate}
                     error={errors["planDate"] || planDateProblem}
                     unusedDays={unusedDays}
+                    runningPaid={runningPaid}
                     autoCredit={autoCredit}
                     mode={planMode}
                     setMode={setPlanMode}
@@ -1434,6 +1475,43 @@ export function EnrollmentWizard({
                         ))}
                       </div>
                     </Field>
+                    {lateSale && paid > 0 ? (
+                      <Field
+                        label="When was it paid?"
+                        htmlFor="e-moneyday"
+                        className="col-span-2"
+                        hint={
+                          paidToday
+                            ? `Counted in today's Collected${method === "Cash" ? " and today's Day Book cash" : ""}.`
+                            : `The plan started on ${formatDateISO(startDate)}, before today: the money counts on that day, not today.`
+                        }
+                      >
+                        <div className="flex flex-wrap gap-1.5" role="radiogroup" id="e-moneyday">
+                          {(
+                            [
+                              [false, `On ${formatDateISO(lateDay)} (first day)`],
+                              [true, "Today"],
+                            ] as const
+                          ).map(([v, label]) => (
+                            <button
+                              key={label}
+                              type="button"
+                              role="radio"
+                              aria-checked={paidToday === v}
+                              onClick={() => setPaidToday(v)}
+                              className={cn(
+                                "rounded-lg border px-3 py-2 text-sm font-semibold",
+                                paidToday === v
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-border hover:bg-accent",
+                              )}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </Field>
+                    ) : null}
                     {balanceLeft ? (
                       <Field
                         label="Next payment date"
@@ -1526,6 +1604,11 @@ export function EnrollmentWizard({
                     </div>
                   ))}
                 </dl>
+                {!paidInOld && lateSale && !paidToday && paid > 0 ? (
+                  <p className="mt-3 border-t border-background/20 pt-2 text-xs">
+                    Counted in Collected on {formatDateISO(lateDay)}
+                  </p>
+                ) : null}
               </aside>
             </div>
           ) : null}
@@ -2125,6 +2208,7 @@ function RenewChoice({
   setUpgradeDate,
   error,
   unusedDays,
+  runningPaid,
   autoCredit,
   mode,
   setMode,
@@ -2141,6 +2225,8 @@ function RenewChoice({
   setUpgradeDate: (v: string) => void;
   error: string;
   unusedDays: number;
+  /** What the member paid for the running plan (after its discount). */
+  runningPaid: number;
   autoCredit: number;
   mode: "renew" | "upgrade";
   setMode: (m: "renew" | "upgrade") => void;
@@ -2250,7 +2336,7 @@ function RenewChoice({
           <Field
             label="Credit for unused days ₹"
             htmlFor="e-credit"
-            hint={`₹${running.priceSnapshot.toLocaleString("en-IN")} × ${unusedDays} ÷ ${running.durationDaysSnapshot} days. Change it if the member paid less.`}
+            hint={`${formatPrice(runningPaid)} paid for it × ${unusedDays} ÷ ${running.durationDaysSnapshot} days. Change it if needed.`}
           >
             <Input
               id="e-credit"

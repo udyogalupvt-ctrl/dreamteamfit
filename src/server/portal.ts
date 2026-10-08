@@ -45,6 +45,7 @@ import {
   type TrainerPortalData,
 } from "@/constants/portal";
 import type { WorkoutDay } from "@/types/models";
+import { planMoney } from "@/lib/plan-money";
 import { adminAuth, db, json, localDate, requireFeature } from "./admin";
 import { oldHistoryFor } from "./old-data";
 import { readPassword, savePassword } from "./vault";
@@ -323,6 +324,30 @@ async function memberData(clientId: string): Promise<Response> {
       oldHistoryFor(c).catch(() => null),
     ]);
 
+  // What the member pays for each plan (its bill, after discount), not the package price.
+  const billOf = (planId: string, billId: string) =>
+    invoices.docs.find(
+      (b) => (billId && b.id === billId) || s(b.data()["membershipId"]) === planId,
+    );
+  const planPrice = (id: string, m: D) => {
+    if (m["paidInOldSoftware"] === true && n(m["oldSoftwarePaid"]) > 0)
+      return n(m["oldSoftwarePaid"]);
+    const b = billOf(id, s(m["invoiceId"]))?.data();
+    const money = b
+      ? planMoney("gym", n(m["priceSnapshot"]), {
+          subtotal: n(b["subtotal"]),
+          discount: n(b["discount"]),
+          total: n(b["total"]),
+          amountPaid: n(b["amountPaid"]),
+          balanceDue: n(b["balanceDue"]),
+          membershipGross: n(b["membershipGross"]),
+          ptGross: n(b["ptGross"]),
+          upgradeCredit: n(b["upgradeCredit"]),
+          oldSoftwareCredit: n(b["oldSoftwareCredit"]),
+        })
+      : null;
+    return money?.total ?? n(m["priceSnapshot"]);
+  };
   const plansList: PortalMembership[] = memberships.docs
     .map((d) => {
       const m = d.data();
@@ -332,7 +357,7 @@ async function memberData(clientId: string): Promise<Response> {
         startDate: s(m["startDate"]),
         endDate: s(m["endDate"]),
         days: n(m["durationDaysSnapshot"]),
-        price: n(m["priceSnapshot"]),
+        price: planPrice(d.id, m),
         status: effective(m, today),
         pausedDays: Array.isArray(m["pauses"])
           ? (m["pauses"] as D[]).reduce((t, p) => t + n(p["days"]), 0)

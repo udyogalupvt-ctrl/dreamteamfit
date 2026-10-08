@@ -961,6 +961,11 @@ export interface Payment extends BaseDoc {
    */
   oldSoftware?: boolean;
   oldSoftwareBillNo?: string;
+  /**
+   * A plan that had started was paid on the day it was typed in (staff chose "Today"): counted
+   * that day, never moved to the plan's first day.
+   */
+  paidToday?: boolean;
   /** Corrections made later (wrong mode, amount, date), oldest first. */
   edits: RecordEdit[];
 }
@@ -971,6 +976,8 @@ export interface RecordEdit {
   by: string;
   reason: string;
   changes: string[];
+  /** Made by an owner tool, not by hand (e.g. "late-sale-dates"). */
+  tool?: string;
 }
 export const ENROLLMENT_FLOW_STATUSES = [
   "draft",

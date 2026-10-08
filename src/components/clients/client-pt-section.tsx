@@ -9,6 +9,7 @@ import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { subscribeDevices } from "@/services/biometric-devices.service";
 import { setEntryBlocked } from "@/services/clients.service";
 import { EntryTimeline } from "@/components/clients/entry-timeline";
+import { PlanPriceText } from "@/components/clients/plan-price";
 import { toastWithUndo } from "@/lib/undo-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { firestoreErrorMessage } from "@/services/firestore.service";
@@ -16,7 +17,7 @@ import { subscribeClientPtAssignments } from "@/services/pt.service";
 import { subscribeClientBookings } from "@/services/bookings.service";
 import { PtSessionDialog } from "@/components/scheduling/pt-session-dialog";
 import { BOOKING_STATUS_META, formatTime } from "@/lib/format";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { subscribeClientPayments, undoBalancePayment } from "@/services/finance.service";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import {
@@ -24,9 +25,23 @@ import {
   EditPaymentDialog,
   usePaymentEditRights,
 } from "@/components/billing/edit-payment-dialog";
-import type { BiometricDevice, Booking, Client, Payment, PtAssignment } from "@/types/models";
+import type {
+  BiometricDevice,
+  Booking,
+  Client,
+  Invoice,
+  Payment,
+  PtAssignment,
+} from "@/types/models";
 
-export function ClientPtSection({ client }: { client: Client }) {
+export function ClientPtSection({
+  client,
+  invoices = [],
+}: {
+  client: Client;
+  /** The member's bills: the price shown is what the member pays (after discount). */
+  invoices?: Invoice[];
+}) {
   const pts = useLive(
     (ok, fail) => subscribeClientPtAssignments(client.id, ok, fail),
     [] as PtAssignment[],
@@ -71,17 +86,31 @@ export function ClientPtSection({ client }: { client: Client }) {
             </StatusPill>
           </div>
           <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            {[
-              ["Trainer", p.trainerNameSnapshot],
-              ["Price", formatPrice(p.ptPrice)],
+            {(
               [
-                "Trainer share",
-                `${formatPrice(p.trainerShareAmount)} (${p.trainerShareType === "percentage" ? `${p.trainerShareValue}%` : "fixed"})`,
-              ],
-              ["Gym share", formatPrice(p.gymShareAmount)],
-              ["Start", formatDateISO(p.startDate)],
-              ["End", formatDateISO(p.endDate)],
-            ].map(([k, v]) => (
+                ["Trainer", p.trainerNameSnapshot],
+                [
+                  "Price",
+                  <PlanPriceText
+                    key="price"
+                    kind="pt"
+                    price={p.ptPrice}
+                    bill={
+                      invoices.find(
+                        (i) => (p.invoiceId && i.id === p.invoiceId) || i.ptAssignmentId === p.id,
+                      ) ?? null
+                    }
+                  />,
+                ],
+                [
+                  "Trainer share",
+                  `${formatPrice(p.trainerShareAmount)} (${p.trainerShareType === "percentage" ? `${p.trainerShareValue}%` : "fixed"})`,
+                ],
+                ["Gym share", formatPrice(p.gymShareAmount)],
+                ["Start", formatDateISO(p.startDate)],
+                ["End", formatDateISO(p.endDate)],
+              ] as [string, ReactNode][]
+            ).map(([k, v]) => (
               <div key={k}>
                 <dt className="text-meta">{k}</dt>
                 <dd className="font-semibold">{v}</dd>

@@ -33,8 +33,9 @@ import type {
 } from "@/types/models";
 import type { ClientInput } from "./clients.service";
 import { claimMemberId, mapClient } from "./clients.service";
-import { allocatePayment } from "./finance.service";
+import { allocatePayment, cashOpenFrom } from "./finance.service";
 import { oldPaymentData } from "./old-money.service";
+import { saleMoneyDay } from "@/lib/late-sales";
 import { checkOldRows, defaultOldRows, oldRowsTotal, type OldPayRow } from "@/lib/old-money";
 import { col, COLLECTIONS, toDate } from "./firestore.service";
 import { mapInvoice } from "./invoices.service";
@@ -85,6 +86,11 @@ export interface EnrollmentInput {
   discount: number;
   amountPaid: number;
   method: PaymentMethod;
+  /**
+   * The money counts on the plan's first day when the plan started before today (the member paid
+   * then; it was typed in later). true = the member paid today (counted today).
+   */
+  paidToday?: boolean;
   notes: string;
   settings: BusinessBillingSettings;
   staff: { uid: string; name: string };
@@ -301,6 +307,14 @@ export async function enrollMember(input: EnrollmentInput) {
   const counterRef = doc(db, COLLECTIONS.settings, "counters");
   const inquiryRef = input.inquiryId ? doc(db, COLLECTIONS.inquiries, input.inquiryId) : null;
   const today = todayISO();
+  // A plan typed in after it started: its money counts on the plan's first day (see late-sales.ts).
+  const moneyDay = saleMoneyDay({
+    startDate: input.startDate,
+    today,
+    openFrom: cashOpenFrom(today),
+    upgrade: !!input.upgrade,
+    paidToday: !!input.paidToday,
+  });
   const fullName = input.existingClient?.fullName ?? input.client.fullName.trim();
   const phone = input.existingClient?.phone ?? input.client.phone.trim();
   const email = input.existingClient?.email ?? input.client.email.trim();
@@ -456,7 +470,7 @@ export async function enrollMember(input: EnrollmentInput) {
         grossAmount: share.ptPrice,
         trainerShareAmount: share.trainerShareAmount,
         gymShareAmount: share.gymShareAmount,
-        paymentDate: today,
+        paymentDate: moneyDay,
         status: "pending",
         paidAt: null,
         createdAt: now,
@@ -591,7 +605,9 @@ export async function enrollMember(input: EnrollmentInput) {
         ptAssignmentId: ptRef?.id ?? null,
         amount: money.amountPaid,
         method: input.method,
-        paymentDate: today,
+        paymentDate: moneyDay,
+        // Staff said a plan that had started was paid today: that day stays (owner tool too).
+        ...(input.paidToday && input.startDate < today ? { paidToday: true } : {}),
         kind: "initial",
         ...allocatePayment(
           { total: money.total, subtotal: money.subtotal, discount: money.discount, ...breakdown },

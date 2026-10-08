@@ -3,6 +3,7 @@ import { Ban, Dumbbell, Pencil, RotateCcw, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { EditLines } from "@/components/billing/edit-payment-dialog";
 import { EditPtDialog } from "@/components/clients/edit-pt-dialog";
+import { PlanPriceAmount } from "@/components/clients/plan-price";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { Field, FormDialog } from "@/components/common/form-dialog";
 import { StatusPill } from "@/components/common/status-pill";
@@ -466,7 +467,15 @@ export function ClientPtPlans({ client, invoices }: { client: Client; invoices: 
                     </span>
                   </span>
                 ) : (
-                  <span className="font-semibold tabular-nums">{formatPrice(p.ptPrice)}</span>
+                  <PlanPriceAmount
+                    kind="pt"
+                    price={p.ptPrice}
+                    bill={
+                      invoices.find(
+                        (i) => (p.invoiceId && i.id === p.invoiceId) || i.ptAssignmentId === p.id,
+                      ) ?? null
+                    }
+                  />
                 )}
                 <StatusPill tone={meta.tone}>{meta.label}</StatusPill>
                 <RestorePlanButton client={client} kind="pt" plan={p} />

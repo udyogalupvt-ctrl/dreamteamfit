@@ -173,9 +173,12 @@ function MoneyList({
                   <span className="text-meta block">
                     {r.kind === "old"
                       ? formatDateISO(r.date)
-                      : oneDay
-                        ? format(r.at, "h:mm a")
-                        : `${formatDateISO(r.date)}, ${format(r.at, "h:mm a")}`}{" "}
+                      : // Counted on another day than it was typed in (a plan that had started).
+                        format(r.at, "yyyy-MM-dd") !== r.date
+                        ? `${oneDay ? "" : `${formatDateISO(r.date)}, `}typed in ${formatDateISO(format(r.at, "yyyy-MM-dd"))}`
+                        : oneDay
+                          ? format(r.at, "h:mm a")
+                          : `${formatDateISO(r.date)}, ${format(r.at, "h:mm a")}`}{" "}
                     · {r.method} · {KIND[r.kind]}
                     {r.bill ? ` · ${r.bill}` : ""}
                   </span>
