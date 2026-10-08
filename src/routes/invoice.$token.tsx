@@ -5,6 +5,7 @@ import { BrandMark } from "@/components/layout/brand-mark";
 import { Button } from "@/components/ui/button";
 import { useLive } from "@/hooks/use-live-query";
 import { formatPrice } from "@/lib/format";
+import { billCredits } from "@/lib/invoice-utils";
 import { downloadInvoicePdf } from "@/lib/invoice-download";
 import { subscribePublicInvoice } from "@/services/invoices.service";
 import type { PublicInvoice } from "@/types/models";
@@ -104,8 +105,11 @@ function PublicInvoicePage() {
           <dl className="ml-auto mt-7 max-w-sm space-y-3 text-sm">
             {[
               ["Subtotal", i.subtotal],
-              ...(i.discount - (i.upgradeCredit ?? 0) > 0
-                ? [["Discount", -(i.discount - (i.upgradeCredit ?? 0))] as [string, number]]
+              ...(i.discount - billCredits(i) > 0
+                ? [["Discount", -(i.discount - billCredits(i))] as [string, number]]
+                : []),
+              ...(i.oldSoftwareCredit
+                ? [["Paid in the old software", -i.oldSoftwareCredit] as [string, number]]
                 : []),
               ...(i.upgradeCredit
                 ? [["Upgrade credit", -i.upgradeCredit] as [string, number]]

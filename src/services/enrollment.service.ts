@@ -3,6 +3,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   onSnapshot,
   query,
   runTransaction,
@@ -101,7 +102,13 @@ export interface EnrollmentInput {
    * counted today (no payment, no day-book entry, no trainer payout). Only a balance still owed
    * gets a bill, to collect later as usual.
    */
-  oldSoftware?: { balance: number } | null;
+  oldSoftware?: {
+    balance: number;
+    /** What they paid there (kept on the plan; never counted as money here). */
+    paid?: number;
+    /** The old software's bill number, when known. */
+    billNo?: string;
+  } | null;
 }
 
 export interface UpgradeInput {
@@ -164,11 +171,31 @@ export function enrollmentTotals(
 export async function enrollMember(input: EnrollmentInput) {
   if (!input.gymPackage && !input.pt) throw new Error("Select a gym package or a PT package.");
   const old = input.oldSoftware ?? null;
-  if (old && input.existingClient)
-    throw new Error(
-      "Paid in the old software is only for a member joining here for the first time.",
+  // A member already in the app (Excel import, thumb first) may still be moving over, but not one
+  // with a plan here: renewing here is paid here.
+  if (old && input.existingClient) {
+    const here = await getDocs(
+      query(
+        col(COLLECTIONS.memberships),
+        where("clientId", "==", input.existingClient.id),
+        limit(1),
+      ),
     );
+    if (!here.empty)
+      throw new Error(
+        "This member already has a plan in this app: a renewal here is paid here, not in the old software.",
+      );
+  }
   const oldBalance = old ? Math.max(0, Math.round(old.balance || 0)) : 0;
+  const oldPaid = old ? Math.max(0, Math.round(old.paid || 0)) : 0;
+  const oldFields = old
+    ? {
+        paidInOldSoftware: true,
+        oldSoftwarePaid: oldPaid,
+        oldSoftwareBalance: oldBalance,
+        ...(old.billNo ? { oldSoftwareBillNo: String(old.billNo).slice(0, 40) } : {}),
+      }
+    : {};
   const totals = enrollmentTotals(old ? { ...input, discount: 0, amountPaid: 0 } : input);
   if (!old && input.amountPaid > totals.total)
     throw new Error("Amount paid cannot exceed the total.");
@@ -339,7 +366,7 @@ export async function enrollMember(input: EnrollmentInput) {
         status: membershipStatus,
         invoiceId: invoiceRef?.id ?? "",
         enrollmentId: enrollmentRef.id,
-        ...(old ? { paidInOldSoftware: true } : {}),
+        ...oldFields,
         ...counsellor,
         createdAt: now,
         updatedAt: now,
@@ -360,7 +387,7 @@ export async function enrollMember(input: EnrollmentInput) {
         status: input.startDate > today ? "pending" : "active",
         invoiceId: invoiceRef?.id ?? "",
         enrollmentId: enrollmentRef.id,
-        ...(old ? { paidInOldSoftware: true } : {}),
+        ...oldFields,
         ...counsellor,
         createdAt: now,
         updatedAt: now,
@@ -535,7 +562,7 @@ export async function enrollMember(input: EnrollmentInput) {
       invoiceId: invoiceRef?.id ?? "",
       paymentId: paymentRef?.id ?? null,
       paymentStatus: invoiceRef ? paymentStatus : "paid",
-      ...(old ? { paidInOldSoftware: true } : {}),
+      ...oldFields,
       biometricDeviceId: input.existingClient?.biometricDeviceId ?? "",
       biometricUserId: input.existingClient?.biometricUserId ?? "",
       firstThumbRegistered: !needsBiometric,

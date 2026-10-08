@@ -113,6 +113,7 @@ import { calculateEndDate } from "@/services/memberships.service";
 import { OldMemberPanel } from "./old-member-panel";
 import { subscribeClientMemberships } from "@/services/memberships.service";
 import type { EnrollmentOpenOptions } from "./enrollment-context";
+import { lookupOldMembers } from "@/services/old-data.service";
 
 const STEPS = ["Details", "Package", "Payment", "Share bill", "Thumb", "Done"] as const;
 /** How package types are listed when picking a gym package. */
@@ -169,6 +170,7 @@ interface Draft {
   /** Moving from the old software: plan paid there; "" = the old plan's balance. */
   paidOld?: boolean;
   oldBalance?: string;
+  oldPaid?: string;
 }
 
 const draftStorageKey = (key: string) => `rf.enrollment-draft.${key}`;
@@ -239,6 +241,8 @@ export function EnrollmentWizard({
   const [memberNo, setMemberNo] = useState(restored?.memberNo ?? "");
   const [paidOld, setPaidOld] = useState(restored?.paidOld ?? false);
   const [oldBalanceText, setOldBalanceText] = useState(restored?.oldBalance ?? "");
+  // What they really paid in the old software (offers there differ from today's prices).
+  const [oldPaidText, setOldPaidText] = useState(restored?.oldPaid ?? "");
   // The old software's record(s) for the phone typed (Backup page data).
   const [oldFound, setOldFound] = useState<{ members: OldMember[]; today: string }>({
     members: [],
@@ -449,20 +453,41 @@ export function EnrollmentWizard({
   const balanceLeft = totals.total - Math.min(paid, totals.total) > 0;
   const hasEntry = Boolean(client.fullName || client.phone || packageId || ptOn);
 
+  // A member already here (imported, or added from Backup / Member calls) skips the details step
+  // where the old record is looked up: look it up for them too.
+  // (An existing member's details are not in `client`: their own record has the link.)
+  const oldId = client.oldMemberId || existing?.oldMemberId || "";
+  const oldPhone = client.phone || existing?.phone || "";
+  useEffect(() => {
+    if (!oldId || oldFound.members.length || !oldPhone) return;
+    let live = true;
+    lookupOldMembers(oldPhone).then(
+      (r) => live && r.members.length && setOldFound({ members: r.members, today: r.today }),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [oldId, oldPhone, oldFound.members.length]);
   // Moving from the old software: their record, and the plan still running there.
-  const oldLinked = oldFound.members.find((m) => m.memberId === client.oldMemberId) ?? null;
+  const oldLinked = oldFound.members.find((m) => m.memberId === oldId) ?? null;
   const oldRunning = oldLinked && oldFound.today ? runningOldPlan(oldLinked, oldFound.today) : null;
   // Who was their counsellor in the old software: always shown, matched to staff or not.
   const oldCounsellor = oldLinked ? oldCounsellorOf(oldLinked, oldFound.today || today) : "";
   const oldCounsellorStaff = oldCounsellor ? matchStaffName(counsellors, oldCounsellor) : null;
-  // "Paid in the old software" is offered to a new member from the old data, or one whose plan
-  // started before today.
-  const canPaidOld = !existing && !resuming && (Boolean(client.oldMemberId) || startDate < today);
+  // "Paid in the old software" is offered to a member from the old data, or one whose plan
+  // started before today, as long as they have no plan in this app yet (a renewal here is paid
+  // here). Members already added (Excel import, thumb first) count too.
+  const canPaidOld =
+    !resuming && (Boolean(oldId) || startDate < today) && !(existing && plans.data.length > 0);
   const paidInOld = canPaidOld && paidOld;
   const oldBalance =
     oldBalanceText === ""
       ? (oldRunning?.balance ?? 0)
       : Math.max(0, Math.floor(Number(oldBalanceText) || 0));
+  const oldPaidSuggested = oldRunning ? Math.max(0, oldRunning.amount - oldRunning.balance) : 0;
+  const oldPaid =
+    oldPaidText === "" ? oldPaidSuggested : Math.max(0, Math.floor(Number(oldPaidText) || 0));
   const dueLeft = paidInOld ? oldBalance > 0 : balanceLeft;
   const newEnd = gymPackage ? calculateEndDate(startDate, gymPackage.durationDays) : "";
 
@@ -501,6 +526,7 @@ export function EnrollmentWizard({
     setClient((c) => ({ ...c, joinedOn: "", oldMemberId: "" }));
     setPaidOld(false);
     setOldBalanceText("");
+    setOldPaidText("");
   };
 
   // Keep an unsaved draft so an accidental close never loses what staff typed.
@@ -530,6 +556,7 @@ export function EnrollmentWizard({
             memberNo,
             paidOld,
             oldBalance: oldBalanceText,
+            oldPaid: oldPaidText,
           }
         : null,
     );
@@ -557,6 +584,7 @@ export function EnrollmentWizard({
     memberNo,
     paidOld,
     oldBalanceText,
+    oldPaidText,
   ]);
 
   const startFresh = () => {
@@ -658,7 +686,9 @@ export function EnrollmentWizard({
         nextPaymentDate: dueLeft ? nextPaymentDate : null,
         memberId: cleanMemberId(memberNo),
         upgrade,
-        oldSoftware: paidInOld ? { balance: oldBalance } : null,
+        oldSoftware: paidInOld
+          ? { balance: oldBalance, paid: oldPaid, billNo: oldRunning?.bill ?? "" }
+          : null,
       });
       writeDraft(draftKey, null);
       setEnrollmentId(r.enrollmentId);
@@ -1179,13 +1209,35 @@ export function EnrollmentWizard({
                       <span className="block font-semibold">Paid in the old software</span>
                       <span className="text-meta">
                         For a member moving over whose plan is already paid there. No money is taken
-                        or counted today (day book, cash and income stay as they are).
+                        or counted today (day book, cash and income stay as they are). Their old
+                        offer price is kept: no discount needed.
                       </span>
                     </span>
                   </label>
                 ) : null}
                 {paidInOld ? (
                   <div className="grid grid-cols-2 gap-3">
+                    <Field
+                      label="Paid in the old software ₹"
+                      htmlFor="e-oldpaid"
+                      className="col-span-2 sm:col-span-1"
+                      hint={
+                        oldRunning
+                          ? `Old software: ${formatPrice(oldPaidSuggested)} paid for ${oldRunning.name}${oldRunning.bill ? ` (bill ${oldRunning.bill})` : ""}`
+                          : "What they paid there. Kept on the plan, not counted as money today."
+                      }
+                    >
+                      <Input
+                        id="e-oldpaid"
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        value={oldPaidText === "" ? oldPaid : oldPaidText}
+                        onChange={(e) =>
+                          setOldPaidText(e.target.value === "" ? "0" : e.target.value)
+                        }
+                      />
+                    </Field>
                     <Field
                       label="Balance still to pay ₹"
                       htmlFor="e-oldbal"
@@ -1349,7 +1401,7 @@ export function EnrollmentWizard({
                 <dl className="space-y-2 text-sm">
                   {(paidInOld
                     ? ([
-                        ["Plan price", totals.subtotal],
+                        ["Paid in the old software", oldPaid],
                         ["Counted today", 0],
                         ["Balance to collect", oldBalance],
                       ] as const)

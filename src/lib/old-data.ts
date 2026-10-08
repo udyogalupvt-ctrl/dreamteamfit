@@ -343,3 +343,37 @@ export function matchStaffName<T extends { name: string }>(staff: T[], name: str
     .sort((a, b) => b.score - a.score);
   return scored[0] && scored[0].score > (scored[1]?.score ?? 0) ? scored[0].s : null;
 }
+
+/** A sale here that looks like a plan paid in the old software (Income & expenses review). */
+export interface OldSaleSuspect {
+  membershipId: string;
+  clientId: string;
+  clientName: string;
+  clientCode: string;
+  plan: string;
+  start: string;
+  end: string;
+  price: number;
+  invoiceId: string;
+  invoiceNumber: string;
+  discount: number;
+  billTotal: number;
+  paidHere: number;
+  paidOn: string[];
+  createdBy: string;
+  /** The old software's plan that covers this one, when the old data has it. */
+  old: {
+    memberId: string;
+    plan: string;
+    start: string;
+    end: string;
+    amount: number;
+    paid: number;
+    balance: number;
+    bill: string;
+  } | null;
+  /** Why it is on the list, in plain words. */
+  reasons: string[];
+  /** Strong = the old software has a paid plan for the same days. */
+  strength: "strong" | "check";
+}

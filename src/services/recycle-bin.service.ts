@@ -140,6 +140,49 @@ async function itemsOf(
     .sort((a, b) => a.n - b.n);
 }
 
+/**
+ * Where a Recycle Bin item may be written back: only the record kinds the app ever moves to the
+ * bin, at their own path. Bin items are written by whoever deleted (any staff login), so a planted
+ * item aimed elsewhere (logins and features, settings…) is skipped, never written with the
+ * restorer's rights. firestore.rules refuses such items too.
+ */
+const RESTORABLE = new Set<string>([
+  "attendance",
+  "automationActivities",
+  "biometricCommands",
+  "birthdayNotifications",
+  "bookings",
+  "classEnrollments",
+  "clients",
+  "dietAssignments",
+  "enrollments",
+  "expenses",
+  "followups",
+  "inquiries",
+  "invoices",
+  "leadLogs",
+  "memberships",
+  "notifications",
+  "payments",
+  "ptAssignments",
+  "publicInvoices",
+  "renewalNotifications",
+  "staff",
+  "staffPrivate",
+  "trainerPayouts",
+  "trainers",
+  "whatsappMessages",
+  "workoutAssignments",
+  "packages",
+  "absenceNotifications",
+  "paymentDueNotifications",
+]);
+const restorable = (it: Pick<BinItem, "path" | "collection" | "docId">) =>
+  RESTORABLE.has(it.collection) &&
+  !!it.docId &&
+  !it.docId.includes("/") &&
+  it.path === `${it.collection}/${it.docId}`;
+
 /** A door check for a member put back: the machine lets them in again if their plan runs. */
 function doorCheck(b: ReturnType<typeof writeBatch>, clientId: string) {
   const now = serverTimestamp();
@@ -171,7 +214,12 @@ export async function restoreFromBin(
   by: Deleter,
   viewer: { owner: boolean; uid: string },
 ) {
-  const items = await itemsOf(entry, viewer);
+  const all = await itemsOf(entry, viewer);
+  const items = all.filter(restorable);
+  // Follow-up steps (logins back on, leads re-linked, door check) only for a record that really
+  // comes back in this entry.
+  const back = (collection: string, id: unknown) =>
+    typeof id === "string" && items.some((i) => i.collection === collection && i.docId === id);
   // Marked first, so the activity log says "Restored" (not "deleted forever").
   await updateDoc(doc(db, COLLECTIONS.recycleBin, entry.id), { restoredBy: by.name });
   await inChunks(items, (b, it) => {
@@ -186,13 +234,18 @@ export async function restoreFromBin(
     // Machine commands that never ran are not sent after all this time.
     if (it.collection === COLLECTIONS.biometricCommands && data["status"] === "pending")
       data["status"] = "cancelled";
-    b.set(doc(db, it.path), data);
+    b.set(doc(db, it.collection, it.docId), data);
     b.delete(it.ref);
   });
+  // Planted items (not restorable) are dropped with the entry, never written.
+  await inChunks(
+    all.filter((it) => !restorable(it)),
+    (b, it) => b.delete(it.ref),
+  );
   const x = entry.extra;
   const last = writeBatch(db);
-  if (entry.section === "members" && typeof x["clientId"] === "string") {
-    const clientId = x["clientId"];
+  if (entry.section === "members" && back(COLLECTIONS.clients, x["clientId"])) {
+    const clientId = String(x["clientId"]);
     // Leads that were linked to the member are linked again.
     for (const id of (x["leads"] as string[] | undefined) ?? [])
       last.update(doc(db, COLLECTIONS.inquiries, id), { clientId });
@@ -201,19 +254,31 @@ export async function restoreFromBin(
   last.delete(doc(db, COLLECTIONS.recycleBin, entry.id));
   await last.commit();
   // Logins switched off when deleted come back on.
-  if (entry.section === "members" && x["portalActive"] === true)
+  if (
+    entry.section === "members" &&
+    x["portalActive"] === true &&
+    back(COLLECTIONS.clients, x["clientId"])
+  )
     await memberAppAction(String(x["clientId"]), "on").catch(() => undefined);
-  if (entry.section === "packages" && x["trainerLoginOn"] === true)
+  if (
+    entry.section === "packages" &&
+    x["trainerLoginOn"] === true &&
+    back(COLLECTIONS.trainers, x["trainerId"])
+  )
     await trainerAccess(String(x["trainerId"]), "on").catch(() => undefined);
-  if (entry.section === "staff" && typeof x["staffId"] === "string") {
+  if (
+    entry.section === "staff" &&
+    typeof x["staffId"] === "string" &&
+    back(COLLECTIONS.staff, x["staffId"])
+  ) {
     if (x["wasActive"] === true) {
       const s = items.find((i) => i.collection === COLLECTIONS.staff)?.data;
       if (s) await updateDoc(doc(db, COLLECTIONS.staff, x["staffId"]), { active: true });
     }
     if (x["loginOn"] === true)
       await updateStaffLogin({ staffId: x["staffId"], active: true }).catch(() => undefined);
-    if (x["trainerLoginOn"] === true && typeof x["trainerId"] === "string")
-      await trainerAccess(x["trainerId"], "on").catch(() => undefined);
+    if (x["trainerLoginOn"] === true && back(COLLECTIONS.trainers, x["trainerId"]))
+      await trainerAccess(String(x["trainerId"]), "on").catch(() => undefined);
   }
   return items.length;
 }

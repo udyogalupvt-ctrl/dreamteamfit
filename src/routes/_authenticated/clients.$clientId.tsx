@@ -86,6 +86,8 @@ import { memberIdLabel, subscribeClient, updateClient } from "@/services/clients
 import { subscribeClientMemberships, undoLastPause } from "@/services/memberships.service";
 import { PausePlanDialog } from "@/components/clients/pause-plan-dialog";
 import { EditPlanDialog, PlanEdits } from "@/components/clients/edit-plan-dialog";
+import { OldSoftwareDialog } from "@/components/clients/old-software-dialog";
+import { billOfPlan } from "@/services/plan-edit.service";
 import { canEditPlan } from "@/services/plan-edit.service";
 import {
   subscribeClientWorkoutAssignments,
@@ -173,6 +175,7 @@ function ClientProfilePage() {
   const [cancelling, setCancelling] = useState<Membership | null>(null);
   const [pausing, setPausing] = useState<Membership | null>(null);
   const [editing, setEditing] = useState<Membership | null>(null);
+  const [oldMove, setOldMove] = useState<Membership | null>(null);
 
   const crumbs = [
     { label: "Home", to: "/dashboard" },
@@ -578,6 +581,23 @@ function ClientProfilePage() {
                           {m.durationDaysSnapshot} days
                         </p>
                         {m.status === "cancelled" ? <CancelNote plan={m} /> : null}
+                        {m.paidInOldSoftware ? (
+                          <p className="text-meta">
+                            Paid in the old software
+                            {m.oldSoftwarePaid ? ` · ${formatPrice(m.oldSoftwarePaid)}` : ""}
+                            {m.oldSoftwareBillNo ? ` · bill ${m.oldSoftwareBillNo}` : ""}
+                          </p>
+                        ) : can("finance") &&
+                          m.status !== "cancelled" &&
+                          billOfPlan(m, invoices.data) ? (
+                          <button
+                            type="button"
+                            className="text-meta cursor-pointer underline underline-offset-2 hover:text-foreground"
+                            onClick={() => setOldMove(m)}
+                          >
+                            Paid in the old software?
+                          </button>
+                        ) : null}
                         <PlanEdits plan={m} />
                       </div>
                       <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
@@ -696,6 +716,12 @@ function ClientProfilePage() {
       <AddDietDialog open={addDietOpen} onOpenChange={setAddDietOpen} clientId={c.id} />
       <BookingFormDialog open={addBookingOpen} onOpenChange={setAddBookingOpen} initialClient={c} />
       <PhotoDialog open={photoOpen} onOpenChange={setPhotoOpen} client={c} />
+      <OldSoftwareDialog
+        membership={oldMove}
+        bill={oldMove ? billOfPlan(oldMove, invoices.data) : null}
+        memberName={c.fullName}
+        onClose={() => setOldMove(null)}
+      />
       <EditPlanDialog
         client={c}
         membership={editing}

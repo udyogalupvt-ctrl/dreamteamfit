@@ -298,6 +298,9 @@ export interface Membership extends BaseDoc {
   cancelId?: string;
   /** Moved over from the old gym software: sold and paid there, not a sale here. */
   paidInOldSoftware?: boolean;
+  /** What the member paid in the old software for this plan (₹, kept for reference). */
+  oldSoftwarePaid?: number;
+  oldSoftwareBillNo?: string;
   /** The bill this plan was sold on. */
   invoiceId?: string;
   /** Upgraded to another plan: this one ended early, its unused days were credited there. */
@@ -608,6 +611,8 @@ export interface Invoice extends BaseDoc {
   counsellorName: string;
   /** Part of the discount that is credit for the unused days of an upgraded plan. */
   upgradeCredit: number;
+  /** Paid in the old software (part of `discount`, never counted as money here). */
+  oldSoftwareCredit?: number;
   /** Corrections after the bill was made (discount, pay-by date, note). */
   edits: RecordEdit[];
 }
@@ -633,6 +638,8 @@ export interface PublicInvoice {
   business: BusinessBillingSettings;
   /** Part of the discount that is credit for the unused days of an upgraded plan. */
   upgradeCredit: number;
+  /** Paid in the old software (part of `discount`, never counted as money here). */
+  oldSoftwareCredit?: number;
   updatedAt: Date;
 }
 

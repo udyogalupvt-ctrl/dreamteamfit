@@ -11,6 +11,7 @@
  *   GET  /api/old-data/download   "Backup": one original file (logged)
  *   GET  /api/old-data/directory  "Backup": every old member, one line each
  *   GET  /api/old-data/member     "Members": the old record(s) of one phone number
+ *   GET  /api/old-data/suspects   Income & expenses: sales that look paid in the old software
  */
 import { createHash } from "node:crypto";
 import { FieldValue, type DocumentData } from "firebase-admin/firestore";
@@ -29,6 +30,7 @@ import {
   type OldMember,
 } from "@/lib/old-data";
 import { db, json, localDate, requireFeature, requireStaff, text } from "./admin";
+import { oldSaleSuspects } from "./old-sales";
 
 const FILES = "oldDataFiles";
 const MEMBERS = "oldMembers";
@@ -484,5 +486,6 @@ export async function handleOldData(request: Request, url: URL): Promise<Respons
   if (request.method === "GET" && action === "download") return download(request, url);
   if (request.method === "GET" && action === "directory") return directory(request);
   if (request.method === "GET" && action === "member") return member(request, url);
+  if (request.method === "GET" && action === "suspects") return oldSaleSuspects(request);
   return text("Not found", 404);
 }

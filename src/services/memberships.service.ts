@@ -14,7 +14,7 @@ import { addDaysISO, todayISO } from "@/lib/format";
 import type { GymPackage, Membership, MembershipPause, MembershipSummary } from "@/types/models";
 import { col, COLLECTIONS, subscribeCollection, subscribeQuery, toDate } from "./firestore.service";
 
-const mapMembership = (id: string, d: DocumentData): Membership => ({
+export const mapMembership = (id: string, d: DocumentData): Membership => ({
   id,
   clientId: d["clientId"] ?? "",
   packageId: d["packageId"] ?? "",
@@ -31,6 +31,8 @@ const mapMembership = (id: string, d: DocumentData): Membership => ({
   ...(d["cancelReason"] ? { cancelReason: String(d["cancelReason"]) } : {}),
   ...(d["cancelledOn"] ? { cancelledOn: String(d["cancelledOn"]) } : {}),
   ...(d["paidInOldSoftware"] === true ? { paidInOldSoftware: true } : {}),
+  ...(Number(d["oldSoftwarePaid"]) > 0 ? { oldSoftwarePaid: Number(d["oldSoftwarePaid"]) } : {}),
+  ...(d["oldSoftwareBillNo"] ? { oldSoftwareBillNo: String(d["oldSoftwareBillNo"]) } : {}),
   ...(d["invoiceId"] ? { invoiceId: String(d["invoiceId"]) } : {}),
   ...(d["upgradedTo"] ? { upgradedTo: String(d["upgradedTo"]) } : {}),
   edits: Array.isArray(d["edits"]) ? d["edits"] : [],

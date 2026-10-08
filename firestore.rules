@@ -161,8 +161,16 @@ service cloud.firestore {
       allow update, delete: if can('recycleBin')
         || (isStaff() && resource.data.deletedByUid == request.auth.uid);
     }
+    // An item is a copy of one record the app moves to the bin, written back to its own path on
+    // restore: never a login, feature switch or setting (restoring runs with the owner's rights).
+    function binnable(d) {
+      return d.collection in ['attendance', 'automationActivities', 'biometricCommands', 'birthdayNotifications', 'bookings', 'classEnrollments', 'clients', 'dietAssignments', 'enrollments', 'expenses', 'followups', 'inquiries', 'invoices', 'leadLogs', 'memberships', 'notifications', 'payments', 'ptAssignments', 'publicInvoices', 'renewalNotifications', 'staff', 'staffPrivate', 'trainerPayouts', 'trainers', 'whatsappMessages', 'workoutAssignments', 'packages', 'absenceNotifications', 'paymentDueNotifications']
+        && d.docId is string && !d.docId.matches('.*/.*')
+        && d.path == d.collection + '/' + d.docId;
+    }
     match /recycleBinItems/{id} {
-      allow create: if isStaff() && request.resource.data.deletedByUid == request.auth.uid;
+      allow create: if isStaff() && request.resource.data.deletedByUid == request.auth.uid
+        && binnable(request.resource.data);
       allow read: if can('recycleBin')
         || (isStaff() && (resource == null || resource.data.deletedByUid == request.auth.uid));
       allow delete: if can('recycleBin')
@@ -245,6 +253,13 @@ service cloud.firestore {
     // WhatsApp announcements cost money (Marketing): only logins with that switch.
     match /announcements/{id} {
       allow read, write: if can('announcements');
+    }
+
+    // "Paid in the old software" corrections (money moved out of this app's collections) and
+    // their copies for Undo: Income & expenses only. Never deleted.
+    match /oldSoftwareMoves/{id} {
+      allow read, create, update: if can('finance');
+      allow delete: if false;
     }
 
     // WhatsApp chats (members' messages and replies): written only by the server.

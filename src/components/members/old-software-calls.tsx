@@ -303,6 +303,7 @@ function OldCallRow({
                   phone: old.phone || call.phoneKey,
                   gender: old.gender,
                   dateOfBirth: old.dob || null,
+                  oldMemberId: old.memberId,
                 },
               })
             }

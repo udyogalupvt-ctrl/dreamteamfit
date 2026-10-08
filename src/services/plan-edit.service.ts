@@ -1,7 +1,12 @@
 import { doc, getDocs, query, runTransaction, serverTimestamp, where } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { addDaysISO, formatDateISO, formatPrice, todayISO } from "@/lib/format";
-import { billTaxRate, calculateInvoiceTotals, derivePaymentStatus } from "@/lib/invoice-utils";
+import {
+  billCredits,
+  billTaxRate,
+  calculateInvoiceTotals,
+  derivePaymentStatus,
+} from "@/lib/invoice-utils";
 import type {
   BusinessBillingSettings,
   Client,
@@ -174,7 +179,7 @@ export function previewPlanEdit(
         );
         // The bill's own tax; the upgrade credit stays, the discount is the one asked for.
         const subtotal = items.reduce((n, i) => n + i.quantity * i.unitPrice, 0);
-        const credit = bill.upgradeCredit ?? 0;
+        const credit = billCredits(bill);
         if (discountChanged && newDiscount + credit > subtotal)
           error = `The discount can't be more than the bill (${formatPrice(Math.max(0, subtotal - credit))}).`;
         const totals = calculateInvoiceTotals(
@@ -309,7 +314,7 @@ export async function editMembership(input: PlanEditInput) {
       const what =
         form.pkg.id !== m.packageId || form.pkg.price !== m.priceSnapshot
           ? `plan changed to ${form.pkg.name}`
-          : `discount changed to ${formatPrice(bc.discount - (bc.bill.upgradeCredit ?? 0))}`;
+          : `discount changed to ${formatPrice(bc.discount - billCredits(bc.bill))}`;
       const note = `${formatDateISO(today)}: ${what}${reason ? ` (${reason})` : ""}`;
       const money = {
         items: bc.items,

@@ -63,6 +63,7 @@ export const mapInvoice = (id: string, d: DocumentData): Invoice => ({
   counsellorId: d["counsellorId"] ?? "",
   counsellorName: d["counsellorName"] ?? "",
   upgradeCredit: Number(d["upgradeCredit"] ?? 0),
+  oldSoftwareCredit: Number(d["oldSoftwareCredit"] ?? 0),
   edits: Array.isArray(d["edits"]) ? d["edits"] : [],
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
@@ -87,6 +88,7 @@ export const mapPublicInvoice = (token: string, d: DocumentData): PublicInvoice 
   pdfUrl: d["pdfUrl"] ?? "",
   business: d["business"],
   upgradeCredit: Number(d["upgradeCredit"] ?? 0),
+  oldSoftwareCredit: Number(d["oldSoftwareCredit"] ?? 0),
   updatedAt: toDate(d["updatedAt"]),
 });
 /** The newest bills (dashboard feed). */

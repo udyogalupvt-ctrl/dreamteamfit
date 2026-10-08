@@ -16,6 +16,7 @@ import { useAccess } from "@/hooks/use-access";
 import { useAuth } from "@/hooks/use-auth";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
+import { billCredits } from "@/lib/invoice-utils";
 import {
   DEFAULT_BILLING_SETTINGS,
   subscribeBusinessSettings,
@@ -327,7 +328,7 @@ export function EditPlanDialog({
                   <dt className="text-muted-foreground">Discount</dt>
                   <dd>
                     {formatPrice(billDiscount)} →{" "}
-                    <b>{formatPrice(bc.discount - (bc.bill.upgradeCredit ?? 0))}</b>
+                    <b>{formatPrice(bc.discount - billCredits(bc.bill))}</b>
                   </dd>
                 </>
               ) : null}

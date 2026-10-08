@@ -1,7 +1,12 @@
 import { doc, getDocs, query, runTransaction, serverTimestamp, where } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
-import { billTaxRate, calculateInvoiceTotals, derivePaymentStatus } from "@/lib/invoice-utils";
+import {
+  billCredits,
+  billTaxRate,
+  calculateInvoiceTotals,
+  derivePaymentStatus,
+} from "@/lib/invoice-utils";
 import type { BusinessBillingSettings, Invoice, PaymentMethod, RecordEdit } from "@/types/models";
 import { allocatePayment } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
@@ -20,9 +25,10 @@ export interface BillEditForm {
   notes: string;
 }
 
-/** The discount staff gave, without the credit for an upgraded plan's unused days. */
-export const staffDiscountOf = (i: Pick<Invoice, "discount" | "upgradeCredit">) =>
-  Math.max(0, Math.round((i.discount - Math.max(0, i.upgradeCredit || 0)) * 100) / 100);
+/** The discount staff gave, without credits (upgraded plan's unused days, old software money). */
+export const staffDiscountOf = (
+  i: Pick<Invoice, "discount" | "upgradeCredit"> & { oldSoftwareCredit?: number | undefined },
+) => Math.max(0, Math.round((i.discount - billCredits(i)) * 100) / 100);
 
 export function previewBillEdit(
   i: Invoice,
@@ -34,7 +40,7 @@ export function previewBillEdit(
   const discountChanged = Math.round(f.discount * 100) !== Math.round(before * 100);
   const totals = calculateInvoiceTotals(
     i.items,
-    f.discount + Math.max(0, i.upgradeCredit || 0),
+    f.discount + billCredits(i),
     { taxEnabled: i.tax > 0, taxRate: billTaxRate(i) },
     i.amountPaid,
   );

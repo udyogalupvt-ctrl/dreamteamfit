@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { CashBookSection } from "@/components/finance/cash-book-section";
 import { StaffPaySection } from "@/components/finance/staff-pay-section";
 import { PtReportSection } from "@/components/finance/pt-report-section";
+import { OldSalesReview } from "@/components/finance/old-sales-review";
 import { SettleDialog } from "@/components/expenses/settle-dialog";
 import { StatusPill } from "@/components/common/status-pill";
 import { HandCoins } from "lucide-react";
@@ -115,6 +116,7 @@ function ExpensesPage() {
           </TabsList>
         </div>
       </Tabs>
+      {section === "income" ? <OldSalesReview /> : null}
       {section === "income" ? (
         <IncomeSection />
       ) : section === "payouts" ? (
