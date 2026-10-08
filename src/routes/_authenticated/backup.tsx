@@ -481,6 +481,7 @@ function OldMembersSection({ owner, reload }: { owner: boolean; reload: number }
                               phone: e.k,
                               gender: e.g,
                               dateOfBirth: e.d || null,
+                              oldMemberId: e.id,
                             },
                           })
                         }

@@ -70,6 +70,8 @@ export const COLLECTIONS = {
   /** Deleted records wait here until the owner restores them or deletes them for good. */
   recycleBin: "recycleBin",
   recycleBinItems: "recycleBinItems",
+  /** "Paid in the old software" corrections: what each changed, kept for Undo. */
+  oldSoftwareMoves: "oldSoftwareMoves",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

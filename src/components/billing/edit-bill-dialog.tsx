@@ -5,12 +5,24 @@ import { Field, FormDialog } from "@/components/common/form-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAccess } from "@/hooks/use-access";
 import { useAuth } from "@/hooks/use-auth";
 import { formatDateISO, formatPrice } from "@/lib/format";
 import { editBill, previewBillEdit, staffDiscountOf } from "@/services/bill-edit.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
-import type { BusinessBillingSettings, Invoice } from "@/types/models";
+import {
+  PAYMENT_METHODS,
+  type BusinessBillingSettings,
+  type Invoice,
+  type PaymentMethod,
+} from "@/types/models";
 import { EditLines } from "./edit-payment-dialog";
 
 /** "Edit bill": discount (owner), pay-by date and note. Items come from the plan (Edit plan). */
@@ -30,6 +42,7 @@ export function EditBillDialog({
   const [dueDate, setDueDate] = useState(i.dueDate);
   const [notes, setNotes] = useState(i.notes);
   const [reason, setReason] = useState("");
+  const [method, setMethod] = useState<PaymentMethod>("Cash");
   const [error, setError] = useState("");
   const d = discount.trim() === "" ? 0 : Number(discount);
   const form = { discount: Number.isFinite(d) ? d : -1, dueDate, notes };
@@ -46,9 +59,15 @@ export function EditBillDialog({
         reason,
         canDiscount: money,
         by: user?.displayName || user?.email || "Staff",
+        byUid: user?.uid ?? "",
+        refundMethod: method,
       });
       onClose();
-      toast.success(`Bill ${i.invoiceNumber} updated`, { description: pv.changes.join(" · ") });
+      toast.success(`Bill ${i.invoiceNumber} updated`, {
+        description: pv.refund
+          ? `${formatPrice(pv.refund)} recorded as money given back.`
+          : pv.changes.join(" · "),
+      });
     } catch (e) {
       setError(e instanceof Error && !("code" in e) ? e.message : firestoreErrorMessage(e));
     }
@@ -112,6 +131,28 @@ export function EditBillDialog({
               {formatPrice(i.balanceDue)} → <b>{formatPrice(pv.balance)}</b>
             </dd>
           </dl>
+        ) : null}
+        {pv.refund > 0 ? (
+          <div className="grid gap-2 rounded-lg bg-info/10 p-3 text-sm">
+            <p>
+              They already paid <b>{formatPrice(pv.refund)}</b> more than the new total. It is
+              recorded as money given back (Day Book shows it).
+            </p>
+            <Field label="Given back by" htmlFor="bill-refund-method">
+              <Select value={method} onValueChange={(v) => setMethod(v as PaymentMethod)}>
+                <SelectTrigger id="bill-refund-method" className="w-full sm:w-48">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((x) => (
+                    <SelectItem key={x} value={x}>
+                      {x}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
         ) : null}
         {pv.balance > 0 ? (
           <Field

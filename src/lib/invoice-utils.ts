@@ -26,6 +26,15 @@ export function calculateInvoiceTotals(
     balanceDue: round(total - paid),
   };
 }
+/**
+ * Credits inside a bill's discount that are not a discount staff gave: an upgrade's unused days,
+ * and money the member paid in the old software (moved out of this app's collections).
+ */
+export const billCredits = (b: {
+  upgradeCredit?: number | undefined;
+  oldSoftwareCredit?: number | undefined;
+}) => Math.max(0, Number(b.upgradeCredit) || 0) + Math.max(0, Number(b.oldSoftwareCredit) || 0);
+
 /** A bill's own tax rate (%), worked out from what it charged; 0 when it has no tax. */
 export function billTaxRate(b: { tax: number; subtotal: number; discount: number }) {
   const taxable = b.subtotal - b.discount;

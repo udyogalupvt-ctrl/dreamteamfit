@@ -146,6 +146,8 @@ export async function editPayment(input: {
               membershipGross: Number(d["membershipGross"] ?? 0),
               ptGross: Number(d["ptGross"] ?? 0),
               trainerShareTotal: Number(d["trainerShareTotal"] ?? 0),
+              subtotal: Number(d["subtotal"] ?? 0),
+              discount: Number(d["discount"] ?? 0),
             },
             round(form.amount),
           ),

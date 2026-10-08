@@ -690,6 +690,21 @@ async function freshCode(collection: "clients" | "trainers") {
   }
 }
 
+/**
+ * The login uid saved on a member / trainer record is only trusted when it really is that
+ * person's app login (the claims ensureLogin set). Staff can edit those records, so a uid typed
+ * into one (the owner's, another staff member's) must never be switched off or deleted here.
+ */
+async function ownPortalUid(uid: string, kind: "member" | "trainer", id: string) {
+  if (!uid || !id) return "";
+  const u = await adminAuth()
+    .getUser(uid)
+    .catch(() => null);
+  const claims = (u?.customClaims ?? {}) as Record<string, unknown>;
+  const key = kind === "member" ? "clientId" : "trainerId";
+  return claims["portal"] === kind && claims[key] === id ? uid : "";
+}
+
 async function deleteMemberApp(clientId: string, uid: string) {
   if (uid)
     await adminAuth()
@@ -723,8 +738,8 @@ async function memberAccess(request: Request, body: Record<string, unknown>) {
       : (
           await db().collection("recycleBinItems").where("docId", "==", clientId).limit(5).get()
         ).docs.find((d) => d.data()["collection"] === "clients");
-    const uid = s(c?.["portalUid"] ?? (binned?.data()["data"] as D | undefined)?.["portalUid"]);
-    await deleteMemberApp(clientId, uid);
+    const saved = s(c?.["portalUid"] ?? (binned?.data()["data"] as D | undefined)?.["portalUid"]);
+    await deleteMemberApp(clientId, await ownPortalUid(saved, "member", clientId));
     return json({ ok: true });
   }
   if (!c) return json({ error: "Member not found." }, 404);
@@ -774,6 +789,11 @@ async function memberAccess(request: Request, body: Record<string, unknown>) {
   }
   if (action === "off" || action === "on") {
     if (!uid) return json({ error: "This member has no member app yet." }, 404);
+    if (!(await ownPortalUid(uid, "member", clientId)))
+      return json(
+        { error: "This member's app login doesn't match them. Make the member app link again." },
+        409,
+      );
     await adminAuth().updateUser(uid, { disabled: action === "off" });
     if (action === "off") await adminAuth().revokeRefreshTokens(uid);
     await ref.update({ portalActive: action === "on" });
@@ -823,6 +843,8 @@ async function trainerAccess(request: Request, body: Record<string, unknown>) {
     return json({ code: fresh });
   }
   if (!code || !uid) return json({ error: "This trainer has no login yet." }, 404);
+  if (action !== "reveal" && !(await ownPortalUid(uid, "trainer", trainerId)))
+    return json({ error: "This trainer's login doesn't match them. Make the login again." }, 409);
   if (action === "password") {
     if (password.length < 6) return json({ error: "Password must be at least 6 characters." }, 400);
     await adminAuth().updateUser(uid, { password });

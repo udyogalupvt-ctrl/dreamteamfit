@@ -1,5 +1,66 @@
 # Handoff
 
+## 2026-10-08: WhatsApp chats, photo full screen, corrections, old-software money, security audit
+
+Branches (local only, NOT pushed, NOT deployed): `members-wa-inbox-audit` (commit e427506) and on top of it
+`old-software-money` (uncommitted at the time of writing → see git log). Nothing is live yet.
+
+**1. Member photo full screen** (`ClientAvatar zoomable` + `PhotoViewer` in `src/components/clients/client-avatar.tsx`):
+member page, member list (phone card = stretched link, photo is its own button), member calls, birthdays.
+
+**2. WhatsApp chats** (`/whatsapp`, nav "WhatsApp", unread badge; new login feature `whatsappChats`, in the
+front-desk defaults): members' messages to the Cloud API number arrive via the signed webhook into
+`waChats/{number}/messages/{wamid}` (`src/server/whatsapp-chat.ts`); replies only within WhatsApp's 24 h
+window; ticks, blue ticks on open, reactions, quoted replies, photos/voice/files via `/api/whatsapp/chat/media`;
+bills/reminders the app sends are copied into the chat. Member page has a "WhatsApp chat" link. Looks like
+WhatsApp (own tokens `.wa-theme` in styles.css, light+dark, phone = full-screen chat).
+**Needs before it works live:** (a) `WHATSAPP_APP_SECRET` on Vercel (Meta → App settings → Basic → App secret)
++ Redeploy, (b) Meta → WhatsApp → Configuration: webhook = `https://dreamteamfit.vercel.app/api/whatsapp/webhook`,
+"messages" field subscribed, (c) deploy firestore.rules (waChats rule). The page shows a yellow banner until
+messages arrive.
+
+**3. Corrections after confirm** (user: "confirmed the package at the original price, forgot the discount"):
+Edit plan has a Discount box (owner/finance); a discount after full payment records the extra as money given
+back (refund). Edit bill does the same instead of refusing. Counsellor fix reaches bill + payments + joining
+(incentives). Edit PT: trainer share (% or ₹), unpaid payout + bill trainer total follow. Bug fixed: payment
+split now spreads a bill's discount over membership/PT income (membership income was overstated on every
+discounted bill; total income/profit were always right). Old discounted payments keep their old split.
+
+**4. Old-software money counted as today's sales** (owner: "Sales amount wrong"). Cause: "Paid in the old
+software" could not take the old offer price, so staff unticked it and gave a discount → a payment dated today
+for money paid months ago. Fix:
+- Joining form: "Paid in the old software ₹" (prefilled from the old data) + balance; allowed for members
+  already in the app with no plan here; Backup / Member calls "Add" link the old record.
+- Owner tool: member Plan tab → "Paid in the old software?" (`src/services/old-software.service.ts`): moves
+  the money out of payments (bill keeps its link; old money shown as a credit line "Paid in the old software";
+  still-owed balance stays), cancels a pending trainer share, marks the plan; full copy in `oldSoftwareMoves`
+  for Undo. Refused for closed Day Book months, refunded bills, paid trainer shares.
+- Review list: Income & Expenses → Profit & income → "Paid in the old software?" (`/api/old-data/suspects`,
+  `src/server/old-sales.ts`): sales since the 1st of last month that the old data shows as paid there.
+**The owner must go through that list after deploy** to fix the live totals (I can't read/change live data).
+
+**5. Security audit** (`security-audit` skill installed globally; report in
+`~/security-audit-skill/dreamteamfit/run-1/REPORT.md`; quick profile, PARTIAL coverage: 14/30 units deferred).
+Fixed: member/trainer app off/delete only acts on that person's own login (`ownPortalUid`, portal.ts);
+Recycle Bin restore only writes allowlisted record kinds to their own path + rules `binnable()`.
+Open: money collections writable by any staff login in rules (needs per-flow rules redesign);
+owner = email only (owner must check Firebase console: does admin@elevategym.com exist? sign-up off?).
+Run 2 should start with: biometric commands, /iclock, Meta webhook, WhatsApp chat routes, portal #16.
+
+**Tests** (emulators only; session scratchpad 7b781562…, `regress.sh <suites>` = fresh gym per suite):
+wa_chat_local 35/35, wa_ui_local 74/74 (light/dark 390/1440, shots/), discount_local 20/20, edits_local 47/47,
+oldsw_local 27/27, sec_local 15/15, undo_refund 41, double_tap_join 4, dash_money 5, billing_reads 6,
+plans_end 12, daybook_reads 4, batch_features 24; unit 150/150; tsc + eslint clean; build OK.
+Prod read script (read-only, owner runs): scratchpad `prod_sales.mjs` (this month's payments with bill/plan).
+
+### Next
+1. Owner OK → merge both branches into main, deploy firestore.rules (waChats, oldSoftwareMoves, recycleBinItems
+   rule), push (Vercel deploys).
+2. Vercel: WHATSAPP_APP_SECRET + Meta webhook "messages" field (see 2).
+3. Owner: Income & Expenses → "Paid in the old software?" → Check & mark each one.
+4. Owner: Firebase console checks in NEEDS-VALIDATION.md (owner email).
+5. Security run 2 (deferred units) and the money-rules redesign.
+
 ## 2026-10-07: Machine fresh start + old-software call list (pushed, live)
 
 Why: the owner wipes the MB360 so only people who come to the desk get back in, which shows
@@ -231,4 +292,4 @@ Also fixed a race: "End all plans & stop entry" now appears only after PT plans 
   Bill "⋯" → Edit bill. Settings → WhatsApp shows the "Run it on the gym PC" box.
 - At the gym: run the gym-PC setup once (see the section above) if they want WhatsApp from the PC.
 
-Last updated: 2026-10-07 (live sweep clean; relay settings in the setup box)
+Last updated: 2026-10-08 (WhatsApp chats, corrections, old-software money, security audit)

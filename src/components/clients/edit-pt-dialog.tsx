@@ -18,9 +18,10 @@ import { useLive } from "@/hooks/use-live-query";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { subscribeTrainers } from "@/services/pt.service";
 import { editPtPlan, ptChanges } from "@/services/pt-edit.service";
-import type { PtAssignment, Trainer } from "@/types/models";
+import { formatPrice } from "@/lib/format";
+import type { PtAssignment, ShareType, Trainer } from "@/types/models";
 
-/** "Edit PT plan": the trainer (owner: the share moves with it) and the dates. */
+/** "Edit PT plan": the trainer (owner: the share moves with it), the dates and the share. */
 export function EditPtDialog({ pt, onClose }: { pt: PtAssignment | null; onClose: () => void }) {
   const open = !!pt;
   const { can } = useAccess();
@@ -29,6 +30,8 @@ export function EditPtDialog({ pt, onClose }: { pt: PtAssignment | null; onClose
   const [trainerId, setTrainerId] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+  const [shareType, setShareType] = useState<ShareType>("percentage");
+  const [shareValue, setShareValue] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
@@ -36,6 +39,8 @@ export function EditPtDialog({ pt, onClose }: { pt: PtAssignment | null; onClose
     setTrainerId(pt.trainerId);
     setStart(pt.startDate);
     setEnd(pt.endDate);
+    setShareType(pt.trainerShareType);
+    setShareValue(String(pt.trainerShareValue));
     setReason("");
     setError("");
   }, [pt]);
@@ -53,7 +58,18 @@ export function EditPtDialog({ pt, onClose }: { pt: PtAssignment | null; onClose
     id: pt.trainerId,
     name: pt.trainerNameSnapshot,
   };
-  const form = { trainer, startDate: start, endDate: end };
+  const shareNumber = shareValue.trim() === "" ? Number.NaN : Number(shareValue);
+  const form = {
+    trainer,
+    startDate: start,
+    endDate: end,
+    share: money ? { type: shareType, value: shareNumber } : undefined,
+  };
+  const shareBad =
+    money &&
+    (!(shareNumber >= 0) ||
+      (shareType === "percentage" && shareNumber > 100) ||
+      (shareType !== "percentage" && shareNumber > pt.ptPrice));
   const changes = ptChanges(pt, form);
 
   const save = async () => {
@@ -78,13 +94,13 @@ export function EditPtDialog({ pt, onClose }: { pt: PtAssignment | null; onClose
       open
       onOpenChange={(o) => !o && onClose()}
       title="Edit PT plan"
-      description={`${pt.ptPackageNameSnapshot} for ${pt.clientNameSnapshot}. The price and the trainer's share stay as sold.`}
+      description={`${pt.ptPackageNameSnapshot} for ${pt.clientNameSnapshot} · PT price ${formatPrice(pt.ptPrice)}. A lower price is a discount: Edit bill.`}
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
-          <Button onClick={() => save()} disabled={!changes.length}>
+          <Button onClick={() => save()} disabled={!changes.length || shareBad}>
             <Pencil aria-hidden /> Save changes
           </Button>
         </>
@@ -132,6 +148,45 @@ export function EditPtDialog({ pt, onClose }: { pt: PtAssignment | null; onClose
             />
           </Field>
         </div>
+        <Field
+          label="Trainer's share"
+          htmlFor="pt-share"
+          hint={
+            !money
+              ? "Changing the share needs Income & expenses (the owner)."
+              : shareBad
+                ? shareType === "percentage"
+                  ? "Enter 0 to 100 %."
+                  : `Enter ₹0 to ${formatPrice(pt.ptPrice)}.`
+                : "Their unpaid payout for this plan and the bill's trainer total follow."
+          }
+        >
+          <div className="flex gap-2">
+            <Select
+              value={shareType}
+              onValueChange={(v) => setShareType(v as ShareType)}
+              disabled={!money}
+            >
+              <SelectTrigger className="w-28" aria-label="Share type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="percentage">%</SelectItem>
+                <SelectItem value="fixed">₹ fixed</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              id="pt-share"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              disabled={!money}
+              value={shareValue}
+              onChange={(e) => setShareValue(e.target.value)}
+              className="max-w-36 tabular-nums"
+            />
+          </div>
+        </Field>
         <Field label="Why the change? (optional)" htmlFor="pt-reason">
           <Input
             id="pt-reason"

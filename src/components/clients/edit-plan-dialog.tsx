@@ -16,6 +16,7 @@ import { useAccess } from "@/hooks/use-access";
 import { useAuth } from "@/hooks/use-auth";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
+import { billCredits } from "@/lib/invoice-utils";
 import {
   DEFAULT_BILLING_SETTINGS,
   subscribeBusinessSettings,
@@ -29,6 +30,7 @@ import {
   previewPlanEdit,
   standardEnd,
 } from "@/services/plan-edit.service";
+import { staffDiscountOf } from "@/services/bill-edit.service";
 import { subscribeStaff } from "@/services/staff.service";
 import {
   PAYMENT_METHODS,
@@ -43,8 +45,9 @@ import {
 const NONE = "__none";
 
 /**
- * "Edit plan": correct a plan after it was sold (wrong package, start / end date, counsellor).
- * Shows what changes, and what happens to the bill, before saving.
+ * "Edit plan": correct a plan after it was sold (wrong package, start / end date, counsellor,
+ * a discount forgotten or typed wrong). Shows what changes, and what happens to the bill, before
+ * saving.
  */
 export function EditPlanDialog({
   client,
@@ -74,6 +77,8 @@ export function EditPlanDialog({
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [counsellorId, setCounsellorId] = useState("");
+  /** Text, so the box can be empty while typing; "" = unchanged. */
+  const [discount, setDiscount] = useState("");
   const [reason, setReason] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("Cash");
   const [payBy, setPayBy] = useState("");
@@ -84,6 +89,7 @@ export function EditPlanDialog({
     setStart(membership.startDate);
     setEnd(membership.endDate);
     setCounsellorId(membership.counsellorId);
+    setDiscount("");
     setReason("");
     setMethod("Cash");
     setPayBy(todayISO());
@@ -124,12 +130,15 @@ export function EditPlanDialog({
   const usual = start ? standardEnd(start, pkg.durationDays, paused) : "";
   const counsellor = counsellors.find((c) => c.id === counsellorId) ?? null;
   const bill = billOfPlan(m, invoices);
-  const preview = previewPlanEdit(
-    m,
-    { pkg, startDate: start, endDate: end, counsellor },
-    bill,
-    settings.data,
-  );
+  const billDiscount = bill ? staffDiscountOf(bill) : 0;
+  const discountValue = discount.trim() === "" ? undefined : Number(discount);
+  const form = { pkg, startDate: start, endDate: end, counsellor, discount: discountValue };
+  const preview = previewPlanEdit(m, form, bill, settings.data);
+  const discountEditable =
+    !!bill &&
+    !m.paidInOldSoftware &&
+    bill.paymentStatus !== "closed" &&
+    bill.paymentStatus !== "refunded";
   const bc = preview.bill;
   const money = can("finance");
   const extraDays =
@@ -164,7 +173,7 @@ export function EditPlanDialog({
       await editMembership({
         client,
         membership: m,
-        form: { pkg, startDate: start, endDate: end, counsellor },
+        form,
         bill,
         settings: settings.data,
         reason,
@@ -191,6 +200,7 @@ export function EditPlanDialog({
   const blocked =
     !!preview.error ||
     !preview.changes.length ||
+    (preview.discountChanged && !money) ||
     !!(bc && bc.refund > 0 && !money) ||
     !!(bc?.newBalance && !payBy);
 
@@ -199,7 +209,7 @@ export function EditPlanDialog({
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title="Edit plan"
-      description={`Fix a wrong package, dates or counsellor for ${client.fullName}. The same plan is changed; nothing is sold again.`}
+      description={`Fix a wrong package, dates, discount or counsellor for ${client.fullName}. The same plan is changed; nothing is sold again.`}
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
@@ -226,6 +236,32 @@ export function EditPlanDialog({
             </SelectContent>
           </Select>
         </Field>
+        {discountEditable ? (
+          <Field
+            label="Discount (₹)"
+            htmlFor="plan-discount"
+            hint={
+              !money
+                ? "Only the owner's login (Income & expenses) can change a discount."
+                : bill && bill.amountPaid > 0
+                  ? "If they already paid more than the new total, the extra is recorded as money given back."
+                  : `Package price ${formatPrice(pkg.price)}.`
+            }
+          >
+            <Input
+              id="plan-discount"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="1"
+              disabled={!money}
+              placeholder={String(billDiscount)}
+              value={discount === "" ? String(billDiscount) : discount}
+              onChange={(e) => setDiscount(e.target.value)}
+              className="max-w-48 tabular-nums"
+            />
+          </Field>
+        ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Start date" htmlFor="plan-start">
             <Input
@@ -287,6 +323,15 @@ export function EditPlanDialog({
           <div className="grid gap-3 rounded-xl border border-border p-3 text-sm">
             <p className="font-semibold">Bill {bc.bill.invoiceNumber}</p>
             <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 tabular-nums">
+              {preview.discountChanged ? (
+                <>
+                  <dt className="text-muted-foreground">Discount</dt>
+                  <dd>
+                    {formatPrice(billDiscount)} →{" "}
+                    <b>{formatPrice(bc.discount - billCredits(bc.bill))}</b>
+                  </dd>
+                </>
+              ) : null}
               <dt className="text-muted-foreground">Total</dt>
               <dd>
                 {formatPrice(bc.bill.total)} → <b>{formatPrice(bc.total)}</b>
