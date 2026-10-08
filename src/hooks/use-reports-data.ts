@@ -30,8 +30,10 @@ import { useAccess } from "@/hooks/use-access";
 import { subscribeInquiries } from "@/services/inquiries.service";
 import { subscribeMemberships } from "@/services/memberships.service";
 import { subscribeInvoices } from "@/services/invoices.service";
+import { buildFinanceSummary, subscribePaymentsSince } from "@/services/finance.service";
 import { subscribeWorkoutAssignments } from "@/services/workout-assignments.service";
 import type {
+  Payment,
   AttendanceEvent,
   Booking,
   ClassEnrollment,
@@ -70,6 +72,13 @@ export function useReportsData(period: ReportPeriod, custom?: ReportDateRange) {
     followups = useLive<FollowUp[]>(subscribeFollowUps, [], []),
     notifications = useLive<Notification[]>(subscribeNotifications, [], []);
   const range = getReportDateRange(period, custom);
+  // Money collected = payments by the day they came in (same as the Dashboard, Billing, Day Book):
+  // a balance paid later counts on the day it was paid, not on the bill's date.
+  const payments = useLive<Payment[]>(
+    (ok, fail) => subscribePaymentsSince(range.start, ok, fail),
+    [],
+    [range.start],
+  );
   // Visits of the chosen period only. Up to a month they are loaded; a longer period (a year is
   // ~90,000 visits) uses counts, which cost about one read per 1,000 visits.
   const days = Math.round((Date.parse(range.end) - Date.parse(range.start)) / 86_400_000) + 1;
@@ -164,14 +173,13 @@ export function useReportsData(period: ReportPeriod, custom?: ReportDateRange) {
       attendanceBlocked = small
         ? rangedAttendance.filter((a) => a.accessDecision === "blocked").length
         : (bigVisits?.blocked ?? null);
+    const money = buildFinanceSummary(payments.data, invoices.data, [], [], range.start, range.end);
     const grossSales = rangedInvoices.reduce((n, i) => n + i.total, 0),
-      collected = rangedInvoices.reduce((n, i) => n + i.amountPaid, 0),
+      collected = money.gross,
       outstanding = rangedInvoices
         .filter((i) => i.paymentStatus !== "refunded")
         .reduce((n, i) => n + i.balanceDue, 0),
-      refunded = rangedInvoices
-        .filter((i) => i.paymentStatus === "refunded")
-        .reduce((n, i) => n + i.amountPaid, 0);
+      refunded = money.refunded;
     // ---- Sheets for Excel / CSV (same period and same counting as the cards on the page).
     const clientById = new Map(clients.data.map((c) => [c.id, c]));
     const codeOf = (id: string | null | undefined) => (id && clientById.get(id)?.clientCode) || "";
@@ -634,6 +642,7 @@ export function useReportsData(period: ReportPeriod, custom?: ReportDateRange) {
   }, [
     range.start,
     range.end,
+    payments.data,
     finance,
     small,
     bigVisits,

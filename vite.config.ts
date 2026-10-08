@@ -6,7 +6,12 @@ import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
 import tsConfigPaths from "vite-tsconfig-paths";
 
+// This build's version, the same in the browser and the server: a tab left open on an older
+// version sees /api/version change and loads the new one (src/routes/__root.tsx).
+const APP_BUILD = (process.env["VERCEL_GIT_COMMIT_SHA"] ?? "").slice(0, 12) || `b${Date.now()}`;
+
 export default defineConfig(({ command }) => ({
+  define: { __APP_BUILD__: JSON.stringify(command === "build" ? APP_BUILD : "dev") },
   plugins: [
     tailwindcss(),
     tsConfigPaths(),

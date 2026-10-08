@@ -20,6 +20,11 @@ export async function handleServerRoute(request: Request): Promise<Response> {
   rememberOrigin(url.origin);
   try {
     if (path === "/api/health") return json(await serverHealth());
+    // The live version (no database read): open tabs compare it with their own.
+    if (path === "/api/version")
+      return new Response(JSON.stringify({ build: __APP_BUILD__ }), {
+        headers: { "content-type": "application/json", "cache-control": "no-store" },
+      });
     if (/^\/iclock(\/|$)/i.test(path)) return await handleIclock(request, url);
     if (path.startsWith("/api/whatsapp/")) return await handleWhatsApp(request, url);
     if (path.startsWith("/api/cron/")) return await handleCron(request, url);

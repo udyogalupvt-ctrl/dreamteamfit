@@ -300,6 +300,8 @@ export interface Membership extends BaseDoc {
   paidInOldSoftware?: boolean;
   /** What the member paid in the old software for this plan (₹, kept for reference). */
   oldSoftwarePaid?: number;
+  /** Balance still to pay on it in the old software (₹), when there was one. */
+  oldSoftwareBalance?: number;
   oldSoftwareBillNo?: string;
   /** Set when the owner moved this plan's money out ("Paid in the old software?"): Undo uses it. */
   oldSoftwareMoveId?: string;

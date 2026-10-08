@@ -484,11 +484,28 @@ export function EnrollmentWizard({
   // dates, amounts read-only (no discount, nothing counted today). They renew here after it ends.
   const oldLocked = canPaidOld && !!oldRunning;
   const paidInOld = canPaidOld && (paidOld || oldLocked);
+  // The old plan this one carries over: the one running there, else the one that started within
+  // 10 days of this plan's start (its amounts are suggested).
+  const oldMatch =
+    oldRunning ??
+    (oldLinked && /^\d{4}-\d{2}-\d{2}$/.test(startDate)
+      ? (oldLinked.plans
+          .filter(
+            (p) =>
+              /^\d{4}-\d{2}-\d{2}$/.test(p.start) &&
+              Math.abs(Date.parse(p.start) - Date.parse(startDate)) <= 10 * 86_400_000,
+          )
+          .sort(
+            (a, b) =>
+              Math.abs(Date.parse(a.start) - Date.parse(startDate)) -
+              Math.abs(Date.parse(b.start) - Date.parse(startDate)),
+          )[0] ?? null)
+      : null);
   const oldBalance =
     oldBalanceText === ""
-      ? (oldRunning?.balance ?? 0)
+      ? (oldMatch?.balance ?? 0)
       : Math.max(0, Math.floor(Number(oldBalanceText) || 0));
-  const oldPaidSuggested = oldRunning ? Math.max(0, oldRunning.amount - oldRunning.balance) : 0;
+  const oldPaidSuggested = oldMatch ? Math.max(0, oldMatch.amount - oldMatch.balance) : 0;
   const oldPaid =
     oldPaidText === "" ? oldPaidSuggested : Math.max(0, Math.floor(Number(oldPaidText) || 0));
   const dueLeft = paidInOld ? oldBalance > 0 : balanceLeft;
@@ -655,6 +672,8 @@ export function EnrollmentWizard({
     }
     if (s === PAYMENT && paidInOld) {
       if (!gymPackage && !pt) e["package"] = "Pick a package first";
+      if (oldPaid <= 0 && oldBalance <= 0)
+        e["oldPaid"] = "Type what they paid in the old software (their old bill)";
       if (oldBalance > 0 && !nextPaymentDate) e["nextPaymentDate"] = "When will the rest be paid?";
       else if (oldBalance > 0 && nextPaymentDate < todayISO())
         e["nextPaymentDate"] = "Pick today or a later date";
@@ -1243,9 +1262,10 @@ export function EnrollmentWizard({
                       label="Paid in the old software ₹"
                       htmlFor="e-oldpaid"
                       className="col-span-2 sm:col-span-1"
+                      error={errors["oldPaid"]}
                       hint={
-                        oldRunning
-                          ? `Old software: ${formatPrice(oldPaidSuggested)} paid for ${oldRunning.name}${oldRunning.bill ? ` (bill ${oldRunning.bill})` : ""}`
+                        oldMatch
+                          ? `Old software: ${formatPrice(oldPaidSuggested)} paid for ${oldMatch.name}${oldMatch.bill ? ` (bill ${oldMatch.bill})` : ""}`
                           : "What they paid there. Kept on the plan, not counted as money today."
                       }
                     >
@@ -1266,8 +1286,8 @@ export function EnrollmentWizard({
                       htmlFor="e-oldbal"
                       className="col-span-2 sm:col-span-1"
                       hint={
-                        oldRunning
-                          ? `Old software: ${formatPrice(oldRunning.balance)} balance on ${oldRunning.name}`
+                        oldMatch
+                          ? `Old software: ${formatPrice(oldMatch.balance)} balance on ${oldMatch.name}`
                           : "0 if fully paid"
                       }
                     >

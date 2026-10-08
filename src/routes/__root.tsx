@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import { ThemeProvider, themeBootstrapScript } from "@/hooks/use-theme";
 import { colorThemeBootstrapScript } from "@/lib/theme-colors";
 import { AuthProvider } from "@/hooks/use-auth";
+import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { startPwa } from "@/lib/pwa";
 
@@ -30,6 +31,88 @@ function reloadForNewVersion() {
   }
   window.location.reload();
   return true;
+}
+
+/**
+ * A tab left open all day keeps running the version it was opened with (the front desk's tab
+ * kept saving plans the old way after an update). Every 5 minutes, and when the tab is shown
+ * again, it asks for the live version; a newer one loads by itself once nothing is open or being
+ * typed (no popup, no typing for 20 s), else a Refresh button is offered.
+ */
+function useNewVersion() {
+  useEffect(() => {
+    if (__APP_BUILD__ === "dev") return;
+    let newer = "";
+    let lastCheck = 0;
+    let lastInput = Date.now();
+    let offered = false;
+    const busy = () => {
+      const a = document.activeElement;
+      return (
+        !!document.querySelector('[role="dialog"], [role="alertdialog"]') ||
+        (a instanceof HTMLElement &&
+          (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))
+      );
+    };
+    const tryLoad = () => {
+      if (!newer) return;
+      let tried = "";
+      try {
+        tried = sessionStorage.getItem("rf-reload-build") ?? "";
+      } catch {
+        // Storage blocked: the one-per-minute guard still stops a loop.
+      }
+      // Once per new version: if it is still old after that, only the button is offered.
+      if (tried !== newer && !busy() && Date.now() - lastInput > 20_000) {
+        try {
+          sessionStorage.setItem("rf-reload-build", newer);
+        } catch {
+          // ignore
+        }
+        if (reloadForNewVersion()) return;
+      }
+      if (offered) return;
+      offered = true;
+      toast("A new version of the app is ready", {
+        description: "It loads by itself when nothing is open. Or refresh now.",
+        duration: Infinity,
+        action: { label: "Refresh", onClick: () => window.location.reload() },
+      });
+    };
+    const check = async () => {
+      if (Date.now() - lastCheck < 60_000) return;
+      lastCheck = Date.now();
+      try {
+        const r = await fetch("/api/version", { cache: "no-store" });
+        const build = r.ok ? String(((await r.json()) as { build?: unknown }).build ?? "") : "";
+        if (build && build !== __APP_BUILD__) newer = build;
+      } catch {
+        // Offline: asked again later.
+      }
+      tryLoad();
+    };
+    const onInput = () => {
+      lastInput = Date.now();
+    };
+    const onShow = () => {
+      if (document.visibilityState === "visible") void check();
+    };
+    const first = window.setTimeout(() => void check(), 15_000);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible" && Date.now() - lastCheck >= 5 * 60_000)
+        void check();
+      else tryLoad();
+    }, 20_000);
+    const events = ["keydown", "pointerdown", "input"] as const;
+    events.forEach((e) => window.addEventListener(e, onInput, { passive: true }));
+    document.addEventListener("visibilitychange", onShow);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(timer);
+      events.forEach((e) => window.removeEventListener(e, onInput));
+      document.removeEventListener("visibilitychange", onShow);
+    };
+  }, []);
 }
 
 // A page file of the old version is gone after an update went live (tab left open): load the
@@ -69,7 +152,8 @@ function ErrorComponent({ error, reset }: { error: unknown; reset: () => void })
   const router = useRouter();
   useEffect(() => {
     console.error(error);
-    if (STALE_BUILD.test(String((error as Error | undefined)?.message ?? error))) reloadForNewVersion();
+    if (STALE_BUILD.test(String((error as Error | undefined)?.message ?? error)))
+      reloadForNewVersion();
   }, [error]);
 
   return (
@@ -175,6 +259,7 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  useNewVersion();
 
   return (
     <QueryClientProvider client={queryClient}>

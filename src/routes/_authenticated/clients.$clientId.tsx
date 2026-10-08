@@ -167,7 +167,7 @@ function ClientProfilePage() {
   const [editOpen, setEditOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
   const { openEnrollment, resumeSetup } = useEnrollment();
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState("membership");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const { can, canDelete } = useAccess();
   const [addWorkoutOpen, setAddWorkoutOpen] = useState(false);
@@ -231,10 +231,7 @@ function ClientProfilePage() {
                 <ArrowLeft aria-hidden /> All members
               </Link>
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => (isSetupPending(c) ? resumeSetup(c) : setEditOpen(true))}
-            >
+            <Button variant="outline" onClick={() => setEditOpen(true)}>
               <Pencil aria-hidden /> Edit
             </Button>
             {/* Also while the first thumb is pending (no fingerprint machine yet): members still
@@ -375,8 +372,8 @@ function ClientProfilePage() {
       <Tabs value={tab} onValueChange={setTab} className="gap-4">
         <div className="no-scrollbar -mx-4 flex items-center gap-1 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <TabsList className="w-max">
-            <TabsTrigger value="overview">Profile</TabsTrigger>
             <TabsTrigger value="membership">Plan</TabsTrigger>
+            <TabsTrigger value="overview">Profile</TabsTrigger>
             <TabsTrigger value="billing">Payments</TabsTrigger>
             <TabsTrigger value="attendance">Visits</TabsTrigger>
             <TabsTrigger value="followups">Calls</TabsTrigger>
@@ -560,6 +557,8 @@ function ClientProfilePage() {
                   }
                 />
               ) : null}
+              {/* Can they enter (door / thumb), next to the plan: what the front desk checks first. */}
+              <ClientBiometricCard client={c} />
               {upcoming.length ? (
                 <p className="text-sm text-muted-foreground">
                   {upcoming.length} upcoming membership{upcoming.length > 1 ? "s" : ""} scheduled.
@@ -630,9 +629,7 @@ function ClientProfilePage() {
                         <PlanEdits plan={m} />
                       </div>
                       <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
-                        <span className="font-semibold tabular-nums">
-                          {formatPrice(m.priceSnapshot)}
-                        </span>
+                        <PlanAmount m={m} />
                         <StatusPill tone={MEMBERSHIP_STATUS_META[m.effective].tone}>
                           {MEMBERSHIP_STATUS_META[m.effective].label}
                         </StatusPill>
@@ -827,9 +824,24 @@ function MembershipHero({
         <div className="h-full rounded-full bg-success" style={{ width: `${pct}%` }} />
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm">
-          Price <span className="font-semibold tabular-nums">{formatPrice(m.priceSnapshot)}</span>
-        </p>
+        {m.paidInOldSoftware ? (
+          <p className="text-sm">
+            Paid in the old software{" "}
+            <span className="font-semibold tabular-nums">
+              {m.oldSoftwarePaid ? formatPrice(m.oldSoftwarePaid) : "—"}
+            </span>
+            {m.oldSoftwareBalance ? (
+              <span className="tabular-nums"> · balance {formatPrice(m.oldSoftwareBalance)}</span>
+            ) : null}
+            <span className="text-meta block tabular-nums">
+              Package price here {formatPrice(m.priceSnapshot)}
+            </span>
+          </p>
+        ) : (
+          <p className="text-sm">
+            Price <span className="font-semibold tabular-nums">{formatPrice(m.priceSnapshot)}</span>
+          </p>
+        )}
         <div className="flex flex-wrap gap-1">
           {onEdit ? (
             <Button variant="outline" size="sm" onClick={onEdit}>
@@ -862,6 +874,20 @@ function MembershipHero({
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** A plan's amount in the history: what was paid in the old software for plans paid there. */
+function PlanAmount({ m }: { m: Membership }) {
+  if (!m.paidInOldSoftware || !m.oldSoftwarePaid)
+    return <span className="font-semibold tabular-nums">{formatPrice(m.priceSnapshot)}</span>;
+  return (
+    <span className="text-right">
+      <span className="block font-semibold tabular-nums">{formatPrice(m.oldSoftwarePaid)}</span>
+      <span className="text-meta block tabular-nums">
+        paid there · package {formatPrice(m.priceSnapshot)}
+      </span>
+    </span>
   );
 }
 
