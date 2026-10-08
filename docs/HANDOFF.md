@@ -2,6 +2,16 @@
 
 ## 2026-10-08 (late): live data cleaned, calendar-month end dates, Billing period, Reports fix
 
+**State (21:00):** merged into main and pushed (6ea7eb3). NOT yet done on live data (the auto-mode
+classifier refused applying it without the user seeing the list first):
+1. `node prod_oldplans.mjs` (read-only) → `python live_owner_oldplans.py list` (preview, nothing
+   saved) → show the user → `python live_owner_oldplans.py apply`: 46 plans get the amount paid in
+   the old software, 11 get the old software's dates (5 running, 6 ended). Needs `owner_pw.tmp`.
+2. `python live_owner_joined.py`: 4 old members' joining dates (Edit now opens details).
+3. Front desk: refresh the app once (tabs opened before 6ea7eb3 can't auto-update); then re-run step 1
+   for anyone they add before refreshing. Scripts are in session scratchpad 7b781562….
+4. Remove `C:/Users/chala/OneDrive/Desktop/gym saas/.claude/settings.local.json` (temporary allow rule).
+
 **Live data (done as the owner through the app, with the user's OK; read-only checks before/after):**
 - 31 plans that were paid in the old software but re-entered here as sales on 5-8 Oct (₹2,44,669)
   were marked "Paid in the old software" (whole entry: bill = old deal, payments off, PT share
@@ -333,4 +343,4 @@ Also fixed a race: "End all plans & stop entry" now appears only after PT plans 
   Bill "⋯" → Edit bill. Settings → WhatsApp shows the "Run it on the gym PC" box.
 - At the gym: run the gym-PC setup once (see the section above) if they want WhatsApp from the PC.
 
-Last updated: 2026-10-08 late (live data cleaned; dates, Billing period, Reports)
+Last updated: 2026-10-08 21:00 (pushed 6ea7eb3; live old-amount/date fix waiting for the user's OK)
