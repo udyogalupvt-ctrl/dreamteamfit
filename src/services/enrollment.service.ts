@@ -34,11 +34,9 @@ import type {
 import type { ClientInput } from "./clients.service";
 import { claimMemberId, mapClient } from "./clients.service";
 import { allocatePayment, cashOpenFrom } from "./finance.service";
-import { oldPaymentData } from "./old-money.service";
 import { saleMoneyDay } from "@/lib/late-sales";
 import { currentRow, pickCurrent } from "@/lib/current-plan";
 import { conflictMessage, overlapConflict, overlapPlan } from "@/lib/plan-overlap";
-import { checkOldRows, defaultOldRows, oldRowsTotal, type OldPayRow } from "@/lib/old-money";
 import { billModes, shareOut, splitParts, splitProblem, type PayPart } from "@/lib/split-pay";
 import { col, COLLECTIONS, toDate } from "./firestore.service";
 import { mapInvoice } from "./invoices.service";
@@ -131,33 +129,6 @@ export interface EnrollmentInput {
    * a normal joining / renewal (a renewal simply starts after the running plan).
    */
   upgrade: UpgradeInput | null;
-  /**
-   * A member moving from the old software whose plan was paid there: no money is taken or
-   * counted today (no payment, no day-book entry, no trainer payout). Only a balance still owed
-   * gets a bill, to collect later as usual.
-   */
-  oldSoftware?: {
-    balance: number;
-    /** What they paid there (kept on the plan; never counted as money here). */
-    paid?: number;
-    /** The old software's bill number, when known. */
-    billNo?: string;
-    /**
-     * When it was paid there (part payments: one row each). Left out = all of `paid` on the start
-     * day. Counted in Collected on those days, never in today's cash.
-     */
-    rows?: OldPayRow[];
-    /**
-     * The old plan's own last day, when it is still running there: the plan here ends the same
-     * day (the thumb works until then; they renew here after).
-     */
-    end?: string;
-    /**
-     * Staff checked the balance is still owed: its bill gets the daily WhatsApp balance reminders.
-     * Left out = no reminders (old records were often not updated when the balance was paid there).
-     */
-    remind?: boolean;
-  } | null;
 }
 
 export interface UpgradeInput {
@@ -242,78 +213,16 @@ export function enrollmentTotals(
  * One confirmed checkout creates everything once: client (if new), membership,
  * PT assignment, ONE payment, invoice + public link, trainer payout, enrollment record.
  */
-export async function enrollMember(given: EnrollmentInput) {
-  if (!given.gymPackage && !given.pt) throw new Error("Select a gym package or a PT package.");
-  const old = given.oldSoftware ?? null;
-  // Paid in the old software: its amounts are what was paid there, no discount here.
-  const input: EnrollmentInput =
-    old && given.pt ? { ...given, pt: { ...given.pt, discount: 0 } } : given;
+export async function enrollMember(input: EnrollmentInput) {
+  if (!input.gymPackage && !input.pt) throw new Error("Select a gym package or a PT package.");
   if (input.pt && ptDiscountOf(input.pt) > maxPtDiscount(input.pt.pkg))
     throw new Error(
       `PT discount can be at most ₹${maxPtDiscount(input.pt.pkg).toLocaleString("en-IN")} on this PT package.`,
     );
-  // A member already in the app (Excel import, thumb first) may still be moving over, and so may
-  // one with plans here before or after it (an older plan that ended, or the renewal entered while
-  // the old plan still runs). A plan here running on its first day means it was paid here.
-  if (old && input.existingClient) {
-    // Gym plans against gym plans, PT against PT (a PT plan here doesn't stop the gym plan).
-    const [plansHere, ptHere] = await Promise.all([
-      input.gymPackage
-        ? getDocs(
-            query(col(COLLECTIONS.memberships), where("clientId", "==", input.existingClient.id)),
-          )
-        : null,
-      input.pt
-        ? getDocs(
-            query(col(COLLECTIONS.ptAssignments), where("clientId", "==", input.existingClient.id)),
-          )
-        : null,
-    ]);
-    if (
-      [...(plansHere?.docs ?? []), ...(ptHere?.docs ?? [])].some(
-        (d) =>
-          d.data()["status"] !== "cancelled" &&
-          String(d.data()["startDate"] ?? "") <= input.startDate &&
-          String(d.data()["endDate"] ?? "") >= input.startDate,
-      )
-    )
-      throw new Error(
-        "This member already has a plan in this app from that day: a renewal here is paid here, not in the old software.",
-      );
-  }
-  const oldBalance = old ? Math.max(0, Math.round(old.balance || 0)) : 0;
-  // Paid there in parts: the parts are what was paid.
-  const oldRows = old
-    ? old.rows?.length
-      ? old.rows
-      : defaultOldRows(input.startDate, Math.max(0, Math.round(old.paid || 0)), todayISO())
-    : [];
-  if (old?.rows?.length) {
-    const bad = checkOldRows(old.rows, todayISO());
-    if (bad) throw new Error(bad);
-  } else if (oldRows.some((r) => !r.date))
-    // A plan that starts later has no start day to count it on (never "today").
-    throw new Error(
-      "This plan starts after today: give the day it was paid in the old software (Paid in parts or on another day?).",
-    );
-  const oldPaid = old
-    ? old.rows?.length
-      ? oldRowsTotal(old.rows)
-      : Math.max(0, Math.round(old.paid || 0))
-    : 0;
-  const oldFields = old
-    ? {
-        paidInOldSoftware: true,
-        oldSoftwarePaid: oldPaid,
-        oldSoftwareBalance: oldBalance,
-        ...(old.billNo ? { oldSoftwareBillNo: String(old.billNo).slice(0, 40) } : {}),
-      }
-    : {};
-  const totals = enrollmentTotals(old ? { ...input, discount: 0, amountPaid: 0 } : input);
-  if (!old && input.amountPaid > totals.total)
-    throw new Error("Amount paid cannot exceed the total.");
+  const totals = enrollmentTotals(input);
+  if (input.amountPaid > totals.total) throw new Error("Amount paid cannot exceed the total.");
   // Cash + UPI: two payments, the UPI part first.
-  const split = !old && input.split && totals.amountPaid > 0 ? input.split : null;
+  const split = input.split && totals.amountPaid > 0 ? input.split : null;
   if (split) {
     const bad = splitProblem(totals.amountPaid, Number(split.cash));
     if (bad) throw new Error(bad);
@@ -323,13 +232,11 @@ export async function enrollMember(given: EnrollmentInput) {
     : [{ method: input.method, amount: totals.amountPaid }];
   const modes = billModes(payParts);
   const maxDiscount = maxDiscountFor(input);
-  if (!old && maxDiscount !== null && input.discount > maxDiscount)
+  if (maxDiscount !== null && input.discount > maxDiscount)
     throw new Error(
       `Discount can be at most ₹${maxDiscount.toLocaleString("en-IN")} on this package.`,
     );
-  const balanceLeft = old
-    ? oldBalance > 0
-    : totals.total - Math.min(input.amountPaid, totals.total) > 0;
+  const balanceLeft = totals.total - Math.min(input.amountPaid, totals.total) > 0;
   if (balanceLeft && !input.nextPaymentDate)
     throw new Error("Pick the date the member will pay the balance.");
   const dueDate = balanceLeft && input.nextPaymentDate ? input.nextPaymentDate : todayISO();
@@ -373,12 +280,11 @@ export async function enrollMember(given: EnrollmentInput) {
     : doc(col(COLLECTIONS.clients));
   const membershipRef = input.gymPackage ? doc(col(COLLECTIONS.memberships)) : null;
   const ptRef = input.pt ? doc(col(COLLECTIONS.ptAssignments)) : null;
-  // Paid in the old software: a bill only for a balance still owed.
-  const invoiceRef = !old || oldBalance > 0 ? doc(col(COLLECTIONS.invoices)) : null;
-  const paymentRef = !old && totals.amountPaid > 0 ? doc(col(COLLECTIONS.payments)) : null;
+  const invoiceRef = doc(col(COLLECTIONS.invoices));
+  const paymentRef = totals.amountPaid > 0 ? doc(col(COLLECTIONS.payments)) : null;
   const cashPartRef = paymentRef && split ? doc(col(COLLECTIONS.payments)) : null;
   const enrollmentRef = doc(col(COLLECTIONS.enrollments));
-  const payoutRef = input.pt && !old ? doc(col(COLLECTIONS.trainerPayouts)) : null;
+  const payoutRef = input.pt ? doc(col(COLLECTIONS.trainerPayouts)) : null;
   const token = createPublicToken();
   const counterRef = doc(db, COLLECTIONS.settings, "counters");
   const inquiryRef = input.inquiryId ? doc(db, COLLECTIONS.inquiries, input.inquiryId) : null;
@@ -405,26 +311,18 @@ export async function enrollMember(given: EnrollmentInput) {
   const email = input.existingClient?.email ?? input.client.email.trim();
   // The plan runs from the date staff chose with the member, whether or not the thumb is
   // registered yet; the thumb only opens the door.
-  const oldEnd = old?.end && /^\d{4}-\d{2}-\d{2}$/.test(old.end) ? old.end : "";
-  if (oldEnd && oldEnd < input.startDate)
-    throw new Error("The old plan ends before it starts: check the old software's dates.");
-  // The PT plan's own dates (staff may change them); by default from the sale's start date. A PT
-  // plan carried over alone from the old software keeps its own last day there.
   const isDay = (x: string | undefined): x is string => !!x && /^\d{4}-\d{2}-\d{2}$/.test(x);
   const ptStart = input.pt && isDay(input.pt.startDate) ? input.pt.startDate : input.startDate;
   const ptEnd = input.pt
     ? isDay(input.pt.endDate)
       ? input.pt.endDate
-      : oldEnd && !input.gymPackage
-        ? oldEnd
-        : calculateEndDate(ptStart, input.pt.pkg.durationDays)
+      : calculateEndDate(ptStart, input.pt.pkg.durationDays)
     : "";
   if (input.pt && ptEnd < ptStart)
     throw new Error("The PT plan ends before it starts: check the PT dates.");
   const planEnd = input.gymPackage
-    ? oldEnd || calculateEndDate(input.startDate, input.gymPackage.durationDays)
+    ? calculateEndDate(input.startDate, input.gymPackage.durationDays)
     : "";
-  // An old plan whose dates are all past is saved as ended (it never becomes the current plan).
   const membershipStatus =
     planEnd && planEnd < today ? "expired" : input.startDate > today ? "pending" : "active";
   // Two gym plans for the same days: one is a copy, and both would count their money.
@@ -534,7 +432,7 @@ export async function enrollMember(given: EnrollmentInput) {
 
     let endDate = "";
     if (membershipRef && input.gymPackage) {
-      endDate = oldEnd || calculateEndDate(input.startDate, input.gymPackage.durationDays);
+      endDate = calculateEndDate(input.startDate, input.gymPackage.durationDays);
       // Stamped with this plan: removing it (added by mistake) makes them run again.
       prevActive.forEach((id) =>
         tx.update(doc(db, COLLECTIONS.memberships, id), {
@@ -567,7 +465,6 @@ export async function enrollMember(given: EnrollmentInput) {
         status: membershipStatus,
         invoiceId: invoiceRef?.id ?? "",
         enrollmentId: enrollmentRef.id,
-        ...oldFields,
         ...counsellor,
         createdAt: now,
         updatedAt: now,
@@ -592,7 +489,6 @@ export async function enrollMember(given: EnrollmentInput) {
         status: ptEnd < today ? "completed" : ptStart > today ? "pending" : "active",
         invoiceId: invoiceRef?.id ?? "",
         enrollmentId: enrollmentRef.id,
-        ...oldFields,
         ...counsellor,
         createdAt: now,
         updatedAt: now,
@@ -620,70 +516,43 @@ export async function enrollMember(given: EnrollmentInput) {
     const planName = [input.gymPackage?.name, input.pt ? `PT: ${ptPackageLabel(input.pt.pkg)}` : ""]
       .filter(Boolean)
       .join(" + ");
-    const items = old
-      ? [
-          {
-            name: `Balance from the old software · ${planName}`,
-            description: "Plan paid in the old software; this part was still due",
-            quantity: 1,
-            unitPrice: oldBalance,
-            total: oldBalance,
-            packageId: null,
-          },
-        ]
-      : [
-          ...(input.gymPackage
-            ? [
-                {
-                  name: input.gymPackage.name,
-                  description: `Gym membership · ${input.gymPackage.durationDays} days`,
-                  quantity: 1,
-                  unitPrice: input.gymPackage.price,
-                  total: input.gymPackage.price,
-                  packageId: input.gymPackage.id,
-                },
-              ]
-            : []),
-          ...(input.pt
-            ? [
-                {
-                  name: `PT: ${ptPackageLabel(input.pt.pkg)}`,
-                  description: `Personal training with ${input.pt.trainer.name}${
-                    ptDiscountOf(input.pt) > 0
-                      ? ` · ₹${input.pt.pkg.price.toLocaleString("en-IN")} less ₹${ptDiscountOf(input.pt).toLocaleString("en-IN")} PT discount`
-                      : ""
-                  }`,
-                  quantity: 1,
-                  unitPrice: ptNetPrice(input.pt),
-                  total: ptNetPrice(input.pt),
-                  packageId: null,
-                },
-              ]
-            : []),
-        ];
+    const items = [
+      ...(input.gymPackage
+        ? [
+            {
+              name: input.gymPackage.name,
+              description: `Gym membership · ${input.gymPackage.durationDays} days`,
+              quantity: 1,
+              unitPrice: input.gymPackage.price,
+              total: input.gymPackage.price,
+              packageId: input.gymPackage.id,
+            },
+          ]
+        : []),
+      ...(input.pt
+        ? [
+            {
+              name: `PT: ${ptPackageLabel(input.pt.pkg)}`,
+              description: `Personal training with ${input.pt.trainer.name}${
+                ptDiscountOf(input.pt) > 0
+                  ? ` · ₹${input.pt.pkg.price.toLocaleString("en-IN")} less ₹${ptDiscountOf(input.pt).toLocaleString("en-IN")} PT discount`
+                  : ""
+              }`,
+              quantity: 1,
+              unitPrice: ptNetPrice(input.pt),
+              total: ptNetPrice(input.pt),
+              packageId: null,
+            },
+          ]
+        : []),
+    ];
     const { share: _s, upgradeCredit: _u, ...plainMoney } = totals;
-    const money = old
-      ? {
-          subtotal: oldBalance,
-          discount: 0,
-          tax: 0,
-          total: oldBalance,
-          amountPaid: 0,
-          balanceDue: oldBalance,
-          upgradeCredit: 0,
-        }
-      : { ...plainMoney, upgradeCredit: totals.upgradeCredit };
-    const breakdown = old
-      ? {
-          membershipGross: input.gymPackage ? oldBalance : 0,
-          ptGross: input.gymPackage ? 0 : oldBalance,
-          trainerShareTotal: 0,
-        }
-      : {
-          membershipGross: input.gymPackage?.price ?? 0,
-          ptGross: input.pt ? ptNetPrice(input.pt) : 0,
-          trainerShareTotal: share?.trainerShareAmount ?? 0,
-        };
+    const money = { ...plainMoney, upgradeCredit: totals.upgradeCredit };
+    const breakdown = {
+      membershipGross: input.gymPackage?.price ?? 0,
+      ptGross: input.pt ? ptNetPrice(input.pt) : 0,
+      trainerShareTotal: share?.trainerShareAmount ?? 0,
+    };
     const paymentStatus = derivePaymentStatus(money.total, money.amountPaid);
     if (invoiceRef)
       tx.set(invoiceRef, {
@@ -700,7 +569,6 @@ export async function enrollMember(given: EnrollmentInput) {
         items,
         ...money,
         ...breakdown,
-        ...(old ? { remindOldBalance: old.remind === true } : {}),
         paymentsTracked: true,
         paymentStatus,
         paymentMethod: modes.paymentMethod,
@@ -711,7 +579,6 @@ export async function enrollMember(given: EnrollmentInput) {
           input.upgrade
             ? `Upgrade from ${input.upgrade.fromPackage}: ₹${input.upgrade.credit.toLocaleString("en-IN")} credit for ${input.upgrade.unusedDays} unused days`
             : "",
-          old ? "Moved from the old software (plan paid there)" : "",
           input.notes,
         ]
           .filter(Boolean)
@@ -785,24 +652,6 @@ export async function enrollMember(given: EnrollmentInput) {
           updatedAt: now,
         });
     }
-    // Paid in the old software: counted on the day(s) it was paid there, never in today's cash.
-    if (old && oldRows.length) {
-      const link = {
-        clientId: clientRef.id,
-        clientName: fullName,
-        membershipId: membershipRef?.id ?? null,
-        ptAssignmentId: ptRef?.id ?? null,
-        billNo: old.billNo ? String(old.billNo) : "",
-        basis: {
-          gym: input.gymPackage ? { price: input.gymPackage.price } : null,
-          pt: share ? { price: share.ptPrice, trainerShare: share.trainerShareAmount } : null,
-        },
-      };
-      const sorted = [...oldRows].sort((a, b) => a.date.localeCompare(b.date));
-      sorted.forEach((r, i) =>
-        tx.set(doc(col(COLLECTIONS.payments)), oldPaymentData(r, link, i === 0, input.staff)),
-      );
-    }
     tx.set(enrollmentRef, {
       clientId: clientRef.id,
       clientNameSnapshot: fullName,
@@ -811,8 +660,7 @@ export async function enrollMember(given: EnrollmentInput) {
       ptAssignmentId: ptRef?.id ?? null,
       invoiceId: invoiceRef?.id ?? "",
       paymentId: paymentRef?.id ?? null,
-      paymentStatus: invoiceRef ? paymentStatus : "paid",
-      ...oldFields,
+      paymentStatus,
       biometricDeviceId: input.existingClient?.biometricDeviceId ?? "",
       biometricUserId: input.existingClient?.biometricUserId ?? "",
       firstThumbRegistered: !needsBiometric,

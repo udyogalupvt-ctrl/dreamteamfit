@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { EmptyState } from "@/components/common/empty-state";
 import { SearchInput } from "@/components/common/search-input";
 import { StatusPill } from "@/components/common/status-pill";
+import { carryOldPlan } from "@/services/old-migrate.service";
 import { useEnrollment } from "@/components/enrollment/enrollment-context";
 import { Button } from "@/components/ui/button";
 import {
@@ -297,15 +298,16 @@ function OldCallRow({
           <Button
             size="sm"
             onClick={() =>
-              openEnrollment({
-                prefill: {
-                  fullName: name,
-                  phone: old.phone || call.phoneKey,
-                  gender: old.gender,
-                  dateOfBirth: old.dob || null,
-                  oldMemberId: old.memberId,
-                },
-              })
+              carryOldPlan(old.phone || call.phoneKey, old.memberId).then(
+                (r) =>
+                  toast.success(`${name} added with their old plan, as it is`, {
+                    description: r.summary,
+                  }),
+                (err: unknown) =>
+                  toast.error("Could not add from the old software", {
+                    description: err instanceof Error ? err.message : String(err),
+                  }),
+              )
             }
           >
             <UserPlus aria-hidden /> Add as member

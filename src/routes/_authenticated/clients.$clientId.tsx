@@ -88,11 +88,10 @@ import { memberIdLabel, subscribeClient, updateClient } from "@/services/clients
 import { subscribeClientMemberships, undoLastPause } from "@/services/memberships.service";
 import { PausePlanDialog } from "@/components/clients/pause-plan-dialog";
 import { EditPlanDialog, PlanEdits } from "@/components/clients/edit-plan-dialog";
-import { OldSoftwareDialog } from "@/components/clients/old-software-dialog";
-import { gymMoveTarget, undoOldSoftwareMove } from "@/services/old-software.service";
+import { undoOldSoftwareMove } from "@/services/old-software.service";
+import { carryOldPlan } from "@/services/old-migrate.service";
 import { lookupOldMembers } from "@/services/old-data.service";
 import { isOldPtPlanName, matchingOldPlan, runningOldPlan, type OldMember } from "@/lib/old-data";
-import { AddOldPlanDialog } from "@/components/clients/add-old-plan-dialog";
 import { billOfPlan } from "@/services/plan-edit.service";
 import { isOldBalanceBill } from "@/lib/old-money";
 import { PlanPriceAmount, PlanPriceLine } from "@/components/clients/plan-price";
@@ -191,13 +190,10 @@ function ClientProfilePage() {
   const [cancelling, setCancelling] = useState<Membership | null>(null);
   const [pausing, setPausing] = useState<Membership | null>(null);
   const [editing, setEditing] = useState<Membership | null>(null);
-  const [oldMove, setOldMove] = useState<Membership | null>(null);
-  const oldMoveTarget = useMemo(() => (oldMove ? gymMoveTarget(oldMove) : null), [oldMove]);
   // A plan added by mistake, being removed (bin icon).
   const [removing, setRemoving] = useState<RemoveTarget | null>(null);
   const removeGym = (m: Membership) =>
     setRemoving({ kind: "gym", id: m.id, name: m.packageNameSnapshot });
-  const [addOld, setAddOld] = useState(false);
   // The member's record in the old software (same cached lookup as the Old software record card).
   const [oldRecord, setOldRecord] = useState<{ phone: string; members: OldMember[] }>({
     phone: "",
@@ -255,11 +251,6 @@ function ClientProfilePage() {
     effective: effectiveMembershipStatus(m),
   }));
   const current = withStatus.find((m) => m.effective === "active") ?? null;
-  // "Paid in the old software?" is offered only where it can be true: a member from the old
-  // software, or a plan that started before its bill was made. A new member who joins and pays
-  // here sees none of it (user, 2026-10-09: new members stay clean).
-  const mayBeOldSale = (m: Membership, bill: Invoice | null | undefined) =>
-    !!bill && (!!c.oldMemberId || m.startDate < bill.invoiceDate);
   // A plan paid in the old software that was saved without the amount (e.g. from an app tab left
   // open on an older version) shows the amount from the old software's record of the same plan.
   // Display only: Edit / Cancel get the plan as saved.
@@ -622,16 +613,21 @@ function ClientProfilePage() {
                   {formatPrice(Math.max(0, missingOldRun.amount - missingOldRun.balance))}
                 </p>
               </div>
-              <Button onClick={() => setAddOld(true)} className="shrink-0">
-                Add it here
+              <Button
+                className="shrink-0"
+                onClick={() =>
+                  carryOldPlan(c.phone, oldPerson?.memberId ?? c.oldMemberId ?? "").then(
+                    (r) =>
+                      toast.success("Old plan carried over as it is", { description: r.summary }),
+                    (e: unknown) =>
+                      toast.error("Could not carry the old plan", {
+                        description: e instanceof Error ? e.message : String(e),
+                      }),
+                  )
+                }
+              >
+                Add it here, as it is
               </Button>
-              <AddOldPlanDialog
-                client={c}
-                plan={missingOldRun}
-                others={oldPerson?.plans ?? []}
-                open={addOld}
-                onClose={() => setAddOld(false)}
-              />
             </section>
           ) : null}
           {memberships.loading ? (
@@ -744,16 +740,6 @@ function ClientProfilePage() {
                               </>
                             ) : null}
                           </p>
-                        ) : can("finance") &&
-                          m.status !== "cancelled" &&
-                          mayBeOldSale(m, billOfPlan(m, invoices.data)) ? (
-                          <button
-                            type="button"
-                            className="text-meta cursor-pointer underline underline-offset-2 hover:text-foreground"
-                            onClick={() => setOldMove(m)}
-                          >
-                            Paid in the old software?
-                          </button>
                         ) : null}
                         <PlanEdits plan={m} />
                       </div>
@@ -885,14 +871,6 @@ function ClientProfilePage() {
       <AddDietDialog open={addDietOpen} onOpenChange={setAddDietOpen} clientId={c.id} />
       <BookingFormDialog open={addBookingOpen} onOpenChange={setAddBookingOpen} initialClient={c} />
       <PhotoDialog open={photoOpen} onOpenChange={setPhotoOpen} client={c} />
-      <OldSoftwareDialog
-        target={oldMoveTarget}
-        bill={oldMove ? billOfPlan(oldMove, invoices.data) : null}
-        memberName={c.fullName}
-        memberPhone={c.phone}
-        oldMemberId={c.oldMemberId ?? ""}
-        onClose={() => setOldMove(null)}
-      />
       <EditPlanDialog
         client={c}
         membership={editing}

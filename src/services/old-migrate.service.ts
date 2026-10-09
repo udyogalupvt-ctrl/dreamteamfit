@@ -38,7 +38,13 @@ export const previewOldMigrate = (cursor: number) =>
 
 export const applyOldMigrate = (runId: string, members: { phone: string; oldMemberId: string }[]) =>
   callServer<{
-    applied: { phone: string; oldMemberId: string; moveId: string; clientId: string; summary: string }[];
+    applied: {
+      phone: string;
+      oldMemberId: string;
+      moveId: string;
+      clientId: string;
+      summary: string;
+    }[];
     skipped: { phone: string; oldMemberId: string; reason: string }[];
     errors: { phone: string; oldMemberId: string; error: string }[];
   }>("/api/old-migrate/apply", { runId, members });
@@ -55,10 +61,11 @@ export const undoOldMigrate = (moveId: string) =>
   callServer<{ ok: true }>("/api/old-migrate/undo", { moveId });
 
 export const undoOldMigrateRun = (runId: string) =>
-  callServer<{ undone: string[]; errors: { moveId: string; who: string; error: string }[]; remaining: number }>(
-    "/api/old-migrate/undo-run",
-    { runId },
-  );
+  callServer<{
+    undone: string[];
+    errors: { moveId: string; who: string; error: string }[];
+    remaining: number;
+  }>("/api/old-migrate/undo-run", { runId });
 
 /** Old-software people for the search box ("Add from old software"). */
 export const searchOldSoftware = (q: string) =>

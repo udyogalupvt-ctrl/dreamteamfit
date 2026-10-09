@@ -39,6 +39,7 @@ import {
   type OldDataIndex,
   type OldFileMeta,
 } from "@/services/old-data.service";
+import { carryOldPlan } from "@/services/old-migrate.service";
 import type { Client } from "@/types/models";
 
 export const Route = createFileRoute("/_authenticated/backup")({
@@ -475,15 +476,19 @@ function OldMembersSection({ owner, reload }: { owner: boolean; reload: number }
                       <Button
                         size="sm"
                         onClick={() =>
-                          openEnrollment({
-                            prefill: {
-                              fullName: tidyName(e.n),
-                              phone: e.k,
-                              gender: e.g,
-                              dateOfBirth: e.d || null,
-                              oldMemberId: e.id,
-                            },
-                          })
+                          carryOldPlan(e.k, e.id).then(
+                            (r) =>
+                              toast.success(
+                                `${tidyName(e.n)} added with their old plan, as it is`,
+                                {
+                                  description: r.summary,
+                                },
+                              ),
+                            (err: unknown) =>
+                              toast.error("Could not add from the old software", {
+                                description: err instanceof Error ? err.message : String(err),
+                              }),
+                          )
                         }
                       >
                         <UserPlus aria-hidden /> Add
