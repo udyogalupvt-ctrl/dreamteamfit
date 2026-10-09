@@ -31,6 +31,7 @@ import { staffPaymentRefs } from "./expenses.service";
 import { col, COLLECTIONS, toDate, type CollectionName } from "./firestore.service";
 import { memberAppAction, trainerAccess } from "./portal.service";
 import { mapBinEntry as mapEntry } from "./recycle-bin-list.service";
+import { putBackPayment } from "./payment-remove.service";
 export { subscribeRecycleBin } from "./recycle-bin-list.service";
 import { saveStaff, updateStaffLogin } from "./staff.service";
 
@@ -214,6 +215,8 @@ export async function restoreFromBin(
   by: Deleter,
   viewer: { owner: boolean; uid: string },
 ) {
+  // A payment removed by mistake: it comes back together with its bill's amounts.
+  if (entry.extra["kind"] === "payment") return putBackPayment(entry.id, viewer);
   const all = await itemsOf(entry, viewer);
   const items = all.filter(restorable);
   // Follow-up steps (logins back on, leads re-linked, door check) only for a record that really

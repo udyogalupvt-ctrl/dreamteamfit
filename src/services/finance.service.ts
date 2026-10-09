@@ -19,7 +19,7 @@ import {
 } from "@/lib/firestore";
 import type { CashDay, HandoverEntry } from "@/lib/cash-book";
 import { db } from "@/lib/firebase";
-import { todayISO } from "@/lib/format";
+import { formatDateISO, todayISO } from "@/lib/format";
 import { derivePaymentStatus } from "@/lib/invoice-utils";
 import type {
   Invoice,
@@ -295,8 +295,20 @@ export async function recordBalancePayment(
   amount: number,
   method: PaymentMethod,
   staffName: string,
-  opts: { staffUid?: string; nextPaymentDate?: string | null } = {},
+  opts: {
+    staffUid?: string;
+    nextPaymentDate?: string | null;
+    /** The day it was paid (collected yesterday, typed in today); default today. */
+    paymentDate?: string;
+  } = {},
 ) {
+  const today = todayISO();
+  const paidOn = opts.paymentDate || today;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(paidOn)) throw new Error("Pick the day it was paid.");
+  if (paidOn > today) throw new Error("The day it was paid can't be after today.");
+  // Older days are closed in the Day Book (their cash is carried forward), like Edit payment.
+  if (paidOn < cashOpenFrom(today))
+    throw new Error(`Pick a day from ${formatDateISO(cashOpenFrom(today))} on.`);
   const ref = doc(db, COLLECTIONS.invoices, invoice.id);
   const payRef = doc(col(COLLECTIONS.payments));
   await runTransaction(db, async (tx) => {
@@ -333,7 +345,7 @@ export async function recordBalancePayment(
       ptAssignmentId: d["ptAssignmentId"] ?? null,
       amount,
       method,
-      paymentDate: todayISO(),
+      paymentDate: paidOn,
       kind: "balance",
       ...alloc,
       createdBy: staffName,

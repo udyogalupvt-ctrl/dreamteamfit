@@ -30,7 +30,14 @@ import {
   rowOf,
   writeOldRows,
 } from "./old-money.service";
-import { checkOldRows, diffOldRows, oldRowsTotal, type OldPayRow } from "@/lib/old-money";
+import {
+  checkOldRows,
+  diffOldRows,
+  oldBalanceAfter,
+  oldRowsTotal,
+  type OldBalanceChange,
+  type OldPayRow,
+} from "@/lib/old-money";
 
 /**
  * Correcting a plan after it was sold: wrong package, wrong start / end date, wrong counsellor,
@@ -119,6 +126,8 @@ export interface PlanEditPreview {
   oldPaidChanged: boolean;
   /** Its old-software payment records change (`form.oldRows`). */
   oldRowsChanged: boolean;
+  /** Paid in the old software changed: its balance (and the balance bill here) follow. */
+  oldBalance: OldBalanceChange | null;
   status: MembershipStatus;
 }
 
@@ -175,6 +184,26 @@ export function previewPlanEdit(
       `Paid in the old software ${formatPrice(oldPaidBefore)} → ${formatPrice(oldPaid)}`,
     );
 
+  // More paid there = less balance owed here (the balance bill drops by as much), and back.
+  const oldBalance =
+    m.paidInOldSoftware && oldPaidChanged
+      ? oldBalanceAfter({
+          paidBefore: oldPaidBefore,
+          paidAfter: oldPaid,
+          oldBalance: m.oldSoftwareBalance ?? 0,
+          bill,
+        })
+      : null;
+  if (oldBalance?.bill)
+    changes.push(
+      `Balance due on bill ${bill?.invoiceNumber ?? ""} ${formatPrice(bill?.balanceDue ?? 0)} → ${formatPrice(oldBalance.bill.balanceDue)}` +
+        (oldBalance.bill.moved > 0 ? " (paid in the old software)" : ""),
+    );
+  else if (oldBalance && oldBalance.oldBalance !== (m.oldSoftwareBalance ?? 0))
+    changes.push(
+      `Balance in the old software ${formatPrice(m.oldSoftwareBalance ?? 0)} → ${formatPrice(oldBalance.oldBalance)}`,
+    );
+
   const status =
     m.status === "biometric_pending"
       ? m.status
@@ -194,6 +223,7 @@ export function previewPlanEdit(
   else if (oldPaid < 0) error = "The amount paid in the old software can't be below ₹0.";
   else if (rows && oldRowsChanged && checkOldRows(rows.after, today))
     error = checkOldRows(rows.after, today);
+  else if (oldBalance?.error) error = oldBalance.error;
 
   let billChange: BillChange | null = null;
   let billNote = "";
@@ -263,6 +293,7 @@ export function previewPlanEdit(
     oldPaid,
     oldPaidChanged,
     oldRowsChanged,
+    oldBalance,
   };
 }
 
@@ -349,10 +380,16 @@ export async function editMembership(input: PlanEditInput) {
   const now = serverTimestamp();
   const planRef = doc(db, COLLECTIONS.memberships, m.id);
 
+  // The balance bill of a plan carried over from the old software (its balance changes).
+  const ob =
+    preview.oldBalance?.bill && input.bill ? { ...preview.oldBalance.bill, of: input.bill } : null;
+  const obRef = ob ? doc(db, COLLECTIONS.invoices, ob.of.id) : null;
+
   await runTransaction(db, async (tx) => {
     const fresh = await tx.get(planRef);
     const billRef = bc ? doc(db, COLLECTIONS.invoices, bc.bill.id) : null;
     const freshBill = billRef ? await tx.get(billRef) : null;
+    const freshOb = obRef ? await tx.get(obRef) : null;
     if (!fresh.exists()) throw new Error("This plan no longer exists.");
     const f = fresh.data();
     // Someone else changed it meanwhile: start again from what is there now.
@@ -373,6 +410,14 @@ export async function editMembership(input: PlanEditInput) {
         Number(freshBill.data()?.["discount"] ?? 0) !== bc.bill.discount)
     )
       throw new Error("A payment was just added to this bill. Close and open Edit again.");
+    if (
+      ob &&
+      (!freshOb?.exists() ||
+        Number(freshOb.data()["amountPaid"] ?? 0) !== ob.of.amountPaid ||
+        Number(freshOb.data()["total"] ?? 0) !== ob.of.total ||
+        freshOb.data()["paymentStatus"] !== ob.of.paymentStatus)
+    )
+      throw new Error("Its balance bill was just changed. Close and open Edit again.");
     const recSnaps = await Promise.all(
       oldRecs.map((r) => tx.get(doc(db, COLLECTIONS.payments, r.id))),
     );
@@ -434,9 +479,12 @@ export async function editMembership(input: PlanEditInput) {
       counsellorId: form.counsellor?.id ?? "",
       counsellorName: form.counsellor?.name ?? "",
       ...(preview.oldPaidChanged ? { oldSoftwarePaid: preview.oldPaid } : {}),
+      ...(preview.oldBalance ? { oldSoftwareBalance: preview.oldBalance.oldBalance } : {}),
       edits: [...(Array.isArray(f["edits"]) ? f["edits"] : []), edit],
       updatedAt: now,
     });
+
+    if (ob && obRef) writeOldBalanceBill(tx, obRef, ob.of, ob, today, reason, now);
 
     if (bc && billRef) {
       const paymentStatus = derivePaymentStatus(bc.total, bc.amountPaid);
@@ -594,4 +642,44 @@ export async function editMembership(input: PlanEditInput) {
       });
   });
   return preview;
+}
+
+/**
+ * The balance bill of a plan carried over from the old software, after more (or less) of the
+ * balance was found paid there: its one line, total and balance follow; a note says why.
+ */
+export function writeOldBalanceBill(
+  tx: { update: (ref: ReturnType<typeof doc>, data: Record<string, unknown>) => unknown },
+  ref: ReturnType<typeof doc>,
+  bill: Invoice,
+  after: NonNullable<OldBalanceChange["bill"]>,
+  today: string,
+  reason: string,
+  now: ReturnType<typeof serverTimestamp>,
+) {
+  const items = bill.items.map((it, i) =>
+    i === 0 ? { ...it, unitPrice: after.total, total: after.total } : it,
+  );
+  const what =
+    after.moved > 0
+      ? `${formatPrice(after.moved)} of the balance was paid in the old software`
+      : `${formatPrice(-after.moved)} of the balance is due again (less paid in the old software)`;
+  const money = {
+    items,
+    subtotal: after.total,
+    total: after.total,
+    balanceDue: after.balanceDue,
+    paymentStatus: after.paymentStatus,
+    ...(bill.ptGross > 0 && !(bill.membershipGross > 0)
+      ? { ptGross: after.total }
+      : { membershipGross: after.total }),
+    updatedAt: now,
+  };
+  tx.update(ref, {
+    ...money,
+    notes: [bill.notes, `${formatDateISO(today)}: ${what}${reason ? ` (${reason})` : ""}`]
+      .filter(Boolean)
+      .join(" · "),
+  });
+  if (bill.publicToken) tx.update(doc(db, COLLECTIONS.publicInvoices, bill.publicToken), money);
 }

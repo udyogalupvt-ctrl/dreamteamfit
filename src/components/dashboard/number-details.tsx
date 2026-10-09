@@ -20,6 +20,7 @@ import type {
 } from "@/hooks/use-dashboard-metrics";
 import { attendanceSummary } from "@/lib/attendance-utils";
 import { formatDateISO, formatPrice } from "@/lib/format";
+import { foldTakenBack } from "@/lib/money-pairs";
 import { cn } from "@/lib/utils";
 import { subscribeAttendanceRange } from "@/services/attendance.service";
 import { collectedByMonth } from "@/services/finance.service";
@@ -139,6 +140,38 @@ function MoneyList({
   goTo: (clientId: string) => void;
 }) {
   const total = rows.reduce((n, r) => n + r.amount, 0);
+  // A payment and the refund that gave it back (same member, amount and mode) cancel out: folded
+  // under a "show" line so the list is the money that really came in. Totals stay the same.
+  const { shown, folded } = useMemo(() => foldTakenBack(rows), [rows]);
+  const [showFolded, setShowFolded] = useState(false);
+  const line = (r: MoneyRow, muted = false) => (
+    <Row key={r.id} onClick={r.clientId ? () => goTo(r.clientId) : undefined}>
+      <span className={cn("min-w-0 flex-1", muted && "opacity-70")}>
+        <span className="block truncate font-semibold">{r.name || "Member"}</span>
+        <span className="text-meta block">
+          {r.kind === "old"
+            ? formatDateISO(r.date)
+            : // Counted on another day than it was typed in (a plan that had started).
+              format(r.at, "yyyy-MM-dd") !== r.date
+              ? `${oneDay ? "" : `${formatDateISO(r.date)}, `}typed in ${formatDateISO(format(r.at, "yyyy-MM-dd"))}`
+              : oneDay
+                ? format(r.at, "h:mm a")
+                : `${formatDateISO(r.date)}, ${format(r.at, "h:mm a")}`}{" "}
+          · {r.method} · {KIND[r.kind]}
+          {r.bill ? ` · ${r.bill}` : ""}
+        </span>
+      </span>
+      <span
+        className={cn(
+          "shrink-0 font-semibold tabular-nums",
+          r.amount < 0 && "text-destructive",
+          muted && "opacity-70",
+        )}
+      >
+        {money(r.amount)}
+      </span>
+    </Row>
+  );
   const byMethod = useMemo(() => {
     const m = new Map<string, number>();
     // Old-software money has its own chip: it never came in here as cash / UPI.
@@ -146,13 +179,14 @@ function MoneyList({
       const key = r.kind === "old" ? "Old software" : r.method || "Other";
       m.set(key, (m.get(key) ?? 0) + r.amount);
     });
-    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+    // A mode whose money was all given back adds up to ₹0: no chip.
+    return [...m.entries()].filter(([, v]) => Math.abs(v) >= 0.01).sort((a, b) => b[1] - a[1]);
   }, [rows]);
   return (
     <>
       <Head
         title={title}
-        summary={`${money(total)} from ${rows.length} payment${rows.length === 1 ? "" : "s"}`}
+        summary={`${money(total)} from ${shown.length} payment${shown.length === 1 ? "" : "s"}`}
       />
       {byMethod.length ? (
         <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3 sm:px-5">
@@ -166,33 +200,28 @@ function MoneyList({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {rows.length ? (
           <ul className="divide-y divide-border">
-            {rows.map((r) => (
-              <Row key={r.id} onClick={r.clientId ? () => goTo(r.clientId) : undefined}>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold">{r.name || "Member"}</span>
-                  <span className="text-meta block">
-                    {r.kind === "old"
-                      ? formatDateISO(r.date)
-                      : // Counted on another day than it was typed in (a plan that had started).
-                        format(r.at, "yyyy-MM-dd") !== r.date
-                        ? `${oneDay ? "" : `${formatDateISO(r.date)}, `}typed in ${formatDateISO(format(r.at, "yyyy-MM-dd"))}`
-                        : oneDay
-                          ? format(r.at, "h:mm a")
-                          : `${formatDateISO(r.date)}, ${format(r.at, "h:mm a")}`}{" "}
-                    · {r.method} · {KIND[r.kind]}
-                    {r.bill ? ` · ${r.bill}` : ""}
-                  </span>
-                </span>
-                <span
-                  className={cn(
-                    "shrink-0 font-semibold tabular-nums",
-                    r.amount < 0 && "text-destructive",
-                  )}
+            {shown.map((r) => line(r))}
+            {folded.length ? (
+              <li className="bg-muted/40">
+                <button
+                  type="button"
+                  aria-expanded={showFolded}
+                  onClick={() => setShowFolded((v) => !v)}
+                  className="text-meta flex w-full cursor-pointer items-center gap-2 px-4 py-3 text-left hover:text-foreground sm:px-5"
                 >
-                  {money(r.amount)}
-                </span>
-              </Row>
-            ))}
+                  <ChevronRight
+                    className={cn(
+                      "size-4 shrink-0 transition-transform",
+                      showFolded && "rotate-90",
+                    )}
+                    aria-hidden
+                  />
+                  Paid and given back: {folded.length} (adds up to ₹0) ·{" "}
+                  {showFolded ? "Hide" : "Show"}
+                </button>
+              </li>
+            ) : null}
+            {showFolded ? folded.flat().map((r) => line(r, true)) : null}
           </ul>
         ) : (
           <Empty text="No payments in this period." />

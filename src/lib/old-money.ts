@@ -144,6 +144,91 @@ export function diffOldRows(existing: OldPayRow[], next: OldPayRow[]) {
   return { update, add, remove, changed: update.length + add.length + remove.length > 0 };
 }
 
+/* ------------------------------------------------------- the old balance, as a bill here */
+
+/** The bill a plan carried over from the old software gets for the balance still owed there. */
+export const OLD_BALANCE_LINE = "Balance from the old software";
+
+export interface OldBalanceBill {
+  invoiceNumber: string;
+  total: number;
+  amountPaid: number;
+  tax: number;
+  paymentStatus: string;
+  items: { name: string }[];
+}
+
+/** Only the balance bill made when the plan was carried over (not a sale here marked later). */
+export const isOldBalanceBill = (b: Pick<OldBalanceBill, "items"> | null | undefined) =>
+  !!b && b.items.length === 1 && b.items[0]!.name.startsWith(OLD_BALANCE_LINE);
+
+export interface OldBalanceChange {
+  error: string;
+  /** The balance bill after the change; null = it stays as it is. */
+  bill: {
+    total: number;
+    balanceDue: number;
+    paymentStatus: "paid" | "partial" | "pending";
+    /** ₹ of the balance now paid in the old software (+) or owed again (−). */
+    moved: number;
+  } | null;
+  /** The plan's balance in the old software after the change. */
+  oldBalance: number;
+}
+
+/**
+ * What was paid in the old software changed (staff found the balance was paid there too, e.g. the
+ * old software was never updated): the balance owed here goes down by the same amount, and back up
+ * when it is lowered again. The old deal (paid + balance) stays the same. Money already collected
+ * here on the bill stays: the balance can't go below it (remove that payment first if it was the
+ * same money).
+ */
+export function oldBalanceAfter(input: {
+  paidBefore: number;
+  paidAfter: number;
+  oldBalance: number;
+  bill: OldBalanceBill | null;
+}): OldBalanceChange {
+  const delta = round(input.paidAfter - input.paidBefore);
+  const balance = Math.max(0, round(input.oldBalance));
+  const out: OldBalanceChange = { error: "", bill: null, oldBalance: balance };
+  if (!delta) return out;
+  const b = input.bill;
+  const open =
+    isOldBalanceBill(b) && b!.paymentStatus !== "closed" && b!.paymentStatus !== "refunded";
+  if (!open) {
+    // No balance bill to change: only a balance shown on the plan goes down.
+    out.oldBalance = Math.max(0, round(balance - Math.max(0, delta)));
+    return out;
+  }
+  const bill = b!;
+  if (bill.tax > 0)
+    return { ...out, error: `Bill ${bill.invoiceNumber} has tax: change it from Billing.` };
+  const due = round(Math.max(0, bill.total - bill.amountPaid));
+  if (delta > due)
+    return {
+      ...out,
+      error:
+        bill.amountPaid > 0
+          ? `Only ${money(due)} of the balance is still due on bill ${bill.invoiceNumber}: ${money(bill.amountPaid)} was collected here. If that was the same money, remove that payment first (Payments).`
+          : `Only ${money(due)} of the balance is still due on bill ${bill.invoiceNumber}.`,
+    };
+  const total = round(Math.max(0, bill.total - delta));
+  const paid = Math.max(0, round(bill.amountPaid));
+  return {
+    error: "",
+    bill: {
+      total,
+      balanceDue: round(Math.max(0, total - paid)),
+      paymentStatus: paid >= total ? "paid" : paid > 0 ? "partial" : "pending",
+      moved: delta,
+    },
+    oldBalance: Math.max(0, round(balance - delta)),
+  };
+}
+
+const money = (n: number) => `₹${round(n).toLocaleString("en-IN")}`;
+
 /* ------------------------------------------------------------------ owner tool: backfill */
 
 /** A plan marked "paid in the old software", as the owner tool reads it. */

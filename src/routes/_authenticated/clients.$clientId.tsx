@@ -92,6 +92,7 @@ import { lookupOldMembers } from "@/services/old-data.service";
 import { isOldPtPlanName, matchingOldPlan, runningOldPlan, type OldMember } from "@/lib/old-data";
 import { AddOldPlanDialog } from "@/components/clients/add-old-plan-dialog";
 import { billOfPlan } from "@/services/plan-edit.service";
+import { isOldBalanceBill } from "@/lib/old-money";
 import { PlanPriceAmount, PlanPriceLine } from "@/components/clients/plan-price";
 import { canEditPlan } from "@/services/plan-edit.service";
 import {
@@ -936,7 +937,17 @@ function MembershipHero({
             <span className="font-semibold tabular-nums">
               {m.oldSoftwarePaid ? formatPrice(m.oldSoftwarePaid) : "—"}
             </span>
-            {m.oldSoftwareBalance ? (
+            {isOldBalanceBill(bill) && bill ? (
+              // The balance bill says what is still owed (collected here or paid there since).
+              bill.balanceDue > 0 ? (
+                <span className="tabular-nums"> · balance {formatPrice(bill.balanceDue)} due</span>
+              ) : bill.amountPaid > 0 ? (
+                <span className="tabular-nums">
+                  {" "}
+                  · balance {formatPrice(bill.amountPaid)} paid here
+                </span>
+              ) : null
+            ) : m.oldSoftwareBalance ? (
               <span className="tabular-nums"> · balance {formatPrice(m.oldSoftwareBalance)}</span>
             ) : null}
             <span className="text-meta block tabular-nums">

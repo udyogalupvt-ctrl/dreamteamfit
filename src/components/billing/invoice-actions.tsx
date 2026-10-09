@@ -29,7 +29,7 @@ import { useBin } from "@/hooks/use-bin";
 import { binBill } from "@/services/recycle-bin.service";
 import { getInvoicePublicUrl } from "@/lib/invoice-utils";
 import { manualWhatsAppUrl } from "@/lib/invoice-share";
-import { formatPrice } from "@/lib/format";
+import { formatDateISO, formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PAYMENT_METHODS, type Invoice, type PaymentMethod } from "@/types/models";
 import { autoSendBill, markInvoiceShared, sendInvoiceWhatsApp } from "@/services/whatsapp.service";
@@ -45,7 +45,8 @@ import {
   subscribeBusinessSettings,
 } from "@/services/business-settings.service";
 import { downloadInvoicePdf } from "@/lib/invoice-download";
-import { recordBalancePayment, undoBalancePayment } from "@/services/finance.service";
+import { cashOpenFrom, recordBalancePayment, undoBalancePayment } from "@/services/finance.service";
+import { isOldBalanceBill } from "@/lib/old-money";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { useLive } from "@/hooks/use-live-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -214,6 +215,8 @@ function BalancePaymentDialog({
   const [amount, setAmount] = useState(invoice.balanceDue);
   const [method, setMethod] = useState<PaymentMethod>("UPI");
   const [nextDate, setNextDate] = useState("");
+  // The day it was paid: today, or an earlier day when it is typed in later.
+  const [paidOn, setPaidOn] = useState(todayISO());
   const [saving, setSaving] = useState(false);
   const [lastOpen, setLastOpen] = useState(false);
   if (open !== lastOpen) {
@@ -221,8 +224,18 @@ function BalancePaymentDialog({
     if (open) {
       setAmount(invoice.balanceDue);
       setNextDate("");
+      setPaidOn(todayISO());
     }
   }
+  const today = todayISO();
+  const openFrom = cashOpenFrom(today);
+  const dateProblem = !/^\d{4}-\d{2}-\d{2}$/.test(paidOn)
+    ? "Pick the day it was paid."
+    : paidOn > today
+      ? "It can't be after today."
+      : paidOn < openFrom
+        ? `Pick a day from ${formatDateISO(openFrom)} on (older days are closed in the Day Book).`
+        : "";
   const restLeft = amount > 0 && amount < invoice.balanceDue;
   const save = async () => {
     setSaving(true);
@@ -235,6 +248,7 @@ function BalancePaymentDialog({
         {
           staffUid: user?.uid ?? "",
           nextPaymentDate: restLeft ? nextDate : null,
+          paymentDate: paidOn,
         },
       );
       toastWithUndo(
@@ -265,7 +279,11 @@ function BalancePaymentDialog({
           <Button
             size="lg"
             disabled={
-              saving || amount <= 0 || amount > invoice.balanceDue || (restLeft && !nextDate)
+              saving ||
+              amount <= 0 ||
+              amount > invoice.balanceDue ||
+              (restLeft && !nextDate) ||
+              !!dateProblem
             }
             onClick={() => save()}
           >
@@ -307,6 +325,30 @@ function BalancePaymentDialog({
             />
           </Field>
         ) : null}
+        <Field
+          label="Paid on"
+          htmlFor="bal-date"
+          error={dateProblem || undefined}
+          hint={
+            dateProblem
+              ? undefined
+              : paidOn === today
+                ? isOldBalanceBill(invoice)
+                  ? `Paid back when the old software was used (before ${formatDateISO(openFrom)})? Add it on the member's plan instead: Edit plan → Paid in the old software. The balance here goes down by as much.`
+                  : "Collected today. Paid on another day? Pick that day."
+                : `Counted in Collected on ${formatDateISO(paidOn)}${method === "Cash" ? " and in that day's Day Book cash" : ""}, not today.`
+          }
+        >
+          <Input
+            id="bal-date"
+            type="date"
+            min={openFrom}
+            max={today}
+            value={paidOn}
+            onChange={(e) => setPaidOn(e.target.value)}
+            className="max-w-48"
+          />
+        </Field>
         <Field label="Paid by" htmlFor="bal-method">
           <div className="flex flex-wrap gap-1.5" role="radiogroup" id="bal-method">
             {PAYMENT_METHODS.filter((m) => m !== "Other").map((m) => (

@@ -1,4 +1,12 @@
-import { Dumbbell, Fingerprint, Pencil, RotateCcw, ShieldCheck, ShieldX } from "lucide-react";
+import {
+  Dumbbell,
+  Fingerprint,
+  Pencil,
+  RotateCcw,
+  ShieldCheck,
+  ShieldX,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/common/empty-state";
@@ -20,6 +28,8 @@ import { BOOKING_STATUS_META, formatTime } from "@/lib/format";
 import { useState, type ReactNode } from "react";
 import { subscribeClientPayments, undoBalancePayment } from "@/services/finance.service";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import { RemovePaymentDialog } from "@/components/billing/remove-payment-dialog";
+import { useAccess } from "@/hooks/use-access";
 import {
   EditLines,
   EditPaymentDialog,
@@ -261,7 +271,11 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
   ]);
   const [undoing, setUndoing] = useState<Payment | null>(null);
   const [editing, setEditing] = useState<Payment | null>(null);
+  const [removing, setRemoving] = useState<Payment | null>(null);
   const rightsOf = usePaymentEditRights();
+  // Removing an entry made by mistake changes past income: the owner's (Income & expenses).
+  const canRemove = useAccess().can("finance");
+  const today = todayISO();
   if (!pays.data.length) return null;
   const undo = async () => {
     const p = undoing;
@@ -314,10 +328,23 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
                   <Pencil aria-hidden /> Edit
                 </Button>
               ) : null}
-              {/* A balance payment entered by mistake can be taken back the same day. */}
-              {p.kind === "balance" && !p.oldSoftware && p.paymentDate === todayISO() ? (
+              {/* A balance payment entered by mistake can be taken back the day it was typed in. */}
+              {p.kind === "balance" &&
+              !p.oldSoftware &&
+              !canRemove &&
+              (p.paymentDate === today || formatISODay(p.createdAt) === today) ? (
                 <Button variant="ghost" size="sm" onClick={() => setUndoing(p)}>
                   <RotateCcw aria-hidden /> Undo
+                </Button>
+              ) : null}
+              {canRemove ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Remove payment ${formatPrice(p.amount)} on ${formatDateISO(p.paymentDate)}`}
+                  onClick={() => setRemoving(p)}
+                >
+                  <Trash2 aria-hidden /> Remove
                 </Button>
               ) : null}
             </span>
@@ -325,6 +352,7 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
         ))}
       </ul>
       <EditPaymentDialog payment={editing} onClose={() => setEditing(null)} />
+      <RemovePaymentDialog payment={removing} onClose={() => setRemoving(null)} />
       <ConfirmDialog
         open={!!undoing}
         onOpenChange={(o) => !o && setUndoing(null)}
@@ -338,3 +366,7 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
     </section>
   );
 }
+
+/** "YYYY-MM-DD" of a moment, India time (when a payment was typed in). */
+const formatISODay = (d: Date) =>
+  new Date(d.getTime() + 5.5 * 3_600_000).toISOString().slice(0, 10);

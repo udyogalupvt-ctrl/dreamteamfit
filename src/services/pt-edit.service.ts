@@ -18,7 +18,15 @@ import {
   rowOf,
   writeOldRows,
 } from "./old-money.service";
-import { checkOldRows, diffOldRows, oldRowsTotal, type OldPayRow } from "@/lib/old-money";
+import {
+  checkOldRows,
+  diffOldRows,
+  oldBalanceAfter,
+  oldRowsTotal,
+  type OldPayRow,
+} from "@/lib/old-money";
+import { mapInvoice } from "./invoices.service";
+import { writeOldBalanceBill } from "./plan-edit.service";
 import { calculateShare } from "./pt.service";
 
 /**
@@ -170,9 +178,45 @@ export async function editPtPlan(input: {
   const gymPrice = gymId
     ? Number((await getDoc(doc(db, COLLECTIONS.memberships, gymId))).data()?.["priceSnapshot"] ?? 0)
     : 0;
+  // More paid there = less balance owed here (the balance bill drops by as much), and back.
+  const oldPaidBefore = p.oldSoftwarePaid ?? 0;
+  let oldBal: {
+    change: ReturnType<typeof oldBalanceAfter>;
+    bill: ReturnType<typeof mapInvoice> | null;
+  } | null = null;
+  if (p.paidInOldSoftware && oldPaid !== oldPaidBefore) {
+    const [ptSnap, billSnap] = await Promise.all([
+      getDoc(doc(db, COLLECTIONS.ptAssignments, p.id)),
+      p.invoiceId ? getDoc(doc(db, COLLECTIONS.invoices, p.invoiceId)) : Promise.resolve(null),
+    ]);
+    const bill = billSnap?.exists() ? mapInvoice(billSnap.id, billSnap.data()) : null;
+    const change = oldBalanceAfter({
+      paidBefore: oldPaidBefore,
+      paidAfter: oldPaid,
+      oldBalance: Number(ptSnap.data()?.["oldSoftwareBalance"] ?? 0) || 0,
+      bill,
+    });
+    if (change.error) throw new Error(change.error);
+    if (change.bill && bill)
+      changes.push(
+        `Balance due on bill ${bill.invoiceNumber} ${formatPrice(bill.balanceDue)} → ${formatPrice(change.bill.balanceDue)}` +
+          (change.bill.moved > 0 ? " (paid in the old software)" : ""),
+      );
+    oldBal = { change, bill };
+  }
 
   const batch = writeBatch(db);
   const now = serverTimestamp();
+  if (oldBal?.change.bill && oldBal.bill)
+    writeOldBalanceBill(
+      batch,
+      doc(db, COLLECTIONS.invoices, oldBal.bill.id),
+      oldBal.bill,
+      oldBal.change.bill,
+      todayISO(),
+      input.reason.trim().slice(0, 300),
+      now,
+    );
   const ptBasis = {
     gym: gymId ? { price: gymPrice } : null,
     pt: {
@@ -274,6 +318,7 @@ export async function editPtPlan(input: {
     endDate: form.endDate,
     status: ptStatusFromDates(form.startDate, form.endDate),
     ...(oldPaid !== (p.oldSoftwarePaid ?? 0) ? { oldSoftwarePaid: oldPaid } : {}),
+    ...(oldBal ? { oldSoftwareBalance: oldBal.change.oldBalance } : {}),
     ...(share
       ? {
           trainerShareType: share.trainerShareType,

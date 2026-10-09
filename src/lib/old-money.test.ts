@@ -4,9 +4,12 @@ import {
   checkOldRows,
   defaultOldRows,
   diffOldRows,
+  isOldBalanceBill,
+  oldBalanceAfter,
   oldMoneySplit,
   oldPartnerOf,
   planOldBackfill,
+  type OldBalanceBill,
   type OldPlanFact,
 } from "./old-money.ts";
 
@@ -326,4 +329,115 @@ test("backfill: the bill number and plan name travel with the payment", () => {
   const b = planOldBackfill([gym({ billNo: "344", name: "3 Month" })], "2026-10-08");
   assert.equal(b.add[0]!.billNo, "344");
   assert.equal(b.add[0]!.label, "3 Month");
+});
+
+/* ------------------------------------------------ the old balance (Edit plan → paid there) */
+
+const balanceBill = (o: Partial<OldBalanceBill> = {}): OldBalanceBill => ({
+  invoiceNumber: "RF-2026-000087",
+  total: 5000,
+  amountPaid: 0,
+  tax: 0,
+  paymentStatus: "pending",
+  items: [{ name: "Balance from the old software · 1 year cardio and strengthening" }],
+  ...o,
+});
+
+test("balance paid in the old software too: the balance bill drops to ₹0 and reads paid", () => {
+  const r = oldBalanceAfter({
+    paidBefore: 5000,
+    paidAfter: 10000,
+    oldBalance: 5000,
+    bill: balanceBill(),
+  });
+  assert.equal(r.error, "");
+  assert.deepEqual(r.bill, { total: 0, balanceDue: 0, paymentStatus: "paid", moved: 5000 });
+  assert.equal(r.oldBalance, 0);
+});
+
+test("part of the balance paid there: the rest stays due", () => {
+  const r = oldBalanceAfter({
+    paidBefore: 5000,
+    paidAfter: 7000,
+    oldBalance: 5000,
+    bill: balanceBill(),
+  });
+  assert.deepEqual(r.bill, {
+    total: 3000,
+    balanceDue: 3000,
+    paymentStatus: "pending",
+    moved: 2000,
+  });
+  assert.equal(r.oldBalance, 3000);
+});
+
+test("lowered again: the balance is owed again (the old deal stays the same)", () => {
+  const r = oldBalanceAfter({
+    paidBefore: 10000,
+    paidAfter: 5000,
+    oldBalance: 0,
+    bill: balanceBill({ total: 0, paymentStatus: "paid" }),
+  });
+  assert.deepEqual(r.bill, {
+    total: 5000,
+    balanceDue: 5000,
+    paymentStatus: "pending",
+    moved: -5000,
+  });
+  assert.equal(r.oldBalance, 5000);
+});
+
+test("more than the balance still due: refused, and says what was collected here", () => {
+  const r = oldBalanceAfter({
+    paidBefore: 5000,
+    paidAfter: 10000,
+    oldBalance: 5000,
+    bill: balanceBill({ amountPaid: 5000, paymentStatus: "paid" }),
+  });
+  assert.match(
+    r.error,
+    /Only ₹0 of the balance is still due on bill RF-2026-000087: ₹5,000 was collected here/,
+  );
+  assert.equal(r.bill, null);
+  const r2 = oldBalanceAfter({
+    paidBefore: 5000,
+    paidAfter: 12000,
+    oldBalance: 5000,
+    bill: balanceBill(),
+  });
+  assert.match(r2.error, /Only ₹5,000 of the balance is still due/);
+});
+
+test("part collected here, the rest paid there: bill reads paid with what was collected", () => {
+  const r = oldBalanceAfter({
+    paidBefore: 5000,
+    paidAfter: 8000,
+    oldBalance: 5000,
+    bill: balanceBill({ amountPaid: 2000, paymentStatus: "partial" }),
+  });
+  assert.deepEqual(r.bill, { total: 2000, balanceDue: 0, paymentStatus: "paid", moved: 3000 });
+});
+
+test("no balance bill (none, a sale here, closed): bill untouched, the plan's balance only goes down", () => {
+  const sale = balanceBill({ items: [{ name: "1 year cardio and strengthening" }] });
+  for (const bill of [null, sale, balanceBill({ paymentStatus: "closed" })]) {
+    const up = oldBalanceAfter({ paidBefore: 5000, paidAfter: 6000, oldBalance: 5000, bill });
+    assert.equal(up.bill, null);
+    assert.equal(up.oldBalance, 4000);
+    const down = oldBalanceAfter({ paidBefore: 5000, paidAfter: 4000, oldBalance: 5000, bill });
+    assert.equal(down.bill, null);
+    assert.equal(down.oldBalance, 5000);
+  }
+  assert.equal(isOldBalanceBill(sale), false);
+  assert.equal(isOldBalanceBill(balanceBill()), true);
+});
+
+test("nothing paid there changed: nothing to do", () => {
+  const r = oldBalanceAfter({
+    paidBefore: 5000,
+    paidAfter: 5000,
+    oldBalance: 5000,
+    bill: balanceBill(),
+  });
+  assert.deepEqual(r, { error: "", bill: null, oldBalance: 5000 });
 });
