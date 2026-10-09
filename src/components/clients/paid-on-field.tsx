@@ -43,7 +43,9 @@ export function usePaidOn(input: {
   const payment = initial.find((p) => p.splitId && p.id === p.splitId) ?? initial[0] ?? null;
   // Cash + UPI: both parts, moved together.
   const group = payment?.splitId
-    ? initial.filter((p) => p.splitId === payment.splitId)
+    ? initial
+        .filter((p) => p.splitId === payment.splitId)
+        .sort((a, b) => (a.method === "UPI" ? -1 : 0) - (b.method === "UPI" ? -1 : 0))
     : payment
       ? [payment]
       : [];
