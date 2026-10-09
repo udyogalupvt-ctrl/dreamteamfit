@@ -1,6 +1,54 @@
 # Handoff
 
-Last updated: 2026-10-09 (night, clean-new-members merged and pushed)
+Last updated: 2026-10-09 (late night, money-fixes merged and pushed)
+
+## 2026-10-09 (late night): migration money fixes (merged into main and pushed, 04e2545)
+
+User's report (P. Sai Ram, member ID 141): old software showed ₹5,000 balance that was really paid
+back then. "Paid in parts" in Edit plan did not clear the balance; Billing Collect had no date;
+no way to remove wrong entries; Dashboard "Collected today" listed paid-and-given-back pairs.
+Live data read was blocked (auto-mode "Production Reads"), so worked from the screenshots.
+
+Built (branch `money-fixes`, fast-forwarded into main):
+- Edit plan / Edit PT plan: more paid in the old software lowers the plan's old-balance bill
+  ("Balance from the old software · …") by as much, and back when lowered (`oldBalanceAfter`,
+  `isOldBalanceBill` in `src/lib/old-money.ts`; `writeOldBalanceBill` in plan-edit.service; PT path
+  now saves in one transaction). Refused when more than the balance still due (says what was
+  collected here: remove that payment first). Plan card shows the balance due from the bill.
+- Collect balance: "Paid on" (today default, 1st of last month .. today, like Edit payment); on an
+  old-balance bill the hint points to Edit plan → Paid in the old software.
+- Owner (finance): "Remove" on the member's Payments list (`src/lib/payment-remove.ts`,
+  `payment-remove.service.ts`, `remove-payment-dialog.tsx`). Goes to the Recycle Bin (section
+  bills, extra.kind "payment"); Undo / Restore puts payment + bill back only if the bill is
+  unchanged (total, paid, due, status). Allowed: payments with a bill (not an initial payment with a
+  trainer share), a cancellation's refund (has cancelId, no trainer share), old-software money of a
+  cancelled / missing plan (lowers the plan's oldSoftwarePaid too). Not before cashOpenFrom (except
+  old-software money). On a cancelled plan's bill: bill stays Closed, beforeCancel/cancelId set so
+  Restore asks for it again. Hidden on a running plan's old-software rows (Edit plan instead).
+- Dashboard Collected list: a payment + its same-mode, same-amount refund fold under
+  "Paid and given back: N (adds up to ₹0) · Show" (`src/lib/money-pairs.ts`); ₹0 mode chips hidden.
+- CFO: an old-balance bill at ₹0 goes to the old-software branch (list price), not value 0.
+- Reviewer agent (money): 9 findings, all fixed in 04e2545.
+- Tests: unit 221/221 (`npm run test:cfo`, new payment-remove + money-pairs tests); emulator suite
+  `moneyfix_local.py` 21/21 (scratchpad 7f906952…, `bash regress.sh moneyfix_local.py`);
+  latedates 26/26, newmember 11/11; olddates 58/64 = same 6 failures as main before this work
+  (suite predates late-sale dates: K0, K0 baseline, I4, G4, K3, K4 expect a back-dated sale to
+  count today; update that suite). Screenshots light/dark 390/1440 in that scratchpad's `shots_fix/`.
+
+### Next
+1. Owner, once live (P. Sai Ram): Payments tab → Remove the two ₹10,000 "paid in the old software"
+   rows of the cancelled plans, the −₹5,000 cash refund and the ₹5,000 UPI balance payment (if it
+   was not really collected on 9 Oct); then Plan → Edit plan → Paid in parts? Add a part ₹5,000 with
+   the real day → bill RF-2026-000087 drops to ₹0. Same for K. Sri Devi's ₹10,000 pair if it was a
+   mistake.
+2. Build (new chat): cancelling a plan paid in the old software asks the owner "entered by mistake /
+   twice: take its ₹X out of income" or "really paid: keep it" (today its old-software money keeps
+   counting); `restoreCancellation` puts the money back. Files: `plans-control.tsx`
+   (CancelPlansDialog), `plan-cancel.service.ts` (cancelPlans / restoreCancellation).
+3. Migration audit (user: "think what problems they'll get, find similar things"): e.g. balance
+   reminders (WhatsApp payment-due) for old balances already paid, member app showing old balances,
+   duplicate plans (old + new sale) beyond the review list, `olddates_local.py` update.
+4. Still open: M. Rohith's package (owner).
 
 ## 2026-10-09 (night): new members stay clean (merged into main and pushed, 7b48a0c)
 
