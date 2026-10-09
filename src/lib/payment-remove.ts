@@ -11,6 +11,7 @@ const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export interface RemovePayment {
   amount: number;
+  paymentDate: string;
   kind: string;
   oldSoftware: boolean;
   invoiceId: string;
@@ -45,27 +46,44 @@ export interface RemovePlan {
   bill: { before: RemoveBillState; after: RemoveBillState } | null;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const nice = (iso: string) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return y && m && d ? `${d} ${MONTHS[m - 1]} ${y}` : iso;
+};
+
 const statusOf = (total: number, paid: number) =>
   total > 0 && paid >= total ? "paid" : paid > 0 ? "partial" : "pending";
 
 /**
- * @param plans the payment's plans here: their status and cancellation ("" when not cancelled);
- *   a plan no longer here counts as cancelled.
+ * @param plans the payment's plans here: their status ("missing" = no longer here) and
+ *   cancellation ("" when not cancelled).
+ * @param openFrom the first day the Day Book can still change (cashOpenFrom).
  */
 export function planRemove(
   p: RemovePayment,
   bill: RemoveBill | null,
   plans: { status: string; cancelId: string }[],
+  openFrom: string,
 ): RemovePlan {
   const fail = (error: string): RemovePlan => ({ error, bill: null });
-  const allCancelled = plans.length > 0 && plans.every((x) => x.status === "cancelled");
+  // None of its plans runs here any more (cancelled, or no longer here).
+  const gone =
+    plans.length > 0 && plans.every((x) => x.status === "cancelled" || x.status === "missing");
+  const cancelled = gone && plans.some((x) => x.status === "cancelled");
   if (p.oldSoftware) {
-    if (!allCancelled)
+    if (!gone)
       return fail(
         "This is the plan's money paid in the old software: change it on the plan (Edit plan → Paid in the old software).",
       );
+    // Never in the cash drawer: any day can go.
     return { error: "", bill: null };
   }
+  // Like Edit payment: older days are closed in the Day Book (their cash is carried forward).
+  if (p.paymentDate < openFrom)
+    return fail(
+      `It is dated ${nice(p.paymentDate)}, in a closed Day Book month (before ${nice(openFrom)}): it can't be removed.`,
+    );
   if (p.amount < 0) {
     if (p.kind !== "refund" || !p.cancelId)
       return fail(
@@ -101,7 +119,7 @@ export function planRemove(
     beforeCancel: bill.beforeCancel,
   };
   const owed = round(Math.max(0, bill.total - paid));
-  if (allCancelled || bill.paymentStatus === "closed") {
+  if (cancelled || bill.paymentStatus === "closed") {
     // Its plan is cancelled: the money is not asked for (the bill stays Closed). Restoring the
     // cancelled plan asks for it again, as for a balance closed when it was cancelled.
     const cancelId = bill.cancelId || plans.find((x) => x.cancelId)?.cancelId || "";

@@ -216,7 +216,7 @@ export async function restoreFromBin(
   viewer: { owner: boolean; uid: string },
 ) {
   // A payment removed by mistake: it comes back together with its bill's amounts.
-  if (entry.extra["kind"] === "payment") return putBackPayment(entry.id, viewer);
+  if (entry.extra["kind"] === "payment") return putBackPayment(entry.id, viewer, by.name);
   const all = await itemsOf(entry, viewer);
   const items = all.filter(restorable);
   // Follow-up steps (logins back on, leads re-linked, door check) only for a record that really

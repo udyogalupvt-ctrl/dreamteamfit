@@ -292,7 +292,11 @@ export function buildPlanBook(input: CfoInput): PlanBook {
       });
     };
 
-    if (S <= 0) {
+    const linkedAll = [...gl, ...pl];
+    const fromOld = linkedAll.length > 0 && linkedAll.some((p) => p.paidInOldSoftware);
+    // An old-software balance bill can be ₹0 (the whole balance was found paid there): it still
+    // goes to the old-software branch below (list prices), like an old plan without a bill.
+    if (S <= 0 && !fromOld) {
       setAll(
         0,
         0,
@@ -310,8 +314,7 @@ export function buildPlanBook(input: CfoInput): PlanBook {
       continue;
     }
 
-    const linkedAll = [...gl, ...pl];
-    if (linkedAll.length > 0 && linkedAll.some((p) => p.paidInOldSoftware)) {
+    if (fromOld) {
       // Old software: the real price is unknown, so use list prices and the open amount.
       const open = Math.max(0, fin(b.balanceDue) + fin(b.closedAmount)) * ratio;
       const lists = linkedAll.map((p) => Math.max(0, fin(p.listPrice)));

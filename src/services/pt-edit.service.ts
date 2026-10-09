@@ -1,4 +1,14 @@
-import { doc, getDoc, getDocs, query, serverTimestamp, where, writeBatch } from "@/lib/firestore";
+import {
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  runTransaction,
+  serverTimestamp,
+  where,
+  type DocumentData,
+  type DocumentReference,
+} from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import type {
@@ -205,7 +215,14 @@ export async function editPtPlan(input: {
     oldBal = { change, bill };
   }
 
-  const batch = writeBatch(db);
+  // Every write is collected, then saved in one transaction that first checks the balance bill
+  // is still as read (someone may have collected on it meanwhile).
+  const ops: ((w: Writes) => void)[] = [];
+  const batch: Writes = {
+    set: (ref, data) => ops.push((w) => w.set(ref, data)),
+    update: (ref, data) => ops.push((w) => w.update(ref, data)),
+    delete: (ref) => ops.push((w) => w.delete(ref)),
+  };
   const now = serverTimestamp();
   if (oldBal?.change.bill && oldBal.bill)
     writeOldBalanceBill(
@@ -216,6 +233,7 @@ export async function editPtPlan(input: {
       todayISO(),
       input.reason.trim().slice(0, 300),
       now,
+      "pt",
     );
   const ptBasis = {
     gym: gymId ? { price: gymPrice } : null,
@@ -330,6 +348,26 @@ export async function editPtPlan(input: {
     edits: [...p.edits, edit],
     updatedAt: now,
   });
-  await batch.commit();
+  const watched = oldBal?.change.bill && oldBal.bill ? oldBal.bill : null;
+  await runTransaction(db, async (tx) => {
+    if (watched) {
+      const cur = await tx.get(doc(db, COLLECTIONS.invoices, watched.id));
+      const d = cur.data();
+      if (
+        !d ||
+        Number(d["amountPaid"] ?? 0) !== watched.amountPaid ||
+        Number(d["total"] ?? 0) !== watched.total ||
+        d["paymentStatus"] !== watched.paymentStatus
+      )
+        throw new Error("Its balance bill was just changed. Close and open Edit again.");
+    }
+    ops.forEach((op) => op(tx));
+  });
   return changes;
+}
+
+interface Writes {
+  set(ref: DocumentReference, data: DocumentData): unknown;
+  update(ref: DocumentReference, data: DocumentData): unknown;
+  delete(ref: DocumentReference): unknown;
 }

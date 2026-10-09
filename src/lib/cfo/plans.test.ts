@@ -261,6 +261,17 @@ test("value: old-software bill counts a written-off (closed) balance as unpaid t
   close(gymOf(i, "g1").paid, 600);
 });
 
+test("value: old-software balance bill brought to ₹0 (balance found paid there): value = paid = list", () => {
+  const i = input({
+    gymPlans: [gym({ id: "g1", invoiceId: "ob", listPrice: 900, paidInOldSoftware: true })],
+    bills: [bill({ id: "ob", subtotal: 0, amountPaid: 0, membershipId: "g1" })],
+  });
+  i.bills[0]!.total = 0;
+  i.bills[0]!.balanceDue = 0;
+  close(gymOf(i, "g1").value, 900);
+  close(gymOf(i, "g1").paid, 900);
+});
+
 test("value: old-software plan with no bill, and imported plan with no bill: value = paid = list", () => {
   const i = input({
     gymPlans: [

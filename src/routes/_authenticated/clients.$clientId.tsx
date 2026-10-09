@@ -827,7 +827,7 @@ function ClientProfilePage() {
               </div>
             </section>
           )}
-          <ClientPaymentsList clientId={c.id} />
+          <ClientPaymentsList clientId={c.id} plans={[...memberships.data, ...ptPlans.data]} />
         </TabsContent>
         <TabsContent value="attendance">
           <ClientAttendanceSection client={c} memberships={memberships.data} />

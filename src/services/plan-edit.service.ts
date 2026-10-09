@@ -484,7 +484,7 @@ export async function editMembership(input: PlanEditInput) {
       updatedAt: now,
     });
 
-    if (ob && obRef) writeOldBalanceBill(tx, obRef, ob.of, ob, today, reason, now);
+    if (ob && obRef) writeOldBalanceBill(tx, obRef, ob.of, ob, today, reason, now, "gym");
 
     if (bc && billRef) {
       const paymentStatus = derivePaymentStatus(bc.total, bc.amountPaid);
@@ -656,6 +656,8 @@ export function writeOldBalanceBill(
   today: string,
   reason: string,
   now: ReturnType<typeof serverTimestamp>,
+  /** Whose income the balance is (a PT plan's balance stays PT money). */
+  kind: "gym" | "pt",
 ) {
   const items = bill.items.map((it, i) =>
     i === 0 ? { ...it, unitPrice: after.total, total: after.total } : it,
@@ -670,9 +672,7 @@ export function writeOldBalanceBill(
     total: after.total,
     balanceDue: after.balanceDue,
     paymentStatus: after.paymentStatus,
-    ...(bill.ptGross > 0 && !(bill.membershipGross > 0)
-      ? { ptGross: after.total }
-      : { membershipGross: after.total }),
+    ...(kind === "pt" ? { ptGross: after.total } : { membershipGross: after.total }),
     updatedAt: now,
   };
   tx.update(ref, {

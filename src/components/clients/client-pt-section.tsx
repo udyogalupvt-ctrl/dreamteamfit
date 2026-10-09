@@ -265,7 +265,14 @@ export function ClientBiometricCard({ client }: { client: Client }) {
   );
 }
 
-export function ClientPaymentsList({ clientId }: { clientId: string }) {
+export function ClientPaymentsList({
+  clientId,
+  plans = [],
+}: {
+  clientId: string;
+  /** The member's gym and PT plans: old-software money of a running plan is changed on the plan. */
+  plans?: { id: string; status: string }[];
+}) {
   const pays = useLive((ok, fail) => subscribeClientPayments(clientId, ok, fail), [] as Payment[], [
     clientId,
   ]);
@@ -276,6 +283,11 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
   // Removing an entry made by mistake changes past income: the owner's (Income & expenses).
   const canRemove = useAccess().can("finance");
   const today = todayISO();
+  // Its plan still runs here (not cancelled): its old-software money is changed with Edit plan.
+  const runsHere = (p: Payment) =>
+    [p.membershipId, p.ptAssignmentId].some(
+      (id) => !!id && plans.some((x) => x.id === id && x.status !== "cancelled"),
+    );
   if (!pays.data.length) return null;
   const undo = async () => {
     const p = undoing;
@@ -337,7 +349,7 @@ export function ClientPaymentsList({ clientId }: { clientId: string }) {
                   <RotateCcw aria-hidden /> Undo
                 </Button>
               ) : null}
-              {canRemove ? (
+              {canRemove && !(p.oldSoftware && runsHere(p)) ? (
                 <Button
                   variant="ghost"
                   size="sm"

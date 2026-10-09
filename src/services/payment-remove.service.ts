@@ -6,11 +6,12 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  updateDoc,
   where,
   type DocumentData,
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
-import { formatDateISO, formatPrice } from "@/lib/format";
+import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import {
   planRemove,
   type RemoveBill,
@@ -18,6 +19,7 @@ import {
   type RemovePayment,
 } from "@/lib/payment-remove";
 import type { Payment } from "@/types/models";
+import { cashOpenFrom } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
 import type { Deleter } from "./recycle-bin.service";
 
@@ -27,8 +29,11 @@ import type { Deleter } from "./recycle-bin.service";
  * paid again. Which entries can go: lib/payment-remove.ts.
  */
 
+const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
 const removeFacts = (d: DocumentData): RemovePayment => ({
   amount: Number(d["amount"] ?? 0),
+  paymentDate: String(d["paymentDate"] ?? ""),
   kind: String(d["kind"] ?? ""),
   oldSoftware: d["oldSoftware"] === true,
   invoiceId: String(d["invoiceId"] ?? ""),
@@ -47,21 +52,22 @@ const billFacts = (d: DocumentData): RemoveBill => ({
   beforeCancel: (d["beforeCancel"] as RemoveBill["beforeCancel"] | undefined) ?? null,
 });
 
-/** The payment's plans here; one no longer here counts as cancelled. */
+/** The payment's plans here. */
 function planRefs(d: DocumentData) {
   return [
     d["membershipId"] ? doc(db, COLLECTIONS.memberships, String(d["membershipId"])) : null,
     d["ptAssignmentId"] ? doc(db, COLLECTIONS.ptAssignments, String(d["ptAssignmentId"])) : null,
   ].filter((r): r is NonNullable<typeof r> => !!r);
 }
-const planFacts = (snaps: { exists: () => boolean; data: () => DocumentData | undefined }[]) =>
+type Snap = { exists: () => boolean; data: () => DocumentData | undefined };
+const planFacts = (snaps: Snap[]) =>
   snaps.map((s) =>
     s.exists()
       ? {
           status: String(s.data()?.["status"] ?? ""),
           cancelId: String(s.data()?.["cancelId"] ?? ""),
         }
-      : { status: "cancelled", cancelId: "" },
+      : { status: "missing", cancelId: "" },
   );
 
 const billPatch = (s: RemoveBillState) => ({
@@ -89,7 +95,12 @@ export async function previewRemovePayment(p: Payment) {
     ...planRefs(payData).map((r) => getDoc(r)),
   ]);
   const bill = billSnap?.exists() ? billFacts(billSnap.data()) : null;
-  const plan = planRemove(removeFacts(payData), bill, planFacts(planSnaps));
+  const plan = planRemove(
+    removeFacts(payData),
+    bill,
+    planFacts(planSnaps),
+    cashOpenFrom(todayISO()),
+  );
   const a = plan.bill?.after;
   const line = plan.error
     ? ""
@@ -101,6 +112,13 @@ export async function previewRemovePayment(p: Payment) {
   return { error: plan.error, line };
 }
 
+/** A plan's "paid in the old software" amount before and after the removal (kept in step). */
+interface OldPaidStep {
+  path: string;
+  before: number;
+  after: number;
+}
+
 /** Removes it (to the Recycle Bin) and fixes its bill, all at once. Returns the bin entry's id. */
 export async function removePayment(p: Payment, by: Deleter): Promise<string> {
   const payRef = doc(db, COLLECTIONS.payments, p.id);
@@ -109,6 +127,7 @@ export async function removePayment(p: Payment, by: Deleter): Promise<string> {
   const first = (await getDoc(payRef)).data();
   if (!first) throw new Error("That payment was already removed.");
   const refs = planRefs(first);
+  const openFrom = cashOpenFrom(todayISO());
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(payRef);
     if (!snap.exists()) throw new Error("That payment was already removed.");
@@ -120,10 +139,21 @@ export async function removePayment(p: Payment, by: Deleter): Promise<string> {
     const billSnap = billRef ? await tx.get(billRef) : null;
     const planSnaps = await Promise.all(refs.map((r) => tx.get(r)));
     const bill = billSnap?.exists() ? billFacts(billSnap.data()) : null;
-    const plan = planRemove(removeFacts(d), bill, planFacts(planSnaps));
+    const plan = planRemove(removeFacts(d), bill, planFacts(planSnaps), openFrom);
     if (plan.error) throw new Error(plan.error);
     const now = serverTimestamp();
     const amount = Number(d["amount"] ?? 0);
+    // Old-software money: its plan's "paid in the old software" goes down with it (a gym + PT plan
+    // that were one old plan share the payment, so both do).
+    const oldPaid: OldPaidStep[] =
+      d["oldSoftware"] === true
+        ? planSnaps
+            .filter((s) => s.exists() && Number(s.data()?.["oldSoftwarePaid"] ?? 0) > 0)
+            .map((s) => {
+              const before = Number(s.data()?.["oldSoftwarePaid"] ?? 0);
+              return { path: s.ref.path, before, after: Math.max(0, round(before - amount)) };
+            })
+        : [];
     tx.set(itemRef, {
       binId: binRef.id,
       n: 0,
@@ -158,7 +188,10 @@ export async function removePayment(p: Payment, by: Deleter): Promise<string> {
         kind: "payment",
         paymentId: payRef.id,
         invoiceId: billRef?.id ?? "",
-        ...(plan.bill ? { billBefore: plan.bill.before, billAfter: plan.bill.after } : {}),
+        ...(plan.bill && bill
+          ? { billBefore: plan.bill.before, billAfter: plan.bill.after, billTotal: bill.total }
+          : {}),
+        ...(oldPaid.length ? { oldPaid } : {}),
       },
     });
     if (plan.bill && billRef && billSnap?.exists()) {
@@ -170,13 +203,22 @@ export async function removePayment(p: Payment, by: Deleter): Promise<string> {
           updatedAt: now,
         });
     }
+    for (const o of oldPaid)
+      tx.update(doc(db, o.path), { oldSoftwarePaid: o.after, updatedAt: now });
     tx.delete(payRef);
   });
   return binRef.id;
 }
 
-/** Undo / Restore: the payment comes back and its bill reads as before (if not changed since). */
-export async function putBackPayment(binId: string, viewer: { owner: boolean; uid: string }) {
+/**
+ * Undo / Restore: the payment comes back and its bill (and its plan's "paid in the old software")
+ * read as before, only when nothing changed them since; otherwise it is refused (collect again).
+ */
+export async function putBackPayment(
+  binId: string,
+  viewer: { owner: boolean; uid: string },
+  byName: string,
+) {
   const binRef = doc(db, COLLECTIONS.recycleBin, binId);
   const items = await getDocs(
     viewer.owner
@@ -191,7 +233,22 @@ export async function putBackPayment(binId: string, viewer: { owner: boolean; ui
   if (!item) throw new Error("It is no longer in the Recycle Bin.");
   const payId = String(item.data()["docId"] ?? "");
   if (!payId || payId.includes("/")) throw new Error("It is no longer in the Recycle Bin.");
+  const data = item.data()["data"] as DocumentData;
+  // A cancellation's refund: only while that cancellation still stands (Restore undid it?).
+  const cancelId = String(data["cancelId"] ?? "");
+  if (cancelId) {
+    const [ms, ps] = await Promise.all([
+      getDocs(query(col(COLLECTIONS.memberships), where("cancelId", "==", cancelId))),
+      getDocs(query(col(COLLECTIONS.ptAssignments), where("cancelId", "==", cancelId))),
+    ]);
+    if (ms.empty && ps.empty)
+      throw new Error(
+        "The cancellation this refund belonged to was undone (the plan runs again): it can't come back.",
+      );
+  }
   const payRef = doc(db, COLLECTIONS.payments, payId);
+  // Marked first, so the activity log says "Restored" (not "deleted forever").
+  await updateDoc(binRef, { restoredBy: byName });
   await runTransaction(db, async (tx) => {
     const entry = await tx.get(binRef);
     if (!entry.exists()) throw new Error("It is no longer in the Recycle Bin.");
@@ -199,21 +256,39 @@ export async function putBackPayment(binId: string, viewer: { owner: boolean; ui
       invoiceId?: string;
       billBefore?: RemoveBillState;
       billAfter?: RemoveBillState;
+      billTotal?: number;
+      oldPaid?: OldPaidStep[];
     };
     if ((await tx.get(payRef)).exists()) throw new Error("That payment is already back.");
     const billRef = x.invoiceId && x.billBefore ? doc(db, COLLECTIONS.invoices, x.invoiceId) : null;
     const bill = billRef ? await tx.get(billRef) : null;
+    const oldPaid = (x.oldPaid ?? []).filter(
+      (o) => typeof o.path === "string" && /^(memberships|ptAssignments)\/[^/]+$/.test(o.path),
+    );
+    const plans = await Promise.all(oldPaid.map((o) => tx.get(doc(db, o.path))));
     if (billRef && x.billBefore && x.billAfter) {
       if (!bill?.exists()) throw new Error("Its bill is no longer here: it can't be put back.");
       const cur = billFacts(bill.data());
+      // Its bill as the removal left it: same total, paid, due and status (else collect again).
       if (
+        (typeof x.billTotal === "number" && Math.abs(cur.total - x.billTotal) > 0.005) ||
         Math.abs(cur.amountPaid - x.billAfter.amountPaid) > 0.005 ||
+        Math.abs(cur.balanceDue - x.billAfter.balanceDue) > 0.005 ||
         cur.paymentStatus !== x.billAfter.paymentStatus
       )
         throw new Error(
-          `Bill ${cur.invoiceNumber} was changed after the payment was removed: collect it again instead.`,
+          `Bill ${cur.invoiceNumber} was changed after the payment was removed: it can't be put back. Collect it again instead.`,
         );
-      const now = serverTimestamp();
+    }
+    oldPaid.forEach((o, i) => {
+      const s = plans[i];
+      if (s?.exists() && Math.abs(Number(s.data()["oldSoftwarePaid"] ?? 0) - o.after) > 0.005)
+        throw new Error(
+          "What was paid in the old software on its plan was changed since: change it with Edit plan instead.",
+        );
+    });
+    const now = serverTimestamp();
+    if (billRef && bill?.exists() && x.billBefore) {
       tx.update(billRef, { ...billPatch(x.billBefore), updatedAt: now });
       const token = String(bill.data()["publicToken"] ?? "");
       if (token)
@@ -222,7 +297,11 @@ export async function putBackPayment(binId: string, viewer: { owner: boolean; ui
           updatedAt: now,
         });
     }
-    tx.set(payRef, item.data()["data"] as DocumentData);
+    oldPaid.forEach((o, i) => {
+      if (plans[i]?.exists())
+        tx.update(doc(db, o.path), { oldSoftwarePaid: o.before, updatedAt: now });
+    });
+    tx.set(payRef, data);
     items.docs.forEach((d) => tx.delete(d.ref));
     tx.delete(binRef);
   });
