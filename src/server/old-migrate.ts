@@ -326,7 +326,7 @@ async function applyMember(
       result.carries.filter((c) => c.bill).length +
       result.fixes.filter((f) => f.billAction === "create").length;
     const counter = billsNeeded ? await tx.get(counterRef) : null;
-    const settings = billsNeeded ? await tx.get(firestore.doc("settings/organization")) : null;
+    const settings = billsNeeded ? await tx.get(firestore.doc("settings/business")) : null;
     let invSeq = Number(counter?.data()?.[invKey] ?? 0);
     const invPrefix = String(settings?.data()?.["invoicePrefix"] ?? "INV");
 
