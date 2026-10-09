@@ -1,6 +1,30 @@
 # Handoff
 
-Last updated: 2026-10-09 (morning: Remove built on branch `remove-plan`, local, not pushed)
+Last updated: 2026-10-09 (midday: Remove merged, pushed, live; rules deployed)
+
+## 2026-10-09 (midday): Remove is live
+
+**State**
+- With the user's OK: `remove-plan` fast-forwarded into main (ea3f254) and pushed. Vercel serves it:
+  `/api/version` = `ea3f254215e2`, `/api/health` OK (AI keys still unset: CFO env pending).
+- Checked again before the merge: unit 240/240, tsc clean, `npm run build` OK.
+- Firestore rules deployed to `rebuildfitos` (ruleset 1e78f5b2…; read back = the file). Before it, the
+  live rules equalled main's old file except the trainerPayouts `deletePlans` lines, so only those
+  changed. Backup of the previous live rules (ruleset 02b1b06a…):
+  scratchpad fe259a89…/`live_rules_backup_2026-10-09.txt`; scripts `read_live_rules.mjs`,
+  `deploy_rules.mjs` there.
+- A staff login with the "Plans added by mistake" switch can now remove PT plans too.
+- `stash@{0}` (step 2 cancel choice, superseded) is still kept; drop it once the owner has used Remove
+  and is happy (`git stash drop stash@{0}`).
+- Branch `remove-plan` kept (same commit as main).
+
+### Next
+1. Owner: refresh any open app tab once, then remove K. Sri Devi's cancelled PT (bin icon on the
+   member page) and check the Dashboard "paid and given back" pair is gone. Report anything odd.
+2. Fix audit items 1, 3, 5 and 6 (reminders for old balances, double expiry reminders, refund cap,
+   joining incentive), then 2, 4 and 8 ([audit](MIGRATION_AUDIT_2026-10-09.md)).
+3. Fix `undo_refund_local.py` (line 142).
+4. Still open: M. Rohith's package (owner); P. Sai Ram clean-up (Remove makes it easier).
 
 ## 2026-10-09 (morning): "Remove (added by mistake)" built (branch `remove-plan`, NOT merged / pushed)
 
