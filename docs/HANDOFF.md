@@ -1,6 +1,30 @@
 # Handoff
 
-Last updated: 2026-10-09 (late evening, merged and pushed)
+Last updated: 2026-10-09 (night, branch clean-new-members, not merged)
+
+## 2026-10-09 (night): new members stay clean (branch `clean-new-members`, not merged)
+
+User: "for new members there is no disturbance of old software things ... the paid date will be
+the normal flow". Checked a brand-new member (phone not in the old data) end to end on emulators:
+joining form shows nothing about the old software, plan starts today, no "When was it paid?",
+payment dated today with no old-software / paidToday marks, not listed by "Sales typed in after
+the plan started". One thing was not clean and is fixed: every billed plan in Membership history
+showed a "Paid in the old software?" link. Now only for a member linked to the old software
+(`oldMemberId`) or a plan that started before its bill was made (`mayBeOldSale` in
+`clients.$clientId.tsx`). Unit 200/200, tsc + eslint clean, build OK.
+Suite `newmember_local.py` 11/11 (scratchpad 7f906952…, `bash regress.sh newmember_local.py`),
+screenshots light/dark 390/1440 in its `shots_new/`.
+Note (left as is, by design): a NEW member whose plan date is set before today still gets
+"Paid in the old software" and "When was it paid?" (that is how old members not found in the
+old data are entered).
+`shots_local.py` (scratchpad 7b781562…) fixed: Billing waits on the heading + a visible
+"Collected ·" card; Edit plan waits on the "Paid in the old software" group (`#plan-oldpaid` is now
+`#plan-oldpaid-amount`). All 12 shots taken.
+
+### Next
+1. User OK → merge `clean-new-members` into main and push (Vercel deploys from main).
+2. Still open: M. Rohith's package (owner, see below); owner runs "Sales typed in after the plan
+   started" → Move once the late-sales version is live.
 
 ## 2026-10-09 (evening): sales typed in after the plan started count on the plan's first day
 

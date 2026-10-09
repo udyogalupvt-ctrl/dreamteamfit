@@ -247,6 +247,11 @@ function ClientProfilePage() {
     effective: effectiveMembershipStatus(m),
   }));
   const current = withStatus.find((m) => m.effective === "active") ?? null;
+  // "Paid in the old software?" is offered only where it can be true: a member from the old
+  // software, or a plan that started before its bill was made. A new member who joins and pays
+  // here sees none of it (user, 2026-10-09: new members stay clean).
+  const mayBeOldSale = (m: Membership, bill: Invoice | null | undefined) =>
+    !!bill && (!!c.oldMemberId || m.startDate < bill.invoiceDate);
   // A plan paid in the old software that was saved without the amount (e.g. from an app tab left
   // open on an older version) shows the amount from the old software's record of the same plan.
   // Display only: Edit / Cancel get the plan as saved.
@@ -715,7 +720,7 @@ function ClientProfilePage() {
                           </p>
                         ) : can("finance") &&
                           m.status !== "cancelled" &&
-                          billOfPlan(m, invoices.data) ? (
+                          mayBeOldSale(m, billOfPlan(m, invoices.data)) ? (
                           <button
                             type="button"
                             className="text-meta cursor-pointer underline underline-offset-2 hover:text-foreground"
