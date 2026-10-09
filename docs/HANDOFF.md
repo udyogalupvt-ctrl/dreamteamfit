@@ -1,6 +1,49 @@
 # Handoff
 
-Last updated: 2026-10-09 (afternoon: audit items 1, 3, 5, 6 fixed on branch `audit-fixes-1`, not merged / pushed)
+Last updated: 2026-10-09 (evening: audit items 2, 4, 8 fixed on branch `audit-fixes-2`, on top of `audit-fixes-1`; neither merged / pushed)
+
+## 2026-10-09 (evening): migration audit items 2, 4, 8 (branch `audit-fixes-2`, local)
+
+**State**
+- Branch `audit-fixes-2` = `audit-fixes-1` (a902f4c) + 44275eb, 14a7fc7, 02f445a. NOT merged, NOT pushed.
+  No rules change (plans are writable by any staff login). Plan: [docs/superpowers/plans/2026-10-09-audit-fixes-2.md](superpowers/plans/2026-10-09-audit-fixes-2.md).
+- **8 One current-plan rule:** `src/lib/current-plan.ts` `pickCurrent` (running today, latest start → next
+  upcoming → latest ended → latest cancelled), used by the sale, thumb (app + machine), Edit plan,
+  Cancel/Restore, Remove, Excel import, member lists (`planByClient`) and the member app.
+  The morning `rollPlans` now reads each member with a live plan and corrects a wrong
+  `currentMembership` (first morning after deploy fixes old wrong ones; later only real changes).
+  A member with only an upcoming plan now has it as current (status `pending`).
+- **2 / 14 Overlaps:** `src/lib/plan-overlap.ts`. A sale (incl. Add old plan) or Edit plan whose gym
+  dates overlap another counted gym plan is refused with the plan's name and what to do. Not refused:
+  the upgraded plan, plans a renewal / upgrade ended, pairs marked "Not a duplicate", and (Edit plan,
+  backdated upgrade) days that were already shared before. Old plans whose dates are all past are saved
+  `expired` (PT `completed`), so they never become current or end the running plan.
+  Owner list **Plans that overlap** on Income & expenses (`GET /api/old-data/overlaps`, plans ending on
+  or after the 1st of last month) with Open member / **Not a duplicate** (field `overlapOk` on both
+  plans, Undo; updatedAt left alone for Remove's same-write check).
+- **4 "Paid in the old software?"** also lists PT plans sold alone, matches old CSV plans by kind (PT ↔
+  PT), and flags a sale over an old-software plan already in the app ("Already in this app as an
+  old-software plan …", strong). **Check & mark** works on a PT-only bill (`OldMoveTarget` in
+  `old-software.service.ts`; PT plan marked, trainer share cancelled, old payment on the PT plan, Undo).
+  Not done: looking back before the 1st of last month (closed Day Book months can't be moved anyway).
+- Checks: `npm run build` OK; regressions remove 39/39, plans_end 12/12, moneyfix 21/21, audit 22/22.
+- Unit 282/282 (`npm run test:cfo`, new `current-plan.test.ts`, `plan-overlap.test.ts`),
+  tsc + eslint clean on changed files. Emulator suite `audit2_local.py` 27/27 (scratchpad 32d649c3…,
+  `bash regress.sh audit2_local.py`; regress.sh now stops the :5199 server BEFORE building, else EBUSY),
+  screenshots light/dark 390/1440 in its `shots/`. Reviewer agent (money): 1 real finding (overlap
+  rule refused edits next to older-style renewals / Not-a-duplicate pairs), fixed in 02f445a. Left as a
+  note: when all of a member's live plans end the same morning, `rollPlans` picks "latest ended" among
+  those only (an older expired plan with a later end date would be skipped; rare).
+
+### Next
+1. User: OK to merge `audit-fixes-1` and then `audit-fixes-2` into main and push (Vercel deploys).
+   Tell the front desk: old balances need the tick on the bill before WhatsApp reminders (audit 1);
+   a plan over another plan's dates is now refused with a message saying what to do.
+   After the first morning cron, the owner checks Income & expenses → "Plans that overlap".
+2. Fix `undo_refund_local.py` (line 142).
+3. Still open: K. Sri Devi's cancelled PT (owner); M. Rohith's package (owner); P. Sai Ram clean-up.
+4. Later audit items: 7 (CFO values old plans at today's price), 9 (gym+PT bill open after partial
+   cancel), 10 (member app display), 11–13, 15.
 
 ## 2026-10-09 (afternoon): migration audit items 1, 3, 5, 6 (branch `audit-fixes-1`, local)
 

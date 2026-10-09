@@ -9,7 +9,7 @@ Each item ends with the proposed fix.
    - The due date defaults to today + 7 (`add-old-plan-dialog.tsx:104`).
    - So a member who cleared ₹4,000 in the old software can get "₹4,000 is due" up to 4 times, and twice a day if they have 2 such bills.
    - Fix: skip old-balance bills in the cron unless staff tick "remind" on that bill, or remind only after staff confirm the balance.
-2. **[MONEY] Duplicate plans are hardly ever caught.**
+2. **FIXED (audit-fixes-2)** **[MONEY] Duplicate plans are hardly ever caught.**
    - Two copies of one old plan both count their `oldSoftwarePaid`. The backfill (`old-money.ts:314-401`) holds back only cancelled plans with no refund.
    - A normal sale over a carried-over plan isn't checked in `enrollMember`, and `prevActive` silently expires the old plan (`enrollment.service.ts:404`).
    - Fix: warn at sale and save time when plans overlap. Owner list "Plans that overlap" on Income & expenses. **Remove (added by mistake)** for the duplicate (being built).
@@ -17,7 +17,7 @@ Each item ends with the proposed fix.
    - `automation.ts:236-247`: two active plans with the same end date mean 2 renewal messages.
    - A stray duplicate that ends later hides the reminder for the real plan.
    - Fix: one reminder per member, based on the member's latest-ending plan.
-4. **[MONEY] The "Paid in the old software?" review list is narrow** (`src/server/old-sales.ts`).
+4. **FIXED (audit-fixes-2, PT + in-app old plans; look-back unchanged)** **[MONEY] The "Paid in the old software?" review list is narrow** (`src/server/old-sales.ts`).
    - It only looks back to the 1st of last month, and misses PT-only sales (line 66).
    - It only matches the uploaded CSV, never the old plans already in the app.
    - Without a CSV match, it flags only sales typed in 7 or more days after the plan started.
@@ -31,7 +31,7 @@ Each item ends with the proposed fix.
 7. **[MONEY, reporting] The CFO values migrated plans at today's package price** (`cfo-data.ts:137`).
    - It never uses `oldSoftwarePaid` / `oldSoftwareBalance`, so earned income is overstated when the old price was lower.
    - Fix: pass the old paid + balance as the plan's value.
-8. **[DISPLAY] "Current membership" is picked by six different rules.**
+8. **FIXED (audit-fixes-2)** **[DISPLAY] "Current membership" is picked by six different rules.**
    - `automation.ts` rollPlans, enrollMember, plan-edit, data-import, `member-plans.ts` and portal all choose differently.
    - Lists use only the `currentMembership` snapshot, so a member can show as Renewal due / not renewed by mistake.
    - Fix: one shared helper (running today, latest start; else the next upcoming; else the latest ended), used everywhere.
@@ -46,7 +46,7 @@ Each item ends with the proposed fix.
 11. **[DISPLAY] The dashboard "Trainer share owed" card includes PT shares settled in the old software** (`finance.service.ts:433`).
 12. **[DISPLAY] "Miss you" day count can start from an old plan's start** (`automation.ts:415-433`; off by default).
 13. **[DISPLAY] Billing's "Paid" filter shows Closed bills** (`billing.tsx:112-115`), and Reports "Gross sales" includes old-balance bills.
-14. **[Latent MONEY] `enrollMember` accepts an old plan when a later plan already runs, then expires the running plan.**
+14. **FIXED (audit-fixes-2, overlap check)** **[Latent MONEY] `enrollMember` accepts an old plan when a later plan already runs, then expires the running plan.**
     - The UI blocks this, but the service should too.
 15. **[DISPLAY] The old-software call list still lists members already renewed here but not yet on the thumb machine** (`server/old-data.ts:427-430`).
 
