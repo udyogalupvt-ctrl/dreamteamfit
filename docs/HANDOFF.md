@@ -1,6 +1,48 @@
 # Handoff
 
-Last updated: 2026-10-09 (late night, money-fixes merged and pushed)
+Last updated: 2026-10-09 (after midnight: Remove plan designed, migration audit written)
+
+## 2026-10-09 (after midnight): "Remove (added by mistake)" designed; migration audit done
+
+**State**
+- New user request (K. Sri Devi): a PT plan added by mistake could only be cancelled and refunded,
+  which books a sale and a refund that never happened. The user wants "remove what we added",
+  everywhere.
+- Design approved in chat, written as a plan:
+  [docs/superpowers/plans/2026-10-09-remove-plan.md](superpowers/plans/2026-10-09-remove-plan.md).
+  - Remove = the whole sale goes to the Recycle Bin (plans on the bill, bill, payments, refunds,
+    trainer share, joining record), and earlier plans the sale cut short come back. Undo / Restore
+    puts it all back.
+  - Access: the owner always; the owner can switch it on per staff login ("Plans added by mistake").
+  - NOT built yet.
+- Next step 2 from the late-night list (a cancel choice for old-software money) was built first:
+  cancelold 11/11, plans_end 12/12, moneyfix 21/21, latedates 26/26.
+  - The user then chose to replace it with Remove and simplify the Cancel box.
+  - That code is still UNCOMMITTED in the working tree on branch `cancel-old-money`: discarding it was
+    blocked by the auto-mode safety check.
+  - The "Leftover" section of the plan lists the files, and how to stash it once the user says OK.
+- Migration audit (Next step 3) done:
+  [docs/MIGRATION_AUDIT_2026-10-09.md](MIGRATION_AUDIT_2026-10-09.md), 15 ranked findings with
+  fixes. Worst:
+  - balance-due WhatsApp reminders go out for stale old balances (`automation.ts:330-373`);
+  - duplicate plans are hardly caught;
+  - expiry reminders double up;
+  - the old-sales review list misses PT and in-app plans.
+- Test suite fix: `olddates_local.py` (scratchpad 376e89b1…) now picks "Today" in "When was it
+  paid?" for Kiran's setup, which should clear its 6 stale checks. Not re-run yet.
+- `undo_refund_local.py` crashed after its 10 cancel/refund checks passed. It timed out waiting for
+  the "Undo" button on the member's Payments list (`clients.$clientId.tsx:717`). The suite (or that
+  button) is probably out of date since the payment Remove work. Check it.
+- Test harness for this session: scratchpad 376e89b1… (`regress.sh`, `emu.py`, `cancelold_local.py`,
+  `shots/`).
+
+### Next
+1. (Effort Extra high) Build Remove from the plan file, Tasks 1-6. First ask the user whether to stash
+   the step 2 leftovers.
+2. Fix audit items 1, 3, 5 and 6 (reminders for old balances, double expiry reminders, refund cap,
+   joining incentive), then 2, 4 and 8.
+3. Re-run `olddates_local.py` and fix `undo_refund_local.py`.
+4. Still open: M. Rohith's package (owner); P. Sai Ram clean-up (below), which Remove will make easier.
 
 ## 2026-10-09 (late night): migration money fixes (merged into main and pushed, 04e2545)
 
