@@ -1,8 +1,8 @@
 # Handoff
 
-Last updated: 2026-10-09 (night, branch clean-new-members, not merged)
+Last updated: 2026-10-09 (night, clean-new-members merged and pushed)
 
-## 2026-10-09 (night): new members stay clean (branch `clean-new-members`, not merged)
+## 2026-10-09 (night): new members stay clean (merged into main and pushed, 7b48a0c)
 
 User: "for new members there is no disturbance of old software things ... the paid date will be
 the normal flow". Checked a brand-new member (phone not in the old data) end to end on emulators:
@@ -22,7 +22,7 @@ old data are entered).
 `#plan-oldpaid-amount`). All 12 shots taken.
 
 ### Next
-1. User OK → merge `clean-new-members` into main and push (Vercel deploys from main).
+1. Done: merged and pushed with the user's OK. Check the Vercel deploy finished.
 2. Still open: M. Rohith's package (owner, see below); owner runs "Sales typed in after the plan
    started" → Move once the late-sales version is live.
 
