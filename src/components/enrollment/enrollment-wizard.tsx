@@ -52,6 +52,7 @@ import {
   PT_DURATION_LABELS,
   PT_SCHEDULE_LABELS,
   ptPackageLabel,
+  subscribeClientPtAssignments,
   subscribePtPackages,
   subscribeTrainers,
 } from "@/services/pt.service";
@@ -63,6 +64,9 @@ import {
   enrollMember,
   enrollmentTotals,
   maxDiscountFor,
+  maxPtDiscount,
+  ptDiscountOf,
+  ptNetPrice,
   subscribeEnrollment,
 } from "@/services/enrollment.service";
 import { subscribeStaff } from "@/services/staff.service";
@@ -103,6 +107,7 @@ import {
   type Invoice,
   type Membership,
   type PaymentMethod,
+  type PtAssignment,
   type ShareType,
   type WhatsAppSettings,
 } from "@/types/models";
@@ -166,6 +171,11 @@ interface Draft {
   shareOverride: { type: ShareType; value: number } | null;
   startDate: string;
   discount: number;
+  /** ₹ off the PT package only. */
+  ptDiscount?: number;
+  /** The PT plan's own dates; "" = follow the plan's start / the PT package's length. */
+  ptStart?: string;
+  ptEnd?: string;
   amountPaid: number | null;
   method: PaymentMethod;
   notes: string;
@@ -247,6 +257,9 @@ export function EnrollmentWizard({
       : todayISO(),
   );
   const [discount, setDiscount] = useState(restored?.discount ?? 0);
+  const [ptDiscount, setPtDiscount] = useState(restored?.ptDiscount ?? 0);
+  const [ptStartText, setPtStartText] = useState(restored?.ptStart ?? "");
+  const [ptEndText, setPtEndText] = useState(restored?.ptEnd ?? "");
   const [amountPaid, setAmountPaid] = useState<number | null>(restored?.amountPaid ?? null);
   const [method, setMethod] = useState<PaymentMethod>(restored?.method ?? "UPI");
   const [paidToday, setPaidToday] = useState(restored?.paidToday ?? false);
@@ -392,13 +405,38 @@ export function EnrollmentWizard({
     [],
     [existing?.id, resuming],
   );
+  // PT plans count too: a member whose only plan here is PT (e.g. carried over from the old
+  // software) renews after it, never "from scratch" over its days.
+  const ptPlans = useLive<PtAssignment[]>(
+    existing && !resuming
+      ? (ok, fail) => subscribeClientPtAssignments(existing.id, ok, fail)
+      : null,
+    [],
+    [existing?.id, resuming],
+  );
   const today = todayISO();
   const livePlans = plans.data.filter(
     (m) => !["cancelled", "expired"].includes(m.status) && m.endDate >= today,
   );
+  const livePt = ptPlans.data.filter(
+    (p) => !["cancelled", "completed"].includes(p.status) && p.endDate >= today,
+  );
   const running = livePlans.find((m) => m.startDate <= today) ?? null;
-  const lastEnd = livePlans.reduce((e, m) => (m.endDate > e ? m.endDate : e), "");
-  const renewStart = lastEnd ? addDaysISO(lastEnd, 1) : today;
+  const runningPt = livePt.find((p) => p.startDate <= today) ?? null;
+  const lastEndOf = (xs: { endDate: string }[]) =>
+    xs.reduce((e, m) => (m.endDate > e ? m.endDate : e), "");
+  const gymLastEnd = lastEndOf(livePlans);
+  const ptLastEnd = lastEndOf(livePt);
+  const lastEnd = gymLastEnd > ptLastEnd ? gymLastEnd : ptLastEnd;
+  // The earliest day the new plan may start: after the gym plans when a gym package is bought,
+  // after the PT plans when PT is bought (plans of the same kind never share days).
+  const sameKindEnd = [gymPackage ? gymLastEnd : "", ptOn ? ptLastEnd : ""].reduce(
+    (e, x) => (x > e ? x : e),
+    "",
+  );
+  const renewMin = sameKindEnd ? addDaysISO(sameKindEnd, 1) : today;
+  // Suggested: the day after the plans being renewed; else after the member's last plan.
+  const renewStart = sameKindEnd ? renewMin : lastEnd ? addDaysISO(lastEnd, 1) : today;
   const [planMode, setPlanMode] = useState<"renew" | "upgrade">("renew");
   // "" = the default: the day after the current plan (renew) / today (upgrade).
   const [renewDate, setRenewDate] = useState("");
@@ -445,7 +483,7 @@ export function EnrollmentWizard({
         credit,
       }
     : null;
-  const showChoice = !!(existing && !resuming && gymPackage && lastEnd);
+  const showChoice = !!(existing && !resuming && (gymPackage || ptOn) && lastEnd);
   // The date staff agreed with the member; checked before moving on.
   const planDateProblem = !showChoice
     ? ""
@@ -453,8 +491,8 @@ export function EnrollmentWizard({
       ? upgradeFrom < running.startDate || upgradeFrom > running.endDate
         ? `Pick a date from ${formatDateISO(running.startDate)} to ${formatDateISO(running.endDate)}`
         : ""
-      : renewFrom < renewStart
-        ? `Pick ${formatDateISO(renewStart)} or later, or choose Upgrade to change the plan earlier`
+      : renewFrom < renewMin
+        ? `Pick ${formatDateISO(renewMin)} or later${canUpgrade ? ", or choose Upgrade to change the plan earlier" : ""}`
         : "";
   // A new member who starts on a later day: the plan can't start before they join.
   const joinStartsLater = (!existing || resuming) && client.joinedOn > todayISO();
@@ -468,9 +506,19 @@ export function EnrollmentWizard({
   const shareType = shareOverride?.type ?? trainer?.defaultShareType ?? "percentage";
   const shareValue = shareOverride?.value ?? trainer?.defaultTrainerShare ?? 0;
   const pt = useMemo(
-    () => (ptPkg && trainer ? { pkg: ptPkg, trainer, shareType, shareValue } : null),
-    [ptPkg, trainer, shareType, shareValue],
+    () =>
+      ptPkg && trainer
+        ? { pkg: ptPkg, trainer, shareType, shareValue, discount: ptDiscount }
+        : null,
+    [ptPkg, trainer, shareType, shareValue, ptDiscount],
   );
+  const ptDiscountProblem = !ptPkg
+    ? ""
+    : ptDiscount < 0
+      ? "Discount can't be negative"
+      : ptDiscount > maxPtDiscount(ptPkg)
+        ? `Too much: at most ${formatPrice(maxPtDiscount(ptPkg))} on this PT package`
+        : "";
   const totals = useMemo(
     () =>
       enrollmentTotals({
@@ -531,8 +579,11 @@ export function EnrollmentWizard({
   // "Paid in the old software" is offered to a member from the old data, or one whose plan
   // started before today, as long as they have no plan in this app yet (a renewal here is paid
   // here). Members already added (Excel import, thumb first) count too.
+  // Any plan here counts, PT too: K. Mothilal's old PT plan was already carried over as a PT plan
+  // here, and the next plan he paid for must be a normal renewal, not the old plan again.
+  const plansHere = plans.data.length + ptPlans.data.length;
   const canPaidOld =
-    !resuming && (Boolean(oldId) || startDate < today) && !(existing && plans.data.length > 0);
+    !resuming && (Boolean(oldId) || startDate < today) && !(existing && plansHere > 0);
   // A plan still running in the old software is carried over as it is: paid there, its own
   // dates, amounts read-only (no discount, nothing counted today). They renew here after it ends.
   const oldLocked = canPaidOld && !!oldRunning;
@@ -567,6 +618,25 @@ export function EnrollmentWizard({
     : gymPackage
       ? calculateEndDate(startDate, gymPackage.durationDays)
       : "";
+  // The PT plan's dates: by default the plan's start date and the PT package's length (the gym
+  // plan's dates when both are the same length); staff can change either.
+  const ptStart = ptStartText || startDate;
+  const ptEndDefault = ptPkg
+    ? oldLocked && !gymPackage
+      ? oldRunning.end
+      : calculateEndDate(ptStart, ptPkg.durationDays)
+    : "";
+  const ptEnd = ptEndText || ptEndDefault;
+  const ptMin = ptOn && ptLastEnd ? addDaysISO(ptLastEnd, 1) : "";
+  const ptDateProblem = !ptPkg
+    ? ""
+    : !/^\d{4}-\d{2}-\d{2}$/.test(ptStart) || !/^\d{4}-\d{2}-\d{2}$/.test(ptEnd)
+      ? "Pick the PT start and end dates"
+      : ptEnd < ptStart
+        ? "PT can't end before it starts"
+        : ptMin && ptStart < ptMin
+          ? `PT plan here until ${formatDateISO(ptLastEnd)}: start PT on ${formatDateISO(ptMin)} or later`
+          : "";
   useEffect(() => {
     if (!oldLocked) return;
     setPaidOld(true);
@@ -637,6 +707,9 @@ export function EnrollmentWizard({
             shareOverride,
             startDate,
             discount,
+            ptDiscount,
+            ptStart: ptStartText,
+            ptEnd: ptEndText,
             amountPaid,
             method,
             notes,
@@ -668,6 +741,9 @@ export function EnrollmentWizard({
     shareOverride,
     startDate,
     discount,
+    ptDiscount,
+    ptStartText,
+    ptEndText,
     amountPaid,
     method,
     notes,
@@ -691,6 +767,9 @@ export function EnrollmentWizard({
     setTrainerId("");
     setShareOverride(null);
     setDiscount(0);
+    setPtDiscount(0);
+    setPtStartText("");
+    setPtEndText("");
     setAmountPaid(null);
     setNotes("");
     setNextPaymentDate("");
@@ -729,6 +808,8 @@ export function EnrollmentWizard({
       if (!gymPackage && !ptOn) e["package"] = "Pick a gym package (or turn on personal training)";
       if (ptOn && !ptPkg) e["ptPackage"] = "Pick a PT package";
       if (ptOn && !trainer) e["trainer"] = "Pick a trainer";
+      if (ptOn && ptDateProblem) e["ptDates"] = ptDateProblem;
+      if (ptOn && ptDiscountProblem) e["ptDiscount"] = ptDiscountProblem;
       if (counsellors.length && !counsellor) e["counsellor"] = "Pick the counsellor";
       if (planDateProblem) e["planDate"] = planDateProblem;
       if (joinStartsLater && startDate < client.joinedOn)
@@ -783,7 +864,7 @@ export function EnrollmentWizard({
         existingClient: existing,
         inquiryId: options.inquiryId ?? null,
         gymPackage,
-        pt,
+        pt: pt ? { ...pt, startDate: ptStart, endDate: ptEnd } : null,
         startDate,
         discount: paidInOld ? 0 : discount,
         amountPaid: paidInOld ? 0 : paid,
@@ -1053,6 +1134,8 @@ export function EnrollmentWizard({
                     canUpgrade={canUpgrade}
                     lastEnd={lastEnd}
                     renewStart={renewStart}
+                    renewMin={renewMin}
+                    runningPt={runningPt}
                     renewFrom={renewFrom}
                     setRenewDate={setRenewDate}
                     upgradeFrom={upgradeFrom}
@@ -1260,13 +1343,83 @@ export function EnrollmentWizard({
                         </Field>
                       </div>
                     ) : null}
+                    {ptPkg ? (
+                      <div className="grid grid-cols-2 gap-3 sm:col-span-2 sm:grid-cols-3">
+                        <Field
+                          label="PT start"
+                          htmlFor="e-ptstart"
+                          error={errors["ptDates"] || ptDateProblem}
+                          hint={ptStartText ? undefined : "Same as the plan"}
+                        >
+                          <Input
+                            id="e-ptstart"
+                            type="date"
+                            min={ptMin || undefined}
+                            value={ptStart}
+                            onChange={(e) =>
+                              setPtStartText(e.target.value === startDate ? "" : e.target.value)
+                            }
+                          />
+                        </Field>
+                        <Field
+                          label="PT end"
+                          htmlFor="e-ptend"
+                          hint={
+                            ptEndText
+                              ? undefined
+                              : gymPackage && newEnd === ptEnd
+                                ? "Same as the gym plan"
+                                : `${ptPkg.durationDays} days`
+                          }
+                        >
+                          <Input
+                            id="e-ptend"
+                            type="date"
+                            min={ptStart}
+                            value={ptEnd}
+                            onChange={(e) =>
+                              setPtEndText(e.target.value === ptEndDefault ? "" : e.target.value)
+                            }
+                          />
+                        </Field>
+                        <div className="col-span-2 sm:col-span-1">
+                          <Field
+                            label="PT discount ₹"
+                            htmlFor="e-ptdisc"
+                            error={ptDiscountProblem || errors["ptDiscount"]}
+                            hint={`On PT only · max ${formatPrice(maxPtDiscount(ptPkg))}`}
+                          >
+                            <Input
+                              id="e-ptdisc"
+                              type="number"
+                              inputMode="numeric"
+                              min={0}
+                              max={maxPtDiscount(ptPkg)}
+                              value={ptDiscount || ""}
+                              placeholder="0"
+                              onChange={(e) =>
+                                setPtDiscount(Math.max(0, Number(e.target.value) || 0))
+                              }
+                            />
+                          </Field>
+                        </div>
+                      </div>
+                    ) : null}
                     {ptPkg && trainer
                       ? (() => {
-                          const s = calculateShare(ptPkg.price, shareType, shareValue);
+                          const s = calculateShare(
+                            ptNetPrice({ pkg: ptPkg, discount: ptDiscount }),
+                            shareType,
+                            shareValue,
+                          );
                           return (
                             <dl className="grid grid-cols-3 gap-2 rounded-xl bg-muted/50 p-3 text-sm sm:col-span-2">
                               <div>
-                                <dt className="text-meta">PT price</dt>
+                                <dt className="text-meta">
+                                  {ptDiscountOf({ pkg: ptPkg, discount: ptDiscount }) > 0
+                                    ? "PT price after discount"
+                                    : "PT price"}
+                                </dt>
                                 <dd className="font-bold tabular-nums">{formatPrice(s.ptPrice)}</dd>
                               </div>
                               <div>
@@ -1309,9 +1462,15 @@ export function EnrollmentWizard({
                     {pt ? (
                       <li className="flex justify-between gap-3">
                         <span>
-                          PT: {ptPackageLabel(pt.pkg)} · {pt.trainer.name}
+                          PT: {ptPackageLabel(pt.pkg)} · {pt.trainer.name} ·{" "}
+                          {formatDateISO(ptStart)} → {formatDateISO(ptEnd)}
+                          {!paidInOld && ptDiscountOf(pt) > 0
+                            ? ` · ${formatPrice(pt.pkg.price)} less ${formatPrice(ptDiscountOf(pt))} PT discount`
+                            : ""}
                         </span>
-                        <b className="tabular-nums">{formatPrice(pt.pkg.price)}</b>
+                        <b className="tabular-nums">
+                          {formatPrice(paidInOld ? pt.pkg.price : ptNetPrice(pt))}
+                        </b>
                       </li>
                     ) : null}
                   </ul>
@@ -1329,7 +1488,7 @@ export function EnrollmentWizard({
                       <span className="block font-semibold">Paid in the old software</span>
                       <span className="text-meta">
                         {oldLocked
-                          ? `Still running in the old software until ${formatDateISO(oldRunning.end)}: it is carried over as paid there (amounts from the old software, nothing counted today). The thumb works until then; renew here after it ends.`
+                          ? `Still running in the old software until ${formatDateISO(oldRunning.end)}: it is carried over as paid there (amounts from the old software, nothing counted today). Paying now for the next plan too? Save this one first, then press Renew again: the new plan starts on ${formatDateISO(addDaysISO(oldRunning.end, 1))}.`
                           : "For a member moving over whose plan is already paid there. No money is taken today: what they paid there counts on the day they paid it, never in today's cash or the Day Book. Their old offer price is kept: no discount needed."}
                       </span>
                     </span>
@@ -1578,7 +1737,14 @@ export function EnrollmentWizard({
                       label="Discount ₹"
                       htmlFor="e-disc"
                       error={discountProblem || errors["discount"]}
-                      hint={maxDiscount !== null ? `Max ${formatPrice(maxDiscount)}` : undefined}
+                      hint={
+                        [
+                          maxDiscount !== null ? `Max ${formatPrice(maxDiscount)}` : "",
+                          pt ? "On the whole bill; PT's own discount is in the PT box" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || undefined
+                      }
                     >
                       <Input
                         id="e-disc"
@@ -2229,9 +2395,11 @@ function ShareStep({
  */
 function RenewChoice({
   running,
+  runningPt,
   canUpgrade,
   lastEnd,
   renewStart,
+  renewMin,
   renewFrom,
   setRenewDate,
   upgradeFrom,
@@ -2246,9 +2414,13 @@ function RenewChoice({
   setCreditText,
 }: {
   running: Membership | null;
+  /** The PT plan running today (a member whose only plan here is PT). */
+  runningPt: PtAssignment | null;
   canUpgrade: boolean;
   lastEnd: string;
   renewStart: string;
+  /** The earliest allowed day (after the plans of the kinds being bought). */
+  renewMin: string;
   renewFrom: string;
   setRenewDate: (v: string) => void;
   upgradeFrom: string;
@@ -2302,6 +2474,12 @@ function RenewChoice({
             <b>{formatDateISO(running.endDate)}</b> (
             {Math.max(0, daysBetween(today, running.endDate))} days left)
           </>
+        ) : runningPt ? (
+          <>
+            Current plan: <b>PT · {runningPt.ptPackageNameSnapshot}</b>, ends{" "}
+            <b>{formatDateISO(runningPt.endDate)}</b> (
+            {Math.max(0, daysBetween(today, runningPt.endDate))} days left)
+          </>
         ) : (
           <>
             Already renewed until <b>{formatDateISO(lastEnd)}</b>
@@ -2318,15 +2496,17 @@ function RenewChoice({
           label="Renew from"
           htmlFor="e-renew-date"
           hint={
-            gapDays > 0
-              ? `No plan from ${formatDateISO(renewStart)} to ${formatDateISO(addDaysISO(renewFrom, -1))}.`
-              : "The day after the current plan ends. Pick a later date if agreed."
+            renewFrom < renewStart
+              ? `Starts before the current plan ends on ${formatDateISO(addDaysISO(renewStart, -1))}.`
+              : gapDays > 0
+                ? `No plan from ${formatDateISO(renewStart)} to ${formatDateISO(addDaysISO(renewFrom, -1))}.`
+                : "The day after the current plan ends. Pick a later date if agreed."
           }
         >
           <Input
             id="e-renew-date"
             type="date"
-            min={renewStart}
+            min={renewMin}
             value={renewFrom}
             onChange={(e) => setRenewDate(e.target.value)}
             className="max-w-48"

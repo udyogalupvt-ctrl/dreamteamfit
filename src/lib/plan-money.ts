@@ -42,14 +42,19 @@ export interface PlanMoney {
   shared: boolean;
 }
 
-/** The plan's money on its bill; null when there is no bill to read it from. */
+/**
+ * The plan's money on its bill; null when there is no bill to read it from. `ownDiscount`: ₹ taken
+ * off this plan alone before the bill (a PT discount: its bill line is already the lower price).
+ */
 export function planMoney(
   kind: "gym" | "pt",
   price: number,
   bill: PlanBill | null | undefined,
+  ownDiscount = 0,
 ): PlanMoney | null {
   if (!bill || !(bill.subtotal > 0)) return null;
   const gross = Math.max(0, (kind === "gym" ? bill.membershipGross : bill.ptGross) || price);
+  const own = Math.max(0, Number(ownDiscount) || 0);
   const ratio = Math.min(gross, bill.subtotal) / bill.subtotal;
   const credits =
     Math.max(0, Number(bill.upgradeCredit) || 0) + Math.max(0, Number(bill.oldSoftwareCredit) || 0);
@@ -63,8 +68,8 @@ export function planMoney(
       ? Math.max(0, bill.balanceDue)
       : Math.max(0, bill.balanceDue) * ratio;
   return {
-    price: round(gross),
-    discount,
+    price: round(gross + own),
+    discount: round(discount + own),
     credit: round(Math.min(credits, discountAll) * ratio),
     value: round(Math.max(0, gross - discount)),
     total,

@@ -105,6 +105,7 @@ export function ClientPtSection({
                     key="price"
                     kind="pt"
                     price={p.ptPrice}
+                    ownDiscount={p.ptDiscount}
                     bill={
                       invoices.find(
                         (i) => (p.invoiceId && i.id === p.invoiceId) || i.ptAssignmentId === p.id,

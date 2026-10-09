@@ -253,3 +253,22 @@ test("planMoney: after a PT on a gym + PT bill is cancelled, all that is due is 
     7862.07,
   );
 });
+
+test("a PT discount (its line already lower) shows as the plan's discount: package ₹6,000 · ₹1,000", () => {
+  const b = bill({
+    subtotal: 7499,
+    discount: 0,
+    total: 7499,
+    amountPaid: 7499,
+    membershipGross: 2499,
+    ptGross: 5000,
+  });
+  const m = planMoney("pt", 5000, b, 1000)!;
+  assert.equal(m.price, 6000);
+  assert.equal(m.discount, 1000);
+  assert.equal(m.value, 5000);
+  assert.equal(m.total, 5000);
+  assert.equal(m.paid, 5000);
+  // The gym plan on the same bill is unaffected.
+  assert.equal(planMoney("gym", 2499, b)!.total, 2499);
+});

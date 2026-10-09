@@ -24,12 +24,15 @@ export function PlanPriceLine({
   kind,
   price,
   bill,
+  ownDiscount = 0,
 }: {
   kind: "gym" | "pt";
   price: number;
   bill: Bill;
+  /** ₹ off this plan alone (a PT discount; `price` is after it). */
+  ownDiscount?: number | undefined;
 }) {
-  const m = planMoney(kind, price, bill);
+  const m = planMoney(kind, price, bill, ownDiscount);
   if (!m || !bill)
     return (
       <p className="text-sm">
@@ -61,12 +64,15 @@ export function PlanPriceAmount({
   kind,
   price,
   bill,
+  ownDiscount = 0,
 }: {
   kind: "gym" | "pt";
   price: number;
   bill: Bill;
+  /** ₹ off this plan alone (a PT discount; `price` is after it). */
+  ownDiscount?: number | undefined;
 }) {
-  const m = planMoney(kind, price, bill);
+  const m = planMoney(kind, price, bill, ownDiscount);
   if (!m || !bill || (m.total === m.price && !m.due))
     return <span className="font-semibold tabular-nums">{formatPrice(price)}</span>;
   return (
@@ -86,12 +92,15 @@ export function PlanPriceText({
   kind,
   price,
   bill,
+  ownDiscount = 0,
 }: {
   kind: "gym" | "pt";
   price: number;
   bill: Bill;
+  /** ₹ off this plan alone (a PT discount; `price` is after it). */
+  ownDiscount?: number | undefined;
 }) {
-  const m = planMoney(kind, price, bill);
+  const m = planMoney(kind, price, bill, ownDiscount);
   return (
     <>
       {!m || !bill || m.total === m.price

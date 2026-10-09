@@ -39,6 +39,10 @@ function reloadForNewVersion() {
  * kept saving plans the old way after an update). Every 5 minutes, and when the tab is shown
  * again, it asks for the live version; a newer one loads by itself once nothing is open or being
  * typed (no popup, no typing for 20 s), else a Refresh button is offered.
+ *
+ * The installed app on a phone is never "refreshed" by hand (no address bar, no pull to refresh)
+ * and is mostly sent to the background, not closed: the new version loads while it is in the
+ * background, and at the latest when it is opened again.
  */
 function useNewVersion() {
   useEffect(() => {
@@ -55,7 +59,7 @@ function useNewVersion() {
           (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))
       );
     };
-    const tryLoad = () => {
+    const tryLoad = (resumed = false) => {
       if (!newer) return;
       let tried = "";
       try {
@@ -64,7 +68,8 @@ function useNewVersion() {
         // Storage blocked: the one-per-minute guard still stops a loop.
       }
       // Once per new version: if it is still old after that, only the button is offered.
-      if (tried !== newer && !busy() && Date.now() - lastInput > 20_000) {
+      // Coming back to the app (or leaving it) is not typing: no need to wait 20 s then.
+      if (tried !== newer && !busy() && (resumed || Date.now() - lastInput > 20_000)) {
         try {
           sessionStorage.setItem("rf-reload-build", newer);
         } catch {
@@ -75,13 +80,18 @@ function useNewVersion() {
       if (offered) return;
       offered = true;
       toast("A new version of the app is ready", {
-        description: "It loads by itself when nothing is open. Or refresh now.",
+        id: "new-version",
+        description: "It loads by itself when nothing is open. Or tap Refresh now.",
         duration: Infinity,
+        dismissible: true,
         action: { label: "Refresh", onClick: () => window.location.reload() },
       });
     };
-    const check = async () => {
-      if (Date.now() - lastCheck < 60_000) return;
+    const check = async (resumed = false) => {
+      if (Date.now() - lastCheck < 60_000) {
+        tryLoad(resumed);
+        return;
+      }
       lastCheck = Date.now();
       try {
         const r = await fetch("/api/version", { cache: "no-store" });
@@ -93,13 +103,20 @@ function useNewVersion() {
       } catch {
         // Offline: asked again later.
       }
-      tryLoad();
+      tryLoad(resumed);
     };
     const onInput = () => {
       lastInput = Date.now();
     };
     const onShow = () => {
-      if (document.visibilityState === "visible") void check();
+      // Shown again: ask now and load a newer version straight away. Sent to the background
+      // (phone app switched away): a newer version already known loads there, unseen.
+      if (document.visibilityState === "visible") void check(true);
+      else tryLoad(true);
+    };
+    // Android / iPhone may keep the app frozen and bring the same page back (back-forward cache).
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) void check(true);
     };
     const first = window.setTimeout(() => void check(), 15_000);
     const timer = window.setInterval(() => {
@@ -110,7 +127,11 @@ function useNewVersion() {
     const events = ["keydown", "pointerdown", "input"] as const;
     events.forEach((e) => window.addEventListener(e, onInput, { passive: true }));
     document.addEventListener("visibilitychange", onShow);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("focus", onShow);
     return () => {
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("focus", onShow);
       window.clearTimeout(first);
       window.clearInterval(timer);
       events.forEach((e) => window.removeEventListener(e, onInput));
@@ -154,33 +175,47 @@ const STALE_BUILD =
 
 function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   const router = useRouter();
+  // The app was updated while this page was open: its old page files are gone, so trying again
+  // in place can never work. Only loading the page again (the new version) does.
+  const stale = STALE_BUILD.test(String((error as Error | undefined)?.message ?? error));
   useEffect(() => {
     console.error(error);
-    if (STALE_BUILD.test(String((error as Error | undefined)?.message ?? error)))
-      reloadForNewVersion();
-  }, [error]);
+    if (stale) reloadForNewVersion();
+  }, [error, stale]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          This page didn't load
+          {stale ? "The app was updated" : "This page didn't load"}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Something went wrong on our end. You can try refreshing or head back home.
+          {stale
+            ? "Tap below to open the new version. Nothing you saved is lost."
+            : "Something went wrong on our end. You can try refreshing or head back home."}
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
+              // A full load gets the new version's files (and clears a stuck error for good).
+              if (stale) {
+                window.location.reload();
+                return;
+              }
               router.invalidate();
               reset();
             }}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Try again
+            {stale ? "Open the new version" : "Try again"}
           </button>
           <a
-            href="/"
+            // A member's / trainer's app goes back to their own page, not the staff login.
+            href={
+              typeof window !== "undefined" && /^\/(m|t)\//.test(window.location.pathname)
+                ? window.location.pathname
+                : "/"
+            }
             className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             Go home

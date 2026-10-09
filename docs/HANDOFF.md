@@ -1,6 +1,45 @@
 # Handoff
 
-Last updated: 2026-10-09 (late night: audit 9 built, tested, pushed)
+Last updated: 2026-10-09 (night: renewal of PT-only members, PT dates + PT discount, app update fix)
+
+## 2026-10-09 (night): owner-reported bugs (K. Mothilal renewal, PT dates/discount, Android app update)
+
+**State**
+- **1 Renew blocked (real member, K. Mothilal):** his only plan here was the PT plan carried over from
+  the old software (15 Sep → 14 Oct). The Renew window looked only at gym plans, so it thought he had
+  nothing here, forced the old running plan again (start locked to 15 Sep, "paid in the old software")
+  and the save was refused. Now: PT plans count as plans here (`ptPlans` in enrollment-wizard.tsx);
+  renewal is offered from the day after the last plan of the kinds being bought (`renewMin` /
+  `renewStart`), PT-only renewals too; "Current plan: PT · … ends …". A member whose old plan is not in
+  the app yet still carries it first; the note now says "Save this one first, then press Renew again".
+- **Member page:** a PT-only member shows "PT plan running" + current = the PT plan (was "No active plan"
+  / "No membership records yet"); empty state offers "Renew / add package".
+- **2 PT dates + PT discount:** PT box has PT start / PT end (default = plan start, PT package length =
+  the gym plan's dates when both are the same length; editable, end ≥ start, start after a running PT)
+  and "PT discount ₹" (max = PT package max, else its price). The PT discount lowers the PT line on the
+  bill (`ptGross` = after discount) and the trainer share is worked out on that price (₹6,000 − ₹1,000,
+  35% → ₹1,750). PT plan keeps `ptListPrice` + `ptDiscount`; member page shows "package ₹6,000 · ₹1,000
+  discount" (`planMoney(..., ownDiscount)`). The bill's own Discount stays a whole-bill discount
+  (split by price as before). Helpers `ptDiscountOf` / `ptNetPrice` / `maxPtDiscount` in
+  enrollment.service.ts.
+- **3 Android app stuck after an update:** the error page's "Try again" retried the old version's
+  deleted page files forever (only closing the app helped). Now a stale build shows "The app was updated
+  → Open the new version" (full reload); the app also loads a newer version when it is sent to the
+  background or brought back (visibilitychange / pageshow / focus), not only after 20 s idle. Portal
+  error "Go home" stays on the member's / trainer's own page.
+- Checks: build OK, tsc + eslint clean, unit 294/294; emulator (harness scratchpad 32d649c3…,
+  `bash regress.sh <suite>`; `rerun.sh` = same without rebuilding) `renew_pt_local.py` 26/26 (K. Mothilal
+  case end to end as owner, PT dates/discount, member page, phone width), `update_local.py` 6/6
+  (background update, no loop, stale page files → "Open the new version"); regressions audit2 27/27,
+  remove 39/39, plans_end 12/12, moneyfix 21/21, audit9 23/23. Dark shots 390/1440 in
+  `shots_renew_pt/`. Pushed to main.
+- Not done (decide): PT-only members get no expiry/renewal WhatsApp reminder (reminders read gym plans
+  only); a PT plan can still be sold over another running PT plan by script (the window refuses it).
+
+### Next
+1. User: refresh any open app tab once (older tabs); installed phone apps update by themselves now.
+2. Owner: renew K. Mothilal again (Renew → it starts 15 Oct).
+3. Still open: K. Sri Devi's cancelled PT (owner); M. Rohith's package (owner); P. Sai Ram clean-up.
 
 ## 2026-10-09 (late night): audit 9, cancelling one plan of a gym + PT bill
 

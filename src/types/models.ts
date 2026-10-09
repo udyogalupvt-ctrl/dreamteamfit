@@ -942,6 +942,9 @@ export interface PtAssignment extends BaseDoc, ShareSnapshot {
   startDate: string;
   endDate: string;
   status: PtAssignmentStatus;
+  /** Sold with a PT discount: the package price before it and the ₹ off (ptPrice = after). */
+  ptListPrice?: number;
+  ptDiscount?: number;
   invoiceId: string;
   enrollmentId: string | null;
   /** Moved over from the old gym software: sold and paid there, not a sale here. */

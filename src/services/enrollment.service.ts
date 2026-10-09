@@ -83,7 +83,20 @@ export interface EnrollmentInput {
   existingClient: Client | null;
   inquiryId: string | null;
   gymPackage: GymPackage | null;
-  pt: { pkg: PtPackage; trainer: Trainer; shareType: ShareType; shareValue: number } | null;
+  pt: {
+    pkg: PtPackage;
+    trainer: Trainer;
+    shareType: ShareType;
+    shareValue: number;
+    /**
+     * ₹ off the PT package only (its own discount; the bill's `discount` is for the rest). The PT
+     * line on the bill and the trainer share are worked out on the price after it.
+     */
+    discount?: number;
+    /** The PT plan's own dates; left out = the sale's start date, for the PT package's length. */
+    startDate?: string;
+    endDate?: string;
+  } | null;
   startDate: string;
   discount: number;
   amountPaid: number;
@@ -144,6 +157,22 @@ export interface UpgradeInput {
   credit: number;
 }
 
+/** ₹ taken off the PT package by its own discount (never more than its price). */
+export function ptDiscountOf(pt: Pick<NonNullable<EnrollmentInput["pt"]>, "pkg" | "discount">) {
+  return Math.min(Math.max(0, Math.round(Number(pt.discount) || 0)), Math.max(0, pt.pkg.price));
+}
+/** The PT price after its own discount: what the bill's PT line and the trainer share use. */
+export function ptNetPrice(pt: Pick<NonNullable<EnrollmentInput["pt"]>, "pkg" | "discount">) {
+  return Math.max(0, pt.pkg.price - ptDiscountOf(pt));
+}
+/** Most the PT discount may be: the PT package's maximum (Packages), else its price. */
+export function maxPtDiscount(pkg: Pick<PtPackage, "price" | "maxDiscount">) {
+  const limit = pkg.maxDiscount;
+  return limit !== null && limit !== undefined && Number.isFinite(Number(limit))
+    ? Math.min(Number(limit), Math.max(0, pkg.price))
+    : Math.max(0, pkg.price);
+}
+
 /**
  * Highest discount allowed for this checkout (the maximums set in Packages); null = no package
  * here has a maximum. With a membership and PT together, each package's own maximum counts; one
@@ -154,7 +183,16 @@ export function maxDiscountFor(input: Pick<EnrollmentInput, "gymPackage" | "pt">
     input.gymPackage
       ? { limit: input.gymPackage.maxDiscount, price: input.gymPackage.price }
       : null,
-    input.pt ? { limit: input.pt.pkg.maxDiscount, price: input.pt.pkg.price } : null,
+    // What is left of the PT maximum after the PT discount.
+    input.pt
+      ? {
+          limit:
+            input.pt.pkg.maxDiscount === null || input.pt.pkg.maxDiscount === undefined
+              ? input.pt.pkg.maxDiscount
+              : Math.max(0, Number(input.pt.pkg.maxDiscount) - ptDiscountOf(input.pt)),
+          price: ptNetPrice(input.pt),
+        }
+      : null,
   ].filter((p): p is { limit: number | null; price: number } => p !== null);
   const limited = (x: number | null | undefined): x is number =>
     x !== null && x !== undefined && Number.isFinite(Number(x));
@@ -172,9 +210,9 @@ export function enrollmentTotals(
 ) {
   const items: { quantity: number; unitPrice: number }[] = [];
   if (input.gymPackage) items.push({ quantity: 1, unitPrice: input.gymPackage.price });
-  if (input.pt) items.push({ quantity: 1, unitPrice: input.pt.pkg.price });
+  if (input.pt) items.push({ quantity: 1, unitPrice: ptNetPrice(input.pt) });
   const share = input.pt
-    ? calculateShare(input.pt.pkg.price, input.pt.shareType, input.pt.shareValue)
+    ? calculateShare(ptNetPrice(input.pt), input.pt.shareType, input.pt.shareValue)
     : null;
   return {
     // The upgrade credit is taken off like a discount, but it is not limited by "max discount".
@@ -193,9 +231,16 @@ export function enrollmentTotals(
  * One confirmed checkout creates everything once: client (if new), membership,
  * PT assignment, ONE payment, invoice + public link, trainer payout, enrollment record.
  */
-export async function enrollMember(input: EnrollmentInput) {
-  if (!input.gymPackage && !input.pt) throw new Error("Select a gym package or a PT package.");
-  const old = input.oldSoftware ?? null;
+export async function enrollMember(given: EnrollmentInput) {
+  if (!given.gymPackage && !given.pt) throw new Error("Select a gym package or a PT package.");
+  const old = given.oldSoftware ?? null;
+  // Paid in the old software: its amounts are what was paid there, no discount here.
+  const input: EnrollmentInput =
+    old && given.pt ? { ...given, pt: { ...given.pt, discount: 0 } } : given;
+  if (input.pt && ptDiscountOf(input.pt) > maxPtDiscount(input.pt.pkg))
+    throw new Error(
+      `PT discount can be at most ₹${maxPtDiscount(input.pt.pkg).toLocaleString("en-IN")} on this PT package.`,
+    );
   // A member already in the app (Excel import, thumb first) may still be moving over, and so may
   // one with plans here before or after it (an older plan that ended, or the renewal entered while
   // the old plan still runs). A plan here running on its first day means it was paid here.
@@ -332,6 +377,19 @@ export async function enrollMember(input: EnrollmentInput) {
   const oldEnd = old?.end && /^\d{4}-\d{2}-\d{2}$/.test(old.end) ? old.end : "";
   if (oldEnd && oldEnd < input.startDate)
     throw new Error("The old plan ends before it starts: check the old software's dates.");
+  // The PT plan's own dates (staff may change them); by default from the sale's start date. A PT
+  // plan carried over alone from the old software keeps its own last day there.
+  const isDay = (x: string | undefined): x is string => !!x && /^\d{4}-\d{2}-\d{2}$/.test(x);
+  const ptStart = input.pt && isDay(input.pt.startDate) ? input.pt.startDate : input.startDate;
+  const ptEnd = input.pt
+    ? isDay(input.pt.endDate)
+      ? input.pt.endDate
+      : oldEnd && !input.gymPackage
+        ? oldEnd
+        : calculateEndDate(ptStart, input.pt.pkg.durationDays)
+    : "";
+  if (input.pt && ptEnd < ptStart)
+    throw new Error("The PT plan ends before it starts: check the PT dates.");
   const planEnd = input.gymPackage
     ? oldEnd || calculateEndDate(input.startDate, input.gymPackage.durationDays)
     : "";
@@ -485,12 +543,6 @@ export async function enrollMember(input: EnrollmentInput) {
       });
     }
     const share = totals.share;
-    // A PT plan carried over alone from the old software keeps its own last day there.
-    const ptEnd = input.pt
-      ? oldEnd && !input.gymPackage
-        ? oldEnd
-        : calculateEndDate(input.startDate, input.pt.pkg.durationDays)
-      : "";
     if (ptRef && input.pt && share) {
       tx.set(ptRef, {
         clientId: clientRef.id,
@@ -500,10 +552,13 @@ export async function enrollMember(input: EnrollmentInput) {
         trainerId: input.pt.trainer.id,
         trainerNameSnapshot: input.pt.trainer.name,
         ...share,
-        startDate: input.startDate,
-        // A PT plan carried over alone from the old software keeps its own last day there.
+        // Before the discount: ptPrice (in `share`) is what is charged for PT on this bill.
+        ...(ptDiscountOf(input.pt) > 0
+          ? { ptListPrice: input.pt.pkg.price, ptDiscount: ptDiscountOf(input.pt) }
+          : {}),
+        startDate: ptStart,
         endDate: ptEnd,
-        status: ptEnd < today ? "completed" : input.startDate > today ? "pending" : "active",
+        status: ptEnd < today ? "completed" : ptStart > today ? "pending" : "active",
         invoiceId: invoiceRef?.id ?? "",
         enrollmentId: enrollmentRef.id,
         ...oldFields,
@@ -562,10 +617,14 @@ export async function enrollMember(input: EnrollmentInput) {
             ? [
                 {
                   name: `PT: ${ptPackageLabel(input.pt.pkg)}`,
-                  description: `Personal training with ${input.pt.trainer.name}`,
+                  description: `Personal training with ${input.pt.trainer.name}${
+                    ptDiscountOf(input.pt) > 0
+                      ? ` · ₹${input.pt.pkg.price.toLocaleString("en-IN")} less ₹${ptDiscountOf(input.pt).toLocaleString("en-IN")} PT discount`
+                      : ""
+                  }`,
                   quantity: 1,
-                  unitPrice: input.pt.pkg.price,
-                  total: input.pt.pkg.price,
+                  unitPrice: ptNetPrice(input.pt),
+                  total: ptNetPrice(input.pt),
                   packageId: null,
                 },
               ]
@@ -591,7 +650,7 @@ export async function enrollMember(input: EnrollmentInput) {
         }
       : {
           membershipGross: input.gymPackage?.price ?? 0,
-          ptGross: input.pt?.pkg.price ?? 0,
+          ptGross: input.pt ? ptNetPrice(input.pt) : 0,
           trainerShareTotal: share?.trainerShareAmount ?? 0,
         };
     const paymentStatus = derivePaymentStatus(money.total, money.amountPaid);

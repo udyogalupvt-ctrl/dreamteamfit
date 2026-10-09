@@ -80,6 +80,7 @@ import {
   formatPrice,
   INVOICE_STATUS_META,
   joinedOnOf,
+  todayISO,
 } from "@/lib/format";
 import { toneIcon } from "@/lib/tone";
 import { cn } from "@/lib/utils";
@@ -296,6 +297,12 @@ function ClientProfilePage() {
     };
   };
   const upcoming = withStatus.filter((m) => m.effective === "pending");
+  // A member whose plan here is PT only (e.g. carried over from the old software) is not "without a
+  // plan": the PT plan opens the door too, and a renewal starts after it.
+  const runningPt =
+    ptPlans.data.find(
+      (p) => p.status === "active" && p.startDate <= todayISO() && p.endDate >= todayISO(),
+    ) ?? null;
 
   return (
     <div className="space-y-6">
@@ -396,6 +403,8 @@ function ClientProfilePage() {
               <StatusPill tone="danger">Entry blocked</StatusPill>
             ) : current ? (
               <StatusPill tone="success">Active member</StatusPill>
+            ) : runningPt ? (
+              <StatusPill tone="success">PT plan running</StatusPill>
             ) : (
               <StatusPill tone="info">No active plan</StatusPill>
             )}
@@ -434,6 +443,11 @@ function ClientProfilePage() {
             <>
               <p className="mt-1 truncate font-semibold">{current.packageNameSnapshot}</p>
               <p className="text-meta">Ends {formatDateISO(current.endDate)}</p>
+            </>
+          ) : runningPt ? (
+            <>
+              <p className="mt-1 truncate font-semibold">PT · {runningPt.ptPackageNameSnapshot}</p>
+              <p className="text-meta">Ends {formatDateISO(runningPt.endDate)}</p>
             </>
           ) : (
             <p className="mt-1 text-sm text-muted-foreground">
@@ -627,11 +641,15 @@ function ClientProfilePage() {
           ) : withStatus.length === 0 ? (
             <EmptyState
               icon={CreditCard}
-              title="No membership records yet"
-              description="Assign a package to start this member's first membership."
+              title={runningPt ? "No gym membership here yet" : "No membership records yet"}
+              description={
+                runningPt
+                  ? `PT plan running until ${formatDateISO(runningPt.endDate)}. Paying for the next month? Renew: it starts after the PT plan.`
+                  : "Assign a package to start this member's first membership."
+              }
               action={
                 <Button onClick={() => openEnrollment({ existingClient: c })}>
-                  <Plus aria-hidden /> Add membership
+                  <Plus aria-hidden /> {runningPt ? "Renew / add package" : "Add membership"}
                 </Button>
               }
             />
