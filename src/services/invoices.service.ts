@@ -65,6 +65,8 @@ export const mapInvoice = (id: string, d: DocumentData): Invoice => ({
   upgradeCredit: Number(d["upgradeCredit"] ?? 0),
   oldSoftwareCredit: Number(d["oldSoftwareCredit"] ?? 0),
   remindOldBalance: d["remindOldBalance"] === true,
+  cancelledDue: Number(d["cancelledDue"] ?? 0),
+  cancelledParts: (d["cancelledParts"] as Invoice["cancelledParts"]) ?? null,
   edits: Array.isArray(d["edits"]) ? d["edits"] : [],
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
@@ -90,6 +92,7 @@ export const mapPublicInvoice = (token: string, d: DocumentData): PublicInvoice 
   business: d["business"],
   upgradeCredit: Number(d["upgradeCredit"] ?? 0),
   oldSoftwareCredit: Number(d["oldSoftwareCredit"] ?? 0),
+  cancelledDue: Number(d["cancelledDue"] ?? 0),
   updatedAt: toDate(d["updatedAt"]),
 });
 /** The newest bills (dashboard feed). */

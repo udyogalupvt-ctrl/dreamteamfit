@@ -234,6 +234,8 @@ export function previewPlanEdit(
     else if (!bill) billNote = "No bill is linked to this plan, so no bill is changed.";
     else if (bill.paymentStatus === "closed" || bill.paymentStatus === "refunded")
       billNote = `Bill ${bill.invoiceNumber} is ${bill.paymentStatus}: it is not changed.`;
+    else if (Number(bill.cancelledDue) > 0)
+      billNote = `A plan on bill ${bill.invoiceNumber} was cancelled (its unpaid part dropped): the bill is not changed.`;
     else {
       // The plan's line on the bill: the one for its package, else the gym membership line.
       let at = bill.items.findIndex((i) => !!i.packageId && i.packageId === m.packageId);

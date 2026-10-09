@@ -173,6 +173,10 @@ export function planOldMove(
   const fail = (error: string) => ({ ...out, error });
   if (bill.paymentStatus === "closed" || bill.paymentStatus === "refunded")
     return fail(`Bill ${bill.invoiceNumber} is ${bill.paymentStatus}: it can't change.`);
+  if (Number(bill.cancelledDue) > 0)
+    return fail(
+      `A plan on bill ${bill.invoiceNumber} was cancelled and its unpaid part dropped: Restore that plan first.`,
+    );
   if (payments.some((p) => Number(p.data["amount"] ?? 0) < 0))
     return fail("Money was given back on this bill: undo that refund first.");
   const lockedFrom = cashOpenFrom(today);

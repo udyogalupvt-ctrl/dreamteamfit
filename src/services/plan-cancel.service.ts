@@ -8,6 +8,7 @@ import {
   where,
   writeBatch,
 } from "@/lib/firestore";
+import { billOwed, billStatus, cancelledDueOf, restorePart } from "@/lib/bill-cancel";
 import { db } from "@/lib/firebase";
 import { todayISO } from "@/lib/format";
 import { currentRow, pickCurrent, sameCurrent } from "@/lib/current-plan";
@@ -31,6 +32,8 @@ import { col, COLLECTIONS } from "./firestore.service";
  * share of a refunded PT plan (their unpaid payout goes down, or a minus line is added to their
  * next payout when it was already paid), and the bills of these plans whose balance is no longer
  * asked for (Closed: no more "balance due" reminders). Restore finds it all by that id.
+ * A gym + PT bill whose other plan keeps running is lowered by the cancelled plan's unpaid part
+ * instead (kept under the cancelId in `cancelledParts`; lib/bill-cancel.ts).
  */
 
 export interface RefundPart {
@@ -169,6 +172,15 @@ export interface CancelInput {
   paid?: Record<string, number>;
   /** Bills of these plans with money still due that is not asked for any more. */
   closeBills?: Pick<Invoice, "id" | "balanceDue" | "paymentStatus" | "publicToken">[];
+  /** Gym + PT bills whose other plan keeps running: stop asking for this plan's unpaid part. */
+  lowerBills?: {
+    bill: Pick<
+      Invoice,
+      "id" | "publicToken" | "total" | "amountPaid" | "cancelledDue" | "cancelledParts"
+    >;
+    kind: "gym" | "pt";
+    amount: number;
+  }[];
   by: { uid: string; name: string };
 }
 
@@ -305,6 +317,24 @@ export async function cancelPlans(input: CancelInput) {
       });
   }
 
+  // Gym + PT bills: only the plan still running is asked for.
+  for (const { bill: b, kind, amount } of input.lowerBills ?? []) {
+    if (!(amount > 0)) continue;
+    const cancelledParts = {
+      ...(b.cancelledParts ?? {}),
+      [cancelId]: { kind, amount, paidThen: b.amountPaid },
+    };
+    const dropped = cancelledDueOf({ cancelledParts });
+    const patch = {
+      balanceDue: billOwed(b.total, b.amountPaid, dropped),
+      paymentStatus: billStatus(b.total, b.amountPaid, dropped),
+      cancelledDue: dropped,
+      updatedAt: now,
+    };
+    batch.update(doc(db, COLLECTIONS.invoices, b.id), { ...patch, cancelledParts });
+    if (b.publicToken) batch.update(doc(db, COLLECTIONS.publicInvoices, b.publicToken), patch);
+  }
+
   if (refund > 0) {
     const gym = parts.filter((p) => p.kind === "gym").reduce((n, p) => n + p.amount, 0);
     const pt = refund - gym;
@@ -387,9 +417,28 @@ export async function restoreCancellation(
       const x = d.data();
       const before = x["beforeCancel"] as { balanceDue: number; paymentStatus: string } | undefined;
       if (!before) return;
+      // Also lowered by this cancellation (closed since by a removed payment): that part too.
+      const parts = { ...((x["cancelledParts"] as Invoice["cancelledParts"]) ?? {}) };
+      const mine = parts[cancelId];
+      delete parts[cancelId];
+      const partFields = mine
+        ? {
+            cancelledParts: Object.keys(parts).length ? parts : deleteField(),
+            cancelledDue: cancelledDueOf({ cancelledParts: parts }),
+          }
+        : {};
+      const balanceDue = mine ? before.balanceDue + mine.amount : before.balanceDue;
+      const paymentStatus = mine
+        ? billStatus(
+            Number(x["total"] ?? 0),
+            Number(x["amountPaid"] ?? 0),
+            cancelledDueOf({ cancelledParts: parts }),
+          )
+        : before.paymentStatus;
       batch.update(d.ref, {
-        balanceDue: before.balanceDue,
-        paymentStatus: before.paymentStatus,
+        ...partFields,
+        balanceDue,
+        paymentStatus,
         beforeCancel: deleteField(),
         closedAmount: deleteField(),
         cancelId: deleteField(),
@@ -398,11 +447,63 @@ export async function restoreCancellation(
       const token = String(x["publicToken"] ?? "");
       if (token)
         batch.update(doc(db, COLLECTIONS.publicInvoices, token), {
-          balanceDue: before.balanceDue,
-          paymentStatus: before.paymentStatus,
+          balanceDue,
+          paymentStatus,
+          ...(mine ? { cancelledDue: cancelledDueOf({ cancelledParts: parts }) } : {}),
           updatedAt: now,
         });
     });
+    // Gym + PT bills this cancellation lowered: the plan's part is asked for again.
+    const billsOf = async (field: string, ids: string[]) =>
+      ids.length
+        ? (await getDocs(query(collection(db, COLLECTIONS.invoices), where(field, "in", ids)))).docs
+        : [];
+    const lowered = [
+      ...(await billsOf(
+        "membershipId",
+        ms.docs.slice(0, 30).map((d) => d.id),
+      )),
+      ...(await billsOf(
+        "ptAssignmentId",
+        ps.docs.slice(0, 30).map((d) => d.id),
+      )),
+    ];
+    const seen = new Set<string>(bills.docs.map((d) => d.id));
+    for (const d of lowered) {
+      if (seen.has(d.id)) continue;
+      seen.add(d.id);
+      const x = d.data();
+      const back = restorePart(
+        {
+          invoiceNumber: String(x["invoiceNumber"] ?? ""),
+          total: Number(x["total"] ?? 0),
+          amountPaid: Number(x["amountPaid"] ?? 0),
+          paymentStatus: String(x["paymentStatus"] ?? ""),
+          closedAmount: Number(x["closedAmount"] ?? 0),
+          cancelledParts: (x["cancelledParts"] as Invoice["cancelledParts"]) ?? null,
+          beforeCancel:
+            (x["beforeCancel"] as { balanceDue: number; paymentStatus: string }) ?? null,
+        },
+        cancelId,
+      );
+      if (!back) continue;
+      if ("error" in back) throw new Error(back.error);
+      const { cancelledParts, ...rest } = back;
+      batch.update(d.ref, {
+        ...rest,
+        cancelledParts: cancelledParts ?? deleteField(),
+        updatedAt: now,
+      });
+      const token = String(x["publicToken"] ?? "");
+      if (token)
+        batch.update(doc(db, COLLECTIONS.publicInvoices, token), {
+          ...("balanceDue" in rest
+            ? { balanceDue: rest.balanceDue, paymentStatus: rest.paymentStatus }
+            : {}),
+          cancelledDue: rest.cancelledDue,
+          updatedAt: now,
+        });
+    }
     if (!outs && pays.docs.some((d) => Number(d.data()["trainerShareAmount"] ?? 0) !== 0))
       throw new Error(
         "Only the owner (or Finance) can undo a refund that changed a trainer's share.",

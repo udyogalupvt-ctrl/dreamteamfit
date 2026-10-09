@@ -20,7 +20,13 @@ import {
 import type { CashDay, HandoverEntry } from "@/lib/cash-book";
 import { db } from "@/lib/firebase";
 import { formatDateISO, todayISO } from "@/lib/format";
-import { derivePaymentStatus } from "@/lib/invoice-utils";
+import {
+  billOwed,
+  billStatus,
+  cancelledDueOf,
+  keptAllocationBill,
+  takeBackBlocked,
+} from "@/lib/bill-cancel";
 import type {
   Invoice,
   ManualIncome,
@@ -315,25 +321,33 @@ export async function recordBalancePayment(
     const snap = await tx.get(ref);
     if (!snap.exists()) throw new Error("Invoice not found.");
     const d = snap.data();
+    // A plan on a gym + PT bill was cancelled: its unpaid part is not asked for (bill-cancel.ts).
+    const cancelledParts = (d["cancelledParts"] as Invoice["cancelledParts"]) ?? null;
+    const dropped = cancelledDueOf({
+      cancelledParts,
+      cancelledDue: Number(d["cancelledDue"] ?? 0),
+    });
     const total = Number(d["total"] ?? 0),
       paid = Number(d["amountPaid"] ?? 0),
-      balance = round(total - paid);
+      balance = billOwed(total, paid, dropped);
     if (amount <= 0) throw new Error("Enter an amount greater than zero.");
     if (amount > balance) throw new Error(`Amount cannot exceed the remaining balance.`);
     const newPaid = round(paid + amount),
-      newBalance = round(total - newPaid),
-      status = derivePaymentStatus(total, newPaid);
+      newBalance = billOwed(total, newPaid, dropped),
+      status = billStatus(total, newPaid, dropped);
     if (newBalance > 0 && !opts.nextPaymentDate)
       throw new Error("Pick the date the member will pay the rest.");
+    // The money is for the plan still running (no trainer share for a cancelled PT).
     const alloc = allocatePayment(
-      {
+      keptAllocationBill({
         total,
         membershipGross: Number(d["membershipGross"] ?? 0),
         ptGross: Number(d["ptGross"] ?? 0),
         trainerShareTotal: Number(d["trainerShareTotal"] ?? 0),
         subtotal: Number(d["subtotal"] ?? 0),
         discount: Number(d["discount"] ?? 0),
-      },
+        cancelledParts,
+      }),
       amount,
     );
     tx.set(payRef, {
@@ -386,10 +400,24 @@ export async function undoBalancePayment(paymentId: string) {
     const d = inv.data();
     const total = Number(d["total"] ?? 0);
     const paid = round(Math.max(0, Number(d["amountPaid"] ?? 0) - Number(p["amount"] ?? 0)));
+    const cancelledParts = (d["cancelledParts"] as Invoice["cancelledParts"]) ?? null;
+    const blocked = takeBackBlocked(
+      {
+        invoiceNumber: String(d["invoiceNumber"] ?? ""),
+        amountPaid: Number(d["amountPaid"] ?? 0),
+        cancelledParts,
+      },
+      Number(p["amount"] ?? 0),
+    );
+    if (blocked) throw new Error(blocked);
+    const dropped = cancelledDueOf({
+      cancelledParts,
+      cancelledDue: Number(d["cancelledDue"] ?? 0),
+    });
     const patch = {
       amountPaid: paid,
-      balanceDue: round(total - paid),
-      paymentStatus: derivePaymentStatus(total, paid),
+      balanceDue: billOwed(total, paid, dropped),
+      paymentStatus: billStatus(total, paid, dropped),
       ...(d["dueDate"] ? {} : { dueDate: todayISO() }),
       updatedAt: serverTimestamp(),
     };

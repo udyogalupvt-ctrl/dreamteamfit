@@ -53,6 +53,9 @@ export function previewBillEdit(
     if (!(f.discount >= 0)) error = "Enter the discount in rupees (0 for none).";
     else if (i.paymentStatus === "closed" || i.paymentStatus === "refunded")
       error = `This bill is ${i.paymentStatus}: its discount can't change.`;
+    else if (Number(i.cancelledDue) > 0)
+      error =
+        "A plan on this bill was cancelled and its unpaid part dropped: its discount can't change (Restore that plan first).";
   }
   /** Paid more than the new total: given back. */
   const refund =

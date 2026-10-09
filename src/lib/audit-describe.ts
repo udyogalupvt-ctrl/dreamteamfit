@@ -139,6 +139,10 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
         return `Bill ${s(d["invoiceNumber"])}: ${money(d["total"])}, paid ${money(d["amountPaid"])}`;
       if (action === "deleted")
         return `Bill deleted: ${s(d["invoiceNumber"])} (${money(d["total"])})`;
+      if (f.includes("cancelledDue") && !f.includes("amountPaid"))
+        return Number(a["cancelledDue"] ?? 0) > Number(b["cancelledDue"] ?? 0)
+          ? `Bill ${s(d["invoiceNumber"])}: a plan on it was cancelled, ${money(Number(a["cancelledDue"] ?? 0) - Number(b["cancelledDue"] ?? 0))} of it no longer asked for; ${money(a["balanceDue"])} still due`
+          : `Bill ${s(d["invoiceNumber"])}: the cancelled plan's part is asked for again (plan restored); ${money(a["balanceDue"])} due`;
       if (became(f, b, a, "paymentStatus", "closed"))
         return `Bill ${s(d["invoiceNumber"])}: ${money(a["closedAmount"])} still due is no longer asked for (plan cancelled)`;
       if (b["paymentStatus"] === "closed" && f.includes("paymentStatus"))

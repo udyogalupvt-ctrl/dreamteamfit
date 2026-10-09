@@ -103,7 +103,8 @@ function bill(s: Snap): CfoBill {
     total: num(d["total"]),
     amountPaid: num(d["amountPaid"]),
     balanceDue,
-    closedAmount: num(d["closedAmount"]),
+    // Closed on cancel, or a cancelled plan's part dropped from a gym + PT bill: both written off.
+    closedAmount: num(d["closedAmount"]) + num(d["cancelledDue"]),
     status: pick<CfoBillStatus>(
       d["paymentStatus"],
       BILL_STATUSES,

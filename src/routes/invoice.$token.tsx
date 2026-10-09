@@ -117,6 +117,9 @@ function PublicInvoicePage() {
               ...(i.tax ? [[`Tax (${b.taxRate}%)`, i.tax] as [string, number]] : []),
               ["Total", i.total],
               ["Amount Paid", i.amountPaid],
+              ...(i.cancelledDue
+                ? [["Not asked (plan cancelled)", -i.cancelledDue] as [string, number]]
+                : []),
               ["Balance Due", i.balanceDue],
             ].map(([label, value]) => (
               <div

@@ -7,6 +7,8 @@
  * imports, unit-tested with `node --test`.
  */
 
+import { billOwed, billStatus, takeBackBlocked, type CancelledParts } from "./bill-cancel.ts";
+
 const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export interface RemovePayment {
@@ -28,6 +30,9 @@ export interface RemoveBill {
   closedAmount: number;
   cancelId: string;
   beforeCancel: { balanceDue: number; paymentStatus: string } | null;
+  /** Unpaid part of a cancelled plan on a gym + PT bill, not asked for (bill-cancel.ts). */
+  cancelledDue?: number;
+  cancelledParts?: CancelledParts | null;
 }
 
 /** The bill's money fields a removal changes (and Undo puts back). */
@@ -52,8 +57,7 @@ const nice = (iso: string) => {
   return y && m && d ? `${d} ${MONTHS[m - 1]} ${y}` : iso;
 };
 
-const statusOf = (total: number, paid: number) =>
-  total > 0 && paid >= total ? "paid" : paid > 0 ? "partial" : "pending";
+const statusOf = (total: number, paid: number, dropped = 0) => billStatus(total, paid, dropped);
 
 /**
  * @param plans the payment's plans here: their status ("missing" = no longer here) and
@@ -108,6 +112,8 @@ export function planRemove(
     return fail(
       `Bill ${bill.invoiceNumber} shows less paid than this payment: correct it with Edit bill.`,
     );
+  const blocked = takeBackBlocked(bill, p.amount);
+  if (blocked) return fail(blocked);
   const paid = round(Math.max(0, bill.amountPaid - p.amount));
   const before: RemoveBillState = {
     amountPaid: round(bill.amountPaid),
@@ -118,7 +124,8 @@ export function planRemove(
     cancelId: bill.cancelId || null,
     beforeCancel: bill.beforeCancel,
   };
-  const owed = round(Math.max(0, bill.total - paid));
+  const dropped = Math.max(0, Number(bill.cancelledDue) || 0);
+  const owed = billOwed(bill.total, paid, dropped);
   if (cancelled || bill.paymentStatus === "closed") {
     // Its plan is cancelled: the money is not asked for (the bill stays Closed). Restoring the
     // cancelled plan asks for it again, as for a balance closed when it was cancelled.
@@ -130,13 +137,13 @@ export function planRemove(
         after: {
           amountPaid: paid,
           balanceDue: 0,
-          paymentStatus: owed > 0 ? "closed" : statusOf(bill.total, paid),
+          paymentStatus: owed > 0 ? "closed" : statusOf(bill.total, paid, dropped),
           closedAmount: owed > 0 ? owed : before.closedAmount,
           cancelId: cancelId || null,
           beforeCancel: cancelId
             ? {
                 balanceDue: owed,
-                paymentStatus: statusOf(bill.total, paid),
+                paymentStatus: statusOf(bill.total, paid, dropped),
               }
             : bill.beforeCancel,
         },
@@ -151,7 +158,7 @@ export function planRemove(
         ...before,
         amountPaid: paid,
         balanceDue: owed,
-        paymentStatus: statusOf(bill.total, paid),
+        paymentStatus: statusOf(bill.total, paid, dropped),
       },
     },
   };

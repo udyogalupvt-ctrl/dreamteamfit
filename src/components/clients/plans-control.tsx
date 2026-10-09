@@ -32,6 +32,7 @@ import {
   restoreCancellation,
   splitRefund,
 } from "@/services/plan-cancel.service";
+import { cancelBills } from "@/lib/bill-cancel";
 import { refundLimit } from "@/lib/plan-money";
 import { subscribeClientPtAssignments } from "@/services/pt.service";
 import {
@@ -145,16 +146,15 @@ export function CancelPlansDialog({
   const amount = refund.trim() === "" ? 0 : Number(refund);
   const parts = Number.isFinite(amount) && amount > 0 ? splitRefund(amount, plans, pts, paid) : [];
   const cuts = parts.filter((p) => p.trainerCut > 0);
-  // Bills of only these plans with money still due: asked for daily unless it's dropped.
-  const dueBills = invoices.filter(
-    (i) =>
-      i.balanceDue > 0 &&
-      i.paymentStatus !== "refunded" &&
-      !!(i.membershipId || i.ptAssignmentId) &&
-      (!i.membershipId || ids.has(i.membershipId)) &&
-      (!i.ptAssignmentId || ids.has(i.ptAssignmentId)),
-  );
-  const dueTotal = dueBills.reduce((n, i) => n + i.balanceDue, 0);
+  // Bills of these plans with money still due: asked for daily unless it's dropped. A gym + PT
+  // bill whose other plan keeps running drops only this plan's unpaid part (by price).
+  const priceOf = Object.fromEntries([
+    ...plans.map((m) => [m.id, m.priceSnapshot] as const),
+    ...pts.map((p) => [p.id, p.ptPrice] as const),
+  ]);
+  const { close: dueBills, lower: lowerBills } = cancelBills(invoices, ids, priceOf);
+  const dueTotal =
+    dueBills.reduce((n, i) => n + i.balanceDue, 0) + lowerBills.reduce((n, l) => n + l.amount, 0);
 
   const submit = async () => {
     if (!Number.isFinite(amount) || amount < 0)
@@ -183,6 +183,7 @@ export function CancelPlansDialog({
         refundMethod: method,
         paid,
         closeBills: stopDue ? dueBills : [],
+        lowerBills: stopDue ? lowerBills : [],
         by: { uid: user?.uid ?? "", name: user?.displayName || user?.email || "Staff" },
       });
       onOpenChange(false);
@@ -348,8 +349,16 @@ export function CancelPlansDialog({
                 Stop asking for the {formatPrice(dueTotal)} still due
               </span>
               <span className="text-meta">
-                Bill {dueBills.map((i) => i.invoiceNumber).join(", ")} shows Closed and no more
-                balance reminders go out. Untick to keep asking for it.
+                {dueBills.length
+                  ? `Bill ${dueBills.map((i) => i.invoiceNumber).join(", ")} shows Closed and no more balance reminders go out. `
+                  : ""}
+                {lowerBills.map((l) => (
+                  <span key={l.bill.id} className="block">
+                    Bill {l.bill.invoiceNumber} also has a plan that keeps running: it asks only{" "}
+                    {formatPrice(l.left)} for that one, not {formatPrice(l.bill.balanceDue)}.
+                  </span>
+                ))}
+                Untick to keep asking for it.
               </span>
             </span>
           </label>

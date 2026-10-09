@@ -156,6 +156,8 @@ export interface OldBalanceBill {
   tax: number;
   paymentStatus: string;
   items: { name: string }[];
+  /** A cancelled plan's unpaid part dropped from it (bill-cancel.ts): it can't change here. */
+  cancelledDue?: number | undefined;
 }
 
 /** Only the balance bill made when the plan was carried over (not a sale here marked later). */
@@ -195,7 +197,10 @@ export function oldBalanceAfter(input: {
   if (!delta) return out;
   const b = input.bill;
   const open =
-    isOldBalanceBill(b) && b!.paymentStatus !== "closed" && b!.paymentStatus !== "refunded";
+    isOldBalanceBill(b) &&
+    b!.paymentStatus !== "closed" &&
+    b!.paymentStatus !== "refunded" &&
+    !(Number(b!.cancelledDue) > 0);
   if (!open) {
     // No balance bill to change: only a balance shown on the plan goes down.
     out.oldBalance = Math.max(0, round(balance - Math.max(0, delta)));

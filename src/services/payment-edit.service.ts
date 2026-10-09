@@ -131,6 +131,10 @@ export async function editPayment(input: {
         const status = String(d["paymentStatus"] ?? "");
         if (status === "closed" || status === "refunded")
           throw new Error(`Bill ${d["invoiceNumber"]} is ${status}: the amount can't change.`);
+        if (Number(d["cancelledDue"] ?? 0) > 0)
+          throw new Error(
+            `A plan on bill ${d["invoiceNumber"]} was cancelled and its unpaid part dropped: the amount can't change (Restore that plan first).`,
+          );
         const before = Number(d["amountPaid"] ?? 0);
         const paid = round(before - p.amount + form.amount);
         if (paid > total + 0.001)

@@ -35,7 +35,7 @@ Each item ends with the proposed fix.
    - `automation.ts` rollPlans, enrollMember, plan-edit, data-import, `member-plans.ts` and portal all choose differently.
    - Lists use only the `currentMembership` snapshot, so a member can show as Renewal due / not renewed by mistake.
    - Fix: one shared helper (running today, latest start; else the next upcoming; else the latest ended), used everywhere.
-9. **[MESSAGE] A combined gym + PT bill stays open when only one plan is cancelled.**
+9. **FIXED (2026-10-09, `src/lib/bill-cancel.ts`)** **[MESSAGE] A combined gym + PT bill stays open when only one plan is cancelled.**
    - The same happens if "stop asking" is unticked. Reminders continue.
    - Fix: on a partial cancel, lower the bill by the cancelled plan's share, or warn.
 10. **[DISPLAY] Member app** (`server/portal.ts`, `routes/m.$code.tsx`):

@@ -629,6 +629,15 @@ export interface Invoice extends BaseDoc {
    * stale).
    */
   remindOldBalance?: boolean;
+  /**
+   * A gym + PT bill where one plan was cancelled: that plan's unpaid part, no longer asked for
+   * (sum of `cancelledParts`, one per cancellation; lib/bill-cancel.ts). Balance = total − paid − this.
+   */
+  cancelledDue?: number;
+  cancelledParts?: Record<
+    string,
+    { kind: "gym" | "pt"; amount: number; paidThen?: number | undefined }
+  > | null;
   /** Corrections after the bill was made (discount, pay-by date, note). */
   edits: RecordEdit[];
 }
@@ -656,6 +665,8 @@ export interface PublicInvoice {
   upgradeCredit: number;
   /** Paid in the old software (part of `discount`, never counted as money here). */
   oldSoftwareCredit?: number;
+  /** Not asked for any more: a plan on the bill was cancelled. */
+  cancelledDue?: number;
   updatedAt: Date;
 }
 

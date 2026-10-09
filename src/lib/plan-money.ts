@@ -21,6 +21,8 @@ export interface PlanBill {
   ptGross: number;
   upgradeCredit?: number | undefined;
   oldSoftwareCredit?: number | undefined;
+  /** A plan on the bill was cancelled (bill-cancel.ts): all that is due is the other plan's. */
+  cancelledParts?: Record<string, { kind: "gym" | "pt"; amount: number }> | null | undefined;
 }
 
 export interface PlanMoney {
@@ -54,6 +56,12 @@ export function planMoney(
   const discountAll = Math.max(0, bill.discount);
   const discount = round(Math.max(0, discountAll - credits) * ratio);
   const total = round(Math.max(0, bill.total) * ratio);
+  const gone = new Set(Object.values(bill.cancelledParts ?? {}).map((p) => p.kind));
+  const due = gone.has(kind)
+    ? 0
+    : gone.size
+      ? Math.max(0, bill.balanceDue)
+      : Math.max(0, bill.balanceDue) * ratio;
   return {
     price: round(gross),
     discount,
@@ -61,7 +69,7 @@ export function planMoney(
     value: round(Math.max(0, gross - discount)),
     total,
     paid: round(Math.max(0, bill.amountPaid) * ratio),
-    due: round(Math.max(0, bill.balanceDue) * ratio),
+    due: round(due),
     shared: ratio < 1,
   };
 }

@@ -233,3 +233,23 @@ test("a bill without the gym/PT split falls back to the price", () => {
   const bill = rbill({ membershipGross: 0, ptGross: 0, subtotal: 5000, amountPaid: 2500 });
   assert.equal(billSharePaid("gym", 5000, bill), 2500);
 });
+
+test("planMoney: after a PT on a gym + PT bill is cancelled, all that is due is the gym plan's", () => {
+  const b: PlanBill = {
+    subtotal: 14500,
+    discount: 0,
+    total: 14500,
+    amountPaid: 5000,
+    balanceDue: 1638,
+    membershipGross: 2500,
+    ptGross: 12000,
+    cancelledParts: { c1: { kind: "pt", amount: 7862 } },
+  };
+  assert.equal(planMoney("gym", 2500, b)?.due, 1638);
+  assert.equal(planMoney("pt", 12000, b)?.due, 0);
+  // Nothing cancelled: shared by price, as before.
+  assert.equal(
+    planMoney("pt", 12000, { ...b, cancelledParts: null, balanceDue: 9500 })?.due,
+    7862.07,
+  );
+});

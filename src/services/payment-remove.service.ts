@@ -50,6 +50,8 @@ const billFacts = (d: DocumentData): RemoveBill => ({
   closedAmount: Number(d["closedAmount"] ?? 0),
   cancelId: String(d["cancelId"] ?? ""),
   beforeCancel: (d["beforeCancel"] as RemoveBill["beforeCancel"] | undefined) ?? null,
+  cancelledDue: Number(d["cancelledDue"] ?? 0),
+  cancelledParts: (d["cancelledParts"] as RemoveBill["cancelledParts"]) ?? null,
 });
 
 /** The payment's plans here. */

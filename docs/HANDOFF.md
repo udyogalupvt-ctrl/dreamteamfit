@@ -1,6 +1,37 @@
 # Handoff
 
-Last updated: 2026-10-09 (night: undo_refund suite fixed 43/43; Undo-after-cancel bug fixed on main, NOT pushed)
+Last updated: 2026-10-09 (late night: audit 9 built, tested, pushed)
+
+## 2026-10-09 (late night): audit 9, cancelling one plan of a gym + PT bill
+
+**State**
+- Undo fix 9e93f72 confirmed live (`/api/version` = `9e93f7267129`) before starting.
+- **9 (user chose "split by price"):** cancelling one plan of a gym + PT bill, with "Stop asking" ticked,
+  drops only that plan's unpaid part by price (₹2,500 + ₹12,000, ₹5,000 paid, ₹9,500 due; PT cancelled →
+  ₹7,862 dropped, ₹1,638 still asked). Stored per cancel on the bill: `cancelledParts[cancelId] =
+  {kind, amount, paidThen}`, sum `cancelledDue`; balance everywhere = total − paid − cancelledDue.
+  Rules in `src/lib/bill-cancel.ts` (unit-tested). Later payments count all for the running plan (no
+  trainer share for a cancelled PT). Restore/Undo asks again; refused while money collected after the
+  cancel is still on the bill ("Remove that payment first"). Removing/undoing a payment made BEFORE the
+  cancel is refused ("Restore that plan first"). Edit payment amount, Edit bill discount, Edit plan
+  price (bill untouched), Check & mark and old-balance edits are blocked on such a bill (like Closed).
+  Public bill shows "Not asked (plan cancelled)". CFO counts it with closedAmount. No rules change.
+- Checks: build OK, unit 293/293, tsc + eslint clean; emulator `audit9_local.py` 23/23 (scratchpad 32d649c3…,
+  `bash regress.sh audit9_local.py`), undo_refund 43/43, remove 39/39, moneyfix 21/21; shots in `shots_audit9/`.
+  Reviewer agent (money): 3 real findings fixed (pre-cancel payment removal, Restore after a later
+  payment, double write on Restore) + CFO closedAmount on restore.
+- Left as notes (not fixed): the cancel writes use the dialog's copy of the bill (a payment collected
+  by someone else while the window is open is not seen; same as the old Close path); Restore keeps the
+  old pay-by date, so a past date means no reminder for the restored part (same as Closed restore);
+  member app shows no "dropped" row; pre-existing: undoing old-software "Check & mark" puts the old
+  bill back without looking at a cancellation since.
+
+### Next
+1. User: refresh any open app tab once.
+2. Still open: K. Sri Devi's cancelled PT (owner); M. Rohith's package (owner); P. Sai Ram clean-up.
+3. Later audit items: 7 (CFO values old plans at today's price), 10 (member app display), 11–13, 15
+   ([audit](MIGRATION_AUDIT_2026-10-09.md)).
+
 
 ## 2026-10-09 (night): `undo_refund_local.py` fixed, one real bug found
 
