@@ -1,11 +1,13 @@
 # Handoff
 
-Last updated: 2026-10-09 (evening: audit items 2, 4, 8 fixed on branch `audit-fixes-2`, on top of `audit-fixes-1`; neither merged / pushed)
+Last updated: 2026-10-09 (evening: audit items 1-6, 8 merged to main and LIVE, build 5536208)
 
 ## 2026-10-09 (evening): migration audit items 2, 4, 8 (branch `audit-fixes-2`, local)
 
 **State**
-- Branch `audit-fixes-2` = `audit-fixes-1` (a902f4c) + 44275eb, 14a7fc7, 02f445a. NOT merged, NOT pushed.
+- **LIVE:** with the user's OK, main fast-forwarded to `audit-fixes-2` (includes `audit-fixes-1`) and
+  pushed; `/api/version` = `55362080dad3`, `/api/health` OK (AI keys still unset: CFO env pending).
+- Branch `audit-fixes-2` = `audit-fixes-1` (a902f4c) + 44275eb, 14a7fc7, 02f445a.
   No rules change (plans are writable by any staff login). Plan: [docs/superpowers/plans/2026-10-09-audit-fixes-2.md](superpowers/plans/2026-10-09-audit-fixes-2.md).
 - **8 One current-plan rule:** `src/lib/current-plan.ts` `pickCurrent` (running today, latest start → next
   upcoming → latest ended → latest cancelled), used by the sale, thumb (app + machine), Edit plan,
@@ -36,10 +38,10 @@ Last updated: 2026-10-09 (evening: audit items 2, 4, 8 fixed on branch `audit-fi
   those only (an older expired plan with a later end date would be skipped; rare).
 
 ### Next
-1. User: OK to merge `audit-fixes-1` and then `audit-fixes-2` into main and push (Vercel deploys).
-   Tell the front desk: old balances need the tick on the bill before WhatsApp reminders (audit 1);
-   a plan over another plan's dates is now refused with a message saying what to do.
-   After the first morning cron, the owner checks Income & expenses → "Plans that overlap".
+1. User: refresh any open app tab once. Tell the front desk: old balances need the tick on the bill
+   before WhatsApp reminders (audit 1); a plan over another plan's dates is now refused with a message
+   saying what to do. After tomorrow's morning cron, the owner checks Income & expenses → "Plans that
+   overlap" and "Paid in the old software?".
 2. Fix `undo_refund_local.py` (line 142).
 3. Still open: K. Sri Devi's cancelled PT (owner); M. Rohith's package (owner); P. Sai Ram clean-up.
 4. Later audit items: 7 (CFO values old plans at today's price), 9 (gym+PT bill open after partial
