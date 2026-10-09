@@ -246,6 +246,9 @@ export async function putBackPayment(
         "The cancellation this refund belonged to was undone (the plan runs again): it can't come back.",
       );
   }
+  // Its plan was removed (added by mistake) or deleted since: the money can't come back alone.
+  if ((await Promise.all(planRefs(data).map((r) => getDoc(r)))).some((s) => !s.exists()))
+    throw new Error("Its plan is no longer here (removed or deleted): restore the plan first.");
   const payRef = doc(db, COLLECTIONS.payments, payId);
   // Marked first, so the activity log says "Restored" (not "deleted forever").
   await updateDoc(binRef, { restoredBy: byName });

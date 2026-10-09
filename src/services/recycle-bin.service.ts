@@ -222,7 +222,7 @@ export async function restoreFromBin(
   const items = all.filter(restorable);
   // A plan removed as added by mistake: not when its money is now in a closed Day Book month.
   const plan = entry.extra["kind"] === "plan";
-  if (plan) checkPlanRestore(items);
+  if (plan) await checkPlanRestore(entry.extra, items);
   // Follow-up steps (logins back on, leads re-linked, door check) only for a record that really
   // comes back in this entry.
   const back = (collection: string, id: unknown) =>

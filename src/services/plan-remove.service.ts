@@ -1,4 +1,3 @@
-import { format } from "date-fns";
 import {
   deleteField,
   doc,
@@ -43,12 +42,8 @@ type Snap = DocumentSnapshot<DocumentData>;
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const num = (v: unknown) => Number(v ?? 0) || 0;
-const dayOf = (v: unknown) =>
-  v instanceof Timestamp
-    ? format(v.toDate(), "yyyy-MM-dd")
-    : v instanceof Date
-      ? format(v, "yyyy-MM-dd")
-      : "";
+const ms = (v: unknown) =>
+  v instanceof Timestamp ? v.toMillis() : v instanceof Date ? v.getTime() : 0;
 
 const planOf = (kind: Kind, s: Snap): RmPlan => {
   const d = s.data() ?? {};
@@ -62,7 +57,8 @@ const planOf = (kind: Kind, s: Snap): RmPlan => {
     invoiceId: str(d["invoiceId"]),
     enrollmentId: str(d["enrollmentId"]),
     cancelId: str(d["cancelId"]),
-    soldOn: dayOf(d["createdAt"]),
+    createdMs: ms(d["createdAt"]),
+    updatedMs: ms(d["updatedAt"]),
     upgradedTo: str(d["upgradedTo"]),
     originalEndDate: str(d["originalEndDate"]),
     endedBy: str(d["endedBy"]),
@@ -118,17 +114,20 @@ interface MemberDocs {
   payments: Snap[];
   /** null = this login can't read the trainers' pay list. */
   payouts: Snap[] | null;
+  /** Joining records (read before the transaction: which one the member points to next). */
+  enrollments: Snap[];
 }
 
 async function loadMember(clientId: string): Promise<MemberDocs> {
   const of = (name: CollectionName) => getDocs(query(col(name), where("clientId", "==", clientId)));
-  const [client, gyms, pts, bills, payments, payouts] = await Promise.all([
+  const [client, gyms, pts, bills, payments, payouts, enrollments] = await Promise.all([
     getDoc(doc(db, COLLECTIONS.clients, clientId)),
     of(COLLECTIONS.memberships),
     of(COLLECTIONS.ptAssignments),
     of(COLLECTIONS.invoices),
     of(COLLECTIONS.payments),
     of(COLLECTIONS.trainerPayouts).catch(() => null),
+    of(COLLECTIONS.enrollments),
   ]);
   return {
     client,
@@ -137,6 +136,7 @@ async function loadMember(clientId: string): Promise<MemberDocs> {
     bills: bills.docs,
     payments: payments.docs,
     payouts: payouts?.docs ?? null,
+    enrollments: enrollments.docs,
   };
 }
 
@@ -152,7 +152,7 @@ async function reread(tx: Transaction, m: MemberDocs): Promise<MemberDocs> {
     again(m.payments),
     m.payouts ? again(m.payouts) : Promise.resolve(null),
   ]);
-  return { client, gyms, pts, bills, payments, payouts };
+  return { client, gyms, pts, bills, payments, payouts, enrollments: m.enrollments };
 }
 
 function factsOf(m: MemberDocs, target: { kind: Kind; id: string }): RemovalFacts {
@@ -254,6 +254,16 @@ export async function removePlan(
           .map((p) => `${p.kind === "pt" ? "PT: " : ""}${planOf(p.kind, p.s).name}`)
           .join(" + ")}`;
     const enrollmentId = str(m.client.data()?.["enrollmentId"]);
+    // A member still waiting for a thumb points at their newest joining record: when that one
+    // goes, at an earlier one still waiting (another sale), else at none.
+    const nextEnrollment = plan.clearEnrollment
+      ? ([...m.enrollments]
+          .filter(
+            (s) =>
+              !plan.enrollmentIds.includes(s.id) && s.data()?.["status"] === "biometric_pending",
+          )
+          .sort((a, b) => ms(b.data()?.["createdAt"]) - ms(a.data()?.["createdAt"]))[0]?.id ?? "")
+      : "";
     tx.set(binRef, {
       section: "plans",
       label: `${names} · ${client.fullName}`,
@@ -273,7 +283,10 @@ export async function removePlan(
         clientId: client.id,
         plans: plan.plans.map((p) => `${p.kind}:${p.id}`),
         changed: plan.putBack.map((p) => p.id),
+        // As the removal left them: a restore writes them back only if nobody changed them since.
+        putBack: plan.putBack.map((p) => ({ id: p.id, name: p.name, endDate: p.endDate })),
         enrollmentId: plan.clearEnrollment ? enrollmentId : "",
+        enrollmentNow: nextEnrollment,
       },
     });
     for (const s of goes) tx.delete(s.ref);
@@ -290,7 +303,7 @@ export async function removePlan(
       if (plan.current.active) patch["status"] = "active";
     }
     // Their thumb registration must not look for a joining record that is gone.
-    if (plan.clearEnrollment) patch["enrollmentId"] = null;
+    if (plan.clearEnrollment) patch["enrollmentId"] = nextEnrollment || null;
     if (m.client.exists() && Object.keys(patch).length)
       tx.update(m.client.ref, { ...patch, updatedAt: now });
     // Plan writes queue the door check themselves (lib/firestore).
@@ -299,10 +312,17 @@ export async function removePlan(
 }
 
 /**
- * Before a removed plan comes back: refused when its money is now in a closed Day Book month
- * (those days are carried forward and must not change).
+ * Before a removed plan comes back, refused when:
+ * - its money is now in a closed Day Book month (those days are carried forward);
+ * - its member is no longer here (deleted: restore the member first);
+ * - part of it is already back;
+ * - a plan it put back was changed since (cancelled, upgraded, renewed, dates edited): writing
+ *   the old copy back would undo that change.
  */
-export function checkPlanRestore(items: { collection: string; data: DocumentData }[]) {
+export async function checkPlanRestore(
+  extra: Record<string, unknown>,
+  items: { collection: string; docId: string; data: DocumentData }[],
+) {
   const openFrom = cashOpenFrom(todayISO());
   const closed = items.find(
     (i) =>
@@ -314,6 +334,43 @@ export function checkPlanRestore(items: { collection: string; data: DocumentData
     throw new Error(
       `${formatPrice(Math.abs(num(closed.data["amount"])))} on ${formatDateISO(str(closed.data["paymentDate"]))} is now in a closed Day Book month: it can't come back.`,
     );
+  const clientId = str(extra["clientId"]);
+  if (clientId && !(await getDoc(doc(db, COLLECTIONS.clients, clientId))).exists())
+    throw new Error("Its member is no longer here (deleted): restore the member first.");
+  const after = (Array.isArray(extra["putBack"]) ? extra["putBack"] : []) as {
+    id?: unknown;
+    name?: unknown;
+    endDate?: unknown;
+  }[];
+  const changedIds = new Set(after.map((a) => str(a.id)));
+  const watched: string[] = [
+    COLLECTIONS.memberships,
+    COLLECTIONS.ptAssignments,
+    COLLECTIONS.invoices,
+    COLLECTIONS.payments,
+  ];
+  const back = items.filter(
+    (i) =>
+      watched.includes(i.collection) &&
+      !(i.collection === COLLECTIONS.memberships && changedIds.has(i.docId)),
+  );
+  const there = await Promise.all(back.map((i) => getDoc(doc(db, i.collection, i.docId))));
+  if (there.some((s) => s.exists())) throw new Error("Part of it is already back.");
+  for (const a of after) {
+    const id = str(a.id);
+    if (!id) continue;
+    const x = (await getDoc(doc(db, COLLECTIONS.memberships, id))).data();
+    if (
+      !x ||
+      str(x["endDate"]) !== str(a.endDate) ||
+      x["cancelId"] ||
+      x["upgradedTo"] ||
+      x["endedBy"]
+    )
+      throw new Error(
+        `${str(a.name) || "A plan it changed"} was changed after the removal (cancelled, upgraded, renewed or its dates edited): it can't be put back. Sell the plan again if it is needed.`,
+      );
+  }
 }
 
 /**
@@ -347,7 +404,10 @@ export async function afterPlanRestore(b: WriteBatch, extra: Record<string, unkn
     patch["currentMembership"] = p.summary;
     if (p.active) patch["status"] = "active";
   }
+  // Back to the joining record it pointed at, unless it was moved on since.
   const enrollmentId = str(extra["enrollmentId"]);
-  if (enrollmentId && !c.data()["enrollmentId"]) patch["enrollmentId"] = enrollmentId;
+  const pointsAt = str(c.data()["enrollmentId"]);
+  if (enrollmentId && (!pointsAt || pointsAt === str(extra["enrollmentNow"])))
+    patch["enrollmentId"] = enrollmentId;
   if (Object.keys(patch).length) b.update(ref, { ...patch, updatedAt: serverTimestamp() });
 }

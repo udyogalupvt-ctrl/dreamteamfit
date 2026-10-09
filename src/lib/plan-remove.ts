@@ -22,8 +22,12 @@ export interface RmPlan {
   /** The joining record of its sale ("" = none). */
   enrollmentId: string;
   cancelId: string;
-  /** Day it was sold (created), "" when not known. */
-  soldOn: string;
+  /**
+   * When it was made and last changed (ms, 0 = not known). A sale ends the plans it cuts short in
+   * the same write that makes it, so their last change is the sale's own time.
+   */
+  createdMs: number;
+  updatedMs: number;
   /** Gym only ("" when not set): the plan it was upgraded to, and its end date before that. */
   upgradedTo: string;
   originalEndDate: string;
@@ -338,23 +342,24 @@ export function planRemoval(f: RemovalFacts): RemovalPlan {
     return b ? { ...q, status: b.status, endDate: b.endDate } : q;
   };
   const remaining = f.plans.filter((q) => q.kind === "gym" && !sale.has(key(q))).map(after);
-  // Older sales (no stamp): if none runs now, the latest plan it cut short (ended early, its end
-  // date still ahead) runs again. Only for a sale that started on the day it was made.
-  const startedAtOnce = plans.some(
-    (p) => p.kind === "gym" && (!p.soldOn || p.startDate <= p.soldOn),
+  // Older sales (no stamp): a plan ended in the same write that made the sale (its last change is
+  // the sale's own time), its end date still ahead, runs again if no other plan runs now.
+  const saleTimes = new Set(
+    plans.filter((p) => p.kind === "gym" && p.createdMs > 0).map((p) => p.createdMs),
   );
   const runs = (q: RmPlan) =>
     q.status !== "cancelled" &&
     q.status !== "expired" &&
     q.startDate <= f.today &&
     q.endDate >= f.today;
-  if (!stamped.length && startedAtOnce && !remaining.some(runs)) {
+  if (!stamped.length && saleTimes.size && !remaining.some(runs)) {
     const cut = remaining
       .filter(
         (q) =>
           q.status === "expired" &&
           !q.upgradedTo &&
           !q.endedBy &&
+          saleTimes.has(q.updatedMs) &&
           q.startDate <= f.today &&
           q.endDate >= f.today,
       )

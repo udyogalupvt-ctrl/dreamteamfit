@@ -11,6 +11,7 @@ import {
 } from "./plan-remove.ts";
 
 const TODAY = "2026-10-09";
+const SALE_MS = Date.parse("2026-10-09T09:00:00+05:30");
 const OPEN = "2026-09-01";
 
 const gym = (o: Partial<RmPlan> = {}): RmPlan => ({
@@ -23,7 +24,8 @@ const gym = (o: Partial<RmPlan> = {}): RmPlan => ({
   invoiceId: "B1",
   enrollmentId: "E1",
   cancelId: "",
-  soldOn: "2026-10-09",
+  createdMs: 0,
+  updatedMs: 0,
   upgradedTo: "",
   originalEndDate: "",
   endedBy: "",
@@ -183,7 +185,6 @@ test("an old-software plan: its old payments go (they were never in the Day Book
           invoiceId: "",
           startDate: "2026-08-01",
           endDate: "2026-10-31",
-          soldOn: "2026-10-08",
         }),
       ],
       bills: [],
@@ -417,8 +418,10 @@ test("a renewal from before the stamp: the latest plan it cut short runs again",
           startDate: "2026-09-20",
           endDate: "2026-10-19",
           status: "expired",
+          createdMs: 500,
+          updatedMs: SALE_MS,
         }),
-        gym(),
+        gym({ createdMs: SALE_MS, updatedMs: SALE_MS }),
       ],
       bills: [bill()],
       payments: [pay()],
@@ -432,7 +435,7 @@ test("a renewal from before the stamp: the latest plan it cut short runs again",
   assert.equal(r.current?.summary?.membershipId, "G0");
 });
 
-test("legacy revive: not when another plan still runs, nor for a sale that started later", () => {
+test("legacy revive: not when another plan still runs, nor for a plan something else ended", () => {
   const stillRuns = planRemoval(
     facts({
       plans: [
@@ -443,6 +446,7 @@ test("legacy revive: not when another plan still runs, nor for a sale that start
           startDate: "2026-09-20",
           endDate: "2026-10-19",
           status: "expired",
+          updatedMs: SALE_MS,
         }),
         gym({
           id: "G2",
@@ -451,12 +455,13 @@ test("legacy revive: not when another plan still runs, nor for a sale that start
           startDate: "2026-10-01",
           endDate: "2026-12-31",
         }),
-        gym(),
+        gym({ createdMs: SALE_MS }),
       ],
     }),
   );
   assert.deepEqual(stillRuns.putBack, []);
-  const later = planRemoval(
+  // G0 was ended earlier by another sale (since cancelled), not by the one removed now.
+  const other = planRemoval(
     facts({
       plans: [
         gym({
@@ -466,18 +471,14 @@ test("legacy revive: not when another plan still runs, nor for a sale that start
           startDate: "2026-09-20",
           endDate: "2026-10-19",
           status: "expired",
+          updatedMs: SALE_MS - 86_400_000,
         }),
-        gym({
-          startDate: "2026-10-20",
-          endDate: "2026-11-19",
-          status: "pending",
-          soldOn: "2026-10-09",
-        }),
+        gym({ createdMs: SALE_MS, updatedMs: SALE_MS }),
       ],
-      client: { currentId: "G0", enrollmentId: "" },
+      client: { currentId: "G1", enrollmentId: "" },
     }),
   );
-  assert.deepEqual(later.putBack, []);
+  assert.deepEqual(other.putBack, []);
 });
 
 test("a refund noted against the bill from another cancellation stays", () => {
