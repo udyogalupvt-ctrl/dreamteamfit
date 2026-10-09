@@ -401,8 +401,14 @@ export async function enrollMember(input: EnrollmentInput) {
     let endDate = "";
     if (membershipRef && input.gymPackage) {
       endDate = oldEnd || calculateEndDate(input.startDate, input.gymPackage.durationDays);
+      // Stamped with this plan: removing it (added by mistake) makes them run again.
       prevActive.forEach((id) =>
-        tx.update(doc(db, COLLECTIONS.memberships, id), { status: "expired", updatedAt: now }),
+        tx.update(doc(db, COLLECTIONS.memberships, id), {
+          status: "expired",
+          endedBy: membershipRef.id,
+          statusBeforeSale: "active",
+          updatedAt: now,
+        }),
       );
       if (upgradeRef && upgraded && input.upgrade)
         // The old plan runs until the day before the new one starts (today → ended); its unused

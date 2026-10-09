@@ -32,6 +32,7 @@ import { col, COLLECTIONS, toDate, type CollectionName } from "./firestore.servi
 import { memberAppAction, trainerAccess } from "./portal.service";
 import { mapBinEntry as mapEntry } from "./recycle-bin-list.service";
 import { putBackPayment } from "./payment-remove.service";
+import { afterPlanRestore, checkPlanRestore } from "./plan-remove.service";
 export { subscribeRecycleBin } from "./recycle-bin-list.service";
 import { saveStaff, updateStaffLogin } from "./staff.service";
 
@@ -219,6 +220,9 @@ export async function restoreFromBin(
   if (entry.extra["kind"] === "payment") return putBackPayment(entry.id, viewer, by.name);
   const all = await itemsOf(entry, viewer);
   const items = all.filter(restorable);
+  // A plan removed as added by mistake: not when its money is now in a closed Day Book month.
+  const plan = entry.extra["kind"] === "plan";
+  if (plan) checkPlanRestore(items);
   // Follow-up steps (logins back on, leads re-linked, door check) only for a record that really
   // comes back in this entry.
   const back = (collection: string, id: unknown) =>
@@ -253,6 +257,11 @@ export async function restoreFromBin(
     for (const id of (x["leads"] as string[] | undefined) ?? [])
       last.update(doc(db, COLLECTIONS.inquiries, id), { clientId });
     doorCheck(last, clientId);
+  }
+  // Its member's current plan and joining record again; the machine lets them in if it runs.
+  if (plan && typeof x["clientId"] === "string" && x["clientId"]) {
+    await afterPlanRestore(last, x);
+    doorCheck(last, x["clientId"]);
   }
   last.delete(doc(db, COLLECTIONS.recycleBin, entry.id));
   await last.commit();

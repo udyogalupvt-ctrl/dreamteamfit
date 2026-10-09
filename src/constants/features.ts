@@ -52,6 +52,10 @@ export const FEATURE_META: Record<StaffFeature, { label: string; hint: string }>
     hint: "Gym / PT packages, trainers, workout and diet plans",
   },
   deleteExpenses: { label: "Expenses", hint: "Expenses and their payments" },
+  deletePlans: {
+    label: "Plans added by mistake",
+    hint: "Remove a gym or PT plan with its bill, payments and trainer share",
+  },
 };
 
 /** Delete rights (each section): only the owner by default, granted per login on the Staff page. */
@@ -61,6 +65,7 @@ export const DELETE_FEATURES: StaffFeature[] = [
   "deleteBills",
   "deletePackages",
   "deleteExpenses",
+  "deletePlans",
 ];
 /** Which delete right covers a section. Staff (people who work here): owners only. */
 export const DELETE_FEATURE_OF: Record<DeleteSection, StaffFeature | "owner"> = {
@@ -70,6 +75,7 @@ export const DELETE_FEATURE_OF: Record<DeleteSection, StaffFeature | "owner"> = 
   packages: "deletePackages",
   expenses: "deleteExpenses",
   staff: "owner",
+  plans: "deletePlans",
 };
 
 /** Features a new front-desk login starts with. */

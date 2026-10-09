@@ -309,6 +309,12 @@ export interface Membership extends BaseDoc {
   invoiceId?: string;
   /** Upgraded to another plan: this one ended early, its unused days were credited there. */
   upgradedTo?: string;
+  /**
+   * Ended early by a renewal sold while it ran (that plan's id) and its status then: removing that
+   * renewal (added by mistake) makes this plan run again.
+   */
+  endedBy?: string;
+  statusBeforeSale?: string;
   /** Corrections made after the sale (wrong package, dates, counsellor), oldest first. */
   edits: MembershipEdit[];
 }
@@ -1112,6 +1118,7 @@ export const STAFF_FEATURES = [
   "deleteBills",
   "deletePackages",
   "deleteExpenses",
+  "deletePlans",
 ] as const;
 export type StaffFeature = (typeof STAFF_FEATURES)[number];
 
@@ -1123,6 +1130,7 @@ export const DELETE_SECTIONS = [
   "packages",
   "expenses",
   "staff",
+  "plans",
 ] as const;
 export type DeleteSection = (typeof DELETE_SECTIONS)[number];
 

@@ -538,6 +538,13 @@ export async function undoOldSoftwareMove(moveId: string, canFinance: boolean) {
     const oldPaySnaps = await Promise.all(
       oldPayIds.map((id) => tx.get(doc(db, COLLECTIONS.payments, id))),
     );
+    // A plan removed since (added by mistake): it would come back without the rest of its sale.
+    const plans = [
+      one("membership") ? doc(db, COLLECTIONS.memberships, one("membership")!.id) : null,
+      one("ptAssignment") ? doc(db, COLLECTIONS.ptAssignments, one("ptAssignment")!.id) : null,
+    ].filter((r): r is NonNullable<typeof r> => !!r);
+    if ((await Promise.all(plans.map((r) => tx.get(r)))).some((s) => !s.exists()))
+      throw new Error("This plan was removed (it is in the Recycle Bin): restore it first.");
     const inv = one("invoice");
     if (inv) {
       const now = await tx.get(doc(db, COLLECTIONS.invoices, inv.id));

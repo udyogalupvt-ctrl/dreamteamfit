@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
 import {
+  CalendarX,
   CreditCard,
   Package,
   ReceiptIndianRupee,
@@ -43,6 +44,7 @@ const SECTIONS: Record<DeleteSection, { label: string; icon: LucideIcon }> = {
   packages: { label: "Packages, trainers & plans", icon: Package },
   expenses: { label: "Expenses", icon: ReceiptIndianRupee },
   staff: { label: "Staff", icon: UserCog },
+  plans: { label: "Plans", icon: CalendarX },
 };
 
 function RecycleBinPage() {
