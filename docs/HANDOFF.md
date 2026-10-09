@@ -21,7 +21,8 @@ Last updated: 2026-10-09 (late: PT-only reminders, phone refresh button, Paid on
   one PT member's ₹6,000 renewal not entered, ₹1,000 old balance instead −₹5,000; 3 sheet rows not in the app
   −₹4,600; one ₹8,999 paid in the app is "₹9,000 due" on the sheet +₹8,999). Modes: 3 October payments were
   saved "paid in the old software" (₹14,499) though the sheet has them as PhonePe/cash; 2 part-cash
-  payments saved all UPI. Details in the chat reply of this date; data fixes left to the owner.
+  payments saved all UPI. Row list (names, not in git): session scratchpad bc809a92… `october_check.md`;
+  data fixes left to the owner.
   Read-only script: session scratchpad bc809a92… `prod_oct_money.mjs` (writes a local JSON only).
 - Checks: tsc + eslint clean, unit 295/295, build OK; emulator `paidon_local.py` 15/15 (new member paid
   yesterday, staff-picked start kept, future refused, PT-only reminder from the morning job, phone button
