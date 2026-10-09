@@ -1,6 +1,13 @@
 # Handoff
 
-Last updated: 2026-10-10 (Edit plan Price + Already paid, to match the paper register)
+Last updated: 2026-10-10 (old-software members: keep old plans as-is — approved design, not built)
+
+## 2026-10-10: NEXT — old-software members keep their old plan as-is (approved, not built)
+
+Design: [docs/superpowers/specs/2026-10-10-old-plans-as-is-design.md](superpowers/specs/2026-10-10-old-plans-as-is-design.md).
+Next: (1) show the owner ONE preview screen (old member's page) and get a yes; (2) plan + build on a
+worktree of main (another chat may be on branch split-pay in this folder); (3) emulator tests on own ports;
+(4) back up live data, run once, check totals, owner page with Undo.
 
 ## 2026-10-10: Edit plan → Price (owner) and "Already paid"
 
