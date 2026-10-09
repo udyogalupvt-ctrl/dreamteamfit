@@ -20,6 +20,7 @@ import {
   type ReportPeriod,
 } from "@/lib/reporting";
 import type { ReportCell, ReportSheet } from "@/lib/report-export";
+import { billModesLabel } from "@/lib/split-pay";
 import { ACCESS_REASON_LABELS, EVENT_LABELS } from "@/lib/attendance-utils";
 import { subscribeBookings } from "@/services/bookings.service";
 import { subscribeClassEnrollments } from "@/services/class-enrollments.service";
@@ -242,7 +243,7 @@ export function useReportsData(period: ReportPeriod, custom?: ReportDateRange) {
           i.amountPaid,
           i.balanceDue,
           INVOICE_STATUS_META[i.paymentStatus]?.label ?? i.paymentStatus,
-          i.amountPaid > 0 ? cap(i.paymentMethod) : "",
+          i.amountPaid > 0 ? cap(billModesLabel(i)) : "",
           i.balanceDue > 0 ? i.dueDate : "",
           i.counsellorName,
           i.createdBy,

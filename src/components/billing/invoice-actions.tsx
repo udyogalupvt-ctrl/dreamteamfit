@@ -31,7 +31,9 @@ import { getInvoicePublicUrl } from "@/lib/invoice-utils";
 import { manualWhatsAppUrl } from "@/lib/invoice-share";
 import { formatDateISO, formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { PAYMENT_METHODS, type Invoice, type PaymentMethod } from "@/types/models";
+import type { Invoice } from "@/types/models";
+import { cashPartOf, PayModeField } from "@/components/billing/pay-mode-field";
+import { SPLIT_MODE, splitParts, splitProblem, type PayMode } from "@/lib/split-pay";
 import { autoSendBill, markInvoiceShared, sendInvoiceWhatsApp } from "@/services/whatsapp.service";
 import { toastBillSend } from "@/lib/bill-send-toast";
 import { todayISO } from "@/lib/format";
@@ -213,7 +215,8 @@ function BalancePaymentDialog({
 }) {
   const { user } = useAuth();
   const [amount, setAmount] = useState(invoice.balanceDue);
-  const [method, setMethod] = useState<PaymentMethod>("UPI");
+  const [method, setMethod] = useState<PayMode>("UPI");
+  const [cashText, setCashText] = useState("");
   const [nextDate, setNextDate] = useState("");
   // The day it was paid: today, or an earlier day when it is typed in later.
   const [paidOn, setPaidOn] = useState(todayISO());
@@ -225,6 +228,7 @@ function BalancePaymentDialog({
       setAmount(invoice.balanceDue);
       setNextDate("");
       setPaidOn(todayISO());
+      setCashText("");
     }
   }
   const today = todayISO();
@@ -237,24 +241,29 @@ function BalancePaymentDialog({
         ? `Pick a day from ${formatDateISO(openFrom)} on (older days are closed in the Day Book).`
         : "";
   const restLeft = amount > 0 && amount < invoice.balanceDue;
+  // Cash + UPI: the cash part typed, the rest UPI.
+  const split = method === SPLIT_MODE;
+  const splitBad = split ? splitProblem(amount, cashPartOf(cashText)) : "";
   const save = async () => {
     setSaving(true);
     try {
       const { paymentId } = await recordBalancePayment(
         invoice,
         amount,
-        method,
+        split ? "UPI" : method,
         user?.displayName || user?.email || "Staff",
         {
           staffUid: user?.uid ?? "",
           nextPaymentDate: restLeft ? nextDate : null,
           paymentDate: paidOn,
+          cash: split ? cashPartOf(cashText) : null,
         },
       );
+      const parts = split ? splitParts(amount, cashPartOf(cashText)) : null;
       toastWithUndo(
         "Payment recorded",
         () => undoBalancePayment(paymentId),
-        `${formatPrice(amount)} for ${invoice.invoiceNumber}. Entered by mistake? Undo.`,
+        `${formatPrice(amount)}${parts ? ` (UPI ${formatPrice(parts[0]!.amount)} + Cash ${formatPrice(parts[1]!.amount)})` : ""} for ${invoice.invoiceNumber}. Entered by mistake? Undo.`,
       );
       onOpenChange(false);
       // The updated bill (new paid / balance) goes to the member automatically.
@@ -283,7 +292,8 @@ function BalancePaymentDialog({
               amount <= 0 ||
               amount > invoice.balanceDue ||
               (restLeft && !nextDate) ||
-              !!dateProblem
+              !!dateProblem ||
+              !!splitBad
             }
             onClick={() => save()}
           >
@@ -336,7 +346,7 @@ function BalancePaymentDialog({
                 ? isOldBalanceBill(invoice)
                   ? `Paid back when the old software was used (before ${formatDateISO(openFrom)})? Add it on the member's plan instead: Edit plan → Paid in the old software. The balance here goes down by as much.`
                   : "Collected today. Paid on another day? Pick that day."
-                : `Counted in Collected on ${formatDateISO(paidOn)}${method === "Cash" ? " and in that day's Day Book cash" : ""}, not today.`
+                : `Counted in Collected on ${formatDateISO(paidOn)}${method === "Cash" ? " and in that day's Day Book cash" : split ? ", the cash part in that day's Day Book cash" : ""}, not today.`
           }
         >
           <Input
@@ -349,27 +359,14 @@ function BalancePaymentDialog({
             className="max-w-48"
           />
         </Field>
-        <Field label="Paid by" htmlFor="bal-method">
-          <div className="flex flex-wrap gap-1.5" role="radiogroup" id="bal-method">
-            {PAYMENT_METHODS.filter((m) => m !== "Other").map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="radio"
-                aria-checked={method === m}
-                onClick={() => setMethod(m)}
-                className={cn(
-                  "rounded-lg border px-3 py-2 text-sm font-semibold",
-                  method === m
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border hover:bg-accent",
-                )}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-        </Field>
+        <PayModeField
+          id="bal-method"
+          mode={method}
+          onMode={setMethod}
+          cash={cashText}
+          onCash={setCashText}
+          total={amount || 0}
+        />
       </div>
     </FormDialog>
   );

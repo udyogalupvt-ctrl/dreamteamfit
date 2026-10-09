@@ -1,4 +1,5 @@
 import {
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -16,6 +17,7 @@ import { allocatePayment, cashOpenFrom } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
 import { oldPaymentData, readOldRows, type OldPayLink } from "./old-money.service";
 import { defaultOldRows, type OldPayRow } from "@/lib/old-money";
+import { billModes, type PayPart } from "@/lib/split-pay";
 
 /**
  * "Paid in the old software": a plan that was entered as a sale here (a payment dated the day it
@@ -316,6 +318,28 @@ export async function markPaidInOldSoftware(input: {
   const whole = input.whole ?? null;
   const plan = planOldMove(bill, parts.payments, parts.payouts, input.amount, todayISO(), whole);
   if (plan.error && (bill || whole)) throw new Error(plan.error);
+  // A Cash + UPI payment that loses a part is a payment of its own again; the bill's "paid by"
+  // follows the checkout payments that are left.
+  const removed = new Set(plan.remove.map((p) => p.id));
+  const lowered = new Map(plan.lower.map((p) => [p.id, p.to]));
+  const broken = new Set(
+    parts.payments
+      .filter((p) => removed.has(p.id) && p.data["splitId"])
+      .map((p) => String(p.data["splitId"])),
+  );
+  const unsplit = parts.payments.filter(
+    (p) => !removed.has(p.id) && broken.has(String(p.data["splitId"] ?? "")),
+  );
+  const leftAtCheckout: PayPart[] = parts.payments
+    .filter((p) => !removed.has(p.id) && p.data["kind"] === "initial" && !p.data["oldSoftware"])
+    .map((p) => ({
+      method: p.data["method"] as PayPart["method"],
+      amount: lowered.get(p.id) ?? Number(p.data["amount"] ?? 0),
+    }));
+  const modes = broken.size && leftAtCheckout.length ? billModes(leftAtCheckout) : null;
+  const modesPatch = modes
+    ? { paymentMethod: modes.paymentMethod, paymentModes: modes.paymentModes ?? deleteField() }
+    : {};
   // What the plan shows as paid in the old software.
   const amount = whole ? round(whole.paid) : Math.max(0, round(input.amount));
   const takenOff = round([...plan.remove].reduce((n, p) => n + p.amount, 0));
@@ -363,8 +387,11 @@ export async function markPaidInOldSoftware(input: {
       read(ptRef),
       read(enrRef),
     ]);
+    // (The parts left of a Cash + UPI payment too: Undo puts their link back.)
     const paySnaps = await Promise.all(
-      [...plan.remove, ...plan.lower].map((p) => tx.get(doc(db, COLLECTIONS.payments, p.id))),
+      [...plan.remove, ...plan.lower, ...unsplit.filter((p) => !lowered.has(p.id))].map((p) =>
+        tx.get(doc(db, COLLECTIONS.payments, p.id)),
+      ),
     );
     const payoutSnaps = await Promise.all(
       plan.cancelPayouts.map((id) => tx.get(doc(db, COLLECTIONS.trainerPayouts, id))),
@@ -483,6 +510,7 @@ export async function markPaidInOldSoftware(input: {
           : { membershipGross: round(whole.deal), ptGross: 0, trainerShareTotal: 0 }
         : {}),
       paidInOldSoftware: plan.after.amountPaid <= 0,
+      ...modesPatch,
       notes: [
         String(b["notes"] ?? ""),
         whole
@@ -493,7 +521,7 @@ export async function markPaidInOldSoftware(input: {
         .join(" · "),
       updatedAt: now,
     });
-    if (pubSnap?.exists()) tx.update(pubRef!, { ...money, updatedAt: now });
+    if (pubSnap?.exists()) tx.update(pubRef!, { ...money, ...modesPatch, updatedAt: now });
     // 4. The payments: taken off, or lowered (the rest was real money here).
     const split = {
       total: plan.after.total,
@@ -509,8 +537,12 @@ export async function markPaidInOldSoftware(input: {
         amount: p.to,
         ...allocatePayment(split, p.to),
         note: `${formatPrice(round(p.from - p.to))} of it was paid in the old software`,
+        ...(unsplit.some((x) => x.id === p.id) ? { splitId: deleteField() } : {}),
         updatedAt: now,
       });
+    for (const p of unsplit)
+      if (!lowered.has(p.id))
+        tx.update(doc(db, COLLECTIONS.payments, p.id), { splitId: deleteField(), updatedAt: now });
     // 5. Trainer shares for money that never came in here.
     for (const id of plan.cancelPayouts)
       tx.update(doc(db, COLLECTIONS.trainerPayouts, id), {

@@ -603,6 +603,8 @@ export interface Invoice extends BaseDoc {
   balanceDue: number;
   paymentStatus: InvoicePaymentStatus;
   paymentMethod: PaymentMethod;
+  /** Checkout paid in two modes (Cash + UPI): each mode, in order; null = one mode. */
+  paymentModes?: PaymentMethod[] | null;
   invoiceDate: string;
   dueDate: string;
   notes: string;
@@ -657,6 +659,8 @@ export interface PublicInvoice {
   balanceDue: number;
   paymentStatus: InvoicePaymentStatus;
   paymentMethod: PaymentMethod;
+  /** Checkout paid in two modes (Cash + UPI): each mode, in order; null = one mode. */
+  paymentModes?: PaymentMethod[] | null;
   invoiceDate: string;
   dueDate: string;
   pdfUrl: string;
@@ -994,6 +998,11 @@ export interface Payment extends BaseDoc {
   paidToday?: boolean;
   /** Staff chose the day it was paid at the checkout ("Paid on"): never moved by a tool. */
   paidOnChosen?: boolean;
+  /**
+   * One payment taken in two modes (Cash + UPI): both parts carry the UPI part's id. Edited
+   * as one payment (Edit payment); lib/split-pay.ts.
+   */
+  splitId?: string;
   /** Corrections made later (wrong mode, amount, date), oldest first. */
   edits: RecordEdit[];
 }

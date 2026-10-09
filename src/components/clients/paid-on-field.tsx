@@ -6,6 +6,7 @@ import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { subscribeClientPayments } from "@/services/finance.service";
 import { cashOpenFrom, editPayment, paymentDateRights } from "@/services/payment-edit.service";
+import { editSplitPayment } from "@/services/payment-split.service";
 import type { Invoice, Payment } from "@/types/models";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -14,7 +15,7 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
  * "Paid on" in Edit plan / Edit PT plan: the day the plan's checkout payment counts on, corrected
  * in place (same rules as Edit payment: the front desk a payment typed in today, the owner any day
  * the Day Book still has open). A payment made on the plan's first day follows a corrected start
- * day, unless staff pick another day.
+ * day, unless staff pick another day. A Cash + UPI checkout moves both parts.
  */
 export function usePaidOn(input: {
   open: boolean;
@@ -36,10 +37,18 @@ export function usePaidOn(input: {
   const [picked, setPicked] = useState("");
   useEffect(() => setPicked(""), [input.open, input.bill?.id]);
   const billId = input.bill?.id ?? "";
-  const payment =
-    (billId &&
-      pays.data.find((p) => !p.oldSoftware && p.kind === "initial" && p.invoiceId === billId)) ||
-    null;
+  const initial = billId
+    ? pays.data.filter((p) => !p.oldSoftware && p.kind === "initial" && p.invoiceId === billId)
+    : [];
+  const payment = initial.find((p) => p.splitId && p.id === p.splitId) ?? initial[0] ?? null;
+  // Cash + UPI: both parts, moved together.
+  const group = payment?.splitId
+    ? initial
+        .filter((p) => p.splitId === payment.splitId)
+        .sort((a, b) => (a.method === "UPI" ? -1 : 0) - (b.method === "UPI" ? -1 : 0))
+    : payment
+      ? [payment]
+      : [];
   const who = { billing: can("billing"), finance: can("finance") };
   const rights = payment ? paymentDateRights(payment, who) : { allowed: false, note: "" };
   const today = todayISO();
@@ -70,6 +79,7 @@ export function usePaidOn(input: {
           : "";
   return {
     payment,
+    group,
     loading: pays.loading,
     rights,
     value,
@@ -85,6 +95,19 @@ export function usePaidOn(input: {
     /** Saves the new day (nothing when unchanged). */
     save: async (reason: string, by: string) => {
       if (!changed || !payment) return;
+      if (group.length > 1) {
+        await editSplitPayment({
+          payment,
+          group,
+          target: group.map((x) => ({ method: x.method, amount: x.amount })),
+          paymentDate: value,
+          note: payment.note,
+          reason: reason || "Paid on corrected",
+          can: who,
+          by,
+        });
+        return;
+      }
       await editPayment({
         payment,
         form: {
@@ -112,7 +135,11 @@ export function PaidOnField({ id, paidOn }: { id: string; paidOn: ReturnType<typ
       error={paidOn.problem || undefined}
       hint={
         paidOn.rights.allowed
-          ? `${formatPrice(p.amount)} by ${p.method}${p.invoiceNumber ? ` · bill ${p.invoiceNumber}` : ""}. ${
+          ? `${
+              paidOn.group.length > 1
+                ? paidOn.group.map((x) => `${x.method} ${formatPrice(x.amount)}`).join(" + ")
+                : `${formatPrice(p.amount)} by ${p.method}`
+            }${p.invoiceNumber ? ` · bill ${p.invoiceNumber}` : ""}. ${
               paidOn.follows
                 ? "Moves with the start date (paid the day the plan started)."
                 : "Counted in Collected on this day."

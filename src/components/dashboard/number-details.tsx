@@ -22,6 +22,7 @@ import { attendanceSummary } from "@/lib/attendance-utils";
 import { formatDateISO, formatPrice } from "@/lib/format";
 import { foldTakenBack } from "@/lib/money-pairs";
 import { cn } from "@/lib/utils";
+import { splitTag } from "@/lib/split-pay";
 import { subscribeAttendanceRange } from "@/services/attendance.service";
 import { collectedByMonth } from "@/services/finance.service";
 import type { AttendanceEvent } from "@/types/models";
@@ -182,7 +183,8 @@ function MoneyList({
               : oneDay
                 ? format(r.at, "h:mm a")
                 : `${formatDateISO(r.date)}, ${format(r.at, "h:mm a")}`}{" "}
-          · {r.method} · {KIND[r.kind]}
+          · {r.method}
+          {splitTag(r)} · {KIND[r.kind]}
           {r.bill ? ` · ${r.bill}` : ""}
         </span>
       </span>

@@ -3,6 +3,7 @@ import {
   deleteDoc,
   doc,
   documentId,
+  getDoc,
   getAggregateFromServer,
   getCountFromServer,
   getDocs,
@@ -27,6 +28,7 @@ import {
   keptAllocationBill,
   takeBackBlocked,
 } from "@/lib/bill-cancel";
+import { shareOut, splitParts, splitProblem } from "@/lib/split-pay";
 import type {
   Invoice,
   ManualIncome,
@@ -64,6 +66,7 @@ export const mapPayment = (id: string, d: DocumentData): Payment => ({
   ...(d["oldSoftware"] === true
     ? { oldSoftware: true, oldSoftwareBillNo: String(d["oldSoftwareBillNo"] ?? "") }
     : {}),
+  ...(d["splitId"] ? { splitId: String(d["splitId"]) } : {}),
   edits: Array.isArray(d["edits"]) ? d["edits"] : [],
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
@@ -306,10 +309,20 @@ export async function recordBalancePayment(
     nextPaymentDate?: string | null;
     /** The day it was paid (collected yesterday, typed in today); default today. */
     paymentDate?: string;
+    /**
+     * Cash + UPI: the cash part of `amount` (the rest is UPI); two payments sharing `splitId`,
+     * `method` is then ignored.
+     */
+    cash?: number | null;
   } = {},
 ) {
   const today = todayISO();
   const paidOn = opts.paymentDate || today;
+  const split = opts.cash !== undefined && opts.cash !== null;
+  if (split) {
+    const bad = splitProblem(amount, Number(opts.cash));
+    if (bad) throw new Error(bad);
+  }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(paidOn)) throw new Error("Pick the day it was paid.");
   if (paidOn > today) throw new Error("The day it was paid can't be after today.");
   // Older days are closed in the Day Book (their cash is carried forward), like Edit payment.
@@ -317,6 +330,7 @@ export async function recordBalancePayment(
     throw new Error(`Pick a day from ${formatDateISO(cashOpenFrom(today))} on.`);
   const ref = doc(db, COLLECTIONS.invoices, invoice.id);
   const payRef = doc(col(COLLECTIONS.payments));
+  const cashRef = split ? doc(col(COLLECTIONS.payments)) : null;
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists()) throw new Error("Invoice not found.");
@@ -338,37 +352,49 @@ export async function recordBalancePayment(
     if (newBalance > 0 && !opts.nextPaymentDate)
       throw new Error("Pick the date the member will pay the rest.");
     // The money is for the plan still running (no trainer share for a cancelled PT).
-    const alloc = allocatePayment(
-      keptAllocationBill({
-        total,
-        membershipGross: Number(d["membershipGross"] ?? 0),
-        ptGross: Number(d["ptGross"] ?? 0),
-        trainerShareTotal: Number(d["trainerShareTotal"] ?? 0),
-        subtotal: Number(d["subtotal"] ?? 0),
-        discount: Number(d["discount"] ?? 0),
-        cancelledParts,
-      }),
-      amount,
-    );
-    tx.set(payRef, {
-      clientId: d["clientId"],
-      clientNameSnapshot: d["clientNameSnapshot"],
-      invoiceId: invoice.id,
-      invoiceNumber: d["invoiceNumber"],
-      membershipId: d["membershipId"] ?? null,
-      ptAssignmentId: d["ptAssignmentId"] ?? null,
-      amount,
-      method,
-      paymentDate: paidOn,
-      kind: "balance",
-      ...alloc,
-      createdBy: staffName,
-      createdByUid: opts.staffUid ?? "",
-      counsellorId: d["counsellorId"] ?? "",
-      counsellorName: d["counsellorName"] ?? "",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+    const allocBill = keptAllocationBill({
+      total,
+      membershipGross: Number(d["membershipGross"] ?? 0),
+      ptGross: Number(d["ptGross"] ?? 0),
+      trainerShareTotal: Number(d["trainerShareTotal"] ?? 0),
+      subtotal: Number(d["subtotal"] ?? 0),
+      discount: Number(d["discount"] ?? 0),
+      cancelledParts,
     });
+    const alloc = allocatePayment(allocBill, amount);
+    // Cash + UPI: the UPI part's own share, the cash part the rest (the pair adds up exactly).
+    const [upi, cash] = splitParts(amount, Number(opts.cash ?? 0));
+    const [upiAlloc, cashAlloc] = shareOut(
+      alloc,
+      cashRef ? allocatePayment(allocBill, upi!.amount) : alloc,
+    );
+    const parts = cashRef
+      ? [
+          { ref: payRef, method: upi!.method, amount: upi!.amount, alloc: upiAlloc },
+          { ref: cashRef, method: cash!.method, amount: cash!.amount, alloc: cashAlloc },
+        ]
+      : [{ ref: payRef, method, amount, alloc }];
+    for (const part of parts)
+      tx.set(part.ref, {
+        clientId: d["clientId"],
+        clientNameSnapshot: d["clientNameSnapshot"],
+        invoiceId: invoice.id,
+        invoiceNumber: d["invoiceNumber"],
+        membershipId: d["membershipId"] ?? null,
+        ptAssignmentId: d["ptAssignmentId"] ?? null,
+        amount: part.amount,
+        method: part.method,
+        paymentDate: paidOn,
+        kind: "balance",
+        ...(cashRef ? { splitId: payRef.id } : {}),
+        ...part.alloc,
+        createdBy: staffName,
+        createdByUid: opts.staffUid ?? "",
+        counsellorId: d["counsellorId"] ?? "",
+        counsellorName: d["counsellorName"] ?? "",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
     const patch = {
       amountPaid: newPaid,
       balanceDue: newBalance,
@@ -383,23 +409,53 @@ export async function recordBalancePayment(
 }
 
 /**
- * Takes back a balance payment entered by mistake: the payment is removed and its bill shows the
- * amount as due again (Undo right after saving, or "Undo" on the day's payment).
+ * Every part of a Cash + UPI payment (`splitId` = its UPI part's id), the UPI part first; [] when
+ * the id is empty.
+ */
+export async function getSplitParts(splitId: string): Promise<Payment[]> {
+  if (!splitId) return [];
+  const snap = await getDocs(query(col(COLLECTIONS.payments), where("splitId", "==", splitId)));
+  return snap.docs
+    .map((d) => mapPayment(d.id, d.data()))
+    .sort((a, b) => (a.id === splitId ? -1 : b.id === splitId ? 1 : a.id.localeCompare(b.id)));
+}
+
+/**
+ * Takes back a balance payment entered by mistake: the payment (both parts of a Cash + UPI one)
+ * is removed and its bill shows the amount as due again (Undo right after saving, or "Undo" on
+ * the day's payment).
  */
 export async function undoBalancePayment(paymentId: string) {
-  const payRef = doc(db, COLLECTIONS.payments, paymentId);
+  const first = await getDoc(doc(db, COLLECTIONS.payments, paymentId));
+  const splitId = first.exists() ? String(first.data()["splitId"] ?? "") : "";
+  const ids = splitId ? (await getSplitParts(splitId)).map((x) => x.id) : [];
+  if (!ids.includes(paymentId)) ids.push(paymentId);
+  const payRefs = ids.map((id) => doc(db, COLLECTIONS.payments, id));
   await runTransaction(db, async (tx) => {
-    const pay = await tx.get(payRef);
-    if (!pay.exists()) throw new Error("That payment was already removed.");
-    const p = pay.data();
-    if (p["kind"] !== "balance" || p["oldSoftware"] === true || !p["invoiceId"])
+    const pays = await Promise.all(payRefs.map((r) => tx.get(r)));
+    if (pays.some((x) => !x.exists())) throw new Error("That payment was already removed.");
+    const all = pays.map((x) => x.data() ?? {});
+    // Split or joined since it was read: the parts taken back would not be the whole payment.
+    if (all.some((x) => String(x["splitId"] ?? "") !== splitId))
+      throw new Error("This payment was just changed. Open it again.");
+    const p = all[0]!;
+    if (
+      all.some(
+        (x) =>
+          x["kind"] !== "balance" ||
+          x["oldSoftware"] === true ||
+          !x["invoiceId"] ||
+          x["invoiceId"] !== p["invoiceId"],
+      )
+    )
       throw new Error("Only a balance payment can be undone here.");
+    const amount = round(all.reduce((n, x) => n + Number(x["amount"] ?? 0), 0));
     const invRef = doc(db, COLLECTIONS.invoices, String(p["invoiceId"]));
     const inv = await tx.get(invRef);
     if (!inv.exists()) throw new Error("Its bill was not found.");
     const d = inv.data();
     const total = Number(d["total"] ?? 0);
-    const paid = round(Math.max(0, Number(d["amountPaid"] ?? 0) - Number(p["amount"] ?? 0)));
+    const paid = round(Math.max(0, Number(d["amountPaid"] ?? 0) - amount));
     const cancelledParts = (d["cancelledParts"] as Invoice["cancelledParts"]) ?? null;
     const blocked = takeBackBlocked(
       {
@@ -407,7 +463,7 @@ export async function undoBalancePayment(paymentId: string) {
         amountPaid: Number(d["amountPaid"] ?? 0),
         cancelledParts,
       },
-      Number(p["amount"] ?? 0),
+      amount,
     );
     if (blocked) throw new Error(blocked);
     const dropped = cancelledDueOf({
@@ -423,7 +479,7 @@ export async function undoBalancePayment(paymentId: string) {
     };
     tx.update(invRef, patch);
     if (d["publicToken"]) tx.update(doc(db, COLLECTIONS.publicInvoices, d["publicToken"]), patch);
-    tx.delete(payRef);
+    payRefs.forEach((r) => tx.delete(r));
   });
 }
 

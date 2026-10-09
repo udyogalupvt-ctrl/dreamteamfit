@@ -19,6 +19,8 @@ export interface RemovePayment {
   invoiceId: string;
   trainerShareAmount: number;
   cancelId: string;
+  /** One part of a Cash + UPI payment (lib/split-pay.ts); "" / left out = a whole payment. */
+  splitId?: string;
 }
 
 export interface RemoveBill {
@@ -83,6 +85,10 @@ export function planRemove(
     // Never in the cash drawer: any day can go.
     return { error: "", bill: null };
   }
+  if (p.splitId)
+    return fail(
+      "This is one part of a Cash + UPI payment: in Edit payment choose one mode first (the two parts become one payment), then remove it.",
+    );
   // Like Edit payment: older days are closed in the Day Book (their cash is carried forward).
   if (p.paymentDate < openFrom)
     return fail(

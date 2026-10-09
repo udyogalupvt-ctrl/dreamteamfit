@@ -25,6 +25,7 @@ import { subscribeClientPtAssignments } from "@/services/pt.service";
 import { subscribeClientBookings } from "@/services/bookings.service";
 import { PtSessionDialog } from "@/components/scheduling/pt-session-dialog";
 import { BOOKING_STATUS_META, formatTime } from "@/lib/format";
+import { splitTag } from "@/lib/split-pay";
 import { useState, type ReactNode } from "react";
 import { subscribeClientPayments, undoBalancePayment } from "@/services/finance.service";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
@@ -290,14 +291,21 @@ export function ClientPaymentsList({
       (id) => !!id && plans.some((x) => x.id === id && x.status !== "cancelled"),
     );
   if (!pays.data.length) return null;
+  // A Cash + UPI payment is taken back whole (both parts).
+  const undoTotal = undoing
+    ? pays.data
+        .filter((x) => x.id === undoing.id || (!!undoing.splitId && x.splitId === undoing.splitId))
+        .reduce((s, x) => s + x.amount, 0)
+    : 0;
   const undo = async () => {
     const p = undoing;
+    const total = undoTotal;
     setUndoing(null);
     if (!p) return;
     try {
       await undoBalancePayment(p.id);
       toast.success("Payment taken back", {
-        description: `${formatPrice(p.amount)} is due again on ${p.invoiceNumber}.`,
+        description: `${formatPrice(total)} is due again on ${p.invoiceNumber}.`,
       });
     } catch (e) {
       toast.error(firestoreErrorMessage(e));
@@ -310,7 +318,8 @@ export function ClientPaymentsList({
         {pays.data.map((p) => (
           <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 p-4 text-sm">
             <span>
-              <b>{formatPrice(p.amount)}</b> · {p.method} · {formatDateISO(p.paymentDate)}{" "}
+              <b>{formatPrice(p.amount)}</b> · {p.method}
+              {splitTag(p)} · {formatDateISO(p.paymentDate)}{" "}
               <span className="text-meta">
                 {p.oldSoftware
                   ? `(paid in the old software${p.oldSoftwareBillNo ? ` · old bill ${p.oldSoftwareBillNo}` : ""} · not in the cash drawer)`
@@ -369,8 +378,8 @@ export function ClientPaymentsList({
       <ConfirmDialog
         open={!!undoing}
         onOpenChange={(o) => !o && setUndoing(null)}
-        title={`Take back this ${undoing ? formatPrice(undoing.amount) : ""} payment?`}
-        description={`It is removed and bill ${undoing?.invoiceNumber ?? ""} shows the amount as due again. Use this only for a payment entered by mistake.`}
+        title={`Take back this ${undoing ? formatPrice(undoTotal) : ""} payment?`}
+        description={`${undoing?.splitId ? "Both parts (Cash + UPI) are removed" : "It is removed"} and bill ${undoing?.invoiceNumber ?? ""} shows the amount as due again. Use this only for a payment entered by mistake.`}
         confirmLabel="Take back payment"
         cancelLabel="Keep it"
         destructive

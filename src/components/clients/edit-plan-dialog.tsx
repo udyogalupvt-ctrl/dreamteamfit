@@ -18,6 +18,7 @@ import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { checkOldRows, defaultOldRows, type OldPayRow } from "@/lib/old-money";
 import { OldPaidRows } from "@/components/clients/old-paid-rows";
+import { OldRecordNote } from "@/components/clients/old-record-note";
 import { PaidOnField, usePaidOn } from "@/components/clients/paid-on-field";
 import { subscribeClientPayments } from "@/services/finance.service";
 import { findOldPartner, type OldPartner } from "@/services/old-money.service";
@@ -415,6 +416,13 @@ export function EditPlanDialog({
             />
           </Field>
         ) : null}
+        <OldRecordNote
+          on={!!m.paidInOldSoftware}
+          client={client}
+          kind="gym"
+          start={m.startDate}
+          end={m.endDate}
+        />
         {m.paidInOldSoftware ? (
           <OldPaidRows
             id="plan-oldpaid"

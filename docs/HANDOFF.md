@@ -1,6 +1,6 @@
 # Handoff
 
-Last updated: 2026-10-10 (old-software members: keep old plans as-is — approved design, not built)
+Last updated: 2026-10-10 (split-pay merged; next: old plans as-is, approved design, not built)
 
 ## 2026-10-10: NEXT — old-software members keep their old plan as-is (approved, not built)
 
@@ -8,6 +8,41 @@ Design: [docs/superpowers/specs/2026-10-10-old-plans-as-is-design.md](superpower
 Next: (1) show the owner ONE preview screen (old member's page) and get a yes; (2) plan + build on a
 worktree of main (another chat may be on branch split-pay in this folder); (3) emulator tests on own ports;
 (4) back up live data, run once, check totals, owner page with Undo.
+
+## 2026-10-10: Cash + UPI split payment and the "paid in the old software" check (merged into main 2026-10-10)
+
+**State** (spec `docs/superpowers/specs/2026-10-09-split-payment-old-software-check-design.md`)
+- **Cash + UPI:** "Paid by" has a 5th choice at checkout, Collect balance and Edit payment
+  (`src/components/billing/pay-mode-field.tsx`; total + "Cash part", UPI = rest). Saved as TWO
+  payments (UPI part first) sharing `splitId` (`src/lib/split-pay.ts`), so Day Book cash /
+  Collected by mode / CFO / Excel need no change; allocation shared with `shareOut` (adds up
+  exactly, no −₹0.01). Bill `paymentModes` → "UPI + Cash" (bill page, PDF, Billing, Excel); rows
+  tagged "(part of Cash + UPI)". Edit payment edits a pair as one (`payment-split.service.ts`:
+  split / re-balance / merge, total fixed, rights checked on every part); Paid on (Edit plan) moves
+  both; Undo (toast or row) takes both back; Remove refuses one part ("choose one mode first");
+  late-sales tool and the old-software move keep a pair together (move clears the link on the part
+  left and fixes the bill's label; Undo restores). Fixes the October rows Aniket / K. Sudheer:
+  owner opens the payment → Cash + UPI.
+- **Old-software check (no fixed date, user: "mostly from Oct 5, don't depend on it"):** the old
+  software's own records decide (`oldPlanInRecords` in `src/lib/old-data.ts`). Checkout: ticked
+  "Paid in the old software" with no old plan for those days → amber warning + "Paid here
+  (untick)" + a confirm on save. Edit plan / Edit PT plan: note. Income & expenses → Profit &
+  income: list "Saved as paid in the old software, not in its records" (Roshan, P. Joshi,
+  K. Sri Devi should show; fix = Remove plan + sell again with the right mode).
+- Another session committed ad5d841 (old plan lock only for the same kind) onto this branch by
+  mistake; the same change is on main as 57f5a2b, so merging main is clean. Its Edit plan
+  "Already paid" skips split payments.
+- Checks: tsc clean, unit 312/312, build OK; emulator suite `split_local.py` 34/34 (harness in
+  session scratchpad fc9b07bc…/scratchpad/harness, `bash regress.sh split_local.py`; screenshots
+  light/dark 390/1440 in `shots_split/`); regressions paidon 15/15, paidon_edit 13/13, latedates
+  26/26, remove 39/39, moneyfix 21/21, audit2 27/27, audit9 23/23, undo_refund 43/43, oldlock 8/8.
+  Old suites now pick mode chips with `exact=True` ("Cash + UPI" contains "UPI"). Reviewer agent
+  (money): 7 findings, all fixed.
+- Not done: Create bill (other items) has no Cash + UPI at entry (split it after in Edit payment).
+
+### Next
+1. Owner: split Aniket and K. Sudheer's October payments (Edit payment → Cash + UPI); check the
+   new owner list and fix the October old-software rows.
 
 ## 2026-10-10: Edit plan → Price (owner) and "Already paid"
 

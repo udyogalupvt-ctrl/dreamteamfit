@@ -4,17 +4,14 @@ import { toast } from "sonner";
 import { Field, FormDialog } from "@/components/common/form-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { cashPartOf, PayModeField } from "@/components/billing/pay-mode-field";
 import { useAccess } from "@/hooks/use-access";
 import { useAuth } from "@/hooks/use-auth";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
+import { SPLIT_MODE, splitParts, splitProblem, type PayMode, type PayPart } from "@/lib/split-pay";
+import { getSplitParts } from "@/services/finance.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
+import { editSplitPayment, splitChanges } from "@/services/payment-split.service";
 import {
   cashOpenFrom,
   editPayment,
@@ -22,7 +19,7 @@ import {
   paymentDateRights,
   paymentEditRights,
 } from "@/services/payment-edit.service";
-import { PAYMENT_METHODS, type Payment, type PaymentMethod, type RecordEdit } from "@/types/models";
+import type { Payment, RecordEdit } from "@/types/models";
 
 /** Logins that may correct this payment (today's: Billing; older: Income & expenses). */
 export function usePaymentEditRights() {
@@ -31,7 +28,10 @@ export function usePaymentEditRights() {
   return (p: Payment) => ({ ...paymentEditRights(p, rights), rights });
 }
 
-/** "Edit payment": mode, amount, date and note, with the bill's balance shown before saving. */
+/**
+ * "Edit payment": mode, amount, date and note, with the bill's balance shown before saving. A
+ * Cash + UPI payment is edited as one payment (both parts; payment-split.service.ts).
+ */
 export function EditPaymentDialog({
   payment,
   onClose,
@@ -42,7 +42,10 @@ export function EditPaymentDialog({
   const rightsOf = usePaymentEditRights();
   const { user } = useAuth();
   const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState<PaymentMethod>("Cash");
+  const [method, setMethod] = useState<PayMode>("Cash");
+  const [cashText, setCashText] = useState("");
+  // Every part of this payment (one unless it is Cash + UPI); null while they load.
+  const [group, setGroup] = useState<Payment[] | null>(null);
   const [date, setDate] = useState("");
   const [note, setNote] = useState("");
   const [reason, setReason] = useState("");
@@ -57,20 +60,84 @@ export function EditPaymentDialog({
     setReason("");
     setPayBy(todayISO());
     setError("");
+    setCashText("");
+    if (!payment.splitId) {
+      setGroup([payment]);
+      return;
+    }
+    setGroup(null);
+    let live = true;
+    getSplitParts(payment.splitId).then(
+      (parts) => {
+        if (!live) return;
+        const g = parts.some((x) => x.id === payment.id) ? parts : [payment];
+        setGroup(g);
+        if (g.length > 1) {
+          setMethod(SPLIT_MODE);
+          setCashText(
+            String(g.filter((x) => x.method === "Cash").reduce((s, x) => s + x.amount, 0)),
+          );
+        }
+      },
+      () => live && setGroup([payment]),
+    );
+    return () => {
+      live = false;
+    };
   }, [payment]);
   if (!payment) return null;
   const p = payment;
   const r = rightsOf(p);
   const dateRights = paymentDateRights(p, r.rights);
+  const parts = group ?? [p];
+  const together = Math.round(parts.reduce((s, x) => s + x.amount, 0) * 100) / 100;
+  // Two parts now, or Cash + UPI chosen: the parts change together and the total stays the same.
+  // (A part whose other part is gone keeps its link until it is saved this way.)
+  const splitPath = method === SPLIT_MODE || parts.length > 1 || !!p.splitId;
+  const splitBad = method === SPLIT_MODE ? splitProblem(together, cashPartOf(cashText)) : "";
+  const target: PayPart[] =
+    method !== SPLIT_MODE
+      ? [{ method, amount: together }]
+      : splitBad
+        ? []
+        : splitParts(together, cashPartOf(cashText));
   const n = amount.trim() === "" ? NaN : Number(amount);
-  const form = { amount: Number.isFinite(n) ? n : p.amount, method, paymentDate: date, note };
-  const changes = paymentChanges(p, form);
-  const less = Number.isFinite(n) && n < p.amount && p.kind !== "refund";
+  const form = {
+    amount: Number.isFinite(n) ? n : p.amount,
+    method: method === SPLIT_MODE ? p.method : method,
+    paymentDate: date,
+    note,
+  };
+  const changes = !group
+    ? []
+    : !splitPath
+      ? paymentChanges(p, form)
+      : target.length
+        ? splitChanges(parts, target, date, note)
+        : [];
+  const less = !splitPath && Number.isFinite(n) && n < p.amount && p.kind !== "refund";
 
   const save = async () => {
     setError("");
-    if (r.amount && !(Number.isFinite(n) && n > 0)) return setError("Enter an amount above zero.");
+    if (!splitPath && r.amount && !(Number.isFinite(n) && n > 0))
+      return setError("Enter an amount above zero.");
+    if (splitBad) return setError(splitBad);
     try {
+      if (splitPath) {
+        await editSplitPayment({
+          payment: p,
+          group: parts,
+          target,
+          paymentDate: date,
+          note,
+          reason,
+          can: r.rights,
+          by: user?.displayName || user?.email || "Staff",
+        });
+        onClose();
+        toast.success("Payment updated", { description: changes.join(" · ") });
+        return;
+      }
       await editPayment({
         payment: p,
         form,
@@ -97,7 +164,7 @@ export function EditPaymentDialog({
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
-          <Button onClick={() => save()} disabled={!changes.length}>
+          <Button onClick={() => save()} disabled={!changes.length || !group}>
             <Pencil aria-hidden /> Save changes
           </Button>
         </>
@@ -117,7 +184,9 @@ export function EditPaymentDialog({
             hint={
               p.kind === "refund"
                 ? "To take a refund back, use Restore on the cancelled plan."
-                : "The bill's paid and balance follow this."
+                : splitPath
+                  ? "Same total while it is in two modes. To change the total, choose one mode first."
+                  : "The bill's paid and balance follow this."
             }
           >
             <Input
@@ -125,30 +194,28 @@ export function EditPaymentDialog({
               type="number"
               inputMode="decimal"
               min={1}
-              value={amount}
-              disabled={!r.amount}
+              value={splitPath ? String(together) : amount}
+              disabled={!r.amount || splitPath}
               onChange={(e) => setAmount(e.target.value)}
             />
           </Field>
-          <Field label="Paid by" htmlFor="pay-method">
-            <Select
-              value={method}
-              onValueChange={(v) => setMethod(v as PaymentMethod)}
-              disabled={!r.money}
-            >
-              <SelectTrigger id="pay-method" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PAYMENT_METHODS.map((x) => (
-                  <SelectItem key={x} value={x}>
-                    {x}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
         </div>
+        <PayModeField
+          id="pay-method"
+          mode={method}
+          onMode={(m) => {
+            // Cash + UPI keeps the total: an amount typed a moment ago goes back.
+            if (m === SPLIT_MODE) setAmount(String(together));
+            setMethod(m);
+          }}
+          cash={cashText}
+          onCash={setCashText}
+          total={together}
+          error={splitBad && cashText.trim() !== "" ? splitBad : undefined}
+          disabled={!r.money || !group}
+          split={p.kind !== "refund" && !!p.invoiceId}
+          withOther={p.method === "Other"}
+        />
         <Field label="Date" htmlFor="pay-date" hint={dateRights.note || undefined}>
           <Input
             id="pay-date"
