@@ -353,20 +353,32 @@ export function EditPlanDialog({
       }
     >
       <div className="grid gap-4">
-        <Field label="Package" htmlFor="plan-pkg">
-          <Select value={pkg.id} onValueChange={changePackage}>
-            <SelectTrigger id="plan-pkg" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {choices.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name} · {p.durationDays} days · {formatPrice(p.price)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
+        {membership?.packageId ? (
+          <Field label="Package" htmlFor="plan-pkg">
+            <Select value={pkg.id} onValueChange={changePackage}>
+              <SelectTrigger id="plan-pkg" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {choices.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name} · {p.durationDays} days · {formatPrice(p.price)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        ) : (
+          // An old-software plan kept as it is: no package behind it, the name stays the old one.
+          <Field label="Package" htmlFor="plan-pkg-fixed">
+            <p
+              id="plan-pkg-fixed"
+              className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm"
+            >
+              {membership?.packageNameSnapshot} · from the old software, kept as it is
+            </p>
+          </Field>
+        )}
         {discountEditable && money ? (
           <Field
             label="Price (₹)"
