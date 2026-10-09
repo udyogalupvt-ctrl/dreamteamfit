@@ -99,6 +99,8 @@ export interface MoneyRow {
   /** old = paid in the old software (counted on its day, no bill here, not in the drawer). */
   kind: "initial" | "balance" | "refund" | "bill" | "old";
   bill: string;
+  /** One part of a Cash + UPI payment. */
+  split?: boolean;
 }
 /** One line of a "more numbers" card's list. */
 export interface DetailRow {
@@ -707,6 +709,7 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
             at: p.createdAt,
             amount: p.amount,
             method: p.method,
+            ...(p.splitId ? { split: true } : {}),
             kind: p.oldSoftware ? ("old" as const) : p.kind,
             bill: p.oldSoftware
               ? p.oldSoftwareBillNo

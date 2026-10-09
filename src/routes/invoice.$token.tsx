@@ -9,6 +9,7 @@ import { billCredits } from "@/lib/invoice-utils";
 import { downloadInvoicePdf } from "@/lib/invoice-download";
 import { subscribePublicInvoice } from "@/services/invoices.service";
 import type { PublicInvoice } from "@/types/models";
+import { billModesLabel } from "@/lib/split-pay";
 
 export const Route = createFileRoute("/invoice/$token")({
   head: () => ({
@@ -135,7 +136,7 @@ function PublicInvoicePage() {
             <div>
               <p className="text-xs font-bold uppercase tracking-wider">Payment status</p>
               <p className="text-xl font-black capitalize">
-                {i.paymentStatus} · {i.paymentMethod}
+                {i.paymentStatus} · {billModesLabel(i)}
               </p>
             </div>
             <div className="flex gap-2 print:hidden">

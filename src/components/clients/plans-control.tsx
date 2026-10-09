@@ -558,6 +558,7 @@ export function ClientPtPlans({ client, invoices }: { client: Client; invoices: 
               ) ?? null)
             : null
         }
+        client={client}
         onClose={() => setEditing(null)}
       />
       <RemovePlanDialog client={client} target={removing} onClose={() => setRemoving(null)} />

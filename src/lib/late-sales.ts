@@ -68,6 +68,8 @@ export interface LateSaleFact {
   typedOn: string;
   amount: number;
   method: string;
+  /** One part of a Cash + UPI payment (lib/split-pay.ts): its parts move together or not at all. */
+  splitId?: string;
   kind: string;
   oldSoftware: boolean;
   invoiceId: string;
@@ -142,6 +144,14 @@ export function planLateSales(
 ): LatePlan {
   const move: LateMove[] = [];
   const skipped: LateSkip[] = [];
+  // A Cash + UPI payment moves as one: by the cash rules when a part is cash, and not at all when
+  // a part's day was set by hand.
+  const splitCash = new Set(
+    facts.filter((f) => f.splitId && f.method === "Cash").map((f) => f.splitId),
+  );
+  const splitByHand = new Set(
+    facts.filter((f) => f.splitId && f.dateSetByHand).map((f) => f.splitId),
+  );
   for (const f of facts) {
     if (f.kind !== "initial" || !(f.amount > 0) || f.oldSoftware || !f.invoiceId) continue;
     if (!ISO.test(f.startDate) || !ISO.test(f.paymentDate)) continue;
@@ -161,7 +171,12 @@ export function planLateSales(
     };
     // Opening days between where it counts now and where it should: it can't cross them.
     const backward = target < f.paymentDate;
-    const between = openingsBetween(f.paymentDate, target, f.method, openings);
+    const between = openingsBetween(
+      f.paymentDate,
+      target,
+      f.splitId && splitCash.has(f.splitId) ? "Cash" : f.method,
+      openings,
+    );
     const last = between[between.length - 1];
     // Moving back: stop at the latest opening day in the way. Moving forward past one: leave it.
     const to = backward && last ? last : target;
@@ -173,7 +188,7 @@ export function planLateSales(
           ? "upgrade"
           : ["closed", "refunded", "missing"].includes(f.billStatus)
             ? "bill-closed"
-            : f.dateSetByHand
+            : f.dateSetByHand || (!!f.splitId && splitByHand.has(f.splitId))
               ? "date-set"
               : to < openFrom || f.paymentDate < openFrom
                 ? "before-open"

@@ -297,6 +297,62 @@ export function pickOldMember<T extends { name?: string; n?: string }>(
 }
 
 /**
+ * The member's own old record among a phone's records: the linked old member ID, else the best
+ * name match, else the only record.
+ */
+export function oldPersonFor<T extends { memberId: string; name: string }>(
+  records: T[],
+  who: { oldMemberId?: string | undefined; name: string },
+): T | null {
+  return (
+    records.find((r) => !!who.oldMemberId && r.memberId === who.oldMemberId) ??
+    pickOldMember(records, who.name)
+  );
+}
+
+/**
+ * The old software's plan for these days (overlapping them; a plan with no end counts from its
+ * start on): the same kind (gym / PT) first, then any, the nearest start first. null = the old
+ * software's records have no plan for these days, so "paid in the old software" is doubtful (the
+ * October check: new money ticked as old). Records end on the day they were exported.
+ */
+export function oldPlanCovering(
+  person: Pick<OldMember, "plans"> | null,
+  plan: { kind: "gym" | "pt"; start: string; end: string },
+): OldPlan | null {
+  const day = /^\d{4}-\d{2}-\d{2}$/;
+  if (!person || !day.test(plan.start)) return null;
+  const end = day.test(plan.end) ? plan.end : plan.start;
+  const gap = (s: string) => Math.abs(Date.parse(s) - Date.parse(plan.start));
+  const hits = person.plans
+    .filter((p) => day.test(p.start))
+    .filter((p) => p.start <= end && (!day.test(p.end) || p.end >= plan.start))
+    .sort(
+      (a, b) =>
+        Number(isOldPtPlanName(a.name) !== (plan.kind === "pt")) -
+          Number(isOldPtPlanName(b.name) !== (plan.kind === "pt")) || gap(a.start) - gap(b.start),
+    );
+  return hits[0] ?? null;
+}
+
+/**
+ * The old plan for these days in a phone's records: the member's own record (`oldPersonFor`), or,
+ * when the name fits none of a family's records clearly, any record on the phone.
+ */
+export function oldPlanInRecords(
+  records: OldMember[],
+  who: { oldMemberId?: string | undefined; name: string },
+  plan: { kind: "gym" | "pt"; start: string; end: string },
+): OldPlan | null {
+  const person = oldPersonFor(records, who);
+  for (const r of person ? [person] : records) {
+    const hit = oldPlanCovering(r, plan);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
  * When they first joined the gym: the registration date, or the first plan's start when that is
  * earlier (the old software re-dated members it restored).
  */
@@ -405,4 +461,25 @@ export interface OldSaleSuspect {
   reasons: string[];
   /** Strong = the old software has a paid plan for the same days. */
   strength: "strong" | "check";
+}
+
+/**
+ * A plan saved as paid in the old software whose days the old software's records don't have
+ * (Income & expenses): often money paid here, ticked as old by mistake. The owner checks each one.
+ */
+export interface OldNotInRecords {
+  kind: "gym" | "pt";
+  planId: string;
+  clientId: string;
+  clientName: string;
+  clientCode: string;
+  plan: string;
+  start: string;
+  end: string;
+  /** Saved as paid in the old software (its payments dated from the 1st of last month). */
+  paid: number;
+  paidOn: string[];
+  createdBy: string;
+  /** Why it is listed: no old record for the phone, or the plans that record has. */
+  reason: string;
 }

@@ -39,6 +39,7 @@ const removeFacts = (d: DocumentData): RemovePayment => ({
   invoiceId: String(d["invoiceId"] ?? ""),
   trainerShareAmount: Number(d["trainerShareAmount"] ?? 0),
   cancelId: String(d["cancelId"] ?? ""),
+  splitId: String(d["splitId"] ?? ""),
 });
 
 const billFacts = (d: DocumentData): RemoveBill => ({

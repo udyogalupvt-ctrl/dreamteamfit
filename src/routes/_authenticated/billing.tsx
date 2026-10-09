@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { z } from "zod";
 import { CreateBillDialog } from "@/components/billing/create-bill-dialog";
+import { billModesLabel } from "@/lib/split-pay";
 import { usePeriodPicker } from "@/components/dashboard/period-picker";
 import { InvoiceActions } from "@/components/billing/invoice-actions";
 import { EmptyState } from "@/components/common/empty-state";
@@ -273,7 +274,7 @@ function BillingPage() {
                       <TableCell>
                         <p className="font-semibold">{i.invoiceNumber}</p>
                         <p className="text-meta">
-                          {formatDateISO(i.invoiceDate)} · {i.paymentMethod}
+                          {formatDateISO(i.invoiceDate)} · {billModesLabel(i)}
                         </p>
                         <p className="text-meta">
                           By {i.createdBy}

@@ -14,6 +14,7 @@ import {
   RotateCcw,
   Send,
   ShieldAlert,
+  TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -92,6 +93,10 @@ import { firestoreErrorMessage } from "@/services/firestore.service";
 import { subscribeInvoice } from "@/services/invoices.service";
 import { downloadInvoicePdf } from "@/lib/invoice-download";
 import { markInvoiceShared, sendInvoiceWhatsApp } from "@/services/whatsapp.service";
+import { cashPartOf, PayModeField } from "@/components/billing/pay-mode-field";
+import { useOldRecordCheck } from "@/components/clients/use-old-record-check";
+import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import { SPLIT_MODE, splitParts, splitProblem, type PayMode } from "@/lib/split-pay";
 import {
   DEFAULT_WHATSAPP_SETTINGS,
   isWhatsAppApiLive,
@@ -178,7 +183,9 @@ interface Draft {
   ptStart?: string;
   ptEnd?: string;
   amountPaid: number | null;
-  method: PaymentMethod;
+  method: PayMode;
+  /** Cash + UPI: the cash part as typed. */
+  cashPart?: string;
   notes: string;
   counsellorId?: string;
   nextPaymentDate?: string;
@@ -264,7 +271,8 @@ export function EnrollmentWizard({
   const [ptStartText, setPtStartText] = useState(restored?.ptStart ?? "");
   const [ptEndText, setPtEndText] = useState(restored?.ptEnd ?? "");
   const [amountPaid, setAmountPaid] = useState<number | null>(restored?.amountPaid ?? null);
-  const [method, setMethod] = useState<PaymentMethod>(restored?.method ?? "UPI");
+  const [method, setMethod] = useState<PayMode>(restored?.method ?? "UPI");
+  const [cashText, setCashText] = useState(restored?.cashPart ?? "");
   // "" = the default day (see paidOn below).
   const [paidOnText, setPaidOnText] = useState(restored?.paidOn ?? "");
   // Staff picked the start date themselves: it no longer follows "Paid on".
@@ -296,6 +304,8 @@ export function EnrollmentWizard({
   const [carried, setCarried] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  // Saving "paid in the old software" for a plan its records don't have: asked once.
+  const [askOld, setAskOld] = useState(false);
   const [enrollmentId, setEnrollmentId] = useState<string | null>(
     options.resumeEnrollmentId ?? null,
   );
@@ -571,6 +581,12 @@ export function EnrollmentWizard({
         ? `Too much: the maximum discount set in Packages is ${formatPrice(maxDiscount)}`
         : "";
   const balanceLeft = totals.total - Math.min(paid, totals.total) > 0;
+  // Cash + UPI: the two parts, once the cash part is right.
+  const splitOn = method === SPLIT_MODE;
+  const splitParts_ =
+    splitOn && !splitProblem(Math.min(paid, totals.total), cashPartOf(cashText))
+      ? splitParts(Math.min(paid, totals.total), cashPartOf(cashText))
+      : null;
   const hasEntry = Boolean(client.fullName || client.phone || packageId || ptOn);
 
   // A member already here (imported, or added from Backup / Member calls) skips the details step
@@ -660,6 +676,18 @@ export function EnrollmentWizard({
       : calculateEndDate(ptStart, ptPkg.durationDays)
     : "";
   const ptEnd = ptEndText || ptEndDefault;
+  // "Paid in the old software" for a plan the old software's records don't have: probably money
+  // paid here (the October check). A plan still running there is in its records anyway.
+  const oldCheck = useOldRecordCheck({
+    on: paidInOld && !oldLocked,
+    phone: oldPhone,
+    name: existing?.fullName ?? client.fullName,
+    oldMemberId: oldId,
+    kind: gymPackage ? "gym" : "pt",
+    start: gymPackage ? startDate : ptStart,
+    end: gymPackage ? newEnd : ptEnd,
+  });
+  const oldDoubt = oldCheck.state === "missing" ? oldCheck.text : "";
   const ptMin = ptOn && ptLastEnd ? addDaysISO(ptLastEnd, 1) : "";
   const ptDateProblem = !ptPkg
     ? ""
@@ -759,6 +787,7 @@ export function EnrollmentWizard({
             ptEnd: ptEndText,
             amountPaid,
             method,
+            cashPart: cashText,
             notes,
             counsellorId,
             nextPaymentDate,
@@ -793,6 +822,7 @@ export function EnrollmentWizard({
     ptEndText,
     amountPaid,
     method,
+    cashText,
     notes,
     counsellorId,
     nextPaymentDate,
@@ -818,6 +848,7 @@ export function EnrollmentWizard({
     setPtStartText("");
     setPtEndText("");
     setAmountPaid(null);
+    setCashText("");
     setNotes("");
     setNextPaymentDate("");
     setPhotoLater(true);
@@ -886,6 +917,10 @@ export function EnrollmentWizard({
       if (!(paid >= 0) || paid > totals.total)
         e["amountPaid"] = `Enter 0 to ${formatPrice(totals.total)}`;
       if (paid > 0 && paidOnProblem) e["paidOn"] = paidOnProblem;
+      if (paid > 0 && splitOn) {
+        const bad = splitProblem(Math.min(paid, totals.total), cashPartOf(cashText));
+        if (bad) e["paySplit"] = bad;
+      }
       if (discountProblem) e["discount"] = discountProblem;
       if (balanceLeft && !nextPaymentDate) e["nextPaymentDate"] = "When will the rest be paid?";
       else if (balanceLeft && nextPaymentDate < todayISO())
@@ -899,12 +934,17 @@ export function EnrollmentWizard({
     if (await validate(step)) setStep((s) => Math.min(s + 1, PAYMENT));
   };
 
-  const confirm = async () => {
+  /** `sure`: staff said yes, it was paid in the old software, though its records don't show it. */
+  const confirm = async (sure = false) => {
     if (!(await validate(DETAILS)) || !(await validate(PACKAGE))) {
       setStep(!existing && (!client.fullName || !client.phone) ? DETAILS : PACKAGE);
       return;
     }
     if (!(await validate(PAYMENT))) return;
+    if (paidInOld && oldDoubt && !sure) {
+      setAskOld(true);
+      return;
+    }
     setSaving(true);
     try {
       const r = await enrollMember({
@@ -921,7 +961,8 @@ export function EnrollmentWizard({
         startDate,
         discount: paidInOld ? 0 : discount,
         amountPaid: paidInOld ? 0 : paid,
-        method,
+        method: method === SPLIT_MODE ? "UPI" : method,
+        split: !paidInOld && splitOn && paid > 0 ? { cash: cashPartOf(cashText) } : null,
         paidToday: !paidInOld && paidOn === today && startDate < today,
         ...(!paidInOld && !upgrading && paid > 0 ? { paidOn } : {}),
         notes,
@@ -1580,6 +1621,29 @@ export function EnrollmentWizard({
                     )}
                   </div>
                 ) : null}
+                {paidInOld && oldDoubt ? (
+                  <div
+                    role="status"
+                    className="grid gap-2.5 rounded-xl border border-warning/50 bg-warning/10 p-3 text-sm"
+                  >
+                    <p className="flex gap-2.5">
+                      <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+                      <span className="min-w-0">
+                        <b>Really paid in the old software?</b> {oldDoubt} Paid now by cash or UPI?
+                        Then it is money paid here: untick this and enter the amount and mode.
+                      </span>
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="justify-self-start sm:ml-6.5"
+                      onClick={() => setPaidOld(false)}
+                    >
+                      Paid here (untick)
+                    </Button>
+                  </div>
+                ) : null}
                 {paidInOld ? (
                   <div className="grid grid-cols-2 gap-3">
                     <Field
@@ -1729,27 +1793,16 @@ export function EnrollmentWizard({
                         }
                       />
                     </Field>
-                    <Field label="Paid by" htmlFor="e-method" className="col-span-2 sm:col-span-1">
-                      <div className="flex flex-wrap gap-1.5" role="radiogroup" id="e-method">
-                        {PAYMENT_METHODS.filter((m) => m !== "Other").map((m) => (
-                          <button
-                            key={m}
-                            type="button"
-                            role="radio"
-                            aria-checked={method === m}
-                            onClick={() => setMethod(m)}
-                            className={cn(
-                              "rounded-lg border px-3 py-2 text-sm font-semibold",
-                              method === m
-                                ? "border-primary bg-primary text-primary-foreground"
-                                : "border-border hover:bg-accent",
-                            )}
-                          >
-                            {m}
-                          </button>
-                        ))}
-                      </div>
-                    </Field>
+                    <PayModeField
+                      id="e-method"
+                      className="col-span-2"
+                      mode={method}
+                      onMode={setMethod}
+                      cash={cashText}
+                      onCash={setCashText}
+                      total={Math.min(paid, totals.total)}
+                      error={errors["paySplit"]}
+                    />
                     {paid > 0 && !upgrading ? (
                       <Field
                         label="Paid on"
@@ -1758,8 +1811,8 @@ export function EnrollmentWizard({
                         error={errors["paidOn"] || paidOnProblem}
                         hint={
                           paidOn === today
-                            ? `Counted in today's Collected${method === "Cash" ? " and today's Day Book cash" : ""}.`
-                            : `Counted in Collected on ${formatDateISO(paidOn)}${method === "Cash" ? ", in that day's Day Book cash" : ""}, not today.${followsPaidOn && startDate === paidOn ? " The plan starts that day too (change it in the Package step)." : ""}`
+                            ? `Counted in today's Collected${method === "Cash" ? " and today's Day Book cash" : splitOn ? "; the cash part in today's Day Book cash" : ""}.`
+                            : `Counted in Collected on ${formatDateISO(paidOn)}${method === "Cash" ? ", in that day's Day Book cash" : splitOn ? ", the cash part in that day's Day Book cash" : ""}, not today.${followsPaidOn && startDate === paidOn ? " The plan starts that day too (change it in the Package step)." : ""}`
                         }
                       >
                         <div className="flex flex-wrap items-center gap-2">
@@ -1878,6 +1931,12 @@ export function EnrollmentWizard({
                         ...(totals.tax ? [["Tax", totals.tax] as const] : []),
                         ["Total", totals.total],
                         ["Received", Math.min(paid, totals.total)],
+                        ...(splitParts_
+                          ? ([
+                              ["· by UPI", splitParts_[0]!.amount],
+                              ["· in cash", splitParts_[1]!.amount],
+                            ] as const)
+                          : []),
                         ["Balance", Math.max(0, totals.total - paid)],
                       ] as const)
                   ).map(([k, v]) => (
@@ -2001,6 +2060,15 @@ export function EnrollmentWizard({
                   </span>
                 </Button>
               )}
+              <ConfirmDialog
+                open={askOld}
+                onOpenChange={setAskOld}
+                title="Paid in the old software?"
+                description={`${oldDoubt} If they paid now by cash or UPI, go back and untick "Paid in the old software", or the Day Book and Collected will be short.`}
+                cancelLabel="Go back"
+                confirmLabel="Yes, paid in the old software"
+                onConfirm={() => void confirm(true)}
+              />
             </>
           ) : (
             <>

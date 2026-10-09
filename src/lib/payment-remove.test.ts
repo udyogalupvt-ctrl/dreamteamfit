@@ -160,3 +160,9 @@ test("plans no longer here: old-software money can go; a bill is not closed for 
   assert.equal(r.bill?.after.paymentStatus, "pending");
   assert.equal(r.bill?.after.balanceDue, 5000);
 });
+
+test("one part of a Cash + UPI payment: make it one payment first (Edit payment)", () => {
+  const r = planRemove(pay({ splitId: "u1" }), bill(), running, OPEN);
+  assert.match(r.error, /Cash \+ UPI/);
+  assert.equal(r.bill, null);
+});

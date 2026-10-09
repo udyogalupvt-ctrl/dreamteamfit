@@ -27,10 +27,12 @@ import {
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { checkOldRows, defaultOldRows, type OldPayRow } from "@/lib/old-money";
 import { OldPaidRows } from "@/components/clients/old-paid-rows";
+import { OldRecordNote } from "@/components/clients/old-record-note";
 import { PaidOnField, usePaidOn } from "@/components/clients/paid-on-field";
 import { subscribeClientPayments } from "@/services/finance.service";
 import { findOldPartner, type OldPartner } from "@/services/old-money.service";
 import type {
+  Client,
   Invoice,
   Payment,
   PaymentMethod,
@@ -46,10 +48,13 @@ import type {
 export function EditPtDialog({
   pt,
   bill,
+  client,
   onClose,
 }: {
   pt: PtAssignment | null;
   bill: Invoice | null;
+  /** The member (for the old software's records check of an old-software PT plan). */
+  client?: Pick<Client, "phone" | "fullName" | "oldMemberId"> | null;
   onClose: () => void;
 }) {
   const open = !!pt;
@@ -372,16 +377,21 @@ export function EditPtDialog({
               . Change it in Edit plan.
             </p>
           ) : (
-            <OldPaidRows
-              id="pt-oldpaid"
-              rows={shownRows}
-              onChange={setOldRows}
-              disabled={pays.loading || rowsLocked}
-              error={rowsError}
-              note={
-                rowsLocked ? "Only the owner can change this (it changes past income)." : undefined
-              }
-            />
+            <>
+              <OldRecordNote on client={client} kind="pt" start={pt.startDate} end={pt.endDate} />
+              <OldPaidRows
+                id="pt-oldpaid"
+                rows={shownRows}
+                onChange={setOldRows}
+                disabled={pays.loading || rowsLocked}
+                error={rowsError}
+                note={
+                  rowsLocked
+                    ? "Only the owner can change this (it changes past income)."
+                    : undefined
+                }
+              />
+            </>
           )
         ) : null}
         {discountEditable && bill ? (

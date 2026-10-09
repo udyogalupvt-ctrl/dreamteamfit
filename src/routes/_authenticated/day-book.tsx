@@ -32,6 +32,7 @@ import {
 import { useLive } from "@/hooks/use-live-query";
 import { buildCashBook, handoverSummary, type CashDay } from "@/lib/cash-book";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
+import { splitTag } from "@/lib/split-pay";
 import { subscribeExpensesSince, subscribeExpensesSettledSince } from "@/services/expenses.service";
 import {
   cashCheckpoints,
@@ -390,7 +391,10 @@ function DayBookPage() {
                         <TableCell className="text-right font-bold tabular-nums">
                           {formatPrice(p.amount)}
                         </TableCell>
-                        <TableCell>{p.method}</TableCell>
+                        <TableCell>
+                          {p.method}
+                          {splitTag(p)}
+                        </TableCell>
                         <TableCell className="hidden md:table-cell">{p.createdBy || "—"}</TableCell>
                         <TableCell className="hidden md:table-cell">
                           {p.counsellorName || "—"}
@@ -436,6 +440,7 @@ function DayBookPage() {
                       <span className="font-semibold">{p.clientNameSnapshot}</span>
                       <span className="text-meta block">
                         {formatDateISO(p.paymentDate)} · {p.method}
+                        {splitTag(p)}
                         {p.oldSoftwareBillNo ? ` · old bill ${p.oldSoftwareBillNo}` : ""}
                       </span>
                     </span>

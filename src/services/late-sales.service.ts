@@ -127,6 +127,7 @@ async function readLate(today: string): Promise<LatePlan & { openFrom: string }>
       typedOn: typedDay(x["createdAt"]),
       amount: Number(x["amount"]) || 0,
       method: str(x["method"]),
+      ...(x["splitId"] ? { splitId: str(x["splitId"]) } : {}),
       kind: str(x["kind"]),
       oldSoftware: x["oldSoftware"] === true,
       invoiceId: str(x["invoiceId"]),

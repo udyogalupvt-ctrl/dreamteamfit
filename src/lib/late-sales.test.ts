@@ -221,3 +221,33 @@ test("undo puts back only payments still on the day the run gave them", () => {
   assert.equal(lateUndoable(item, { paymentDate: "2026-10-05", amount: 1699 }), false);
   assert.equal(lateUndoable(item, null), false);
 });
+
+test("a Cash + UPI payment moves as one: both parts stop at the cash opening day", () => {
+  const r = planLateSales(
+    [
+      fact({ paymentId: "u", amount: 500, splitId: "u" }),
+      fact({ paymentId: "c", amount: 1199, method: "Cash", splitId: "u" }),
+    ],
+    OPEN,
+    { cash: ["2026-10-05"], all: [] },
+  );
+  assert.deepEqual(
+    r.move.map((m) => [m.paymentId, m.to]).sort(),
+    [
+      ["c", "2026-10-05"],
+      ["u", "2026-10-05"],
+    ],
+  );
+});
+
+test("a Cash + UPI payment with one part's day set by hand: neither part moves", () => {
+  const r = planLateSales(
+    [
+      fact({ paymentId: "u", splitId: "u", dateSetByHand: true }),
+      fact({ paymentId: "c", method: "Cash", splitId: "u" }),
+    ],
+    OPEN,
+  );
+  assert.equal(r.move.length, 0);
+  assert.deepEqual(r.skipped.map((s) => s.reason), ["date-set", "date-set"]);
+});

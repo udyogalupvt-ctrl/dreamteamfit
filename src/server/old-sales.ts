@@ -14,9 +14,12 @@
  */
 import {
   isOldPtPlanName,
+  oldPersonFor,
   oldPhoneKey,
+  oldPlanInRecords,
   pickOldMember,
   type OldMember,
+  type OldNotInRecords,
   type OldPlan,
   type OldSaleSuspect,
 } from "@/lib/old-data";
@@ -27,6 +30,7 @@ import {
   type OverlapListPlan,
   type OverlapListRow,
 } from "@/lib/plan-overlap";
+import { formatDateISO } from "@/lib/format";
 import { db, json, localDate, requireFeature } from "./admin";
 
 const DAY = 86_400_000;
@@ -260,7 +264,107 @@ export async function oldSaleSuspects(request: Request) {
     (a, b) =>
       (a.strength === b.strength ? 0 : a.strength === "strong" ? -1 : 1) || b.paidHere - a.paidHere,
   );
-  return json({ from, suspects: out, total: out.reduce((n, s) => n + s.paidHere, 0) });
+  return json({
+    from,
+    suspects: out,
+    total: out.reduce((n, s) => n + s.paidHere, 0),
+    notInOld: await notInOldRecords(pays.docs),
+  });
+}
+
+/**
+ * Plans saved as paid in the old software (their old-software payments dated from the 1st of last
+ * month) whose days the old software's records don't have: money paid here ticked as old by
+ * mistake shows up here (the October check). Records stop on the day they were exported, so a
+ * plan sold there after that is listed too: the owner checks each one.
+ */
+async function notInOldRecords(
+  pays: FirebaseFirestore.QueryDocumentSnapshot[],
+): Promise<OldNotInRecords[]> {
+  const byPlan = new Map<
+    string,
+    { kind: "gym" | "pt"; clientId: string; paid: number; dates: string[]; by: string }
+  >();
+  for (const d of pays) {
+    const p = d.data();
+    if (p["oldSoftware"] !== true || !(Number(p["amount"] ?? 0) > 0)) continue;
+    const gym = String(p["membershipId"] ?? "");
+    const pt = String(p["ptAssignmentId"] ?? "");
+    const key = gym ? `gym:${gym}` : pt ? `pt:${pt}` : "";
+    if (!key) continue;
+    const row = byPlan.get(key) ?? {
+      kind: gym ? ("gym" as const) : ("pt" as const),
+      clientId: String(p["clientId"] ?? ""),
+      paid: 0,
+      dates: [],
+      by: String(p["createdBy"] ?? ""),
+    };
+    row.paid += Number(p["amount"] ?? 0);
+    row.dates.push(String(p["paymentDate"] ?? ""));
+    byPlan.set(key, row);
+  }
+  if (!byPlan.size) return [];
+  const ids = (kind: "gym" | "pt") =>
+    [...byPlan.keys()].filter((k) => k.startsWith(`${kind}:`)).map((k) => k.slice(kind.length + 1));
+  const [plans, ptPlans, clients] = await Promise.all([
+    getAll("memberships", ids("gym")),
+    getAll("ptAssignments", ids("pt")),
+    getAll(
+      "clients",
+      [...byPlan.values()].map((r) => r.clientId),
+    ),
+  ]);
+  const old = await getAll(
+    "oldMembers",
+    [...clients.values()]
+      .map((c) => oldPhoneKey(String(c["phone"] || c["phoneNormalized"] || "")))
+      .filter((k) => k.length >= 6),
+  );
+  const out: OldNotInRecords[] = [];
+  for (const [key, r] of byPlan) {
+    const id = key.slice(r.kind.length + 1);
+    const m = r.kind === "pt" ? ptPlans.get(id) : plans.get(id);
+    const c = clients.get(r.clientId);
+    if (!m || !c || m["status"] === "cancelled" || m["paidInOldSoftware"] !== true) continue;
+    const start = String(m["startDate"] ?? "");
+    const end = String(m["endDate"] ?? "");
+    const records = (old.get(oldPhoneKey(String(c["phone"] || c["phoneNormalized"] || "")))?.[
+      "members"
+    ] ?? []) as OldMember[];
+    const who = { oldMemberId: String(c["oldMemberId"] ?? ""), name: String(c["fullName"] ?? "") };
+    if (oldPlanInRecords(records, who, { kind: r.kind, start, end })) continue;
+    // Linked to an old record, but none on this phone (the phone changed): can't tell.
+    if (!records.length && who.oldMemberId) continue;
+    const person = oldPersonFor(records, who);
+    const last = [...(person?.plans ?? [])]
+      .filter((p) => p.start)
+      .sort((a, b) => b.start.localeCompare(a.start))[0];
+    out.push({
+      kind: r.kind,
+      planId: id,
+      clientId: r.clientId,
+      clientName: String(c["fullName"] ?? ""),
+      clientCode: String(c["clientCode"] ?? ""),
+      plan: String(
+        r.kind === "pt"
+          ? `PT · ${m["ptPackageNameSnapshot"] ?? ""}`
+          : (m["packageNameSnapshot"] ?? ""),
+      ),
+      start,
+      end,
+      paid: Math.round(r.paid * 100) / 100,
+      paidOn: [...new Set(r.dates)].sort(),
+      createdBy: r.by,
+      reason: !records.length
+        ? "This phone is not in the old software's records."
+        : !person
+          ? "The old software has this phone, but not this member's name."
+          : last
+            ? `The old software has no plan for these days. Its last plan for them: ${last.name}, ${formatDateISO(last.start)}${last.end ? ` → ${formatDateISO(last.end)}` : ""}.`
+            : "The old software has this member, but no plans.",
+    });
+  }
+  return out.sort((a, b) => b.start.localeCompare(a.start));
 }
 
 /**

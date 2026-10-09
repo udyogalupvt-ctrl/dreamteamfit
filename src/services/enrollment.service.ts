@@ -39,6 +39,7 @@ import { saleMoneyDay } from "@/lib/late-sales";
 import { currentRow, pickCurrent } from "@/lib/current-plan";
 import { conflictMessage, overlapConflict, overlapPlan } from "@/lib/plan-overlap";
 import { checkOldRows, defaultOldRows, oldRowsTotal, type OldPayRow } from "@/lib/old-money";
+import { billModes, shareOut, splitParts, splitProblem, type PayPart } from "@/lib/split-pay";
 import { col, COLLECTIONS, toDate } from "./firestore.service";
 import { mapInvoice } from "./invoices.service";
 import { calculateEndDate } from "./memberships.service";
@@ -101,6 +102,11 @@ export interface EnrollmentInput {
   discount: number;
   amountPaid: number;
   method: PaymentMethod;
+  /**
+   * Cash + UPI: the cash part of `amountPaid` (the rest is UPI). Saved as two payments on the
+   * bill sharing `splitId` (lib/split-pay.ts); `method` is then ignored.
+   */
+  split?: { cash: number } | null;
   /**
    * The money counts on the plan's first day when the plan started before today (the member paid
    * then; it was typed in later). true = the member paid today (counted today).
@@ -306,6 +312,16 @@ export async function enrollMember(given: EnrollmentInput) {
   const totals = enrollmentTotals(old ? { ...input, discount: 0, amountPaid: 0 } : input);
   if (!old && input.amountPaid > totals.total)
     throw new Error("Amount paid cannot exceed the total.");
+  // Cash + UPI: two payments, the UPI part first.
+  const split = !old && input.split && totals.amountPaid > 0 ? input.split : null;
+  if (split) {
+    const bad = splitProblem(totals.amountPaid, Number(split.cash));
+    if (bad) throw new Error(bad);
+  }
+  const payParts: PayPart[] = split
+    ? splitParts(totals.amountPaid, Number(split.cash))
+    : [{ method: input.method, amount: totals.amountPaid }];
+  const modes = billModes(payParts);
   const maxDiscount = maxDiscountFor(input);
   if (!old && maxDiscount !== null && input.discount > maxDiscount)
     throw new Error(
@@ -360,6 +376,7 @@ export async function enrollMember(given: EnrollmentInput) {
   // Paid in the old software: a bill only for a balance still owed.
   const invoiceRef = !old || oldBalance > 0 ? doc(col(COLLECTIONS.invoices)) : null;
   const paymentRef = !old && totals.amountPaid > 0 ? doc(col(COLLECTIONS.payments)) : null;
+  const cashPartRef = paymentRef && split ? doc(col(COLLECTIONS.payments)) : null;
   const enrollmentRef = doc(col(COLLECTIONS.enrollments));
   const payoutRef = input.pt && !old ? doc(col(COLLECTIONS.trainerPayouts)) : null;
   const token = createPublicToken();
@@ -686,7 +703,8 @@ export async function enrollMember(given: EnrollmentInput) {
         ...(old ? { remindOldBalance: old.remind === true } : {}),
         paymentsTracked: true,
         paymentStatus,
-        paymentMethod: input.method,
+        paymentMethod: modes.paymentMethod,
+        ...(modes.paymentModes ? { paymentModes: modes.paymentModes } : {}),
         invoiceDate: today,
         dueDate,
         notes: [
@@ -716,7 +734,8 @@ export async function enrollMember(given: EnrollmentInput) {
         items,
         ...money,
         paymentStatus,
-        paymentMethod: input.method,
+        paymentMethod: modes.paymentMethod,
+        ...(modes.paymentModes ? { paymentModes: modes.paymentModes } : {}),
         invoiceDate: today,
         dueDate,
         pdfUrl: "",
@@ -724,30 +743,47 @@ export async function enrollMember(given: EnrollmentInput) {
         updatedAt: now,
       });
     if (paymentRef && invoiceRef) {
-      tx.set(paymentRef, {
-        clientId: clientRef.id,
-        clientNameSnapshot: fullName,
-        invoiceId: invoiceRef.id,
-        invoiceNumber,
-        membershipId: membershipRef?.id ?? null,
-        ptAssignmentId: ptRef?.id ?? null,
-        amount: money.amountPaid,
-        method: input.method,
-        paymentDate: moneyDay,
-        // Staff said a plan that had started was paid today: that day stays (owner tool too).
-        ...(input.paidToday && input.startDate < today ? { paidToday: true } : {}),
-        ...(paidOn ? { paidOnChosen: true } : {}),
-        kind: "initial",
-        ...allocatePayment(
-          { total: money.total, subtotal: money.subtotal, discount: money.discount, ...breakdown },
-          money.amountPaid,
-        ),
-        ...counsellor,
-        createdBy: input.staff.name,
-        createdByUid: input.staff.uid,
-        createdAt: now,
-        updatedAt: now,
-      });
+      const allocBill = {
+        total: money.total,
+        subtotal: money.subtotal,
+        discount: money.discount,
+        ...breakdown,
+      };
+      const whole = allocatePayment(allocBill, money.amountPaid);
+      // Cash + UPI: the UPI part's own share, the cash part the rest (the pair adds up exactly).
+      const [firstAlloc, restAlloc] = shareOut(
+        whole,
+        cashPartRef ? allocatePayment(allocBill, payParts[0]!.amount) : whole,
+      );
+      const parts = cashPartRef
+        ? [
+            { ref: paymentRef, part: payParts[0]!, alloc: firstAlloc },
+            { ref: cashPartRef, part: payParts[1]!, alloc: restAlloc },
+          ]
+        : [{ ref: paymentRef, part: payParts[0]!, alloc: whole }];
+      for (const { ref, part, alloc } of parts)
+        tx.set(ref, {
+          clientId: clientRef.id,
+          clientNameSnapshot: fullName,
+          invoiceId: invoiceRef.id,
+          invoiceNumber,
+          membershipId: membershipRef?.id ?? null,
+          ptAssignmentId: ptRef?.id ?? null,
+          amount: part.amount,
+          method: part.method,
+          paymentDate: moneyDay,
+          // Staff said a plan that had started was paid today: that day stays (owner tool too).
+          ...(input.paidToday && input.startDate < today ? { paidToday: true } : {}),
+          ...(paidOn ? { paidOnChosen: true } : {}),
+          ...(cashPartRef ? { splitId: paymentRef.id } : {}),
+          kind: "initial",
+          ...alloc,
+          ...counsellor,
+          createdBy: input.staff.name,
+          createdByUid: input.staff.uid,
+          createdAt: now,
+          updatedAt: now,
+        });
     }
     // Paid in the old software: counted on the day(s) it was paid there, never in today's cash.
     if (old && oldRows.length) {
