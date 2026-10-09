@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "start": "node .output/server/index.mjs",
-    "test:cfo": "node --test \"src/lib/cfo/**/*.test.ts\" \"src/lib/plan-dates.test.ts\" \"src/lib/old-money.test.ts\" \"src/lib/late-sales.test.ts\" \"src/lib/plan-money.test.ts\" \"src/lib/payment-remove.test.ts\" \"src/lib/money-pairs.test.ts\""
+    "test:cfo": "node --test \"src/lib/cfo/**/*.test.ts\" \"src/lib/plan-dates.test.ts\" \"src/lib/old-money.test.ts\" \"src/lib/late-sales.test.ts\" \"src/lib/plan-money.test.ts\" \"src/lib/payment-remove.test.ts\" \"src/lib/money-pairs.test.ts\" \"src/lib/plan-remove.test.ts\""
   },
   "overrides": {
     "rolldown": "1.2.1"
