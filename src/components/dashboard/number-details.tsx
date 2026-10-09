@@ -142,8 +142,8 @@ function Empty({ text }: { text: string }) {
   return <p className="text-meta p-6 text-center">{text}</p>;
 }
 
-/** The chip a payment counts under: old-software money has its own (it never came in here). */
-const modeOf = (r: MoneyRow) => (r.kind === "old" ? "Old software" : r.method || "Other");
+/** The chip a payment counts under (old-software money mostly reads "Not recorded"). */
+const modeOf = (r: MoneyRow) => r.method || (r.kind === "old" ? "Not recorded" : "Other");
 
 /** Collected (today / a period / this month): every payment, with totals by how it was paid. */
 function MoneyList({

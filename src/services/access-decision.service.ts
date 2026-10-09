@@ -65,14 +65,25 @@ export function decideMemberAccess(
   };
 }
 export async function checkMemberAccess(clientId: string, deviceRegistered = true) {
-  const [clientDoc, memberships] = await Promise.all([
+  const [clientDoc, memberships, pts] = await Promise.all([
     getDoc(doc(db, COLLECTIONS.clients, clientId)),
     getDocs(query(col(COLLECTIONS.memberships), where("clientId", "==", clientId))),
+    getDocs(query(col(COLLECTIONS.ptAssignments), where("clientId", "==", clientId))),
   ]);
   const client = clientDoc.exists() ? mapClient(clientDoc.id, clientDoc.data()) : null;
   return decideMemberAccess(
     client,
-    memberships.docs.map((d) => membershipFrom(d.id, d.data())),
+    [
+      ...memberships.docs.map((d) => membershipFrom(d.id, d.data())),
+      // PT plans count like the machine's own rule: only an active PT opens the door.
+      ...pts.docs.map((d) => {
+        const s = String(d.data()["status"] ?? "");
+        return membershipFrom(d.id, {
+          ...d.data(),
+          status: s === "active" ? "active" : s === "completed" ? "expired" : s === "cancelled" ? "cancelled" : "pt_pending",
+        });
+      }),
+    ],
     deviceRegistered,
   );
 }

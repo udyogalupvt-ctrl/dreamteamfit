@@ -61,7 +61,7 @@ export function CreateBillDialog({
   const [items, setItems] = useState<InvoiceItem[]>([emptyItem()]);
   const [discount, setDiscount] = useState(0);
   const [received, setReceived] = useState<number | null>(null);
-  const [method, setMethod] = useState<PaymentMethod>("UPI");
+  const [method, setMethod] = useState<Exclude<PaymentMethod, "Not recorded">>("UPI");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
