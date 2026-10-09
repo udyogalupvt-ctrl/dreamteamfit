@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-10 (Edit plan Price + Already paid, to match the paper register)
 
-## 2026-10-10: a pl## 2026-10-10: Edit plan → Price (owner) and "Already paid"
+## 2026-10-10: Edit plan → Price (owner) and "Already paid"
 
 **State**
 - To match the front desk's register (₹2,000 taken, ₹1,999 saved on 26 October rows): Edit plan has an
@@ -19,7 +19,7 @@ Last updated: 2026-10-10 (Edit plan Price + Already paid, to match the paper reg
   (a slow first lookup on a fresh server made them press Next too early).
 - Owner's step list to make October match the register: chat reply of 2026-10-10 (names, not in git).
 
-an still running in the old software no longer locks a new sale
+## 2026-10-10: a plan still running in the old software no longer locks a new sale
 
 **State**
 - **Bug (how a new ₹10,000 PT was saved "paid in the old software"):** a member whose old-software
