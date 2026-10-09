@@ -159,7 +159,16 @@ test("case 3: already carried (oldPlanKey) → no change at all", () => {
     base({
       oldMembers: [m],
       clients: [client],
-      memberships: [row("m1", { clientId: "c1", oldPlanKey: asIsKey("77", p), paidInOldSoftware: true, oldPlanAsIs: true, startDate: p.start, endDate: p.end })],
+      memberships: [
+        row("m1", {
+          clientId: "c1",
+          oldPlanKey: asIsKey("77", p),
+          paidInOldSoftware: true,
+          oldPlanAsIs: true,
+          startDate: p.start,
+          endDate: p.end,
+        }),
+      ],
     }),
   );
   assert.equal(r.members.length, 0);
@@ -187,8 +196,25 @@ test("case 4: hand-entered wrong package/dates/amount → fixed in place, exact 
           invoiceId: "i1",
         }),
       ],
-      invoices: [row("i1", { clientId: "c1", total: 1000, amountPaid: 0, items: [{ name: "Balance from the old software · 6 months cardio" }] })],
-      payments: [row("p1", { clientId: "c1", membershipId: "m1", oldSoftware: true, amount: 4999, method: "Other", paymentDate: "2026-07-03", edits: [] })],
+      invoices: [
+        row("i1", {
+          clientId: "c1",
+          total: 1000,
+          amountPaid: 0,
+          items: [{ name: "Balance from the old software · 6 months cardio" }],
+        }),
+      ],
+      payments: [
+        row("p1", {
+          clientId: "c1",
+          membershipId: "m1",
+          oldSoftware: true,
+          amount: 4999,
+          method: "Other",
+          paymentDate: "2026-07-03",
+          edits: [],
+        }),
+      ],
     }),
   );
   assert.equal(r.members.length, 1);
@@ -212,11 +238,35 @@ test("old rows staff set by hand (right total, real modes) are kept", () => {
       oldMembers: [m],
       clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
       memberships: [
-        row("m1", { clientId: "c1", packageId: "x", packageNameSnapshot: "6 months", startDate: p.start, endDate: p.end, status: "active", paidInOldSoftware: true }),
+        row("m1", {
+          clientId: "c1",
+          packageId: "x",
+          packageNameSnapshot: "6 months",
+          startDate: p.start,
+          endDate: p.end,
+          status: "active",
+          paidInOldSoftware: true,
+        }),
       ],
       payments: [
-        row("p1", { clientId: "c1", membershipId: "m1", oldSoftware: true, amount: 4000, method: "Cash", paymentDate: "2026-07-01", edits: [] }),
-        row("p2", { clientId: "c1", membershipId: "m1", oldSoftware: true, amount: 2000, method: "UPI", paymentDate: "2026-08-01", edits: [] }),
+        row("p1", {
+          clientId: "c1",
+          membershipId: "m1",
+          oldSoftware: true,
+          amount: 4000,
+          method: "Cash",
+          paymentDate: "2026-07-01",
+          edits: [],
+        }),
+        row("p2", {
+          clientId: "c1",
+          membershipId: "m1",
+          oldSoftware: true,
+          amount: 2000,
+          method: "UPI",
+          paymentDate: "2026-08-01",
+          edits: [],
+        }),
       ],
     }),
   );
@@ -235,10 +285,36 @@ test("money collected here stays and the balance bill keeps it; collected more t
         oldMembers: [m],
         clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
         memberships: [
-          row("m1", { clientId: "c1", packageId: "x", packageNameSnapshot: "6 months", startDate: p.start, endDate: p.end, status: "active", paidInOldSoftware: true, invoiceId: "i1" }),
+          row("m1", {
+            clientId: "c1",
+            packageId: "x",
+            packageNameSnapshot: "6 months",
+            startDate: p.start,
+            endDate: p.end,
+            status: "active",
+            paidInOldSoftware: true,
+            invoiceId: "i1",
+          }),
         ],
-        invoices: [row("i1", { clientId: "c1", total: 2000, amountPaid: paidHere, items: [{ name: "Balance from the old software · 6 months" }] })],
-        payments: [row("pHere", { clientId: "c1", invoiceId: "i1", membershipId: "m1", amount: paidHere, method: "Cash", paymentDate: "2026-10-05", kind: "balance" })],
+        invoices: [
+          row("i1", {
+            clientId: "c1",
+            total: 2000,
+            amountPaid: paidHere,
+            items: [{ name: "Balance from the old software · 6 months" }],
+          }),
+        ],
+        payments: [
+          row("pHere", {
+            clientId: "c1",
+            invoiceId: "i1",
+            membershipId: "m1",
+            amount: paidHere,
+            method: "Cash",
+            paymentDate: "2026-10-05",
+            kind: "balance",
+          }),
+        ],
       }),
     );
   const ok = mk(1500);
@@ -262,8 +338,24 @@ test("case 5: a second copy of the same old plan goes to the Recycle Bin; one wi
         oldMembers: [m],
         clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
         memberships: [
-          row("m1", { clientId: "c1", packageId: "x", packageNameSnapshot: "copy A", startDate: p.start, endDate: p.end, status: "active", paidInOldSoftware: true }),
-          row("m2", { clientId: "c1", packageId: "y", packageNameSnapshot: "copy B", startDate: "2026-07-02", endDate: p.end, status: "active", paidInOldSoftware: true }),
+          row("m1", {
+            clientId: "c1",
+            packageId: "x",
+            packageNameSnapshot: "copy A",
+            startDate: p.start,
+            endDate: p.end,
+            status: "active",
+            paidInOldSoftware: true,
+          }),
+          row("m2", {
+            clientId: "c1",
+            packageId: "y",
+            packageNameSnapshot: "copy B",
+            startDate: "2026-07-02",
+            endDate: p.end,
+            status: "active",
+            paidInOldSoftware: true,
+          }),
         ],
         payments: copyPayments,
       }),
@@ -272,7 +364,15 @@ test("case 5: a second copy of the same old plan goes to the Recycle Bin; one wi
   assert.equal(clean.members[0]!.fixes.length, 1);
   assert.equal(clean.members[0]!.recycles.length, 1);
   assert.equal(clean.members[0]!.recycles[0]!.membershipId, "m2");
-  const withMoney = mk([row("px", { clientId: "c1", membershipId: "m2", amount: 500, method: "Cash", paymentDate: "2026-10-01" })]);
+  const withMoney = mk([
+    row("px", {
+      clientId: "c1",
+      membershipId: "m2",
+      amount: 500,
+      method: "Cash",
+      paymentDate: "2026-10-01",
+    }),
+  ]);
   assert.equal(withMoney.members[0]!.recycles.length, 0);
   assert.ok(withMoney.skips.some((s) => s.reason.includes("money was taken here on it")));
 });
@@ -285,8 +385,24 @@ test("an unpaid sale typed for the same days is recycled only once the old plan 
       oldMembers: [m],
       clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
       memberships: [
-        row("m1", { clientId: "c1", packageId: "x", packageNameSnapshot: "entered", startDate: p.start, endDate: p.end, status: "active", paidInOldSoftware: true }),
-        row("m2", { clientId: "c1", packageId: "y", packageNameSnapshot: "unpaid sale", startDate: "2026-07-01", endDate: "2026-12-31", status: "active", invoiceId: "i2" }),
+        row("m1", {
+          clientId: "c1",
+          packageId: "x",
+          packageNameSnapshot: "entered",
+          startDate: p.start,
+          endDate: p.end,
+          status: "active",
+          paidInOldSoftware: true,
+        }),
+        row("m2", {
+          clientId: "c1",
+          packageId: "y",
+          packageNameSnapshot: "unpaid sale",
+          startDate: "2026-07-01",
+          endDate: "2026-12-31",
+          status: "active",
+          invoiceId: "i2",
+        }),
       ],
       invoices: [row("i2", { clientId: "c1", total: 6000, amountPaid: 0 })],
     }),
@@ -302,7 +418,15 @@ test("a cancelled hand-entry is listed and the running plan is carried fresh", (
       oldMembers: [m],
       clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
       memberships: [
-        row("m1", { clientId: "c1", packageNameSnapshot: "cancelled one", startDate: p.start, endDate: p.end, status: "cancelled", cancelId: "x", paidInOldSoftware: true }),
+        row("m1", {
+          clientId: "c1",
+          packageNameSnapshot: "cancelled one",
+          startDate: p.start,
+          endDate: p.end,
+          status: "cancelled",
+          cancelId: "x",
+          paidInOldSoftware: true,
+        }),
       ],
     }),
   );
@@ -318,7 +442,15 @@ test("an upgraded hand-entry blocks both the fix and a fresh carry (owner decide
       oldMembers: [m],
       clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
       memberships: [
-        row("m2", { clientId: "c1", packageNameSnapshot: "upgraded one", startDate: p.start, endDate: p.end, status: "active", upgradedTo: "m9", paidInOldSoftware: true }),
+        row("m2", {
+          clientId: "c1",
+          packageNameSnapshot: "upgraded one",
+          startDate: p.start,
+          endDate: p.end,
+          status: "active",
+          upgradedTo: "m9",
+          paidInOldSoftware: true,
+        }),
       ],
     }),
   );
@@ -334,7 +466,15 @@ test("shape change: an old PT plan entered as a gym plan → PT created, the gym
       oldMembers: [m],
       clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
       memberships: [
-        row("m1", { clientId: "c1", packageId: "x", packageNameSnapshot: "monthly", startDate: p.start, endDate: p.end, status: "active", paidInOldSoftware: true }),
+        row("m1", {
+          clientId: "c1",
+          packageId: "x",
+          packageNameSnapshot: "monthly",
+          startDate: p.start,
+          endDate: p.end,
+          status: "active",
+          paidInOldSoftware: true,
+        }),
       ],
     }),
   );
@@ -348,7 +488,13 @@ test("shape change: an old PT plan entered as a gym plan → PT created, the gym
 });
 
 test("pair: PT + floor carries a membership and a PT that share one payment", () => {
-  const p = plan({ name: "3 MONTHS PT + FLOOR", amount: 12000, balance: 0, start: "2026-09-01", end: "2026-11-30" });
+  const p = plan({
+    name: "3 MONTHS PT + FLOOR",
+    amount: 12000,
+    balance: 0,
+    start: "2026-09-01",
+    end: "2026-11-30",
+  });
   const m = person({ plans: [p] });
   const r = planMigration(base({ oldMembers: [m] }));
   const carry = r.members[0]!.carries[0]!;
@@ -367,9 +513,24 @@ test("case 8: a renewal sold here for the same days is never touched; the carrie
       oldMembers: [m],
       clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
       memberships: [
-        row("mNew", { clientId: "c1", packageId: "pkg", packageNameSnapshot: "Monthly package", startDate: "2026-10-05", endDate: "2026-11-04", status: "active" }),
+        row("mNew", {
+          clientId: "c1",
+          packageId: "pkg",
+          packageNameSnapshot: "Monthly package",
+          startDate: "2026-10-05",
+          endDate: "2026-11-04",
+          status: "active",
+        }),
       ],
-      payments: [row("pNew", { clientId: "c1", membershipId: "mNew", amount: 2000, method: "UPI", paymentDate: "2026-10-05" })],
+      payments: [
+        row("pNew", {
+          clientId: "c1",
+          membershipId: "mNew",
+          amount: 2000,
+          method: "UPI",
+          paymentDate: "2026-10-05",
+        }),
+      ],
     }),
   );
   const mem = r.members[0]!;
@@ -385,7 +546,14 @@ test("case 7: old-marked plan with no old plan behind it → listed, not changed
       oldMembers: [m],
       clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
       memberships: [
-        row("m1", { clientId: "c1", packageNameSnapshot: "October money", startDate: "2026-10-05", endDate: "2026-11-04", status: "active", paidInOldSoftware: true }),
+        row("m1", {
+          clientId: "c1",
+          packageNameSnapshot: "October money",
+          startDate: "2026-10-05",
+          endDate: "2026-11-04",
+          status: "active",
+          paidInOldSoftware: true,
+        }),
       ],
     }),
   );
@@ -403,7 +571,14 @@ test("case 9: a family phone — one matched by name, the other created", () => 
       oldMembers: [husband, wife],
       clients: [row("c1", { fullName: "Ravi Kumar" })],
       memberships: [
-        row("m1", { clientId: "c1", packageNameSnapshot: "six", startDate: p1.start, endDate: p1.end, status: "active", paidInOldSoftware: true }),
+        row("m1", {
+          clientId: "c1",
+          packageNameSnapshot: "six",
+          startDate: p1.start,
+          endDate: p1.end,
+          status: "active",
+          paidInOldSoftware: true,
+        }),
       ],
     }),
   );
@@ -447,12 +622,43 @@ test("the invariant: no plan ever deletes or edits money taken here", () => {
       oldMembers: [m],
       clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
       memberships: [
-        row("m1", { clientId: "c1", packageNameSnapshot: "six", startDate: p.start, endDate: p.end, status: "active", paidInOldSoftware: true, invoiceId: "i1" }),
+        row("m1", {
+          clientId: "c1",
+          packageNameSnapshot: "six",
+          startDate: p.start,
+          endDate: p.end,
+          status: "active",
+          paidInOldSoftware: true,
+          invoiceId: "i1",
+        }),
       ],
-      invoices: [row("i1", { clientId: "c1", total: 2000, amountPaid: 500, items: [{ name: "Balance from the old software · six" }] })],
+      invoices: [
+        row("i1", {
+          clientId: "c1",
+          total: 2000,
+          amountPaid: 500,
+          items: [{ name: "Balance from the old software · six" }],
+        }),
+      ],
       payments: [
-        row("pOld", { clientId: "c1", membershipId: "m1", oldSoftware: true, amount: 4000, method: "Other", paymentDate: p.start, edits: [] }),
-        row("pHere", { clientId: "c1", invoiceId: "i1", membershipId: "m1", amount: 500, method: "Cash", paymentDate: "2026-10-05", kind: "balance" }),
+        row("pOld", {
+          clientId: "c1",
+          membershipId: "m1",
+          oldSoftware: true,
+          amount: 4000,
+          method: "Other",
+          paymentDate: p.start,
+          edits: [],
+        }),
+        row("pHere", {
+          clientId: "c1",
+          invoiceId: "i1",
+          membershipId: "m1",
+          amount: 500,
+          method: "Cash",
+          paymentDate: "2026-10-05",
+          kind: "balance",
+        }),
       ],
     }),
   );

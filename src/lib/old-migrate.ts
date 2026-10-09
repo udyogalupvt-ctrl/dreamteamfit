@@ -42,7 +42,9 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const ms = (d: string) => Date.parse(`${d}T00:00:00Z`);
 /** Days from start to end, both counted ("2026-10-01".."2026-10-30" = 30). 0 when dates are bad. */
 export const daysIncl = (start: string, end: string) =>
-  DAY.test(start) && DAY.test(end) && end >= start ? Math.round((ms(end) - ms(start)) / 86_400_000) + 1 : 0;
+  DAY.test(start) && DAY.test(end) && end >= start
+    ? Math.round((ms(end) - ms(start)) / 86_400_000) + 1
+    : 0;
 const dayGap = (a: string, b: string) => Math.abs(ms(a) - ms(b)) / 86_400_000;
 
 export const gymStatusOf = (start: string, end: string, today: string) =>
@@ -297,10 +299,14 @@ const isCancelled = (d: D) => String(d["status"]) === "cancelled" || !!d["cancel
 const money = (v: unknown) => Number(v ?? 0) || 0;
 
 /** Client draft for a member who only exists in the old software (case 1). */
-export function clientDraft(m: OldMember, phoneKey: string): { draft: D; desiredCode: string | null } {
-  const code = /^\d{1,4}$/.test(m.memberId) && Number(m.memberId) >= 1 && Number(m.memberId) <= 8999
-    ? String(Number(m.memberId))
-    : null;
+export function clientDraft(
+  m: OldMember,
+  phoneKey: string,
+): { draft: D; desiredCode: string | null } {
+  const code =
+    /^\d{1,4}$/.test(m.memberId) && Number(m.memberId) >= 1 && Number(m.memberId) <= 8999
+      ? String(Number(m.memberId))
+      : null;
   return {
     desiredCode: code,
     draft: {
@@ -403,7 +409,8 @@ const unitLabel = (u: SaleUnit) =>
     .filter(Boolean)
     .join(" + ");
 
-const planWord = (p: OldPlan) => `${p.name} ${p.start}→${p.end} ₹${p.amount}${p.balance > 0 ? ` (₹${p.balance} due)` : ""}`;
+const planWord = (p: OldPlan) =>
+  `${p.name} ${p.start}→${p.end} ₹${p.amount}${p.balance > 0 ? ` (₹${p.balance} due)` : ""}`;
 
 /**
  * The whole decision for one phone record. Pure; the server executes `members` in per-member
@@ -447,12 +454,17 @@ export function planMigration(input: MigrateInput): MigrateResult {
     for (const p of m.plans) {
       const label = planWord(p);
       if (!DAY.test(p.start) || !DAY.test(p.end) || p.end < p.start) {
-        skips.push({ who: m.name, what: label, reason: "dates missing in the old record — staff add it by hand" });
+        skips.push({
+          who: m.name,
+          what: label,
+          reason: "dates missing in the old record — staff add it by hand",
+        });
         continue;
       }
       const key = asIsKey(m.memberId, p);
       const carriedAlready =
-        myMs.some((r) => r.data["oldPlanKey"] === key) || myPts.some((r) => r.data["oldPlanKey"] === key);
+        myMs.some((r) => r.data["oldPlanKey"] === key) ||
+        myPts.some((r) => r.data["oldPlanKey"] === key);
       if (carriedAlready) continue; // carried once, nothing to do
 
       const kind = oldPlanKind(p.name);
@@ -464,7 +476,11 @@ export function planMigration(input: MigrateInput): MigrateResult {
           !consumed.has(u) &&
           (u.membership ?? u.pt) &&
           [u.membership, u.pt].some(
-            (r) => r && r.data["paidInOldSoftware"] === true && !r.data["oldPlanAsIs"] && datesMatch(r.data, p),
+            (r) =>
+              r &&
+              r.data["paidInOldSoftware"] === true &&
+              !r.data["oldPlanAsIs"] &&
+              datesMatch(r.data, p),
           ),
       );
       // Unpaid non-old copies (typed as a sale, nothing paid): safe duplicates.
@@ -473,8 +489,12 @@ export function planMigration(input: MigrateInput): MigrateResult {
           !consumed.has(u) &&
           !matches.includes(u) &&
           (u.membership ?? u.pt) &&
-          ![u.membership, u.pt].some((r) => r && (r.data["paidInOldSoftware"] === true || r.data["oldPlanAsIs"])) &&
-          [u.membership, u.pt].some((r) => r && datesMatch(r.data, p) && dayGap(String(r.data["startDate"]), p.start) <= 10) &&
+          ![u.membership, u.pt].some(
+            (r) => r && (r.data["paidInOldSoftware"] === true || r.data["oldPlanAsIs"]),
+          ) &&
+          [u.membership, u.pt].some(
+            (r) => r && datesMatch(r.data, p) && dayGap(String(r.data["startDate"]), p.start) <= 10,
+          ) &&
           u.payments.length === 0 &&
           money(u.invoice?.data["amountPaid"]) === 0,
       );
@@ -497,12 +517,16 @@ export function planMigration(input: MigrateInput): MigrateResult {
         const rows = [u.membership, u.pt].filter(Boolean) as Row[];
         // Cancelled here = staff undid the entry; the old plan is NOT active in the app, so a
         // fresh carry is right. Everything else blocks the carry.
-        if (rows.some((r) => isCancelled(r.data))) { skipUnit(u, "cancelled here — owner decides"); continue; }
+        if (rows.some((r) => isCancelled(r.data))) {
+          skipUnit(u, "cancelled here — owner decides");
+          continue;
+        }
         const oldPays = u.payments.filter((x) => x.data["oldSoftware"] === true);
         const herePays = u.payments.filter((x) => x.data["oldSoftware"] !== true);
         if (fixed) {
           // A second copy of the same old plan.
-          if (herePays.length) skipUnit(u, "a copy, but money was taken here on it — owner decides");
+          if (herePays.length)
+            skipUnit(u, "a copy, but money was taken here on it — owner decides");
           else {
             consumed.add(u);
             result.recycles.push({
@@ -515,12 +539,23 @@ export function planMigration(input: MigrateInput): MigrateResult {
           }
           continue;
         }
-        if (rows.some((r) => r.data["upgradedTo"])) { skipUnit(u, "upgraded here — owner decides"); blocked = true; continue; }
-        if (herePays.some((x) => money(x.data["amount"]) < 0)) { skipUnit(u, "a refund was given here — owner decides"); blocked = true; continue; }
+        if (rows.some((r) => r.data["upgradedTo"])) {
+          skipUnit(u, "upgraded here — owner decides");
+          blocked = true;
+          continue;
+        }
+        if (herePays.some((x) => money(x.data["amount"]) < 0)) {
+          skipUnit(u, "a refund was given here — owner decides");
+          blocked = true;
+          continue;
+        }
         const paidHere = herePays.reduce((s, x) => s + money(x.data["amount"]), 0);
         const balance = oldBalanceOf(p);
         if (paidHere > balance) {
-          skipUnit(u, `₹${paidHere} was collected here but the old record's balance is ₹${balance} — owner decides`);
+          skipUnit(
+            u,
+            `₹${paidHere} was collected here but the old record's balance is ₹${balance} — owner decides`,
+          );
           blocked = true;
           continue;
         }
@@ -565,7 +600,9 @@ export function planMigration(input: MigrateInput): MigrateResult {
             deletePaymentIds: keepPayments ? [] : oldPays.map((x) => x.id),
             keepPayments,
             repointPaymentIds: herePays
-              .filter((x) => !u.invoice || x.data["invoiceId"] === u.invoice.id || !x.data["invoiceId"])
+              .filter(
+                (x) => !u.invoice || x.data["invoiceId"] === u.invoice.id || !x.data["invoiceId"],
+              )
               .map((x) => x.id),
             paidHere,
           };
@@ -617,9 +654,15 @@ export function planMigration(input: MigrateInput): MigrateResult {
           overlapWith,
         });
         result.was.push(client ? `${planWord(p)} — only in the old software` : `not in the app`);
-        result.now.push(`${planWord(p)} — carried as-is${overlapWith.length ? " (runs alongside a plan sold here)" : ""}`);
+        result.now.push(
+          `${planWord(p)} — carried as-is${overlapWith.length ? " (runs alongside a plan sold here)" : ""}`,
+        );
       } else if (!running && input.scope === "running" && isLatest && !client) {
-        skips.push({ who: m.name, what: label, reason: "plan already ended — added on their first visit" });
+        skips.push({
+          who: m.name,
+          what: label,
+          reason: "plan already ended — added on their first visit",
+        });
       }
     }
 
@@ -627,13 +670,16 @@ export function planMigration(input: MigrateInput): MigrateResult {
     for (const u of units) {
       if (consumed.has(u)) continue;
       const rows = [u.membership, u.pt].filter(Boolean) as Row[];
-      const legacy = rows.filter((r) => r.data["paidInOldSoftware"] === true && !r.data["oldPlanAsIs"]);
+      const legacy = rows.filter(
+        (r) => r.data["paidInOldSoftware"] === true && !r.data["oldPlanAsIs"],
+      );
       if (!legacy.length) continue;
       if (!client) continue;
       skips.push({
         who: m.name,
         what: unitLabel(u),
-        reason: "saved as paid in the old software, but the old records have no such plan (likely money paid here) — owner decides",
+        reason:
+          "saved as paid in the old software, but the old records have no such plan (likely money paid here) — owner decides",
       });
     }
 
