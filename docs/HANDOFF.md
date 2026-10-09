@@ -1,6 +1,23 @@
 # Handoff
 
-Last updated: 2026-10-09 (evening: audit items 1-6, 8 merged to main and LIVE, build 5536208)
+Last updated: 2026-10-09 (night: undo_refund suite fixed 43/43; Undo-after-cancel bug fixed on main, NOT pushed)
+
+## 2026-10-09 (night): `undo_refund_local.py` fixed, one real bug found
+
+**State**
+- Suite now 43/43 (harness scratchpad 32d649c3…, `bash regress.sh undo_refund_local.py`). Line 142 was
+  stale: the owner gets **Remove** on a payment, not the same-day Undo. The refund-cap section was stale
+  too (audit 5 caps a refund per plan: gym ₹2,500 of the ₹14,500 bill), rewritten to check that.
+- **Real bug (live since 44275eb):** Undo on the "plans cancelled" message left the member's summary
+  `cancelled` (plans ran again). `restoreCancellation` compared with the member as they were before the
+  cancel and skipped the write. Fixed in `plan-cancel.service.ts` (always writes). Local commit on main,
+  NOT pushed. Unit 282/282, tsc clean. Members hit by this get healed by the morning `rollPlans`.
+
+### Next
+1. User: OK to push main (Vercel deploys the Undo fix)?
+2. Still open: K. Sri Devi's cancelled PT (owner); M. Rohith's package (owner); P. Sai Ram clean-up.
+3. Later audit items: 7, 9, 10, 11–13, 15 ([audit](MIGRATION_AUDIT_2026-10-09.md)).
+
 
 ## 2026-10-09 (evening): migration audit items 2, 4, 8 (branch `audit-fixes-2`, local)
 
@@ -42,7 +59,7 @@ Last updated: 2026-10-09 (evening: audit items 1-6, 8 merged to main and LIVE, b
    before WhatsApp reminders (audit 1); a plan over another plan's dates is now refused with a message
    saying what to do. After tomorrow's morning cron, the owner checks Income & expenses → "Plans that
    overlap" and "Paid in the old software?".
-2. Fix `undo_refund_local.py` (line 142).
+2. (Done, see night section.)
 3. Still open: K. Sri Devi's cancelled PT (owner); M. Rohith's package (owner); P. Sai Ram clean-up.
 4. Later audit items: 7 (CFO values old plans at today's price), 9 (gym+PT bill open after partial
    cancel), 10 (member app display), 11–13, 15.

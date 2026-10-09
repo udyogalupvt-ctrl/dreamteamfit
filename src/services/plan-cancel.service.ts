@@ -453,11 +453,12 @@ export async function restoreCancellation(
       ),
       today,
     );
-    if (!sameCurrent(client.currentMembership, next))
-      batch.update(doc(db, COLLECTIONS.clients, client.id), {
-        currentMembership: next,
-        updatedAt: now,
-      });
+    // Always written: Undo on the cancel message passes the member as they were BEFORE the
+    // cancel, so comparing with it would skip the write and leave the summary "cancelled".
+    batch.update(doc(db, COLLECTIONS.clients, client.id), {
+      currentMembership: next,
+      updatedAt: now,
+    });
   }
   await batch.commit();
   return { plans: plans.length };
