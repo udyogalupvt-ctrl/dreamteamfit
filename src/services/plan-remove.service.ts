@@ -244,13 +244,19 @@ export async function removePlan(
         deletedByUid: by.uid,
         createdAt: now,
       });
-    const names = salePlans
-      .map((p) => `${p.kind === "pt" ? "PT: " : ""}${planOf(p.kind, p.s).name}`)
-      .join(" + ");
+    // Gym plan first: "1 Month + PT: Monthly PT (Daily)".
+    // "Plan: 1 Month", "PT plan: Monthly PT (Daily)", "Plans: 1 Month + PT: Monthly PT (Daily)".
+    const one = salePlans.length === 1 ? salePlans[0] : null;
+    const names = one
+      ? `${one.kind === "pt" ? "PT plan" : "Plan"}: ${planOf(one.kind, one.s).name}`
+      : `Plans: ${[...salePlans]
+          .sort((a, b) => Number(a.kind === "pt") - Number(b.kind === "pt"))
+          .map((p) => `${p.kind === "pt" ? "PT: " : ""}${planOf(p.kind, p.s).name}`)
+          .join(" + ")}`;
     const enrollmentId = str(m.client.data()?.["enrollmentId"]);
     tx.set(binRef, {
       section: "plans",
-      label: `Plan: ${names} · ${client.fullName}`,
+      label: `${names} · ${client.fullName}`,
       detail: [
         ...pick(m.bills, plan.billIds).map((s) => str(s.data()?.["invoiceNumber"])),
         "added by mistake",
