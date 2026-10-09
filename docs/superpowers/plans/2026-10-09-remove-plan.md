@@ -130,7 +130,7 @@ then `git checkout main && git checkout -b remove-plan`. Without an OK, build on
 parts by hand.
 
 ## Tasks
-- [ ] **1. Pure decision** (`src/lib/plan-remove.ts` + tests first). Cases:
+- [x] **1. Pure decision** (`src/lib/plan-remove.ts` + tests first). Cases:
   - a gym sale on its own bill;
   - gym + PT on one bill (both go);
   - Sri Devi: a cancelled PT with a refund (payment + refund + payout go, lines say ₹0 net);
@@ -145,11 +145,11 @@ parts by hand.
   - currentMembership picks.
 
   Run `npm run test:cfo`. Commit.
-- [ ] **2. Service + sale stamp** (`plan-remove.service.ts`, `enrollment.service.ts` stamp,
+- [x] **2. Service + sale stamp** (`plan-remove.service.ts`, `enrollment.service.ts` stamp,
   `restoreFromBin` hook). Typecheck. Commit.
-- [ ] **3. UI + access** (dialog, bin icons, feature switch, Recycle Bin section, Cancel-box line,
+- [x] **3. UI + access** (dialog, bin icons, feature switch, Recycle Bin section, Cancel-box line,
   rules file). Lint and typecheck. Commit.
-- [ ] **4. Emulator suite** `remove_local.py` (copy the harness from scratchpad
+- [x] **4. Emulator suite** `remove_local.py` (copy the harness from scratchpad
   376e89b1…: `emu.py`, `serve.sh`, `restart_local.sh`, `regress.sh` with its own path).
   - Seed Sri Devi's case, gym + PT bill, old plan, upgrade, renewal.
   - Check that Remove clears the records, Undo / Restore put back exactly, and refusals show.
@@ -157,6 +157,6 @@ parts by hand.
   - Check that Dashboard Collected loses the pair.
   - Screenshots light/dark 390/1440.
   - Then run `bash regress.sh remove_local.py plans_end_local.py undo_refund_local.py moneyfix_local.py latedates_local.py olddates_local.py`.
-- [ ] **5. Review**: one reviewer agent on the money paths. Fix what it confirms, then re-run the
+- [x] **5. Review**: one reviewer agent on the money paths. Fix what it confirms, then re-run the
   suites.
-- [ ] **6. Handoff + memory**: update HANDOFF, ask about merge/push and the rules deploy.
+- [x] **6. Handoff + memory**: update HANDOFF, ask about merge/push and the rules deploy.

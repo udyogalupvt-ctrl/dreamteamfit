@@ -1,6 +1,74 @@
 # Handoff
 
-Last updated: 2026-10-09 (after midnight: Remove plan designed, migration audit written)
+Last updated: 2026-10-09 (morning: Remove built on branch `remove-plan`, local, not pushed)
+
+## 2026-10-09 (morning): "Remove (added by mistake)" built (branch `remove-plan`, NOT merged / pushed)
+
+**State**
+- Built from [the plan](superpowers/plans/2026-10-09-remove-plan.md), Tasks 1-5. Commits 5bd4a57 … bc980a5
+  on `remove-plan` (branched from the docs commit 4babd4d = main + docs).
+- Step 2 leftovers stashed with the user's OK: `stash@{0}` "step2 cancel choice (superseded)". Drop it
+  once the user confirms Remove is what they want (`git stash drop stash@{0}`).
+- What it does: the bin icon "Remove <plan> (added by mistake)" on running, upcoming and cancelled gym
+  plans (Active card + Membership history) and PT plans, for the owner, or a staff login with the new
+  delete switch "Plans added by mistake" (`deletePlans`, Staff page).
+  - The whole sale goes to the Recycle Bin (new section "Plans") in one transaction: plans on its bill,
+    the bill + public link, payments, the refunds of its own cancellation, old-software payments,
+    trainer payouts, joining record.
+  - The plans it changed come back: an upgrade's old plan gets its end date back; a plan a renewal ended
+    runs again.
+  - Undo / Restore puts it all back.
+  - Pure maths: `src/lib/plan-remove.ts`. Writes: `src/services/plan-remove.service.ts`.
+  - Dialog: `src/components/clients/remove-plan-dialog.tsx`.
+  - The Cancel box now says "Added by mistake? Don't cancel: use Remove (bin icon)" (staff without
+    the switch: "ask the owner to remove it").
+- New sales stamp `endedBy` + `statusBeforeSale` on plans they end (`enrollment.service.ts`).
+  - Older sales: a plan only comes back if its last change has the exact time of the sale's creation
+    (the same write).
+- Refused, with what to do instead:
+  - trainer already paid;
+  - a non-old payment in a closed Day Book month;
+  - cancelled together with a plan outside the sale;
+  - an upgrade whose old plan is cancelled or gone;
+  - a plan upgraded since (remove the upgrade first).
+- Restore is refused when:
+  - a plan it put back was changed since (cancelled, upgraded, renewed, dates edited);
+  - the member is deleted;
+  - part of it is already back;
+  - money falls in a closed Day Book month.
+- Other guards added:
+  - a removed payment can't come back without its plan (`putBackPayment`);
+  - old-software "Undo" refuses a removed plan;
+  - the member's joining-record link moves to an earlier record still waiting for a thumb (or none).
+- `firestore.rules` changed locally (trainerPayouts read + delete also `can('deletePlans')`). **NOT
+  deployed.** Until it is deployed, a staff login with the switch is told to ask the owner for PT plans.
+  Gym plans and the owner work without it.
+- Tests:
+  - unit 240/240 (`npm run test:cfo`);
+  - tsc and eslint clean; `npm run build` OK;
+  - emulator suites (scratchpad b6110210…, `bash regress.sh <suite>`):
+    - `remove_local.py` 39/39 (Sri Devi's case, gym + PT bill, stamped/older renewal, upgrade, old plan,
+      refusals, review fixes, staff with/without the switch, a real sale writing the stamp,
+      Undo + Recycle Bin restore);
+    - plans_end 12/12, moneyfix 21/21, latedates 26/26;
+    - olddates 64/64 (its 6 stale checks are fixed);
+    - `undo_refund_local.py` still crashes at line 142 (waits for an "Undo" button on the Payments
+      list), as before this work.
+  - Screenshots light/dark 390/1440 in `shots_remove_keep/`.
+- Reviewer agent (money): 5 confirmed findings, all fixed in bc980a5. Left as notes:
+  - a login with only the Recycle Bin page can't restore a PT sale (payout read rule; same as member
+    restores);
+  - a payment recorded during the seconds of a removal could be left behind;
+  - an upgrade put-back ignores pause days added to the old plan after the upgrade.
+
+### Next
+1. User: OK to merge `remove-plan` into main and push (Vercel deploys)? OK to deploy the rules change
+   (Rules REST API, scratchpad `rules_deploy.mjs` pattern)? Then the owner removes K. Sri Devi's cancelled
+   PT (bin icon) and checks that the Dashboard pair is gone.
+2. Fix audit items 1, 3, 5 and 6 (reminders for old balances, double expiry reminders, refund cap,
+   joining incentive), then 2, 4 and 8 ([audit](MIGRATION_AUDIT_2026-10-09.md)).
+3. Fix `undo_refund_local.py` (line 142).
+4. Still open: M. Rohith's package (owner); P. Sai Ram clean-up (Remove makes it easier).
 
 ## 2026-10-09 (after midnight): "Remove (added by mistake)" designed; migration audit done
 
