@@ -340,11 +340,16 @@ export async function enrollMember(input: EnrollmentInput) {
     planEnd && planEnd < today ? "expired" : input.startDate > today ? "pending" : "active";
   // Two gym plans for the same days: one is a copy, and both would count their money.
   if (input.gymPackage) {
+    const all = memberPlans.map((p) => overlapPlan(p.id, p.data));
+    // An upgrade takes over the upgraded plan's days: only days beyond what that plan already
+    // shared with another plan count (e.g. one an older-style renewal ended).
+    const upgraded = all.find((p) => p.id === input.upgrade?.membershipId) ?? null;
     const clash = overlapConflict(
       { startDate: input.startDate, endDate: planEnd },
-      memberPlans.map((p) => overlapPlan(p.id, p.data)),
+      all,
       today,
       input.upgrade ? [input.upgrade.membershipId] : [],
+      upgraded,
     );
     if (clash) throw new Error(conflictMessage(clash));
   }

@@ -356,11 +356,16 @@ export async function editMembership(input: PlanEditInput) {
     preview.status !== "cancelled" &&
     (form.startDate !== m.startDate || form.endDate !== m.endDate)
   ) {
+    const all = plansSnap.docs.map((d) => overlapPlan(d.id, d.data()));
+    const self = all.find((p) => p.id === m.id);
+    // Only days it newly shares with another plan: an overlap that was already there (a renewal
+    // that ended this plan, a pair the owner checked) never blocks other corrections.
     const clash = overlapConflict(
-      { startDate: form.startDate, endDate: form.endDate },
-      plansSnap.docs.map((d) => overlapPlan(d.id, d.data())),
+      { ...self, startDate: form.startDate, endDate: form.endDate },
+      all,
       today,
       [m.id],
+      { startDate: m.startDate, endDate: m.endDate },
     );
     if (clash) throw new Error(conflictMessage(clash));
   }

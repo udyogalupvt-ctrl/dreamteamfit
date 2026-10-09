@@ -40,22 +40,58 @@ export function overlapDays(
 }
 
 /**
+ * x was ended on purpose by y: a renewal (stamped, or ended in the same write that made y) or an
+ * upgrade. Their shared days are not a copy.
+ */
+const endedByOther = (x: OverlapPlan, y: Pick<OverlapPlan, "id" | "createdMs">) =>
+  (!!y.id && (x.endedBy === y.id || x.upgradedTo === y.id)) ||
+  (x.status === "expired" && x.updatedMs > 0 && x.updatedMs === y.createdMs);
+
+/**
  * A plan a new plan must not share days with: not cancelled, not ended by a renewal (stamped), and
  * not ended before its own end date (an older-style renewal or upgrade ended it on purpose).
  */
 const counts = (p: OverlapPlan, today: string) =>
   p.status !== "cancelled" && !p.endedBy && !(p.status === "expired" && p.endDate >= today);
 
-/** The member's plan that a new (or edited) gym plan would overlap, or null. */
+/**
+ * The member's plan that a new (or edited) gym plan would overlap, or null. An edited plan passes
+ * its own record (id, stamps, "Not a duplicate" marks) and its dates `before` the edit: pairs that
+ * one ended on purpose, pairs the owner checked, and days already shared before are never refused.
+ */
 export function overlapConflict(
-  plan: { startDate: string; endDate: string },
+  plan: Pick<OverlapPlan, "startDate" | "endDate"> & Partial<OverlapPlan>,
   others: OverlapPlan[],
   today: string,
   ignoreIds: string[] = [],
+  before: Pick<OverlapPlan, "startDate" | "endDate"> | null = null,
 ): OverlapPlan | null {
+  const self: OverlapPlan = {
+    id: "",
+    clientId: "",
+    name: "",
+    status: "",
+    paidInOldSoftware: false,
+    endedBy: "",
+    upgradedTo: "",
+    createdMs: 0,
+    updatedMs: 0,
+    overlapOk: [],
+    ...plan,
+  };
   return (
     others
-      .filter((o) => !ignoreIds.includes(o.id) && counts(o, today) && overlapDays(plan, o) > 0)
+      .filter(
+        (o) =>
+          !ignoreIds.includes(o.id) &&
+          o.id !== self.id &&
+          counts(o, today) &&
+          !endedByOther(o, self) &&
+          !(self.id && endedByOther(self, o)) &&
+          !o.overlapOk.includes(self.id || "-") &&
+          !self.overlapOk.includes(o.id) &&
+          overlapDays(self, o) > (before ? overlapDays(before, o) : 0),
+      )
       .sort((a, b) => a.startDate.localeCompare(b.startDate))[0] ?? null
   );
 }
@@ -93,10 +129,6 @@ export function overlapPairs(plans: OverlapPlan[]): OverlapPair[] {
     if (p.status !== "cancelled" && p.clientId)
       byClient.set(p.clientId, [...(byClient.get(p.clientId) ?? []), p]);
   const out: OverlapPair[] = [];
-  const endedByOther = (x: OverlapPlan, y: OverlapPlan) =>
-    x.endedBy === y.id ||
-    x.upgradedTo === y.id ||
-    (x.status === "expired" && x.updatedMs > 0 && x.updatedMs === y.createdMs);
   for (const [clientId, list] of byClient) {
     const sorted = [...list].sort(
       (x, y) => x.startDate.localeCompare(y.startDate) || x.id.localeCompare(y.id),

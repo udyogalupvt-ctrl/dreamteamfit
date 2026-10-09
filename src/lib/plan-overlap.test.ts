@@ -162,3 +162,41 @@ test("overlapPlan reads a plan document (timestamps, stamps, checked list)", () 
     ["Monthly", true, "m2", "", 10, 20, ["m3"]],
   );
 });
+
+test("Edit plan: a plan an older-style renewal ended (same write) never blocks the renewal's edit", () => {
+  // A ran 1–30 Sep; renewal B (sold 20 Sep, before the endedBy stamp) ended it in its own write.
+  const a = plan("A", "2026-09-01", "2026-09-30", { status: "expired", updatedMs: 777 });
+  const b = plan("B", "2026-09-20", "2026-10-19", { createdMs: 777 });
+  const edited = { ...b, endDate: "2026-10-22" };
+  assert.equal(
+    overlapConflict(edited, [a, b], T, ["B"], { startDate: b.startDate, endDate: b.endDate }),
+    null,
+  );
+});
+
+test("Edit plan: only days newly shared are refused", () => {
+  const a = plan("A", "2026-09-01", "2026-09-30", { status: "expired" });
+  const b = plan("B", "2026-09-25", "2026-10-24");
+  const before = { startDate: b.startDate, endDate: b.endDate };
+  // Moving the end: still 6 shared days → allowed.
+  assert.equal(overlapConflict({ ...b, endDate: "2026-10-30" }, [a, b], T, ["B"], before), null);
+  // Moving the start earlier: 10 shared days → refused.
+  assert.equal(
+    overlapConflict({ ...b, startDate: "2026-09-21" }, [a, b], T, ["B"], before)?.id,
+    "A",
+  );
+});
+
+test("pairs marked Not a duplicate are not refused", () => {
+  const a = plan("A", "2026-10-01", "2026-10-31", { overlapOk: ["B"] });
+  const b = plan("B", "2026-10-15", "2026-11-14", { overlapOk: ["A"] });
+  assert.equal(overlapConflict({ ...b, startDate: "2026-10-10" }, [a, b], T, ["B"]), null);
+});
+
+test("a backdated upgrade: days the upgraded plan already shared do not block it", () => {
+  const a = plan("A", "2026-09-01", "2026-09-30", { status: "expired" });
+  const r = plan("R", "2026-09-20", "2026-10-19");
+  const sale = { startDate: "2026-09-25", endDate: "2027-09-24" };
+  assert.equal(overlapConflict(sale, [a, r], T, ["R"], r), null);
+  assert.equal(overlapConflict(sale, [a, r], T, ["R"])?.id, "A");
+});
