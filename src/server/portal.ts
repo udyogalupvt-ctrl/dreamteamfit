@@ -454,7 +454,21 @@ async function memberData(clientId: string): Promise<Response> {
     diet: plans.diet,
     logs,
     trainer: livePt?.trainerId ? { id: livePt.trainerId, name: livePt.trainerName } : null,
-    oldHistory,
+    // A plan carried over as-is is already under "Packages taken": don't list it twice.
+    oldHistory: oldHistory
+      ? {
+          ...oldHistory,
+          plans: oldHistory.plans.filter(
+            (p) =>
+              ![...memberships.docs, ...pts.docs].some(
+                (m) =>
+                  m.data()["paidInOldSoftware"] === true &&
+                  s(m.data()["startDate"]) === p.start &&
+                  s(m.data()["endDate"]) === p.end,
+              ),
+          ),
+        }
+      : null,
   };
   return json(data);
 }
