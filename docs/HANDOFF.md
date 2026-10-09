@@ -1,6 +1,24 @@
 # Handoff
 
-Last updated: 2026-10-09 (later: Paid on correctable after saving, This month list numbers + filters)
+Last updated: 2026-10-10 (old-software plan no longer swallows new money; split-payment work in progress)
+
+## 2026-10-10: a plan still running in the old software no longer locks a new sale
+
+**State**
+- **Bug (how a new ₹10,000 PT was saved "paid in the old software"):** a member whose old-software
+  gym annual plan still runs bought PT here; checkout locked "Paid in the old software" and the old
+  plan's dates. Now (`enrollment-wizard.tsx`): the lock applies only to a sale of the same kind as the
+  old running plan (`isOldPtPlanName`: PT ↔ PT, gym ↔ gym), and staff can press **"No, this is new money
+  paid here"** (undo: "Carry the old plan instead"); unlocking resets the start day and old amounts.
+  Complements the split-payment chat's "old-software records check" (that one warns when the tick is
+  on and NOT locked).
+- On main (5c1690b-line commit) and, by mistake, also on branch `split-pay` (ad5d841, same change: the
+  other chat had switched the folder to that branch); merging split-pay keeps one copy. Checked in a separate worktree
+  (tsc, eslint, unit 295/295). Emulator `oldlock_local.py` 8/8 (scratchpad 32d649c3…).
+- **Another chat is building Cash + UPI split + old-software records check in this same folder**
+  (plan `docs/superpowers/plans/2026-10-09-split-payment-old-software-check.md`, uncommitted files).
+  Its working copy already contains this fix. Commit only your own files.
+- Manual October fixes (owner): all steps work, see the chat reply of 2026-10-10.
 
 ## 2026-10-09 (later): "Paid on" can be corrected later; "This month" list numbered and filterable
 

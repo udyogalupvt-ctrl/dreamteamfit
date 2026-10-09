@@ -113,6 +113,7 @@ import {
 } from "@/types/models";
 import { daysBetween } from "@/lib/member-plans";
 import {
+  isOldPtPlanName,
   matchStaffName,
   oldCounsellorOf,
   oldJoinedOn,
@@ -278,6 +279,8 @@ export function EnrollmentWizard({
   const [photoLater, setPhotoLater] = useState(restored?.photoLater ?? true);
   const [memberNo, setMemberNo] = useState(restored?.memberNo ?? "");
   const [paidOld, setPaidOld] = useState(restored?.paidOld ?? false);
+  // Staff said this sale is new money paid here, though a plan still runs in the old software.
+  const [paidHere, setPaidHere] = useState(false);
   const [oldBalanceText, setOldBalanceText] = useState(restored?.oldBalance ?? "");
   const [remindOld, setRemindOld] = useState(restored?.remindOld ?? false);
   // What they really paid in the old software (offers there differ from today's prices).
@@ -602,7 +605,12 @@ export function EnrollmentWizard({
     !resuming && (Boolean(oldId) || startDate < today) && !(existing && plansHere > 0);
   // A plan still running in the old software is carried over as it is: paid there, its own
   // dates, amounts read-only (no discount, nothing counted today). They renew here after it ends.
-  const oldLocked = canPaidOld && !!oldRunning;
+  // Only by a sale of the same kind (a PT sale never carries the old gym plan: a new ₹10,000 PT
+  // was forced into an old annual gym plan's dates as "paid there"), and staff can always say it
+  // was paid here.
+  const oldIsPt = !!oldRunning && isOldPtPlanName(oldRunning.name);
+  const sameKind = !!oldRunning && (oldIsPt ? ptOn : !!gymPackage);
+  const oldLocked = canPaidOld && !!oldRunning && sameKind && !paidHere;
   const paidInOld = canPaidOld && (paidOld || oldLocked);
   // The old plan this one carries over: the one running there, else the one that started within
   // 10 days of this plan's start (its amounts are suggested).
@@ -662,6 +670,20 @@ export function EnrollmentWizard({
         : ptMin && ptStart < ptMin
           ? `PT plan here until ${formatDateISO(ptLastEnd)}: start PT on ${formatDateISO(ptMin)} or later`
           : "";
+  // Unlocked again (staff said "paid here", or another kind of plan was picked): back to a normal
+  // sale from the usual day, not the old plan's dates.
+  const wasLocked = useRef(oldLocked);
+  useEffect(() => {
+    const was = wasLocked.current;
+    wasLocked.current = oldLocked;
+    if (!was || oldLocked) return;
+    setPaidOld(false);
+    setOldPaidText("");
+    setOldRows(null);
+    setOldBalanceText("");
+    setStartDate(existing && !resuming && showChoice ? renewFrom : todayISO());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oldLocked]);
   useEffect(() => {
     if (!oldLocked) return;
     setPaidOld(true);
@@ -1523,11 +1545,40 @@ export function EnrollmentWizard({
                       <span className="block font-semibold">Paid in the old software</span>
                       <span className="text-meta">
                         {oldLocked
-                          ? `Still running in the old software until ${formatDateISO(oldRunning.end)}: it is carried over as paid there (amounts from the old software, nothing counted today). Paying now for the next plan too? Save this one first, then press Renew again: the new plan starts on ${formatDateISO(addDaysISO(oldRunning.end, 1))}.`
+                          ? `${oldRunning.name} still runs in the old software until ${formatDateISO(oldRunning.end)}: it is carried over as paid there (amounts from the old software, nothing counted today). Paying now for the next plan too? Save this one first, then press Renew again: the new plan starts on ${formatDateISO(addDaysISO(oldRunning.end, 1))}.`
                           : "For a member moving over whose plan is already paid there. No money is taken today: what they paid there counts on the day they paid it, never in today's cash or the Day Book. Their old offer price is kept: no discount needed."}
                       </span>
                     </span>
                   </label>
+                ) : null}
+                {canPaidOld && oldRunning && sameKind ? (
+                  <div className="-mt-2 flex flex-wrap items-center gap-2 text-sm">
+                    {paidHere ? (
+                      <>
+                        <span className="text-meta">
+                          New money paid here (the old-software plan {oldRunning.name} is not
+                          carried over).
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPaidHere(false)}
+                        >
+                          Carry the old plan instead
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPaidHere(true)}
+                      >
+                        No, this is new money paid here
+                      </Button>
+                    )}
+                  </div>
                 ) : null}
                 {paidInOld ? (
                   <div className="grid grid-cols-2 gap-3">
