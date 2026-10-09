@@ -841,8 +841,10 @@ async function applyMember(
         updatedAt: now,
       });
     } else {
-      claim?.ref && tx.set(claim.ref, { clientId: clientRef.id, createdAt: now });
-      if (claim) created.memberIdReserved = claim.code;
+      if (claim) {
+        tx.set(claim.ref, { clientId: clientRef.id, createdAt: now });
+        created.memberIdReserved = claim.code;
+      }
       tx.set(clientRef, {
         ...result.client!.draft,
         clientCode: claim?.code ?? "",
