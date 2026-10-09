@@ -1,8 +1,25 @@
 # Handoff
 
-Last updated: 2026-10-10 (old-software plan no longer swallows new money; split-payment work in progress)
+Last updated: 2026-10-10 (Edit plan Price + Already paid, to match the paper register)
 
-## 2026-10-10: a plan still running in the old software no longer locks a new sale
+## 2026-10-10: a pl## 2026-10-10: Edit plan → Price (owner) and "Already paid"
+
+**State**
+- To match the front desk's register (₹2,000 taken, ₹1,999 saved on 26 October rows): Edit plan has an
+  owner-only **Price (₹)** field (the plan's bill follows, like a package change). When the bill's total
+  goes up on a bill paid in full, an **Already paid** tick (on by default) adds the difference to the
+  checkout payment (same mode and day) in one Edit payment; untick = it becomes due. Not offered for a
+  Cash + UPI split payment (`splitId`, from the split-pay branch): the owner adds it with Edit payment.
+- `src/lib/firebase.ts`: emulator ports from `VITE_EMU_AUTH_PORT` / `VITE_EMU_FIRESTORE_PORT` (defaults
+  9099 / 8080) so two chats can test side by side. This chat's harness: session scratchpad bc809a92…
+  `harness/` (`regress_mine.sh` builds the main worktree for 8180/9199, app :5399; `rerun_mine.sh`).
+- Checks (on ports 8180/9199): `price_local.py` 11/11, paidon_edit 13/13, paidon 15/15, renew_pt 26/26,
+  oldlock 8/8, update 6/6, latedates 26/26, audit2 27/27, remove 39/39, plans_end 12/12, moneyfix 21/21,
+  audit9 23/23; unit 295/295; tsc + eslint clean. New-member suites must wait for the Member ID to fill
+  (a slow first lookup on a fresh server made them press Next too early).
+- Owner's step list to make October match the register: chat reply of 2026-10-10 (names, not in git).
+
+an still running in the old software no longer locks a new sale
 
 **State**
 - **Bug (how a new ₹10,000 PT was saved "paid in the old software"):** a member whose old-software

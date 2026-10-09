@@ -72,10 +72,14 @@ export async function clearLocalCopy() {
 }
 
 // Local testing only: `VITE_USE_EMULATORS=1 npm run dev` talks to the Firebase emulators.
+// Their ports can be moved (VITE_EMU_AUTH_PORT / VITE_EMU_FIRESTORE_PORT) so two test runs on one
+// computer don't share a database.
 if (env["VITE_USE_EMULATORS"] === "1" && !(globalThis as { __rfEmu?: boolean }).__rfEmu) {
   (globalThis as { __rfEmu?: boolean }).__rfEmu = true;
-  connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
-  connectFirestoreEmulator(db, "127.0.0.1", 8080);
+  const authPort = Number(env["VITE_EMU_AUTH_PORT"]) || 9099;
+  const firestorePort = Number(env["VITE_EMU_FIRESTORE_PORT"]) || 8080;
+  connectAuthEmulator(auth, `http://127.0.0.1:${authPort}`, { disableWarnings: true });
+  connectFirestoreEmulator(db, "127.0.0.1", firestorePort);
 }
 // No Firebase file storage (photos go to Cloudinary) and no Google Analytics: neither is used,
 // and each added download and network calls to every page load.

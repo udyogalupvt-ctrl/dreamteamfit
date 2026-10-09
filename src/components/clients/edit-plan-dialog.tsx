@@ -37,6 +37,8 @@ import {
 } from "@/services/plan-edit.service";
 import { staffDiscountOf } from "@/services/bill-edit.service";
 import { subscribeStaff } from "@/services/staff.service";
+import { editPayment } from "@/services/payment-edit.service";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   PAYMENT_METHODS,
   type Client,
@@ -104,6 +106,10 @@ export function EditPlanDialog({
   }, [noRows, membership]);
 
   const [pkgId, setPkgId] = useState("");
+  /** The plan's price on its bill; "" = the package's (owner corrects e.g. ₹1,999 → ₹2,000). */
+  const [priceText, setPriceText] = useState("");
+  /** A higher total on a bill paid in full: the member already paid it (with the checkout payment). */
+  const [paidMore, setPaidMore] = useState(true);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [counsellorId, setCounsellorId] = useState("");
@@ -118,6 +124,8 @@ export function EditPlanDialog({
   useEffect(() => {
     if (!membership) return;
     setPkgId(membership.packageId);
+    setPriceText("");
+    setPaidMore(true);
     setStart(membership.startDate);
     setEnd(membership.endDate);
     setCounsellorId(membership.counsellorId);
@@ -167,7 +175,11 @@ export function EditPlanDialog({
 
   if (!membership) return null;
   const m = membership;
-  const pkg = choices.find((p) => p.id === pkgId) ?? choices[0]!;
+  const basePkg = choices.find((p) => p.id === pkgId) ?? choices[0]!;
+  const priceNumber = priceText.trim() === "" ? basePkg.price : Number(priceText);
+  const priceBad = !(Number.isFinite(priceNumber) && priceNumber >= 0);
+  // The price agreed with the member (owner only): the plan's bill follows, like a package change.
+  const pkg = { ...basePkg, price: priceBad ? basePkg.price : Math.round(priceNumber) };
   const paused = pausedDays(m);
   const usual = start ? standardEnd(start, pkg.durationDays, paused) : "";
   const counsellor = counsellors.find((c) => c.id === counsellorId) ?? null;
@@ -234,6 +246,7 @@ export function EditPlanDialog({
   // A new package or start date resets the end date to the usual one (staff can still change it).
   const changePackage = (id: string) => {
     setPkgId(id);
+    setPriceText("");
     const p = choices.find((c) => c.id === id);
     if (p && start) setEnd(standardEnd(start, p.durationDays, paused));
   };
@@ -242,7 +255,27 @@ export function EditPlanDialog({
     if (/^\d{4}-\d{2}-\d{2}$/.test(v)) setEnd(standardEnd(v, pkg.durationDays, paused));
   };
 
-  const changes = [...preview.changes, ...(paidOn.change ? [paidOn.change] : [])];
+  // The bill's total goes up (price raised / discount lowered) on a bill already paid in full:
+  // usually the member paid that amount and the app had it wrong (₹2,000 taken, ₹1,999 saved). Then
+  // the difference goes on the checkout payment (same mode and day), so nothing is left due.
+  const raise =
+    bc && bc.bill.balanceDue <= 0.005 && bc.bill.amountPaid > 0 && bc.total > bc.bill.total + 0.005
+      ? Math.round((bc.total - bc.bill.total) * 100) / 100
+      : 0;
+  // Paid in two modes (Cash + UPI): which mode the difference came in is not known here; the owner
+  // adds it to the right part with Edit payment.
+  const splitPay = !!(paidOn.payment as { splitId?: string } | null)?.splitId;
+  const payFix = raise > 0 && money && !splitPay ? paidOn.payment : null;
+  const addToPayment = payFix && paidMore ? raise : 0;
+  const changes = [
+    ...preview.changes,
+    ...(paidOn.change ? [paidOn.change] : []),
+    ...(payFix && addToPayment
+      ? [
+          `Payment ${formatPrice(payFix.amount)} → ${formatPrice(payFix.amount + addToPayment)} (${payFix.method}, already paid)`,
+        ]
+      : []),
+  ];
   const save = async () => {
     setError("");
     const byName = user?.displayName || user?.email || "Staff";
@@ -257,10 +290,25 @@ export function EditPlanDialog({
           reason,
           refundMethod: method,
           canRefund: money,
-          nextPaymentDate: bc?.newBalance ? payBy : null,
+          nextPaymentDate: bc?.newBalance ? payBy || todayISO() : null,
           by: { uid: user?.uid ?? "", name: byName },
         });
-      await paidOn.save(reason, byName);
+      if (payFix && addToPayment)
+        // One correction of the checkout payment: the amount already paid, and Paid on if changed.
+        await editPayment({
+          payment: payFix,
+          form: {
+            amount: Math.round((payFix.amount + addToPayment) * 100) / 100,
+            method: payFix.method,
+            paymentDate: paidOn.changed ? paidOn.value : payFix.paymentDate,
+            note: payFix.note,
+          },
+          reason: reason || "Price corrected: the member paid this amount",
+          can: { billing: can("billing"), finance: money },
+          nextPaymentDate: null,
+          by: byName,
+        });
+      else await paidOn.save(reason, byName);
       onClose();
       toast.success("Plan updated", {
         description:
@@ -283,7 +331,8 @@ export function EditPlanDialog({
     (m.paidInOldSoftware && pays.loading) ||
     (preview.discountChanged && !money) ||
     !!(bc && bc.refund > 0 && !money) ||
-    !!(bc?.newBalance && !payBy);
+    priceBad ||
+    !!(bc?.newBalance && !addToPayment && !payBy);
 
   return (
     <FormDialog
@@ -317,6 +366,29 @@ export function EditPlanDialog({
             </SelectContent>
           </Select>
         </Field>
+        {discountEditable && money ? (
+          <Field
+            label="Price (₹)"
+            htmlFor="plan-price"
+            error={priceBad ? "Enter the price in rupees" : undefined}
+            hint={
+              pkg.price !== basePkg.price
+                ? `Package price ${formatPrice(basePkg.price)}; this member's plan ${formatPrice(pkg.price)}.`
+                : "The price on this plan's bill. Change it when the member was charged another price (e.g. ₹2,000, not ₹1,999)."
+            }
+          >
+            <Input
+              id="plan-price"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step="1"
+              value={priceText === "" ? String(basePkg.price) : priceText}
+              onChange={(e) => setPriceText(e.target.value)}
+              className="max-w-48 tabular-nums"
+            />
+          </Field>
+        ) : null}
         {discountEditable ? (
           <Field
             label="Discount (₹)"
@@ -470,7 +542,33 @@ export function EditPlanDialog({
                 </p>
               )
             ) : null}
-            {bc.newBalance ? (
+            {payFix ? (
+              <label className="flex items-start gap-3 rounded-lg bg-info/10 p-3">
+                <Checkbox
+                  checked={paidMore}
+                  onCheckedChange={(v) => setPaidMore(v === true)}
+                  className="mt-0.5"
+                  aria-label="Already paid"
+                />
+                <span>
+                  <span className="block font-semibold">
+                    Already paid: {formatPrice(payFix.amount + raise)} was taken
+                  </span>
+                  <span className="text-meta">
+                    The {formatPrice(raise)} more goes on the {formatPrice(payFix.amount)}{" "}
+                    {payFix.method} payment of {formatDateISO(payFix.paymentDate)} (same day, same
+                    mode). Untick if the member still owes it.
+                  </span>
+                </span>
+              </label>
+            ) : null}
+            {raise > 0 && money && splitPay ? (
+              <p className="rounded-lg bg-info/10 p-3">
+                Paid in two modes (Cash + UPI): if the {formatPrice(raise)} more was already paid,
+                add it to the right mode with Edit payment on the Payments tab.
+              </p>
+            ) : null}
+            {bc.newBalance && !addToPayment ? (
               <Field
                 label="When will they pay the balance?"
                 htmlFor="plan-pay-by"
