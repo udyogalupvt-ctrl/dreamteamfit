@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Ban, Dumbbell, Pencil, RotateCcw, XCircle } from "lucide-react";
+import { Ban, Dumbbell, Pencil, RotateCcw, Trash2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { EditLines } from "@/components/billing/edit-payment-dialog";
 import { EditPtDialog } from "@/components/clients/edit-pt-dialog";
+import { RemovePlanDialog, type RemoveTarget } from "@/components/clients/remove-plan-dialog";
 import { PlanPriceAmount } from "@/components/clients/plan-price";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { Field, FormDialog } from "@/components/common/form-dialog";
@@ -89,7 +90,7 @@ export function CancelPlansDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { can } = useAccess();
+  const { can, canDelete } = useAccess();
   const { user } = useAuth();
   // Refunds change the money and trainer payouts: Finance (the owner has it).
   const money = can("finance");
@@ -266,6 +267,13 @@ export function CancelPlansDialog({
             </li>
           ) : null}
         </ul>
+        {all ? null : (
+          <p className="text-meta">
+            Added by mistake? Don't cancel:{" "}
+            {canDelete("plans") ? "use Remove (bin icon)" : "ask the owner to remove it"} — it takes
+            the plan and its money out as if it was never added.
+          </p>
+        )}
         <Field label="Reason (optional)" htmlFor="cancel-reason">
           <Input
             id="cancel-reason"
@@ -424,7 +432,8 @@ export function ClientPtPlans({ client, invoices }: { client: Client; invoices: 
   );
   const [cancelling, setCancelling] = useState<PtAssignment | null>(null);
   const [editing, setEditing] = useState<PtAssignment | null>(null);
-  const { can } = useAccess();
+  const [removing, setRemoving] = useState<RemoveTarget | null>(null);
+  const { can, canDelete } = useAccess();
   if (!pts.data.length) return null;
   return (
     <section className="surface-card overflow-hidden">
@@ -500,6 +509,23 @@ export function ClientPtPlans({ client, invoices }: { client: Client; invoices: 
                     <XCircle aria-hidden />
                   </Button>
                 ) : null}
+                {canDelete("plans") && (ptOpen(p) || p.status === "cancelled") ? (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Remove PT: ${p.ptPackageNameSnapshot} (added by mistake)`}
+                    title="Remove (added by mistake)"
+                    onClick={() =>
+                      setRemoving({
+                        kind: "pt",
+                        id: p.id,
+                        name: `PT: ${p.ptPackageNameSnapshot}`,
+                      })
+                    }
+                  >
+                    <Trash2 aria-hidden />
+                  </Button>
+                ) : null}
               </div>
             </li>
           );
@@ -518,6 +544,7 @@ export function ClientPtPlans({ client, invoices }: { client: Client; invoices: 
         }
         onClose={() => setEditing(null)}
       />
+      <RemovePlanDialog client={client} target={removing} onClose={() => setRemoving(null)} />
       <CancelPlansDialog
         client={client}
         plans={[]}

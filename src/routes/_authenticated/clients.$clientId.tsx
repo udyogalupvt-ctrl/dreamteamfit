@@ -63,6 +63,7 @@ import {
   EndAllPlansButton,
   RestorePlanButton,
 } from "@/components/clients/plans-control";
+import { RemovePlanDialog, type RemoveTarget } from "@/components/clients/remove-plan-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -190,6 +191,10 @@ function ClientProfilePage() {
   const [pausing, setPausing] = useState<Membership | null>(null);
   const [editing, setEditing] = useState<Membership | null>(null);
   const [oldMove, setOldMove] = useState<Membership | null>(null);
+  // A plan added by mistake, being removed (bin icon).
+  const [removing, setRemoving] = useState<RemoveTarget | null>(null);
+  const removeGym = (m: Membership) =>
+    setRemoving({ kind: "gym", id: m.id, name: m.packageNameSnapshot });
   const [addOld, setAddOld] = useState(false);
   // The member's record in the old software (same cached lookup as the Old software record card).
   const [oldRecord, setOldRecord] = useState<{ phone: string; members: OldMember[] }>({
@@ -640,6 +645,7 @@ function ClientProfilePage() {
                     can("members") && canEditPlan(current) ? () => setEditing(current) : undefined
                   }
                   onPause={can("packages") ? () => setPausing(current) : undefined}
+                  onRemove={canDelete("plans") ? () => removeGym(current) : undefined}
                   onUndoPause={
                     can("packages")
                       ? () =>
@@ -758,6 +764,20 @@ function ClientProfilePage() {
                             <XCircle aria-hidden />
                           </Button>
                         ) : null}
+                        {canDelete("plans") &&
+                        (m.effective === "active" ||
+                          m.effective === "pending" ||
+                          m.status === "cancelled") ? (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Remove ${m.packageNameSnapshot} (added by mistake)`}
+                            title="Remove (added by mistake)"
+                            onClick={() => removeGym(m)}
+                          >
+                            <Trash2 aria-hidden />
+                          </Button>
+                        ) : null}
                       </div>
                     </li>
                   ))}
@@ -866,6 +886,7 @@ function ClientProfilePage() {
         isCurrent={!!pausing && c.currentMembership?.membershipId === pausing.id}
         onClose={() => setPausing(null)}
       />
+      <RemovePlanDialog client={c} target={removing} onClose={() => setRemoving(null)} />
       <CancelPlansDialog
         client={c}
         plans={cancelling ? [cancelling] : []}
@@ -892,6 +913,7 @@ function MembershipHero({
   onEdit,
   onPause,
   onUndoPause,
+  onRemove,
 }: {
   m: Membership;
   /** The plan's bill: the price shown is what the member pays (after discount). */
@@ -902,6 +924,8 @@ function MembershipHero({
   /** Only for logins allowed to change plans. */
   onPause: (() => void) | undefined;
   onUndoPause: (() => void) | undefined;
+  /** Only for logins allowed to remove plans added by mistake. */
+  onRemove?: (() => void) | undefined;
 }) {
   const total = Math.max(1, m.durationDaysSnapshot);
   const daysLeft = Math.max(
@@ -971,6 +995,17 @@ function MembershipHero({
           <Button variant="ghost" size="sm" onClick={onCancel}>
             <XCircle aria-hidden /> Cancel
           </Button>
+          {onRemove ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Remove ${m.packageNameSnapshot} (added by mistake)`}
+              title="Remove (added by mistake)"
+              onClick={onRemove}
+            >
+              <Trash2 aria-hidden />
+            </Button>
+          ) : null}
         </div>
       </div>
       {m.pauses.length ? (

@@ -95,12 +95,14 @@ service cloud.firestore {
     match /staffPayments/{id} {
       allow read, write: if can('finance');
     }
-    // Created when PT is sold (any front desk); seen and paid out by finance.
+    // Created when PT is sold (any front desk); seen and paid out by finance. "Plans added by
+    // mistake" reads a PT plan's share to remove it with the plan.
     match /trainerPayouts/{id} {
       allow create: if isStaff();
-      allow read: if can('finance') || can('packages');
+      allow read: if can('finance') || can('packages') || can('deletePlans');
       allow update: if can('finance');
-      allow delete: if can('finance') || can('deleteMembers') || can('deleteBills');
+      allow delete: if can('finance') || can('deleteMembers') || can('deleteBills')
+        || can('deletePlans');
     }
 
     // CFO page (Finance): the settings are saved from the page and every field is type-checked;
