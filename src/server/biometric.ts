@@ -25,6 +25,7 @@ import {
   type QueryDocumentSnapshot,
   type WriteBatch,
 } from "firebase-admin/firestore";
+import { currentRow, pickCurrent } from "@/lib/current-plan";
 import { db, localDate, text } from "./admin";
 import { systemAudit } from "./audit";
 import {
@@ -514,24 +515,22 @@ async function activateBiometric(clientRef: DocumentReference, device: Device, p
       updatedAt: now,
     };
     const byId = new Map(memberships.docs.map((m) => [m.id, m]));
+    const ended = new Set<string>();
+    const started = new Map<string, string>();
     for (const e of enrollments.docs.filter((x) => x.data()["status"] === "biometric_pending")) {
       const ed = e.data();
       const m = ed["membershipId"] ? byId.get(String(ed["membershipId"])) : undefined;
       if (m && m.data()["status"] === "biometric_pending") {
         const md = m.data();
         const status = String(md["startDate"] ?? today) > today ? "pending" : "active";
-        if (status === "active") {
+        if (status === "active")
           memberships.docs
             .filter((o) => o.id !== m.id && o.data()["status"] === "active")
-            .forEach((o) => tx.update(o.ref, { status: "expired", updatedAt: now }));
-          clientPatch["currentMembership"] = {
-            membershipId: m.id,
-            packageName: md["packageNameSnapshot"] ?? "",
-            startDate: md["startDate"] ?? "",
-            endDate: md["endDate"] ?? "",
-            status,
-          };
-        }
+            .forEach((o) => {
+              ended.add(o.id);
+              tx.update(o.ref, { status: "expired", updatedAt: now });
+            });
+        started.set(m.id, status);
         tx.update(m.ref, { status, updatedAt: now });
       }
       // PT runs from its own start date; only a PT still waiting for the thumb starts here.
@@ -551,6 +550,21 @@ async function activateBiometric(clientRef: DocumentReference, device: Device, p
         lastError: "",
         updatedAt: now,
       });
+    }
+    if (started.size) {
+      // The member's current plan by the one rule (current-plan.ts), with these changes.
+      const { summary } = pickCurrent(
+        memberships.docs.map((d) => {
+          const r = currentRow(d.id, d.data());
+          return started.has(d.id)
+            ? { ...r, status: started.get(d.id)! }
+            : ended.has(d.id)
+              ? { ...r, status: "expired" }
+              : r;
+        }),
+        today,
+      );
+      if (summary) clientPatch["currentMembership"] = summary;
     }
     tx.update(clientRef, clientPatch);
     return String(c["fullName"] ?? "");

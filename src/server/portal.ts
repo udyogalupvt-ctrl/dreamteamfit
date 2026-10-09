@@ -45,6 +45,7 @@ import {
   type TrainerPortalData,
 } from "@/constants/portal";
 import type { WorkoutDay } from "@/types/models";
+import { pickCurrent } from "@/lib/current-plan";
 import { planMoney } from "@/lib/plan-money";
 import { adminAuth, db, json, localDate, requireFeature } from "./admin";
 import { oldHistoryFor } from "./old-data";
@@ -421,10 +422,14 @@ async function memberData(clientId: string): Promise<Response> {
         })(),
     },
     today,
-    current:
-      plansList
-        .filter((m) => m.status === "active")
-        .sort((a, b) => a.endDate.localeCompare(b.endDate))[0] ?? null,
+    // The plan running today, by the one rule the app uses (current-plan.ts).
+    current: (() => {
+      const { summary, active } = pickCurrent(
+        plansList.map((m) => ({ ...m, name: m.packageName })),
+        today,
+      );
+      return active ? (plansList.find((m) => m.id === summary?.membershipId) ?? null) : null;
+    })(),
     memberships: plansList,
     pt: ptList.map(({ trainerId: _t, ...p }) => p),
     bills,

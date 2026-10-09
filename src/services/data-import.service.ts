@@ -3,6 +3,7 @@ import { db } from "@/lib/firebase";
 import { key, type ImportContext, type Resolution, type ValidatedRow } from "@/lib/data-import";
 import { MAX_MEMBER_ID } from "./clients.service";
 import { todayISO } from "@/lib/format";
+import { currentRow, pickCurrent, type CurrentSummary } from "@/lib/current-plan";
 import type { ImportBatchStatus, ImportType } from "@/types/models";
 import { col, COLLECTIONS, type CollectionName } from "./firestore.service";
 
@@ -113,13 +114,21 @@ export async function runImport(params: {
     const toWrite = work.filter((r) => !dropped.has(r.row));
     const optIn = params.whatsappOptIn === true;
 
-    // The member's latest imported plan (running, or ended) becomes their current plan summary:
-    // lists work from it instead of loading every plan. Queued (future) plans are listed as such.
-    const latest = new Map<string, ValidatedRow>();
-    if (type === "memberships") for (const r of work) {
-      if (!["active", "expired"].includes(String(r.data["status"]))) continue;
-      const cid = String(r.data["clientId"]); const cur = latest.get(cid);
-      if (!cur || String(r.data["endDate"]) > String(cur.data["endDate"])) latest.set(cid, r);
+    // The member's current plan summary (lists work from it instead of loading every plan), by the
+    // one rule (current-plan.ts) over their saved current plan and the imported ones.
+    const latest = new Map<string, { r: ValidatedRow; summary: CurrentSummary }>();
+    if (type === "memberships") {
+      const byClient = new Map<string, ValidatedRow[]>();
+      for (const r of work) { const cid = String(r.data["clientId"]); byClient.set(cid, [...(byClient.get(cid) ?? []), r]); }
+      for (const [cid, rows] of byClient) {
+        const saved = ctx.clients.find((c) => c.id === cid)?.currentMembership;
+        const { summary } = pickCurrent([
+          ...(saved?.membershipId ? [{ id: saved.membershipId, name: saved.packageName, startDate: saved.startDate, endDate: saved.endDate, status: saved.status }] : []),
+          ...rows.map((r) => currentRow(idFor(r), r.data)),
+        ], todayISO());
+        const r = rows.find((x) => idFor(x) === summary?.membershipId);
+        if (r && summary) latest.set(cid, { r, summary });
+      }
     }
 
     let imported = 0, updated = 0;
@@ -151,11 +160,9 @@ export async function runImport(params: {
           const days = Math.round((new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime()) / 86400000) + 1;
           const tr = d["createTrainer"] ? createdTrainers.get(key(String(d["createTrainer"]))) : undefined;
           wb.set(ref, { clientId: d["clientId"], packageId, packageNameSnapshot: d["packageNameSnapshot"], priceSnapshot: Number(d["price"] ?? 0), durationDaysSnapshot: days, startDate: start, endDate: end, status: d["status"], trainerId: d["trainerId"] ?? tr?.id ?? "", trainerNameSnapshot: d["trainerNameSnapshot"] ?? "", source: "import", ...base });
-          if (latest.get(String(d["clientId"])) === r) {
-            const client = ctx.clients.find((c) => c.id === d["clientId"]);
-            if (!client?.currentMembership || client.currentMembership.endDate < end)
-              wb.update(doc(db, COLLECTIONS.clients, String(d["clientId"])), { currentMembership: { membershipId: id, packageName: d["packageNameSnapshot"], startDate: start, endDate: end, status: d["status"] }, updatedAt: serverTimestamp() });
-          }
+          const cur = latest.get(String(d["clientId"]));
+          if (cur?.r === r)
+            wb.update(doc(db, COLLECTIONS.clients, String(d["clientId"])), { currentMembership: cur.summary, updatedAt: serverTimestamp() });
         }
       }
       try {

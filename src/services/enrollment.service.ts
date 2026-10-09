@@ -36,6 +36,8 @@ import { claimMemberId, mapClient } from "./clients.service";
 import { allocatePayment, cashOpenFrom } from "./finance.service";
 import { oldPaymentData } from "./old-money.service";
 import { saleMoneyDay } from "@/lib/late-sales";
+import { currentRow, pickCurrent } from "@/lib/current-plan";
+import { conflictMessage, overlapConflict, overlapPlan } from "@/lib/plan-overlap";
 import { checkOldRows, defaultOldRows, oldRowsTotal, type OldPayRow } from "@/lib/old-money";
 import { col, COLLECTIONS, toDate } from "./firestore.service";
 import { mapInvoice } from "./invoices.service";
@@ -285,10 +287,12 @@ export async function enrollMember(input: EnrollmentInput) {
     input.existingClient.biometricUserId;
   const needsBiometric = !existingBio;
   let prevActive: string[] = [];
+  let memberPlans: { id: string; data: Record<string, unknown> }[] = [];
   if (input.existingClient && input.gymPackage) {
     const ms = await getDocs(
       query(col(COLLECTIONS.memberships), where("clientId", "==", input.existingClient.id)),
     );
+    memberPlans = ms.docs.map((d) => ({ id: d.id, data: d.data() }));
     // A renewal that starts later queues behind the running plan instead of cutting it short.
     prevActive =
       input.startDate > todayISO()
@@ -325,22 +329,53 @@ export async function enrollMember(input: EnrollmentInput) {
   const email = input.existingClient?.email ?? input.client.email.trim();
   // The plan runs from the date staff chose with the member, whether or not the thumb is
   // registered yet; the thumb only opens the door.
-  const membershipStatus = input.startDate > today ? "pending" : "active";
   const oldEnd = old?.end && /^\d{4}-\d{2}-\d{2}$/.test(old.end) ? old.end : "";
   if (oldEnd && oldEnd < input.startDate)
     throw new Error("The old plan ends before it starts: check the old software's dates.");
   const planEnd = input.gymPackage
     ? oldEnd || calculateEndDate(input.startDate, input.gymPackage.durationDays)
     : "";
+  // An old plan whose dates are all past is saved as ended (it never becomes the current plan).
+  const membershipStatus =
+    planEnd && planEnd < today ? "expired" : input.startDate > today ? "pending" : "active";
+  // Two gym plans for the same days: one is a copy, and both would count their money.
+  if (input.gymPackage) {
+    const clash = overlapConflict(
+      { startDate: input.startDate, endDate: planEnd },
+      memberPlans.map((p) => overlapPlan(p.id, p.data)),
+      today,
+      input.upgrade ? [input.upgrade.membershipId] : [],
+    );
+    if (clash) throw new Error(conflictMessage(clash));
+  }
+  // The member's current plan after this sale, by the one rule (current-plan.ts): the plans it
+  // ends or cuts short as they will be, plus the new one.
+  const upgradeEnd = input.upgrade ? addDaysISO(input.startDate, -1) : "";
   const planSummary =
-    membershipRef && input.gymPackage && membershipStatus === "active"
-      ? {
-          membershipId: membershipRef.id,
-          packageName: input.gymPackage.name,
-          startDate: input.startDate,
-          endDate: planEnd,
-          status: "active" as const,
-        }
+    membershipRef && input.gymPackage
+      ? pickCurrent(
+          [
+            ...memberPlans.map((p) => {
+              const r = currentRow(p.id, p.data);
+              if (prevActive.includes(p.id)) return { ...r, status: "expired" };
+              if (p.id === input.upgrade?.membershipId)
+                return {
+                  ...r,
+                  endDate: upgradeEnd,
+                  status: input.startDate <= today ? "expired" : r.status,
+                };
+              return r;
+            }),
+            {
+              id: membershipRef.id,
+              name: input.gymPackage.name,
+              startDate: input.startDate,
+              endDate: planEnd,
+              status: membershipStatus,
+            },
+          ],
+          today,
+        ).summary
       : null;
 
   await runTransaction(db, async (tx) => {
@@ -445,6 +480,12 @@ export async function enrollMember(input: EnrollmentInput) {
       });
     }
     const share = totals.share;
+    // A PT plan carried over alone from the old software keeps its own last day there.
+    const ptEnd = input.pt
+      ? oldEnd && !input.gymPackage
+        ? oldEnd
+        : calculateEndDate(input.startDate, input.pt.pkg.durationDays)
+      : "";
     if (ptRef && input.pt && share) {
       tx.set(ptRef, {
         clientId: clientRef.id,
@@ -456,11 +497,8 @@ export async function enrollMember(input: EnrollmentInput) {
         ...share,
         startDate: input.startDate,
         // A PT plan carried over alone from the old software keeps its own last day there.
-        endDate:
-          oldEnd && !input.gymPackage
-            ? oldEnd
-            : calculateEndDate(input.startDate, input.pt.pkg.durationDays),
-        status: input.startDate > today ? "pending" : "active",
+        endDate: ptEnd,
+        status: ptEnd < today ? "completed" : input.startDate > today ? "pending" : "active",
         invoiceId: invoiceRef?.id ?? "",
         enrollmentId: enrollmentRef.id,
         ...oldFields,
@@ -673,15 +711,11 @@ export async function enrollMember(input: EnrollmentInput) {
       const clientPatch: Record<string, unknown> = { updatedAt: now };
       // Only a member still waiting for a thumb points at this enrollment, so the profile can resume it.
       if (needsBiometric) clientPatch["enrollmentId"] = enrollmentRef.id;
+      // (An upgrade from a later date: the running plan, now ending the day before it.)
       if (planSummary) {
         clientPatch["currentMembership"] = planSummary;
-        clientPatch["status"] = "active";
-      } else if (
-        input.upgrade &&
-        input.existingClient.currentMembership?.membershipId === input.upgrade.membershipId
-      )
-        // Upgrade from a later date: the running plan now ends the day before it.
-        clientPatch["currentMembership.endDate"] = addDaysISO(input.startDate, -1);
+        if (planSummary.status === "active") clientPatch["status"] = "active";
+      }
       if (input.whatsappOptIn && !input.existingClient.whatsappOptIn) {
         clientPatch["whatsappOptIn"] = true;
         clientPatch["whatsappStatus"] = "ready";
@@ -967,21 +1001,30 @@ async function activateAfterConfirmedThumb(
       const others = await getDocs(
         query(col(COLLECTIONS.memberships), where("clientId", "==", client.id)),
       );
-      if (status === "active")
-        others.docs
-          .filter((d) => d.id !== e.membershipId && d.data()["status"] === "active")
-          .forEach((d) => batch.update(d.ref, { status: "expired", updatedAt: now }));
+      const ended = new Set(
+        status === "active"
+          ? others.docs
+              .filter((d) => d.id !== e.membershipId && d.data()["status"] === "active")
+              .map((d) => d.id)
+          : [],
+      );
+      others.docs
+        .filter((d) => ended.has(d.id))
+        .forEach((d) => batch.update(d.ref, { status: "expired", updatedAt: now }));
       batch.update(mSnap.ref, { status, updatedAt: now });
-      if (status === "active")
-        batch.update(clientRef, {
-          currentMembership: {
-            membershipId: e.membershipId,
-            packageName: m["packageNameSnapshot"] ?? "",
-            startDate: m["startDate"] ?? "",
-            endDate: m["endDate"] ?? "",
-            status,
-          },
-        });
+      // The member's current plan by the one rule (current-plan.ts), with these changes.
+      const { summary } = pickCurrent(
+        others.docs.map((d) => {
+          const r = currentRow(d.id, d.data());
+          return d.id === e.membershipId
+            ? { ...r, status }
+            : ended.has(d.id)
+              ? { ...r, status: "expired" }
+              : r;
+        }),
+        today,
+      );
+      if (summary) batch.update(clientRef, { currentMembership: summary });
     }
     if (e.ptAssignmentId) {
       const pt = await getDoc(doc(db, COLLECTIONS.ptAssignments, e.ptAssignmentId));

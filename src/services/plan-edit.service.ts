@@ -1,5 +1,7 @@
 import { doc, getDocs, query, runTransaction, serverTimestamp, where } from "@/lib/firestore";
 import { planEndDate } from "@/lib/plan-dates";
+import { currentRow, pickCurrent, sameCurrent } from "@/lib/current-plan";
+import { conflictMessage, overlapConflict, overlapPlan } from "@/lib/plan-overlap";
 import { db } from "@/lib/firebase";
 import { addDaysISO, formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import {
@@ -349,6 +351,19 @@ export async function editMembership(input: PlanEditInput) {
       ? readOldRows("gym", m.id)
       : Promise.resolve([]),
   ]);
+  // New dates over another gym plan of the member: one would be a copy (both count their money).
+  if (
+    preview.status !== "cancelled" &&
+    (form.startDate !== m.startDate || form.endDate !== m.endDate)
+  ) {
+    const clash = overlapConflict(
+      { startDate: form.startDate, endDate: form.endDate },
+      plansSnap.docs.map((d) => overlapPlan(d.id, d.data())),
+      today,
+      [m.id],
+    );
+    if (clash) throw new Error(conflictMessage(clash));
+  }
   if (
     rowsChange &&
     oldRecs
@@ -590,54 +605,25 @@ export async function editMembership(input: PlanEditInput) {
         updatedAt: now,
       });
 
-    // The member's plan summary: the plan running today (latest start), with the new dates.
-    const plans = plansSnap.docs
-      .map((d) => ({ id: d.id, d: d.data() }))
-      .filter(({ id, d }) =>
-        ["active", "pending", "biometric_pending"].includes(
-          id === m.id ? preview.status : String(d["status"]),
-        ),
-      )
-      .map(({ id, d }) =>
-        id === m.id
+    // The member's current plan by the one rule (current-plan.ts), with the new dates.
+    const { summary, active } = pickCurrent(
+      plansSnap.docs.map((d) =>
+        d.id === m.id
           ? {
-              id,
+              id: d.id,
               name: form.pkg.name,
-              start: form.startDate,
-              end: form.endDate,
+              startDate: form.startDate,
+              endDate: form.endDate,
+              status: preview.status,
             }
-          : {
-              id,
-              name: String(d["packageNameSnapshot"] ?? ""),
-              start: String(d["startDate"] ?? ""),
-              end: String(d["endDate"] ?? ""),
-            },
-      );
-    const running = plans
-      .filter((p) => p.start <= today && p.end >= today)
-      .sort((a, b) => b.start.localeCompare(a.start))[0];
-    const clientRef = doc(db, COLLECTIONS.clients, client.id);
-    if (running)
-      tx.update(clientRef, {
-        currentMembership: {
-          membershipId: running.id,
-          packageName: running.name,
-          startDate: running.start,
-          endDate: running.end,
-          status: "active",
-        },
-        status: "active",
-        updatedAt: now,
-      });
-    else if (client.currentMembership?.membershipId === m.id)
-      tx.update(clientRef, {
-        currentMembership: {
-          membershipId: m.id,
-          packageName: form.pkg.name,
-          startDate: form.startDate,
-          endDate: form.endDate,
-          status: preview.status,
-        },
+          : currentRow(d.id, d.data()),
+      ),
+      today,
+    );
+    if (!sameCurrent(client.currentMembership, summary))
+      tx.update(doc(db, COLLECTIONS.clients, client.id), {
+        currentMembership: summary,
+        ...(active ? { status: "active" } : {}),
         updatedAt: now,
       });
   });

@@ -8,6 +8,10 @@
  * relative imports, unit-tested with `node --test`.
  */
 
+import { pickCurrent, type CurrentSummary } from "./current-plan.ts";
+
+export { pickCurrent, type CurrentSummary };
+
 const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export interface RmPlan {
@@ -97,14 +101,6 @@ export interface PutBack {
   why: "upgrade" | "renewal";
 }
 
-export interface CurrentSummary {
-  membershipId: string;
-  packageName: string;
-  startDate: string;
-  endDate: string;
-  status: string;
-}
-
 export interface RemovalPlan {
   error: string;
   /** The sale's plans (the chosen one first). */
@@ -148,39 +144,6 @@ export function statusByDates(
 ) {
   if (endDate < today) return kind === "gym" ? "expired" : "completed";
   return startDate > today ? "pending" : "active";
-}
-
-/**
- * The member's current plan from their gym plans: the one running today (latest start), else the
- * next upcoming, else the latest ended, else the latest cancelled, else none.
- */
-export function pickCurrent(
-  rows: { id: string; name: string; startDate: string; endDate: string; status: string }[],
-  today: string,
-): { summary: CurrentSummary | null; active: boolean } {
-  const sum = (r: (typeof rows)[number], status: string): CurrentSummary => ({
-    membershipId: r.id,
-    packageName: r.name,
-    startDate: r.startDate,
-    endDate: r.endDate,
-    status,
-  });
-  const live = rows.filter((r) => r.status !== "cancelled");
-  const open = live.filter((r) => r.status !== "expired");
-  const running = open
-    .filter((r) => r.startDate <= today && r.endDate >= today)
-    .sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
-  if (running) return { summary: sum(running, "active"), active: true };
-  const upcoming = open
-    .filter((r) => r.startDate > today)
-    .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
-  if (upcoming) return { summary: sum(upcoming, "pending"), active: false };
-  const ended = [...live].sort((a, b) => b.endDate.localeCompare(a.endDate))[0];
-  if (ended) return { summary: sum(ended, "expired"), active: false };
-  const cancelled = rows
-    .filter((r) => r.status === "cancelled")
-    .sort((a, b) => b.endDate.localeCompare(a.endDate))[0];
-  return { summary: cancelled ? sum(cancelled, "cancelled") : null, active: false };
 }
 
 /** What removing the plan takes out and puts back, or why it can't. */

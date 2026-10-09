@@ -1,5 +1,6 @@
 import { effectiveMembershipStatus, formatDateISO, todayISO } from "@/lib/format";
 import type { Client, Membership, PtAssignment } from "@/types/models";
+import { pickCurrent } from "@/lib/current-plan";
 
 /** What the lists need from a plan. */
 export type PlanRow = Pick<
@@ -51,12 +52,14 @@ export const daysBetween = (from: string, to: string) =>
 
 type Row = { name: string; startDate: string; endDate: string; status: string };
 
+/** The member's plan by the one rule the app saves it with (current-plan.ts); cancelled never. */
 function pick(rows: Row[], today: string): Row | undefined {
   const live = rows.filter((r) => r.status !== "cancelled");
-  return (
-    live.find((r) => r.startDate <= today && r.endDate >= today) ??
-    [...live].sort((a, b) => b.endDate.localeCompare(a.endDate))[0]
+  const { summary } = pickCurrent(
+    live.map((r, i) => ({ ...r, id: String(i).padStart(6, "0") })),
+    today,
   );
+  return summary ? live[Number(summary.membershipId)] : undefined;
 }
 
 function summarize(r: Row, today: string): PlanSummary {

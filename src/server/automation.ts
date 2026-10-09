@@ -8,6 +8,13 @@ import { FieldValue, type DocumentData } from "firebase-admin/firestore";
 import { db, json, localDate } from "./admin";
 import { runCfoMorning } from "./cfo";
 import { memberOwner, pushTo, type PushMessage } from "./push";
+import {
+  currentRow,
+  pickCurrent,
+  sameCurrent,
+  type CurrentRow,
+  type CurrentSummary,
+} from "@/lib/current-plan";
 import { remindsBalance, renewalReminderPlans } from "@/lib/reminders";
 import { sendTemplateMessage, whatsappNumber } from "./whatsapp";
 
@@ -487,51 +494,41 @@ export async function rollPlans() {
     ops = 0;
   };
   const now = FieldValue.serverTimestamp();
+  // Every member with a live plan is checked against the one rule for the current plan
+  // (current-plan.ts), not only those whose plan changed today: a summary saved wrong (older app
+  // versions, old data) heals the next morning. One read per such member, a write only when wrong.
+  const clientIds = [...byClient.keys()].filter(Boolean);
+  const saved = new Map<string, DocumentData>();
+  for (let i = 0; i < clientIds.length; i += 200) {
+    const refs = clientIds.slice(i, i + 200).map((id) => firestore.doc(`clients/${id}`));
+    for (const s of await firestore.getAll(...refs)) if (s.exists) saved.set(s.id, s.data() ?? {});
+  }
   for (const [clientId, plans] of byClient) {
-    let current: FirebaseFirestore.QueryDocumentSnapshot | null = null;
-    // Only members whose plan changed today are written (not every member every morning).
-    let changedHere = false;
-    let endedHere = false;
+    const rows: CurrentRow[] = [];
     for (const d of plans) {
       const m = d.data();
       const start = String(m["startDate"] ?? "");
       const end = String(m["endDate"] ?? "");
       const status = String(m["status"]);
       const next = end < today ? "expired" : start <= today ? "active" : "pending";
-      if (next === "active") current = d;
+      rows.push(currentRow(d.id, { ...m, status: next }));
       if (next !== status) {
         batch.update(d.ref, { status: next, updatedAt: now });
         ops += 1;
         changed += 1;
-        changedHere = true;
-        if (next === "expired") endedHere = true;
       }
     }
-    if (!clientId || !changedHere) continue;
-    const ref = firestore.doc(`clients/${clientId}`);
-    const cm = current?.data();
-    if (!current && endedHere) {
-      // Plan ended with nothing after it: the member's plan summary says so.
-      batch.set(ref, { currentMembership: { status: "expired" }, updatedAt: now }, { merge: true });
-      ops += 1;
-    }
-    if (current && cm) {
-      batch.set(
-        ref,
-        {
-          currentMembership: {
-            membershipId: current.id,
-            packageName: cm["packageNameSnapshot"] ?? "",
-            startDate: cm["startDate"] ?? "",
-            endDate: cm["endDate"] ?? "",
-            status: "active",
-          },
-          status: "active",
-          updatedAt: now,
-        },
-        { merge: true },
-      );
-      ops += 1;
+    const c = clientId ? saved.get(clientId) : undefined;
+    if (c) {
+      const { summary, active } = pickCurrent(rows, today);
+      if (!sameCurrent(c["currentMembership"] as Partial<CurrentSummary> | null, summary)) {
+        batch.set(
+          firestore.doc(`clients/${clientId}`),
+          { currentMembership: summary, ...(active ? { status: "active" } : {}), updatedAt: now },
+          { merge: true },
+        );
+        ops += 1;
+      }
     }
     if (ops >= 400) await flush();
   }

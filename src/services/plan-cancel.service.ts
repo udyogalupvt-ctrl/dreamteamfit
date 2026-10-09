@@ -10,6 +10,7 @@ import {
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { todayISO } from "@/lib/format";
+import { currentRow, pickCurrent, sameCurrent } from "@/lib/current-plan";
 import { billSharePaid, type RefundPlan } from "@/lib/plan-money";
 import type {
   Client,
@@ -176,6 +177,19 @@ const newId = () =>
     ? crypto.randomUUID()
     : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
 
+/** The member's current plan by the one rule (current-plan.ts), once these plans change status. */
+async function currentAfter(clientId: string, status: Map<string, string>, today: string) {
+  const ms = await getDocs(query(col(COLLECTIONS.memberships), where("clientId", "==", clientId)));
+  return pickCurrent(
+    ms.docs.map((d) => {
+      const r = currentRow(d.id, d.data());
+      const s = status.get(d.id);
+      return s ? { ...r, status: s } : r;
+    }),
+    today,
+  ).summary;
+}
+
 export async function cancelPlans(input: CancelInput) {
   const cancelId = newId();
   const today = todayISO();
@@ -214,12 +228,18 @@ export async function cancelPlans(input: CancelInput) {
       ...cancelled,
       statusBeforeCancel: p.status,
     });
-  const current = input.client.currentMembership?.membershipId;
-  if (current && input.plans.some((m) => m.id === current))
-    batch.update(doc(db, COLLECTIONS.clients, input.client.id), {
-      "currentMembership.status": "cancelled",
-      updatedAt: now,
-    });
+  if (input.plans.length) {
+    const next = await currentAfter(
+      input.client.id,
+      new Map(input.plans.map((m) => [m.id, "cancelled"])),
+      today,
+    );
+    if (!sameCurrent(input.client.currentMembership, next))
+      batch.update(doc(db, COLLECTIONS.clients, input.client.id), {
+        currentMembership: next,
+        updatedAt: now,
+      });
+  }
 
   let trainerCut = 0;
   for (const part of parts.filter((p) => p.kind === "pt" && p.trainerCut > 0)) {
@@ -421,15 +441,24 @@ export async function restoreCancellation(
       statusBeforeCancel: deleteField(),
       updatedAt: now,
     });
-  const current = client.currentMembership;
-  const back = plans.find(
-    (p) => p.col === COLLECTIONS.memberships && p.id === current?.membershipId,
-  );
-  if (back && back.endDate >= today)
-    batch.update(doc(db, COLLECTIONS.clients, client.id), {
-      "currentMembership.status": statusByDates(back.startDate, today),
-      updatedAt: now,
-    });
+  const gymBack = plans.filter((p) => p.col === COLLECTIONS.memberships);
+  if (gymBack.length) {
+    const next = await currentAfter(
+      client.id,
+      new Map(
+        gymBack.map((p) => [
+          p.id,
+          p.endDate < today ? "expired" : statusByDates(p.startDate, today),
+        ]),
+      ),
+      today,
+    );
+    if (!sameCurrent(client.currentMembership, next))
+      batch.update(doc(db, COLLECTIONS.clients, client.id), {
+        currentMembership: next,
+        updatedAt: now,
+      });
+  }
   await batch.commit();
   return { plans: plans.length };
 }
