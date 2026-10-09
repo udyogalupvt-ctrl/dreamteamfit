@@ -18,6 +18,7 @@ import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { checkOldRows, defaultOldRows, type OldPayRow } from "@/lib/old-money";
 import { OldPaidRows } from "@/components/clients/old-paid-rows";
+import { PaidOnField, usePaidOn } from "@/components/clients/paid-on-field";
 import { subscribeClientPayments } from "@/services/finance.service";
 import { findOldPartner, type OldPartner } from "@/services/old-money.service";
 import { billCredits } from "@/lib/invoice-utils";
@@ -155,6 +156,15 @@ export function EditPlanDialog({
     return list.map((s) => ({ id: s.id, name: s.name }));
   }, [staff.data, membership]);
 
+  // "Paid on": the day its checkout payment counts on (fixed here like the dates).
+  const paidOn = usePaidOn({
+    open,
+    clientId: client.id,
+    bill: membership ? billOfPlan(membership, invoices) : null,
+    savedStart: membership?.startDate ?? "",
+    start,
+  });
+
   if (!membership) return null;
   const m = membership;
   const pkg = choices.find((p) => p.id === pkgId) ?? choices[0]!;
@@ -232,21 +242,25 @@ export function EditPlanDialog({
     if (/^\d{4}-\d{2}-\d{2}$/.test(v)) setEnd(standardEnd(v, pkg.durationDays, paused));
   };
 
+  const changes = [...preview.changes, ...(paidOn.change ? [paidOn.change] : [])];
   const save = async () => {
     setError("");
+    const byName = user?.displayName || user?.email || "Staff";
     try {
-      await editMembership({
-        client,
-        membership: m,
-        form,
-        bill,
-        settings: settings.data,
-        reason,
-        refundMethod: method,
-        canRefund: money,
-        nextPaymentDate: bc?.newBalance ? payBy : null,
-        by: { uid: user?.uid ?? "", name: user?.displayName || user?.email || "Staff" },
-      });
+      if (preview.changes.length)
+        await editMembership({
+          client,
+          membership: m,
+          form,
+          bill,
+          settings: settings.data,
+          reason,
+          refundMethod: method,
+          canRefund: money,
+          nextPaymentDate: bc?.newBalance ? payBy : null,
+          by: { uid: user?.uid ?? "", name: byName },
+        });
+      await paidOn.save(reason, byName);
       onClose();
       toast.success("Plan updated", {
         description:
@@ -255,7 +269,7 @@ export function EditPlanDialog({
             bc && bc.balanceDue > 0 ? `Balance due ${formatPrice(bc.balanceDue)}.` : "",
           ]
             .filter(Boolean)
-            .join(" ") || preview.changes.join(" · "),
+            .join(" ") || changes.join(" · "),
       });
     } catch (e) {
       setError(e instanceof Error && !("code" in e) ? e.message : firestoreErrorMessage(e));
@@ -264,7 +278,8 @@ export function EditPlanDialog({
 
   const blocked =
     !!preview.error ||
-    !preview.changes.length ||
+    !changes.length ||
+    !!paidOn.problem ||
     (m.paidInOldSoftware && pays.loading) ||
     (preview.discountChanged && !money) ||
     !!(bc && bc.refund > 0 && !money) ||
@@ -382,6 +397,7 @@ export function EditPlanDialog({
             ) : null}
           </Field>
         </div>
+        <PaidOnField id="plan-paidon" paidOn={paidOn} />
         <Field label="Counsellor" htmlFor="plan-counsellor">
           <Select
             value={counsellorId || NONE}
@@ -498,11 +514,11 @@ export function EditPlanDialog({
           />
         </Field>
 
-        {preview.changes.length ? (
+        {changes.length ? (
           <div className="rounded-xl bg-muted p-3 text-sm">
             <p className="font-semibold">Will change</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-5">
-              {preview.changes.map((c) => (
+              {changes.map((c) => (
                 <li key={c}>{c}</li>
               ))}
             </ul>

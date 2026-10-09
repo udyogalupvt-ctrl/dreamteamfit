@@ -27,6 +27,7 @@ import {
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { checkOldRows, defaultOldRows, type OldPayRow } from "@/lib/old-money";
 import { OldPaidRows } from "@/components/clients/old-paid-rows";
+import { PaidOnField, usePaidOn } from "@/components/clients/paid-on-field";
 import { subscribeClientPayments } from "@/services/finance.service";
 import { findOldPartner, type OldPartner } from "@/services/old-money.service";
 import type {
@@ -115,6 +116,14 @@ export function EditPtDialog({
       list.unshift({ id: pt.trainerId, name: pt.trainerNameSnapshot });
     return list;
   }, [trainers.data, pt]);
+  // "Paid on": the day its checkout payment counts on (fixed here like the dates).
+  const paidOn = usePaidOn({
+    open,
+    clientId: pt?.clientId ?? "",
+    bill: pt && !pt.paidInOldSoftware ? bill : null,
+    savedStart: pt?.startDate ?? "",
+    start,
+  });
   if (!pt) return null;
   const money = can("finance");
   const trainer = choices.find((t) => t.id === trainerId) ?? {
@@ -188,7 +197,11 @@ export function EditPtDialog({
       : null;
   const billPv = bill && billForm ? previewBillEdit(bill, billForm, settings.data) : null;
   const discountChanged = !!billPv?.discountChanged;
-  const changes = [...planChanges, ...(discountChanged ? (billPv?.changes ?? []) : [])];
+  const changes = [
+    ...planChanges,
+    ...(discountChanged ? (billPv?.changes ?? []) : []),
+    ...(paidOn.change ? [paidOn.change] : []),
+  ];
 
   const save = async () => {
     setError("");
@@ -207,6 +220,7 @@ export function EditPtDialog({
           byUid: user?.uid ?? "",
           refundMethod,
         });
+      await paidOn.save(reason, by);
       onClose();
       toast.success("PT plan updated", {
         description:
@@ -234,6 +248,7 @@ export function EditPtDialog({
             onClick={() => save()}
             disabled={
               !changes.length ||
+              !!paidOn.problem ||
               shareBad ||
               !!rowsError ||
               (pt.paidInOldSoftware && pays.loading) ||
@@ -307,6 +322,7 @@ export function EditPtDialog({
             ) : null}
           </Field>
         </div>
+        <PaidOnField id="pt-paidon" paidOn={paidOn} />
         <Field
           label="Trainer's share"
           htmlFor="pt-share"

@@ -19,6 +19,7 @@ import {
   cashOpenFrom,
   editPayment,
   paymentChanges,
+  paymentDateRights,
   paymentEditRights,
 } from "@/services/payment-edit.service";
 import { PAYMENT_METHODS, type Payment, type PaymentMethod, type RecordEdit } from "@/types/models";
@@ -60,6 +61,7 @@ export function EditPaymentDialog({
   if (!payment) return null;
   const p = payment;
   const r = rightsOf(p);
+  const dateRights = paymentDateRights(p, r.rights);
   const n = amount.trim() === "" ? NaN : Number(amount);
   const form = { amount: Number.isFinite(n) ? n : p.amount, method, paymentDate: date, note };
   const changes = paymentChanges(p, form);
@@ -147,18 +149,14 @@ export function EditPaymentDialog({
             </Select>
           </Field>
         </div>
-        <Field
-          label="Date"
-          htmlFor="pay-date"
-          hint={r.rights.finance ? undefined : "Changing the date needs Income & expenses."}
-        >
+        <Field label="Date" htmlFor="pay-date" hint={dateRights.note || undefined}>
           <Input
             id="pay-date"
             type="date"
             min={cashOpenFrom()}
             max={todayISO()}
             value={date}
-            disabled={!r.money || !r.rights.finance}
+            disabled={!dateRights.allowed}
             onChange={(e) => setDate(e.target.value)}
             className="max-w-48"
           />

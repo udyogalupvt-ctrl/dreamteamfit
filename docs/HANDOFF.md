@@ -1,6 +1,26 @@
 # Handoff
 
-Last updated: 2026-10-09 (late: PT-only reminders, phone refresh button, Paid on, October check)
+Last updated: 2026-10-09 (later: Paid on correctable after saving, This month list numbers + filters)
+
+## 2026-10-09 (later): "Paid on" can be corrected later; "This month" list numbered and filterable
+
+**State**
+- **Paid on after saving:** `src/components/clients/paid-on-field.tsx` (`usePaidOn` + `PaidOnField`) in
+  Edit plan and Edit PT plan: the plan's checkout payment (kind initial, same bill, not old software). It
+  follows a corrected start day when it was paid on the old start day (unless picked). Rules in
+  `paymentDateRights` (payment-edit.service): front desk = a payment typed in today; owner = any day from
+  the 1st of last month; Edit payment uses the same rule now (before: owner only). Owner moves also move
+  the sale's pending trainer payout date (not used in any total; rules let only Finance update payouts).
+- **This month / Collected lists** (`number-details.tsx`): rows numbered 1…n (all drawer lists); mode chips
+  are toggle filters (several at once, × on picked, "Show all"), summary shows the filtered total.
+- "2 days strength" package: created by a front-desk staff login on 9 Oct 2026 17:04 IST, used once a
+  minute later (read-only check, `prod_package_who.mjs`; the audit log keeps the name).
+- Owner guide in Telugu-English for the October fixes: chat reply of this date (names; not in git).
+- Checks: tsc + eslint clean (2 fast-refresh warnings, same kind as before), unit 295/295, build OK;
+  emulator `paidon_edit_local.py` 13/13 (owner Edit plan: follows start, only-date change; Edit PT plan
+  moves the payout; desk locked on an older payment, fixes today's entry at 390 px; list numbers +
+  UPI / UPI+Cash / Show all), and paidon 15/15, latedates 26/26, renew_pt 26/26, update 6/6, audit2 27/27,
+  remove 39/39, plans_end 12/12, moneyfix 21/21, audit9 23/23.
 
 ## 2026-10-09 (late): PT-only reminders, phone "Tap to refresh", "Paid on" at checkout, October check
 

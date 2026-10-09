@@ -1,5 +1,13 @@
 import { format } from "date-fns";
-import { doc, runTransaction, serverTimestamp } from "@/lib/firestore";
+import {
+  doc,
+  getDocs,
+  query,
+  runTransaction,
+  serverTimestamp,
+  where,
+  type DocumentReference,
+} from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { derivePaymentStatus } from "@/lib/invoice-utils";
@@ -7,7 +15,7 @@ import type { Payment, PaymentMethod, RecordEdit } from "@/types/models";
 import { allocatePayment, cashOpenFrom } from "./finance.service";
 
 export { cashOpenFrom };
-import { COLLECTIONS } from "./firestore.service";
+import { col, COLLECTIONS } from "./firestore.service";
 
 /**
  * Correcting a payment after it was saved: wrong mode (Cash / UPI…), wrong amount, wrong date, or
@@ -22,14 +30,17 @@ import { COLLECTIONS } from "./firestore.service";
 
 const round = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
+/** The payment was typed in today (a mistake at the desk is fixed the same day). */
+const typedTodayOf = (p: Payment) =>
+  p.createdAt instanceof Date &&
+  !Number.isNaN(p.createdAt.getTime()) &&
+  format(p.createdAt, "yyyy-MM-dd") === todayISO();
+
 /** What this login may change on a payment. */
 export function paymentEditRights(p: Payment, can: { billing: boolean; finance: boolean }) {
   const today = todayISO();
   // Paid in the old software: changed from its plan (Edit plan / Edit PT plan), not here.
-  const typedToday =
-    p.createdAt instanceof Date &&
-    !Number.isNaN(p.createdAt.getTime()) &&
-    format(p.createdAt, "yyyy-MM-dd") === today;
+  const typedToday = typedTodayOf(p);
   const mayEdit =
     !p.oldSoftware && (can.finance || (can.billing && (p.paymentDate === today || typedToday)));
   const cashOpen = p.paymentDate >= cashOpenFrom(today);
@@ -40,6 +51,33 @@ export function paymentEditRights(p: Payment, can: { billing: boolean; finance: 
     /** The amount: not for refunds (Restore on the plan takes those back). */
     amount: mayEdit && cashOpen && p.kind !== "refund" && !!p.invoiceId,
   };
+}
+
+/**
+ * Moving a payment to another day ("Paid on"): the owner (Income & expenses) any day the Day Book
+ * still has open; the front desk only a payment typed in today, the same as choosing "Paid on" at
+ * the checkout. `note` says why not.
+ */
+export function paymentDateRights(p: Payment, can: { billing: boolean; finance: boolean }) {
+  const r = paymentEditRights(p, can);
+  if (p.oldSoftware)
+    return {
+      allowed: false,
+      note: "Paid in the old software: change it in its old-software rows.",
+    };
+  if (!r.mayEdit)
+    return { allowed: false, note: "Only the owner (Income & expenses) can change this payment." };
+  if (!r.money)
+    return {
+      allowed: false,
+      note: `Paid before ${formatDateISO(cashOpenFrom(todayISO()))}: that cash is already carried forward in the Day Book.`,
+    };
+  if (!can.finance && !typedTodayOf(p))
+    return {
+      allowed: false,
+      note: "Typed in on an earlier day: only the owner (Income & expenses) can change its date.",
+    };
+  return { allowed: true, note: "" };
 }
 
 export interface PaymentEditForm {
@@ -86,8 +124,8 @@ export async function editPayment(input: {
     throw new Error("This payment is older than last month: only its note can change.");
   if (amountChanged && !rights.amount) throw new Error("The amount of this payment can't change.");
   const dateChanged = form.paymentDate !== p.paymentDate;
-  if (dateChanged && !input.can.finance)
-    throw new Error("Changing a payment's date needs Income & expenses (the owner).");
+  const dateRights = paymentDateRights(p, input.can);
+  if (dateChanged && !dateRights.allowed) throw new Error(dateRights.note);
   if (dateChanged && !/^\d{4}-\d{2}-\d{2}$/.test(form.paymentDate))
     throw new Error("Pick the payment date.");
   if (dateChanged && form.paymentDate > today)
@@ -103,10 +141,21 @@ export async function editPayment(input: {
     changes,
   };
   const payRef = doc(db, COLLECTIONS.payments, p.id);
+  // The joining payment moved to another day: the trainer's unpaid share of that sale goes with it
+  // (owner only: trainer payouts are Income & expenses).
+  const payoutRefs: DocumentReference[] =
+    dateChanged && input.can.finance && p.kind === "initial" && p.invoiceId
+      ? (
+          await getDocs(
+            query(col(COLLECTIONS.trainerPayouts), where("invoiceId", "==", p.invoiceId)),
+          )
+        ).docs.map((d) => d.ref)
+      : [];
   await runTransaction(db, async (tx) => {
     const pay = await tx.get(payRef);
     const invRef = p.invoiceId ? doc(db, COLLECTIONS.invoices, p.invoiceId) : null;
     const inv = invRef ? await tx.get(invRef) : null;
+    const payouts = await Promise.all(payoutRefs.map((r) => tx.get(r)));
     if (!pay.exists()) throw new Error("This payment was removed.");
     const cur = pay.data();
     if (
@@ -184,6 +233,11 @@ export async function editPayment(input: {
           });
       }
     } else if (amountChanged) throw new Error("This payment's bill was not found.");
+    payouts.forEach((po) => {
+      const x = po.data();
+      if (po.exists() && x?.["status"] === "pending" && x["paymentDate"] === p.paymentDate)
+        tx.update(po.ref, { paymentDate: form.paymentDate, updatedAt: serverTimestamp() });
+    });
     tx.update(payRef, patch);
   });
   return changes;

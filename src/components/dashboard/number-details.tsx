@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { format } from "date-fns";
-import { ChevronRight, Loader2, Search } from "lucide-react";
+import { ChevronRight, Loader2, Search, X } from "lucide-react";
 import { StatusPill } from "@/components/common/status-pill";
 import { Input } from "@/components/ui/input";
 import {
@@ -105,7 +105,16 @@ function Head({ title, summary }: { title: string; summary: string }) {
   );
 }
 
-function Row({ onClick, children }: { onClick?: (() => void) | undefined; children: ReactNode }) {
+function Row({
+  onClick,
+  n,
+  children,
+}: {
+  onClick?: (() => void) | undefined;
+  /** Serial number in the list (1, 2 … n). */
+  n?: number | undefined;
+  children: ReactNode;
+}) {
   return (
     <li>
       <button
@@ -114,6 +123,11 @@ function Row({ onClick, children }: { onClick?: (() => void) | undefined; childr
         onClick={onClick}
         className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent disabled:cursor-default disabled:hover:bg-transparent sm:px-5"
       >
+        {n !== undefined ? (
+          <span className="text-meta w-6 shrink-0 text-right tabular-nums" aria-hidden>
+            {n}
+          </span>
+        ) : null}
         {children}
         {onClick ? (
           <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -126,6 +140,9 @@ function Row({ onClick, children }: { onClick?: (() => void) | undefined; childr
 function Empty({ text }: { text: string }) {
   return <p className="text-meta p-6 text-center">{text}</p>;
 }
+
+/** The chip a payment counts under: old-software money has its own (it never came in here). */
+const modeOf = (r: MoneyRow) => (r.kind === "old" ? "Old software" : r.method || "Other");
 
 /** Collected (today / a period / this month): every payment, with totals by how it was paid. */
 function MoneyList({
@@ -142,10 +159,18 @@ function MoneyList({
   const total = rows.reduce((n, r) => n + r.amount, 0);
   // A payment and the refund that gave it back (same member, amount and mode) cancel out: folded
   // under a "show" line so the list is the money that really came in. Totals stay the same.
-  const { shown, folded } = useMemo(() => foldTakenBack(rows), [rows]);
+  const { shown: all, folded: allFolded } = useMemo(() => foldTakenBack(rows), [rows]);
   const [showFolded, setShowFolded] = useState(false);
-  const line = (r: MoneyRow, muted = false) => (
-    <Row key={r.id} onClick={r.clientId ? () => goTo(r.clientId) : undefined}>
+  // Tapping a mode chip shows only its payments; several can be picked; none = all.
+  const [modes, setModes] = useState<string[]>([]);
+  const keep = (r: MoneyRow) => !modes.length || modes.includes(modeOf(r));
+  const shown = all.filter(keep);
+  const folded = allFolded.filter((pair) => keep(pair[0]));
+  const shownTotal = shown.reduce((n, r) => n + r.amount, 0);
+  const toggle = (mode: string) =>
+    setModes((m) => (m.includes(mode) ? m.filter((x) => x !== mode) : [...m, mode]));
+  const line = (r: MoneyRow, muted = false, n?: number) => (
+    <Row key={r.id} n={n} onClick={r.clientId ? () => goTo(r.clientId) : undefined}>
       <span className={cn("min-w-0 flex-1", muted && "opacity-70")}>
         <span className="block truncate font-semibold">{r.name || "Member"}</span>
         <span className="text-meta block">
@@ -176,7 +201,7 @@ function MoneyList({
     const m = new Map<string, number>();
     // Old-software money has its own chip: it never came in here as cash / UPI.
     rows.forEach((r) => {
-      const key = r.kind === "old" ? "Old software" : r.method || "Other";
+      const key = modeOf(r);
       m.set(key, (m.get(key) ?? 0) + r.amount);
     });
     // A mode whose money was all given back adds up to ₹0: no chip.
@@ -186,21 +211,51 @@ function MoneyList({
     <>
       <Head
         title={title}
-        summary={`${money(total)} from ${shown.length} payment${shown.length === 1 ? "" : "s"}`}
+        summary={
+          modes.length
+            ? `${money(shownTotal)} from ${shown.length} payment${shown.length === 1 ? "" : "s"} (${modes.join(" + ")}) · all ${money(total)}`
+            : `${money(total)} from ${shown.length} payment${shown.length === 1 ? "" : "s"}`
+        }
       />
       {byMethod.length ? (
-        <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3 sm:px-5">
-          {byMethod.map(([method, amount]) => (
-            <span key={method} className="rounded-lg bg-muted px-2.5 py-1 text-sm">
-              {method} <b className="tabular-nums">{money(amount)}</b>
-            </span>
-          ))}
+        <div
+          className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 sm:px-5"
+          role="group"
+          aria-label="Show only these modes"
+        >
+          {byMethod.map(([method, amount]) => {
+            const on = modes.includes(method);
+            return (
+              <button
+                key={method}
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggle(method)}
+                className={cn(
+                  "inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm transition-colors active:scale-[0.97] motion-reduce:active:scale-100",
+                  on ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-accent",
+                )}
+              >
+                {method} <b className="tabular-nums">{money(amount)}</b>
+                {on ? <X className="size-3.5" aria-hidden /> : null}
+              </button>
+            );
+          })}
+          {modes.length ? (
+            <button
+              type="button"
+              onClick={() => setModes([])}
+              className="inline-flex min-h-9 cursor-pointer items-center gap-1 rounded-lg px-2 text-sm font-semibold underline underline-offset-2"
+            >
+              Show all
+            </button>
+          ) : null}
         </div>
       ) : null}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {rows.length ? (
+        {shown.length || folded.length ? (
           <ul className="divide-y divide-border">
-            {shown.map((r) => line(r))}
+            {shown.map((r, i) => line(r, false, i + 1))}
             {folded.length ? (
               <li className="bg-muted/40">
                 <button
@@ -224,7 +279,9 @@ function MoneyList({
             {showFolded ? folded.flat().map((r) => line(r, true)) : null}
           </ul>
         ) : (
-          <Empty text="No payments in this period." />
+          <Empty
+            text={modes.length ? "No payments by these modes." : "No payments in this period."}
+          />
         )}
       </div>
     </>
@@ -272,8 +329,8 @@ function ActiveList({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {shown.length ? (
           <ul className="divide-y divide-border">
-            {shown.map((r) => (
-              <Row key={r.clientId} onClick={() => goTo(r.clientId)}>
+            {shown.map((r, i) => (
+              <Row key={r.clientId} n={i + 1} onClick={() => goTo(r.clientId)}>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold">{r.name || "Member"}</span>
                   <span className="text-meta block truncate">
@@ -334,8 +391,8 @@ function VisitList({
           </div>
         ) : rows.length ? (
           <ul className="divide-y divide-border">
-            {rows.map((e) => (
-              <Row key={e.id} onClick={e.clientId ? () => goTo(e.clientId) : undefined}>
+            {rows.map((e, i) => (
+              <Row key={e.id} n={i + 1} onClick={e.clientId ? () => goTo(e.clientId) : undefined}>
                 <span
                   className={cn(
                     "shrink-0 text-sm font-semibold tabular-nums",
@@ -386,8 +443,8 @@ function DetailListView({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {list.rows.length ? (
           <ul className="divide-y divide-border">
-            {list.rows.map((r) => (
-              <Row key={r.id} onClick={r.clientId ? () => goTo(r.clientId!) : undefined}>
+            {list.rows.map((r, i) => (
+              <Row key={r.id} n={i + 1} onClick={r.clientId ? () => goTo(r.clientId!) : undefined}>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold">{r.title}</span>
                   {r.sub ? <span className="text-meta block">{r.sub}</span> : null}
