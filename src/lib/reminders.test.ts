@@ -81,3 +81,15 @@ test("a normal sale's balance is reminded as before", () => {
   assert.equal(remindsBalance({ items: [{ name: "Monthly" }, { name: "PT" }] }), true);
   assert.equal(remindsBalance({}), true);
 });
+
+test("PT plans count: a PT-only member is reminded; a PT plan running longer means not due yet", () => {
+  const pt = plan({ id: "p1" });
+  assert.deepEqual(
+    renewalReminderPlans([pt], T).map((p) => p.id),
+    ["p1"],
+  );
+  const laterPt = plan({ id: "p2", endDate: "2026-11-30" });
+  assert.deepEqual(renewalReminderPlans([plan(), laterPt], T), []);
+  // Gym and PT ending the same day: one message.
+  assert.equal(renewalReminderPlans([plan(), plan({ id: "p3" })], T).length, 1);
+});

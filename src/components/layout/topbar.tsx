@@ -196,7 +196,8 @@ function NewVersionButton() {
     <Button
       size="sm"
       onClick={() => window.location.reload()}
-      className="animate-in fade-in"
+      // Phones and tablets: the bottom "Tap to refresh" button instead (NewVersionBar).
+      className="animate-in fade-in max-lg:hidden"
       aria-label="New version of the app: refresh to load it"
     >
       <RefreshCcw aria-hidden /> <span className="max-sm:hidden">New version ·</span> Refresh

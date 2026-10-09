@@ -136,7 +136,9 @@ async function readLate(today: string): Promise<LatePlan & { openFrom: string }>
         (Number(bill?.["upgradeCredit"] ?? 0) || 0) > 0 ||
         upgrades.has(str(x["membershipId"]) || "-"),
       dateSetByHand:
-        x["paidToday"] === true || dateSetByHand(Array.isArray(x["edits"]) ? x["edits"] : []),
+        x["paidToday"] === true ||
+        x["paidOnChosen"] === true ||
+        dateSetByHand(Array.isArray(x["edits"]) ? x["edits"] : []),
     };
   });
   return { ...planLateSales(facts, openFrom, openings), openFrom };

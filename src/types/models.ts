@@ -992,6 +992,8 @@ export interface Payment extends BaseDoc {
    * that day, never moved to the plan's first day.
    */
   paidToday?: boolean;
+  /** Staff chose the day it was paid at the checkout ("Paid on"): never moved by a tool. */
+  paidOnChosen?: boolean;
   /** Corrections made later (wrong mode, amount, date), oldest first. */
   edits: RecordEdit[];
 }

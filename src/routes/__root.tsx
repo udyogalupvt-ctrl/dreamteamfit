@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { startPwa } from "@/lib/pwa";
 import { markNewVersion } from "@/lib/app-version";
+import { NewVersionBar } from "@/components/layout/new-version-bar";
 
 // Installable app: listen for the browser's install offer and register the service worker.
 startPwa();
@@ -79,6 +80,8 @@ function useNewVersion() {
       }
       if (offered) return;
       offered = true;
+      // Phones and tablets get the bottom "Tap to refresh" button (NewVersionBar) instead.
+      if (window.innerWidth < 1024) return;
       toast("A new version of the app is ready", {
         id: "new-version",
         description: "It loads by itself when nothing is open. Or tap Refresh now.",
@@ -306,6 +309,7 @@ function RootComponent() {
         <AuthProvider>
           {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
           <Outlet />
+          <NewVersionBar />
           <Toaster position="top-right" richColors closeButton />
         </AuthProvider>
       </ThemeProvider>

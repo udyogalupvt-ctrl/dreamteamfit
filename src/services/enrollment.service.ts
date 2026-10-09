@@ -13,7 +13,7 @@ import {
   type DocumentData,
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
-import { addDaysISO, normalizePhone, todayISO } from "@/lib/format";
+import { addDaysISO, formatDateISO, normalizePhone, todayISO } from "@/lib/format";
 import {
   calculateInvoiceTotals,
   createPublicToken,
@@ -106,6 +106,11 @@ export interface EnrollmentInput {
    * then; it was typed in later). true = the member paid today (counted today).
    */
   paidToday?: boolean;
+  /**
+   * The day the member paid, chosen by staff ("Paid on"): the money counts that day (from the
+   * 1st of last month to today). Left out = the rule above. Not for upgrades (paid today).
+   */
+  paidOn?: string;
   notes: string;
   settings: BusinessBillingSettings;
   staff: { uid: string; name: string };
@@ -362,13 +367,22 @@ export async function enrollMember(given: EnrollmentInput) {
   const inquiryRef = input.inquiryId ? doc(db, COLLECTIONS.inquiries, input.inquiryId) : null;
   const today = todayISO();
   // A plan typed in after it started: its money counts on the plan's first day (see late-sales.ts).
-  const moneyDay = saleMoneyDay({
+  const ruleDay = saleMoneyDay({
     startDate: input.startDate,
     today,
     openFrom: cashOpenFrom(today),
     upgrade: !!input.upgrade,
     paidToday: !!input.paidToday,
   });
+  // Staff chose the day it was paid: it stays that day (the owner's late-sales tool never moves it).
+  const paidOn = !input.upgrade && input.paidOn ? input.paidOn : "";
+  if (paidOn) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(paidOn)) throw new Error("Pick the day it was paid.");
+    if (paidOn > today) throw new Error("The day it was paid can't be after today.");
+    if (paidOn < cashOpenFrom(today))
+      throw new Error(`Pick a paid day from ${formatDateISO(cashOpenFrom(today))} on.`);
+  }
+  const moneyDay = paidOn || ruleDay;
   const fullName = input.existingClient?.fullName ?? input.client.fullName.trim();
   const phone = input.existingClient?.phone ?? input.client.phone.trim();
   const email = input.existingClient?.email ?? input.client.email.trim();
@@ -722,6 +736,7 @@ export async function enrollMember(given: EnrollmentInput) {
         paymentDate: moneyDay,
         // Staff said a plan that had started was paid today: that day stays (owner tool too).
         ...(input.paidToday && input.startDate < today ? { paidToday: true } : {}),
+        ...(paidOn ? { paidOnChosen: true } : {}),
         kind: "initial",
         ...allocatePayment(
           { total: money.total, subtotal: money.subtotal, discount: money.discount, ...breakdown },

@@ -189,8 +189,10 @@ interface Draft {
   /** The old balance was checked with the member: send the WhatsApp balance reminders. */
   remindOld?: boolean;
   oldPaid?: string;
-  /** A plan that started before today: the member paid today (not on its first day). */
+  /** A plan that started before today: the member paid today (not on its first day). Old drafts. */
   paidToday?: boolean;
+  /** "Paid on" chosen by staff; "" = the default (the plan's first day if it started before today). */
+  paidOn?: string;
   /** The day the draft was last saved. */
   savedOn?: string;
 }
@@ -262,7 +264,10 @@ export function EnrollmentWizard({
   const [ptEndText, setPtEndText] = useState(restored?.ptEnd ?? "");
   const [amountPaid, setAmountPaid] = useState<number | null>(restored?.amountPaid ?? null);
   const [method, setMethod] = useState<PaymentMethod>(restored?.method ?? "UPI");
-  const [paidToday, setPaidToday] = useState(restored?.paidToday ?? false);
+  // "" = the default day (see paidOn below).
+  const [paidOnText, setPaidOnText] = useState(restored?.paidOn ?? "");
+  // Staff picked the start date themselves: it no longer follows "Paid on".
+  const [startTouched, setStartTouched] = useState(false);
   const [notes, setNotes] = useState(restored?.notes ?? "");
   const access = useAccess();
   const [counsellorId, setCounsellorId] = useState(
@@ -535,14 +540,25 @@ export function EnrollmentWizard({
   const paid = amountPaid ?? totals.total;
   // A plan typed in after it started: its money counts on the plan's first day, unless the member
   // paid today (user's rule: we don't know when they paid). Upgrades are paid when they are made.
+  const openFrom = cashOpenFrom(today);
   const lateDay = saleMoneyDay({
     startDate,
     today,
-    openFrom: cashOpenFrom(today),
+    openFrom,
     upgrade: upgrading,
     paidToday: false,
   });
-  const lateSale = lateDay !== today;
+  // "Paid on": the day the member paid. By default the plan's first day when it started before
+  // today, else today; staff can pick another day (from the 1st of last month). Upgrades: today.
+  const paidOn = upgrading ? today : paidOnText || lateDay;
+  const paidOnProblem = !/^\d{4}-\d{2}-\d{2}$/.test(paidOn)
+    ? "Pick the day it was paid"
+    : paidOn > today
+      ? "Can't be after today"
+      : paidOn < openFrom
+        ? `Pick a day from ${formatDateISO(openFrom)} on`
+        : "";
+  const lateSale = paidOn !== today;
   const maxDiscount = maxDiscountFor({ gymPackage, pt });
   // Shown while typing, and continuing is blocked until it is fixed.
   const discountProblem =
@@ -613,6 +629,15 @@ export function EnrollmentWizard({
   const oldPaid =
     oldPaidText === "" ? oldPaidSuggested : Math.max(0, Math.floor(Number(oldPaidText) || 0));
   const dueLeft = paidInOld ? oldBalance > 0 : balanceLeft;
+  // A plan whose start date was left as it was (a new joining, not a renewal) starts on the day
+  // the member paid: paid yesterday, typed in today → the plan runs from yesterday.
+  const followsPaidOn =
+    !showChoice && !oldLocked && !paidInOld && !startTouched && !joinStartsLater && !resuming;
+  useEffect(() => {
+    if (!followsPaidOn || !paidOnText || paidOnProblem) return;
+    if (paidOnText !== startDate) setStartDate(paidOnText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paidOnText, followsPaidOn]);
   const newEnd = oldLocked
     ? oldRunning.end
     : gymPackage
@@ -721,7 +746,7 @@ export function EnrollmentWizard({
             oldBalance: oldBalanceText,
             remindOld,
             oldPaid: oldPaidText,
-            paidToday,
+            paidOn: paidOnText,
             savedOn: todayISO(),
           }
         : null,
@@ -755,7 +780,7 @@ export function EnrollmentWizard({
     oldBalanceText,
     remindOld,
     oldPaidText,
-    paidToday,
+    paidOnText,
   ]);
 
   const startFresh = () => {
@@ -778,7 +803,8 @@ export function EnrollmentWizard({
     setPaidOld(false);
     setOldBalanceText("");
     setRemindOld(false);
-    setPaidToday(false);
+    setPaidOnText("");
+    setStartTouched(false);
     setStep(firstStep);
   };
 
@@ -837,6 +863,7 @@ export function EnrollmentWizard({
       if (!gymPackage && !pt) e["package"] = "Pick a package first";
       if (!(paid >= 0) || paid > totals.total)
         e["amountPaid"] = `Enter 0 to ${formatPrice(totals.total)}`;
+      if (paid > 0 && paidOnProblem) e["paidOn"] = paidOnProblem;
       if (discountProblem) e["discount"] = discountProblem;
       if (balanceLeft && !nextPaymentDate) e["nextPaymentDate"] = "When will the rest be paid?";
       else if (balanceLeft && nextPaymentDate < todayISO())
@@ -859,7 +886,11 @@ export function EnrollmentWizard({
     setSaving(true);
     try {
       const r = await enrollMember({
-        client,
+        // A new member whose plan started before today (paid then, typed in later) joined that day.
+        client:
+          !existing && !client.joinedOn && startDate < todayISO()
+            ? { ...client, joinedOn: startDate }
+            : client,
         whatsappOptIn,
         existingClient: existing,
         inquiryId: options.inquiryId ?? null,
@@ -869,7 +900,8 @@ export function EnrollmentWizard({
         discount: paidInOld ? 0 : discount,
         amountPaid: paidInOld ? 0 : paid,
         method,
-        paidToday: lateSale && paidToday,
+        paidToday: !paidInOld && paidOn === today && startDate < today,
+        ...(!paidInOld && !upgrading && paid > 0 ? { paidOn } : {}),
         notes,
         settings: settings.data,
         staff: { uid: user?.uid ?? "", name: user?.displayName || user?.email || "Staff" },
@@ -1197,7 +1229,10 @@ export function EnrollmentWizard({
                         type="date"
                         value={startDate}
                         disabled={oldLocked}
-                        onChange={(e) => setStartDate(e.target.value)}
+                        onChange={(e) => {
+                          setStartTouched(true);
+                          setStartDate(e.target.value);
+                        }}
                       />
                     </Field>
                   )}
@@ -1664,40 +1699,48 @@ export function EnrollmentWizard({
                         ))}
                       </div>
                     </Field>
-                    {lateSale && paid > 0 ? (
+                    {paid > 0 && !upgrading ? (
                       <Field
-                        label="When was it paid?"
-                        htmlFor="e-moneyday"
+                        label="Paid on"
+                        htmlFor="e-paidon"
                         className="col-span-2"
+                        error={errors["paidOn"] || paidOnProblem}
                         hint={
-                          paidToday
+                          paidOn === today
                             ? `Counted in today's Collected${method === "Cash" ? " and today's Day Book cash" : ""}.`
-                            : `The plan started on ${formatDateISO(startDate)}, before today: the money counts on that day, not today.${method === "Cash" ? " Cash handed over now? Choose Today, so it is in today's Day Book cash." : ""}`
+                            : `Counted in Collected on ${formatDateISO(paidOn)}${method === "Cash" ? ", in that day's Day Book cash" : ""}, not today.${followsPaidOn && startDate === paidOn ? " The plan starts that day too (change it in the Package step)." : ""}`
                         }
                       >
-                        <div className="flex flex-wrap gap-1.5" role="radiogroup" id="e-moneyday">
-                          {(
-                            [
-                              [false, `On ${formatDateISO(lateDay)} (first day)`],
-                              [true, "Today"],
-                            ] as const
-                          ).map(([v, label]) => (
-                            <button
-                              key={label}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Input
+                            id="e-paidon"
+                            type="date"
+                            min={openFrom}
+                            max={today}
+                            value={paidOn}
+                            onChange={(e) => setPaidOnText(e.target.value)}
+                            className="w-auto"
+                          />
+                          {paidOn !== today ? (
+                            <Button
                               type="button"
-                              role="radio"
-                              aria-checked={paidToday === v}
-                              onClick={() => setPaidToday(v)}
-                              className={cn(
-                                "rounded-lg border px-3 py-2 text-sm font-semibold",
-                                paidToday === v
-                                  ? "border-primary bg-primary text-primary-foreground"
-                                  : "border-border hover:bg-accent",
-                              )}
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setPaidOnText(today)}
                             >
-                              {label}
-                            </button>
-                          ))}
+                              Today
+                            </Button>
+                          ) : null}
+                          {lateDay !== today && paidOn !== lateDay ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setPaidOnText(lateDay)}
+                            >
+                              Plan&apos;s first day
+                            </Button>
+                          ) : null}
                         </div>
                       </Field>
                     ) : null}
@@ -1800,9 +1843,9 @@ export function EnrollmentWizard({
                     </div>
                   ))}
                 </dl>
-                {!paidInOld && lateSale && !paidToday && paid > 0 ? (
+                {!paidInOld && lateSale && paid > 0 ? (
                   <p className="mt-3 border-t border-background/20 pt-2 text-xs">
-                    Counted in Collected on {formatDateISO(lateDay)}
+                    Counted in Collected on {formatDateISO(paidOn)}
                   </p>
                 ) : null}
               </aside>

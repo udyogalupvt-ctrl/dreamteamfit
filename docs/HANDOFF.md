@@ -1,6 +1,39 @@
 # Handoff
 
-Last updated: 2026-10-09 (night: renewal of PT-only members, PT dates + PT discount, app update fix)
+Last updated: 2026-10-09 (late: PT-only reminders, phone refresh button, Paid on, October check)
+
+## 2026-10-09 (late): PT-only reminders, phone "Tap to refresh", "Paid on" at checkout, October check
+
+**State**
+- **PT-only renewal reminders:** `processRenewalReminders` reads PT plans (active/pending) with gym plans;
+  same one-per-member rule (the plan that ends last). PT reminder rows carry `ptAssignmentId`.
+- **Phone / tablet (< 1024 px) update button:** `src/components/layout/new-version-bar.tsx`, bottom centre,
+  16 px above the bottom tab bar (staff "Quick navigation" / portal "Sections"), else above the home bar;
+  top bar button and the toast only on larger screens.
+- **"Paid on" at checkout** (replaces "When was it paid? first day / Today"): date field, default = the
+  plan's first day when it started before today, else today; from the 1st of last month to today; not for
+  upgrades. A plan whose start date staff left alone (new joining / expired member) starts on the paid day;
+  a new member whose plan started earlier gets that day as `joinedOn`. Payment gets `paidOnChosen: true`
+  (late-sales tool never moves it). `latedates_local.py` updated to the field.
+- **October register vs app (read-only check, nothing changed):** app ₹1,57,070 (41 payments) vs sheet
+  received ₹1,54,949: +₹2,121 explained row by row (₹1 package prices ×26 −₹26; one member ₹2,500 monthly
+  in the app vs ₹300 PT day on the sheet +₹2,200; one ₹2,499 vs ₹2,000 +₹499; one ₹1,799 vs ₹1,750 +₹49;
+  one PT member's ₹6,000 renewal not entered, ₹1,000 old balance instead −₹5,000; 3 sheet rows not in the app
+  −₹4,600; one ₹8,999 paid in the app is "₹9,000 due" on the sheet +₹8,999). Modes: 3 October payments were
+  saved "paid in the old software" (₹14,499) though the sheet has them as PhonePe/cash; 2 part-cash
+  payments saved all UPI. Details in the chat reply of this date; data fixes left to the owner.
+  Read-only script: session scratchpad bc809a92… `prod_oct_money.mjs` (writes a local JSON only).
+- Checks: tsc + eslint clean, unit 295/295, build OK; emulator `paidon_local.py` 15/15 (new member paid
+  yesterday, staff-picked start kept, future refused, PT-only reminder from the morning job, phone button
+  16 px above the tab bar + tap reloads, desktop keeps the top button), latedates 26/26 (updated),
+  renew_pt 26/26, update 6/6, audit2 27/27, remove 39/39, plans_end 12/12, moneyfix 21/21, audit9 23/23.
+  Suites now accept "No gym membership here yet" (PT-only empty state).
+
+### Next
+1. Owner/front desk: fix the October rows listed (or ask Claude to do them in the owner's browser).
+2. Decide: package prices ₹1,999/₹2,499/₹9,999 vs the round amounts actually taken.
+3. Maybe build: split payment at checkout (part cash, part UPI); today: enter the UPI part, then
+   Collect balance in cash the same day.
 
 ## 2026-10-09 (night): owner-reported bugs (K. Mothilal renewal, PT dates/discount, Android app update)
 

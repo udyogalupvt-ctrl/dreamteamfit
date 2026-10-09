@@ -230,15 +230,22 @@ export async function processRenewalReminders() {
   const wa = await whatsappSettings();
   const today = localDate();
   const target = plus(today, Number(cfg.renewalDaysBefore));
-  const [members, clients] = await Promise.all([
+  const [members, ptPlans, clients] = await Promise.all([
     // Queued renewals are "pending" (or waiting for a thumb): they count as renewed too.
     db()
       .collection("memberships")
       .where("status", "in", ["active", "pending", "biometric_pending"])
       .get(),
+    // PT plans count too: a member whose plan here is PT only is reminded before it ends, and a
+    // PT plan running past the gym plan means the member is not due yet.
+    db().collection("ptAssignments").where("status", "in", ["active", "pending"]).get(),
     db().collection("clients").get(),
   ]);
-  const all = members.docs.map((x) => ({ id: x.id, ...x.data() }) as MembershipRow);
+  const ptIds = new Set(ptPlans.docs.map((x) => x.id));
+  const all = [
+    ...members.docs.map((x) => ({ id: x.id, ...x.data() }) as MembershipRow),
+    ...ptPlans.docs.map((x) => ({ id: x.id, ...x.data() }) as MembershipRow),
+  ];
   const cm = new Map(clients.docs.map((x) => [x.id, { id: x.id, ...x.data() } as ClientRow]));
   let sent = 0;
   // One per member, for the plan that ends last: none when already renewed (a later plan is
@@ -246,13 +253,19 @@ export async function processRenewalReminders() {
   for (const m of renewalReminderPlans(all, target)) {
     const c = cm.get(m.clientId);
     if (!c) continue;
+    const isPt = ptIds.has(m.id);
     const key = id(m.id, "renewal_7_days", today);
     const queued = await queue(
       "renewal",
       key,
       c,
       render(String(cfg.renewalTemplate), { name: c.fullName, expiryDate: pretty(m.endDate) }),
-      { membershipId: m.id, expiryDate: m.endDate, reminderDate: today, type: "renewal_7_days" },
+      {
+        ...(isPt ? { ptAssignmentId: m.id, membershipId: null } : { membershipId: m.id }),
+        expiryDate: m.endDate,
+        reminderDate: today,
+        type: "renewal_7_days",
+      },
     );
     if (!queued) continue;
     sent += 1;
@@ -263,7 +276,7 @@ export async function processRenewalReminders() {
       [c.fullName, wa.gymName, pretty(m.endDate)],
       wa,
       {
-        title: `Your package ends on ${pretty(m.endDate)}`,
+        title: `Your ${isPt ? "PT plan" : "package"} ends on ${pretty(m.endDate)}`,
         body: `Hi ${first(c.fullName)}, renew at the front desk to keep training without a break.`,
         path: "?tab=payments",
         tag: "renewal",
