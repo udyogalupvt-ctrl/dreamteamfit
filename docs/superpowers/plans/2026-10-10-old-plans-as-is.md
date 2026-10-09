@@ -109,6 +109,33 @@ Regressions: `remove`, `audit2`, `audit9`, `moneyfix`, `latedates`, `paidon`, `p
 ### Task 7: live run
 Backup (read-only dump of clients, memberships, ptAssignments, payments, invoices, publicInvoices, enrollments, cashDays, oldSoftwareMoves, recycleBin*, memberIds, oldDataIndex summary → scratchpad JSON, counts into HANDOFF only) → push main → verify `/api/version` → owner login (headless Playwright, creds from owner_login.txt, never printed) → preview → apply → verify EVERY old member with a fresh read-only script (`verify_asis.mjs`: for each old member with a running plan: app has exact name/start/end/price/paid/balance; no duplicate carried plans; every non-oldSoftware payment byte-identical to the backup except allowed `invoiceId` repoints; Day Book cashDays untouched; totals) → October comparison vs `october_check.md` → Telugu-English fix list → delete owner_login.txt (both copies) → HANDOFF.
 
+## As built (2026-10-10 overnight)
+
+- Mode is stored literally as `method: "Not recorded"` (type widened; NOT added to the checkout
+  choices; offered in Edit plan's old rows via `OLD_PAY_METHODS`). The This-month "Old software"
+  chip is gone: chips show the payment's real method.
+- `priceSnapshot` = the old "amount to be paid" (CFO earned value right), `durationDaysSnapshot`
+  real days (upgrade-credit maths safe).
+- The in-app punch decision (`decide()` in biometric.ts, `decideMemberAccess`) now counts active
+  PT plans like the machine's `entitled()` — migrated PT-only members log allowed, not "blocked".
+- Carry-first checkout: the banner + one-press carry replaced the lock; `e["oldCarry"]` refuses a
+  same-kind sale over a not-yet-carried old plan's days; after the carry the renew flow prices
+  from the day after the old end (existing renewMin).
+- The member app no longer lists a carried plan twice (portal oldHistory filtered).
+- `markPaidInOldSoftware` has no UI any more (kept only for legacy Undo); `OldSalesReview` is
+  read-only guidance; `add-old-plan-dialog.tsx` and `old-software-dialog.tsx` deleted
+  (`RemindOldBalance` moved to `old-paid-rows.tsx`).
+- Server engine details: per-member transactions re-plan inside the tx; move docs carry full
+  before-copies + created ids; undo refuses when any created doc's `updatedAt` moved past its
+  `createdAt` (money collected on a new balance bill is never lost) or a created member has new
+  records; `memberIds` reservation freed on undo; overlap marks never bump `updatedAt`;
+  door checks queued for changed members with a registered thumb; invoice numbers from
+  `settings/counters` + `settings/business.invoicePrefix`; Vercel `maxDuration` is already 60s
+  and every endpoint is paged (preview 120 phones, apply/undo 12 members).
+- Suites: `asis_local.py` (the whole decision table end to end + undo + idempotence + search +
+  carry-first + screenshots), `oldlock_local.py` rewritten carry-first; `renew_pt` B-case and
+  `audit2` D/E updated (Check & mark retired).
+
 ## Self-review notes
 - Spec item 10 (paper-book entries after the backup date) = staff work, out of scope — stated in the owner page copy.
 - Spec "show ONE screen preview first": superseded by the owner's overnight pre-approval; preview screenshots still taken for the morning.
