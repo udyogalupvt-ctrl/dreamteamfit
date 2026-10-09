@@ -14,7 +14,9 @@ import {
 } from "@/components/ui/select";
 import { useAccess } from "@/hooks/use-access";
 import { useAuth } from "@/hooks/use-auth";
+import { RemindOldBalance } from "@/components/clients/add-old-plan-dialog";
 import { formatDateISO, formatPrice } from "@/lib/format";
+import { isOldBalanceBill } from "@/lib/old-money";
 import { editBill, previewBillEdit, staffDiscountOf } from "@/services/bill-edit.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import {
@@ -41,11 +43,18 @@ export function EditBillDialog({
   const [discount, setDiscount] = useState(String(staffDiscountOf(i)));
   const [dueDate, setDueDate] = useState(i.dueDate);
   const [notes, setNotes] = useState(i.notes);
+  const oldBalanceBill = isOldBalanceBill(i);
+  const [remind, setRemind] = useState(i.remindOldBalance === true);
   const [reason, setReason] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("Cash");
   const [error, setError] = useState("");
   const d = discount.trim() === "" ? 0 : Number(discount);
-  const form = { discount: Number.isFinite(d) ? d : -1, dueDate, notes };
+  const form = {
+    discount: Number.isFinite(d) ? d : -1,
+    dueDate,
+    notes,
+    ...(oldBalanceBill ? { remindOldBalance: remind } : {}),
+  };
   const pv = previewBillEdit(i, form, settings);
   const fromPlan = !!(i.membershipId || i.ptAssignmentId);
 
@@ -158,7 +167,11 @@ export function EditBillDialog({
           <Field
             label="Member will pay the balance on"
             htmlFor="bill-due"
-            hint="The payment reminder goes out that morning."
+            hint={
+              oldBalanceBill && !remind && i.amountPaid <= 0
+                ? "No WhatsApp reminder until the balance is confirmed (below)."
+                : "The payment reminder goes out that morning."
+            }
           >
             <Input
               id="bill-due"
@@ -168,6 +181,9 @@ export function EditBillDialog({
               className="max-w-48"
             />
           </Field>
+        ) : null}
+        {oldBalanceBill && pv.balance > 0 ? (
+          <RemindOldBalance id="bill-remind-old" checked={remind} onChange={setRemind} />
         ) : null}
         <Field label="Note on the bill" htmlFor="bill-notes">
           <Textarea

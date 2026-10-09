@@ -1,6 +1,41 @@
 # Handoff
 
-Last updated: 2026-10-09 (midday: Remove merged, pushed, live; rules deployed)
+Last updated: 2026-10-09 (afternoon: audit items 1, 3, 5, 6 fixed on branch `audit-fixes-1`, not merged / pushed)
+
+## 2026-10-09 (afternoon): migration audit items 1, 3, 5, 6 (branch `audit-fixes-1`, local)
+
+**State**
+- Branch `audit-fixes-1` from main 58b7b0d. NOT merged, NOT pushed. No rules change needed
+  (invoices aren't field-restricted), so nothing to deploy besides the code.
+- **1 Old balances:** the morning cron skips a bill whose only line is "Balance from the old
+  software" unless staff ticked **Send WhatsApp reminders for this balance** (bill field
+  `remindOldBalance`) or part of it was collected here. The tick is in Add old plan, the join
+  wizard ("Paid in the old software" with a balance) and **Edit bill** (old-balance bills only;
+  not copied to the public bill link). Existing old-balance bills in production have no tick, so
+  their reminders stop until staff confirm. Rule: `src/lib/reminders.ts` `remindsBalance`.
+- **3 Expiry reminders:** one per member, for the plan that ends last (`renewalReminderPlans`);
+  two running plans ending the same day = one message; same plan picked every run.
+- **5 Refund cap:** always capped now: what was paid here for these plans + what was paid in the
+  old software (old payment records first, else the plan's `oldSoftwarePaid`; a gym+PT pair counts
+  once) − refunds already given (`refundLimit` in `src/lib/plan-money.ts`). `paidForPlans` also adds
+  the old money for an old plan that has a balance bill. Cancel box shows "₹X of it in the old software".
+- **6 Joining incentive:** skips old-balance, closed and refunded bills, and sales later found paid
+  in full in the old software (`countsAsJoining`, `staff-pay-section.tsx`).
+- Checks: unit 257/257 (`npm run test:cfo`, new `reminders.test.ts` + refund tests in
+  `plan-money.test.ts`), tsc + eslint clean, `npm run build` OK. Emulator suite `audit_local.py`
+  22/22 (scratchpad e7851dff…, `bash regress.sh audit_local.py`), screenshots light/dark 390/1440 in
+  its `shots/`. Regression: plans_end 12/12, remove 39/39, moneyfix 21/21; undo_refund passed its first 18
+  checks then hit its known line-142 crash (as before).
+- Not browser-tested: the tick in Add old plan and the join wizard (needs old-software CSV data);
+  they reuse the Edit bill component and tsc covers the wiring.
+
+### Next
+1. User: OK to merge `audit-fixes-1` into main and push (Vercel deploys it). Tell the front desk:
+   old balances get no WhatsApp reminders until someone ticks the box on the bill (Edit bill).
+2. Fix audit items 2, 4 and 8 ([audit](MIGRATION_AUDIT_2026-10-09.md)).
+3. Fix `undo_refund_local.py` (line 142).
+4. Still open from before: owner removes K. Sri Devi's cancelled PT; M. Rohith's package (owner);
+   P. Sai Ram clean-up.
 
 ## 2026-10-09 (midday): Remove is live
 

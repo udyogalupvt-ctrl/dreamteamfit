@@ -28,9 +28,11 @@ import { firestoreErrorMessage } from "@/services/firestore.service";
 import {
   cancelPlans,
   paidForPlans,
+  refundPlans,
   restoreCancellation,
   splitRefund,
 } from "@/services/plan-cancel.service";
+import { refundLimit } from "@/lib/plan-money";
 import { subscribeClientPtAssignments } from "@/services/pt.service";
 import {
   PAYMENT_METHODS,
@@ -126,21 +128,20 @@ export function CancelPlansDialog({
   const ofThese = (x: { membershipId: string | null; ptAssignmentId: string | null }) =>
     (!!x.membershipId && ids.has(x.membershipId)) ||
     (!!x.ptAssignmentId && ids.has(x.ptAssignmentId));
-  // The most that can be given back: what was paid for these plans (their bills, after any
-  // discount), less refunds already given for them. Plans whose bills aren't linked to them: what
-  // the member paid in all, less all refunds. No bills at all (e.g. from the old software): no
-  // limit to check against.
+  // The most that can be given back: what was paid for these plans here (their bills, after any
+  // discount) and in the old software, less refunds already given for them.
   const paid = paidForPlans(invoices, plans, pts);
   const theirBills = invoices.filter(ofThese);
-  const capped = invoices.length > 0;
   const discount = theirBills.reduce((n, i) => n + Math.max(0, i.discount), 0);
-  const paidForThese = theirBills.length
-    ? [...ids].reduce((n, id) => n + (paid[id] ?? 0), 0)
-    : invoices.reduce((n, i) => n + Math.max(0, i.amountPaid), 0);
-  const refundedBefore = pays.data
-    .filter((p) => p.amount < 0 && (!theirBills.length || ofThese(p)))
-    .reduce((n, p) => n - p.amount, 0);
-  const maxRefund = Math.max(0, paidForThese - refundedBefore);
+  const limit = refundLimit(refundPlans(plans, pts), invoices, pays.data);
+  const refundedBefore = limit.refunded;
+  const maxRefund = limit.max;
+  const limitNotes = [
+    limit.old ? `${formatPrice(limit.old)} paid in the old software` : "",
+    refundedBefore ? `${formatPrice(refundedBefore)} already refunded` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
   const amount = refund.trim() === "" ? 0 : Number(refund);
   const parts = Number.isFinite(amount) && amount > 0 ? splitRefund(amount, plans, pts, paid) : [];
   const cuts = parts.filter((p) => p.trainerCut > 0);
@@ -158,11 +159,15 @@ export function CancelPlansDialog({
   const submit = async () => {
     if (!Number.isFinite(amount) || amount < 0)
       return setError("Enter the refund in rupees, or leave it empty.");
-    if (amount > 0 && capped && amount > maxRefund)
+    // The cap counts refunds already given: wait for them.
+    if (amount > 0 && pays.loading) return setError("Still loading their payments: try again.");
+    if (amount > 0 && amount > maxRefund)
       return setError(
         maxRefund
-          ? `More than they paid${theirBills.length ? ` for ${these}` : ""} (${formatPrice(maxRefund)}).`
-          : "Everything they paid has been refunded already.",
+          ? `More than they paid for ${these} (${formatPrice(maxRefund)}).`
+          : refundedBefore
+            ? "Everything they paid has been refunded already."
+            : `Nothing was paid for ${these} here or in the old software.`,
       );
     setError("");
     try {
@@ -253,7 +258,7 @@ export function CancelPlansDialog({
               <span className="tabular-nums">{formatPrice(p.ptPrice)}</span>
             </li>
           ))}
-          {theirBills.length ? (
+          {theirBills.length || limit.old ? (
             <li className="flex justify-between gap-3 bg-muted/50 p-3">
               <span className="min-w-0">
                 <b>Paid for {these}</b>
@@ -262,8 +267,13 @@ export function CancelPlansDialog({
                     after the {formatPrice(discount)} discount on the bill
                   </span>
                 ) : null}
+                {limit.old ? (
+                  <span className="text-meta block">
+                    {formatPrice(limit.old)} of it in the old software
+                  </span>
+                ) : null}
               </span>
-              <b className="tabular-nums">{formatPrice(paidForThese)}</b>
+              <b className="tabular-nums">{formatPrice(limit.here + limit.old)}</b>
             </li>
           ) : null}
         </ul>
@@ -288,11 +298,7 @@ export function CancelPlansDialog({
             <Field
               label="Refund given back ₹ (optional)"
               htmlFor="cancel-refund"
-              hint={
-                capped
-                  ? `Empty = no refund. Up to ${formatPrice(maxRefund)}${refundedBefore ? ` (${formatPrice(refundedBefore)} already refunded)` : ""}.`
-                  : "Empty = no refund."
-              }
+              hint={`Empty = no refund. Up to ${formatPrice(maxRefund)}${limitNotes ? ` (${limitNotes})` : ""}.`}
             >
               <Input
                 id="cancel-refund"
@@ -303,7 +309,7 @@ export function CancelPlansDialog({
                 value={refund}
                 onChange={(e) => setRefund(e.target.value)}
               />
-              {capped && maxRefund > 0 ? (
+              {maxRefund > 0 ? (
                 <button
                   type="button"
                   className="cursor-pointer justify-self-start text-sm font-semibold underline underline-offset-2"

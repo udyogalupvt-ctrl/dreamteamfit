@@ -623,6 +623,12 @@ export interface Invoice extends BaseDoc {
   upgradeCredit: number;
   /** Paid in the old software (part of `discount`, never counted as money here). */
   oldSoftwareCredit?: number;
+  /**
+   * Balance bill of a plan carried over from the old software: staff checked the balance is still
+   * owed, so the daily WhatsApp balance reminders go out (off = none; the old records were often
+   * stale).
+   */
+  remindOldBalance?: boolean;
   /** Corrections after the bill was made (discount, pay-by date, note). */
   edits: RecordEdit[];
 }

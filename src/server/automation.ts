@@ -8,6 +8,7 @@ import { FieldValue, type DocumentData } from "firebase-admin/firestore";
 import { db, json, localDate } from "./admin";
 import { runCfoMorning } from "./cfo";
 import { memberOwner, pushTo, type PushMessage } from "./push";
+import { remindsBalance, renewalReminderPlans } from "@/lib/reminders";
 import { sendTemplateMessage, whatsappNumber } from "./whatsapp";
 
 type Kind = "renewal" | "birthday" | "absence" | "payment_due";
@@ -233,18 +234,9 @@ export async function processRenewalReminders() {
   const all = members.docs.map((x) => ({ id: x.id, ...x.data() }) as MembershipRow);
   const cm = new Map(clients.docs.map((x) => [x.id, { id: x.id, ...x.data() } as ClientRow]));
   let sent = 0;
-  for (const m of all.filter((x) => x.status === "active" && x.endDate === target)) {
-    // Already renewed: a later plan exists (running, queued, or waiting for the thumb).
-    if (
-      all.some(
-        (x) =>
-          x.clientId === m.clientId &&
-          x.id !== m.id &&
-          x.status !== "cancelled" &&
-          x.endDate > m.endDate,
-      )
-    )
-      continue;
+  // One per member, for the plan that ends last: none when already renewed (a later plan is
+  // running, queued or waiting for the thumb), one when two plans end the same day.
+  for (const m of renewalReminderPlans(all, target)) {
     const c = cm.get(m.clientId);
     if (!c) continue;
     const key = id(m.id, "renewal_7_days", today);
@@ -337,6 +329,15 @@ export async function processPaymentDueReminders() {
     const inv = b.data();
     const balance = Number(inv["balanceDue"] ?? 0);
     if (!(balance > 0) || inv["paymentStatus"] === "refunded" || !inv["clientId"]) continue;
+    // A balance carried over from the old software only once staff confirmed it is still owed.
+    if (
+      !remindsBalance({
+        items: Array.isArray(inv["items"]) ? (inv["items"] as { name: string }[]) : [],
+        amountPaid: Number(inv["amountPaid"] ?? 0),
+        remindOldBalance: inv["remindOldBalance"] === true,
+      })
+    )
+      continue;
     const cs = await db()
       .doc(`clients/${String(inv["clientId"])}`)
       .get();

@@ -126,6 +126,11 @@ export interface EnrollmentInput {
      * day (the thumb works until then; they renew here after).
      */
     end?: string;
+    /**
+     * Staff checked the balance is still owed: its bill gets the daily WhatsApp balance reminders.
+     * Left out = no reminders (old records were often not updated when the balance was paid there).
+     */
+    remind?: boolean;
   } | null;
 }
 
@@ -562,6 +567,7 @@ export async function enrollMember(input: EnrollmentInput) {
         items,
         ...money,
         ...breakdown,
+        ...(old ? { remindOldBalance: old.remind === true } : {}),
         paymentsTracked: true,
         paymentStatus,
         paymentMethod: input.method,

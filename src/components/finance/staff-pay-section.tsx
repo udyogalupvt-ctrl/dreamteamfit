@@ -18,6 +18,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
+import { isOldBalanceBill } from "@/lib/old-money";
 import { subscribePayments } from "@/services/finance.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { subscribeInvoices } from "@/services/invoices.service";
@@ -44,6 +45,17 @@ import {
   type StaffPaymentKind,
   type StaffPrivate,
 } from "@/types/models";
+
+/**
+ * A bill that is a real sale here: not the balance bill of a plan carried over from the old
+ * software (sold there), not a cancelled sale (closed or refunded), and not a sale here later found
+ * to be paid in full in the old software.
+ */
+const countsAsJoining = (i: Invoice) =>
+  !isOldBalanceBill(i) &&
+  i.paymentStatus !== "closed" &&
+  i.paymentStatus !== "refunded" &&
+  !((i.oldSoftwareCredit ?? 0) > 0 && i.amountPaid <= 0);
 
 interface Row {
   staff: Staff;
@@ -89,7 +101,8 @@ export function StaffPaySection() {
             (i) =>
               i.counsellorId === s.id &&
               i.invoiceDate.startsWith(month) &&
-              (i.membershipId || i.ptAssignmentId),
+              (i.membershipId || i.ptAssignmentId) &&
+              countsAsJoining(i),
           ).length;
           const type = pay?.incentiveType ?? "none";
           const value = pay?.incentiveValue ?? 0;

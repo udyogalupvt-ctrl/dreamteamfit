@@ -3,6 +3,7 @@ import { History } from "lucide-react";
 import { toast } from "sonner";
 import { Field, FormDialog } from "@/components/common/form-dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -95,6 +96,7 @@ export function AddOldPlanDialog({
   const [pkgId, setPkgId] = useState("");
   const [trainerId, setTrainerId] = useState("");
   const [payBy, setPayBy] = useState("");
+  const [remind, setRemind] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -102,6 +104,7 @@ export function AddOldPlanDialog({
     setPkgId("");
     setTrainerId("");
     setPayBy(addDaysISO(todayISO(), 7));
+    setRemind(false);
     setError("");
   }, [open]);
   const list: { id: string; name: string; durationDays: number; price: number }[] = pt
@@ -169,7 +172,7 @@ export function AddOldPlanDialog({
         nextPaymentDate: plan.balance > 0 ? payBy : null,
         memberId: client.clientCode,
         upgrade: null,
-        oldSoftware: { balance: plan.balance, paid, billNo: plan.bill, end: plan.end },
+        oldSoftware: { balance: plan.balance, paid, billNo: plan.bill, end: plan.end, remind },
       });
       onClose();
       toast.success("Plan from the old software added", {
@@ -257,6 +260,7 @@ export function AddOldPlanDialog({
             />
           </Field>
         ) : null}
+        {plan.balance > 0 ? <RemindOldBalance checked={remind} onChange={setRemind} /> : null}
         {error ? (
           <p role="alert" className="text-sm font-semibold text-destructive">
             {error}
@@ -264,5 +268,41 @@ export function AddOldPlanDialog({
         ) : null}
       </div>
     </FormDialog>
+  );
+}
+
+/**
+ * The old software's balance is often stale (paid there, never updated), so the daily WhatsApp
+ * balance reminders go out only when staff tick this after checking with the member.
+ */
+export function RemindOldBalance({
+  checked,
+  onChange,
+  id = "old-plan-remind",
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  id?: string;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm"
+    >
+      <Checkbox
+        id={id}
+        checked={checked}
+        onCheckedChange={(v) => onChange(v === true)}
+        className="mt-0.5"
+      />
+      <span>
+        <span className="block font-semibold">Send WhatsApp reminders for this balance</span>
+        <span className="text-meta">
+          Tick only after checking with the member that it is still owed: the old software was not
+          always updated when a balance was paid. Unticked, the bill still shows the balance to
+          collect at the desk.
+        </span>
+      </span>
+    </label>
   );
 }

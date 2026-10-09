@@ -8,6 +8,7 @@ import {
   derivePaymentStatus,
 } from "@/lib/invoice-utils";
 import type { BusinessBillingSettings, Invoice, PaymentMethod, RecordEdit } from "@/types/models";
+import { isOldBalanceBill } from "@/lib/old-money";
 import { allocatePayment } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
 
@@ -23,6 +24,8 @@ export interface BillEditForm {
   discount: number;
   dueDate: string;
   notes: string;
+  /** Old-software balance bill only: send the daily WhatsApp balance reminders. */
+  remindOldBalance?: boolean;
 }
 
 /** The discount staff gave, without credits (upgraded plan's unused days, old software money). */
@@ -64,6 +67,14 @@ export function previewBillEdit(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f.dueDate)) error ||= "Pick the pay-by date.";
   }
   if (f.notes.trim() !== i.notes.trim()) changes.push("Note changed");
+  const remindChanged =
+    isOldBalanceBill(i) &&
+    f.remindOldBalance !== undefined &&
+    f.remindOldBalance !== (i.remindOldBalance === true);
+  if (remindChanged)
+    changes.push(
+      f.remindOldBalance ? "WhatsApp balance reminders: on" : "WhatsApp balance reminders: off",
+    );
   return { changes, error, discountChanged, totals, balance: Math.max(0, balance), refund };
 }
 
@@ -107,6 +118,9 @@ export async function editBill(input: {
     const shared: Record<string, unknown> = {
       notes: form.notes.trim().slice(0, 500),
       ...(pv.balance > 0 ? { dueDate: form.dueDate } : {}),
+      ...(isOldBalanceBill(i) && form.remindOldBalance !== undefined
+        ? { remindOldBalance: form.remindOldBalance }
+        : {}),
       updatedAt: serverTimestamp(),
     };
     if (pv.discountChanged) {
@@ -169,7 +183,8 @@ export async function editBill(input: {
       edits: [...(Array.isArray(d["edits"]) ? d["edits"] : []), edit],
     });
     if (i.publicToken) {
-      const { notes: _n, ...pub } = shared;
+      // The reminder switch is for staff only: not on the member's bill link.
+      const { notes: _n, remindOldBalance: _r, ...pub } = shared;
       tx.update(doc(db, COLLECTIONS.publicInvoices, i.publicToken), pub);
     }
   });

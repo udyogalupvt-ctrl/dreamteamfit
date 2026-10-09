@@ -64,6 +64,7 @@ export const mapInvoice = (id: string, d: DocumentData): Invoice => ({
   counsellorName: d["counsellorName"] ?? "",
   upgradeCredit: Number(d["upgradeCredit"] ?? 0),
   oldSoftwareCredit: Number(d["oldSoftwareCredit"] ?? 0),
+  remindOldBalance: d["remindOldBalance"] === true,
   edits: Array.isArray(d["edits"]) ? d["edits"] : [],
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),

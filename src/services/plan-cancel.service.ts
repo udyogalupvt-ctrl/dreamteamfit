@@ -10,6 +10,7 @@ import {
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { todayISO } from "@/lib/format";
+import { billSharePaid, type RefundPlan } from "@/lib/plan-money";
 import type {
   Client,
   Invoice,
@@ -46,7 +47,7 @@ export interface RefundPart {
  * What was actually paid for each plan: its bill's payments shared out by price, so a discount or
  * a part payment counts (₹2,500 gym + ₹12,000 PT − ₹2,500 discount, ₹12,000 paid → gym ₹2,069,
  * PT ₹9,931). A plan without a bill here counts at its price; one paid in the old software at what
- * was paid there, when that is known.
+ * was paid there, when that is known, plus what was collected here on its balance bill.
  */
 export function paidForPlans(
   invoices: Pick<
@@ -56,25 +57,43 @@ export function paidForPlans(
   plans: Membership[],
   pts: PtAssignment[],
 ): Record<string, number> {
-  const share = (bill: (typeof invoices)[number], gross: number) =>
-    bill.subtotal > 0
-      ? Math.round((Math.max(0, bill.amountPaid) * Math.min(gross, bill.subtotal)) / bill.subtotal)
-      : 0;
+  const old = (x: { paidInOldSoftware?: boolean; oldSoftwarePaid?: number }) =>
+    x.paidInOldSoftware ? Math.max(0, Number(x.oldSoftwarePaid) || 0) : 0;
   const paid: Record<string, number> = {};
   for (const m of plans) {
     const bill = invoices.find((i) => i.membershipId === m.id);
     paid[m.id] = bill
-      ? share(bill, bill.membershipGross || m.priceSnapshot)
-      : Math.max(0, m.paidInOldSoftware && m.oldSoftwarePaid ? m.oldSoftwarePaid : m.priceSnapshot);
+      ? billSharePaid("gym", m.priceSnapshot, bill) + old(m)
+      : Math.max(0, old(m) || m.priceSnapshot);
   }
   for (const p of pts) {
     const bill = invoices.find((i) => i.ptAssignmentId === p.id);
     paid[p.id] = bill
-      ? share(bill, bill.ptGross || p.ptPrice)
-      : Math.max(0, p.paidInOldSoftware && p.oldSoftwarePaid ? p.oldSoftwarePaid : p.ptPrice);
+      ? billSharePaid("pt", p.ptPrice, bill) + old(p)
+      : Math.max(0, old(p) || p.ptPrice);
   }
   return paid;
 }
+
+/** Plans in the shape `refundLimit` reads. */
+export const refundPlans = (plans: Membership[], pts: PtAssignment[]): RefundPlan[] => [
+  ...plans.map((m) => ({
+    id: m.id,
+    kind: "gym" as const,
+    price: m.priceSnapshot,
+    startDate: m.startDate,
+    paidInOldSoftware: m.paidInOldSoftware,
+    oldSoftwarePaid: m.oldSoftwarePaid,
+  })),
+  ...pts.map((p) => ({
+    id: p.id,
+    kind: "pt" as const,
+    price: p.ptPrice,
+    startDate: p.startDate,
+    paidInOldSoftware: p.paidInOldSoftware,
+    oldSoftwarePaid: p.oldSoftwarePaid,
+  })),
+];
 
 /**
  * Splits one refund over the plans by what was paid for each (so it can be shown and booked per

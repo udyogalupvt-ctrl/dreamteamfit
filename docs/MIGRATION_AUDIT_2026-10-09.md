@@ -3,7 +3,7 @@
 Read-only code sweep. Worst first. Tags: **[MESSAGE]** a member is contacted, **[MONEY]** books or payouts change, **[DISPLAY]** screen only.
 Each item ends with the proposed fix.
 
-1. **[MESSAGE] Balance-due reminders go out for old balances.**
+1. **FIXED (audit-fixes-1)** **[MESSAGE] Balance-due reminders go out for old balances.**
    - `src/server/automation.ts:330-373` picks every bill with `dueDate` in the next 3 days (max 7) and `balanceDue > 0`.
    - It never skips an old-balance bill (`isOldBalanceBill`, `src/lib/old-money.ts`). That bill comes from the CSV "Balance Amount", which can be stale: the money was often paid back then.
    - The due date defaults to today + 7 (`add-old-plan-dialog.tsx:104`).
@@ -13,7 +13,7 @@ Each item ends with the proposed fix.
    - Two copies of one old plan both count their `oldSoftwarePaid`. The backfill (`old-money.ts:314-401`) holds back only cancelled plans with no refund.
    - A normal sale over a carried-over plan isn't checked in `enrollMember`, and `prevActive` silently expires the old plan (`enrollment.service.ts:404`).
    - Fix: warn at sale and save time when plans overlap. Owner list "Plans that overlap" on Income & expenses. **Remove (added by mistake)** for the duplicate (being built).
-3. **[MESSAGE] Expiry reminders double up or go missing.**
+3. **FIXED (audit-fixes-1)** **[MESSAGE] Expiry reminders double up or go missing.**
    - `automation.ts:236-247`: two active plans with the same end date mean 2 renewal messages.
    - A stray duplicate that ends later hides the reminder for the real plan.
    - Fix: one reminder per member, based on the member's latest-ending plan.
@@ -22,10 +22,10 @@ Each item ends with the proposed fix.
    - It only matches the uploaded CSV, never the old plans already in the app.
    - Without a CSV match, it flags only sales typed in 7 or more days after the plan started.
    - Fix: include PT, and compare with plans already in the app.
-5. **[MONEY] A refund on a member with no bills here has no limit** (`plans-control.tsx`, `capped = invoices.length > 0`).
+5. **FIXED (audit-fixes-1)** **[MONEY] A refund on a member with no bills here has no limit** (`plans-control.tsx`, `capped = invoices.length > 0`).
    - Example: ₹50,000 typed for a ₹5,000 old plan goes through and lowers Day Book cash.
    - Fix: cap at the old-software paid amount (or the plan price).
-6. **[MONEY] "Fixed ₹ per joining" incentive counts old-balance bills as joinings** (`staff-pay-section.tsx:88-93`; the bill gets the old counsellor at `enrollment.service.ts:573`).
+6. **FIXED (audit-fixes-1)** **[MONEY] "Fixed ₹ per joining" incentive counts old-balance bills as joinings** (`staff-pay-section.tsx:88-93`; the bill gets the old counsellor at `enrollment.service.ts:573`).
    - Closed and refunded bills count too.
    - Fix: skip old-balance, closed and refunded bills.
 7. **[MONEY, reporting] The CFO values migrated plans at today's package price** (`cfo-data.ts:137`).

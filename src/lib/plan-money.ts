@@ -91,3 +91,92 @@ export function planSoldFor(
   }
   return planMoney(kind, plan.price, bill)?.value ?? Math.max(0, plan.price);
 }
+
+/* ------------------------------------------------------------- the most a refund can be */
+
+export interface RefundPlan {
+  id: string;
+  kind: "gym" | "pt";
+  price: number;
+  startDate: string;
+  paidInOldSoftware?: boolean | undefined;
+  oldSoftwarePaid?: number | undefined;
+}
+
+export interface RefundBill {
+  membershipId: string | null;
+  ptAssignmentId: string | null;
+  subtotal: number;
+  amountPaid: number;
+  membershipGross: number;
+  ptGross: number;
+}
+
+export interface RefundPayment {
+  amount: number;
+  oldSoftware?: boolean | undefined;
+  membershipId: string | null;
+  ptAssignmentId: string | null;
+}
+
+/**
+ * A plan's share of what was paid on its bill here, by price. A bill that says how much of it was
+ * gym and how much PT uses that, even when one is 0 (a gym + PT balance bill from the old software
+ * is all "gym"), so the same payment is never counted for both plans.
+ */
+export function billSharePaid(kind: "gym" | "pt", price: number, bill: RefundBill) {
+  if (!(bill.subtotal > 0)) return 0;
+  const split = (bill.membershipGross || 0) + (bill.ptGross || 0) > 0;
+  const gross = split ? (kind === "gym" ? bill.membershipGross : bill.ptGross) || 0 : price;
+  return Math.round(
+    (Math.max(0, bill.amountPaid) * Math.min(Math.max(0, gross), bill.subtotal)) / bill.subtotal,
+  );
+}
+
+/**
+ * The most that can be given back when these plans are cancelled: what was paid for them here (their
+ * bills' share), plus what was paid for them in the old software, less refunds already given for them.
+ * A plan with no bill here and nothing from the old software counts at its price.
+ * Old-software money is read from its payment records (one per old plan, a gym + PT pair shares
+ * one), else from the plan; a pair without records counts once.
+ */
+export function refundLimit(
+  plans: RefundPlan[],
+  bills: RefundBill[],
+  payments: RefundPayment[],
+): { here: number; old: number; refunded: number; max: number } {
+  const ids = new Set(plans.map((p) => p.id));
+  const linked = (x: { membershipId: string | null; ptAssignmentId: string | null }) =>
+    (!!x.membershipId && ids.has(x.membershipId)) ||
+    (!!x.ptAssignmentId && ids.has(x.ptAssignmentId));
+  let here = 0;
+  for (const p of plans) {
+    const bill = bills.find((b) =>
+      p.kind === "gym" ? b.membershipId === p.id : b.ptAssignmentId === p.id,
+    );
+    if (bill) here += billSharePaid(p.kind, p.price, bill);
+    else if (!p.paidInOldSoftware) here += Math.max(0, p.price);
+  }
+  const oldDocs = payments.filter((x) => x.oldSoftware && x.amount > 0 && linked(x));
+  let old = oldDocs.reduce((n, x) => n + x.amount, 0);
+  const covered = new Set(oldDocs.flatMap((x) => [x.membershipId, x.ptAssignmentId]));
+  const seen = new Set<string>();
+  for (const p of [...plans].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "gym" ? -1 : 1))) {
+    const paid = Math.max(0, Number(p.oldSoftwarePaid) || 0);
+    if (!p.paidInOldSoftware || !paid || covered.has(p.id)) continue;
+    // Sold together in the old software: the gym and PT plans both carry the whole amount.
+    const key = `${p.startDate}|${paid}`;
+    if (p.kind === "pt" && seen.has(key)) continue;
+    seen.add(key);
+    old += paid;
+  }
+  const refunded = payments
+    .filter((x) => x.amount < 0 && linked(x))
+    .reduce((n, x) => n - x.amount, 0);
+  return {
+    here: round(here),
+    old: round(old),
+    refunded: round(refunded),
+    max: round(Math.max(0, here + old - refunded)),
+  };
+}

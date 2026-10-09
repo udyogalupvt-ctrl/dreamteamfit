@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { planMoney, planSoldFor, type PlanBill } from "./plan-money.ts";
+import {
+  billSharePaid,
+  planMoney,
+  planSoldFor,
+  refundLimit,
+  type PlanBill,
+  type RefundBill,
+  type RefundPlan,
+} from "./plan-money.ts";
 
 const bill = (over: Partial<PlanBill> = {}): PlanBill => ({
   subtotal: 1999,
@@ -135,4 +143,93 @@ test("a sale here later marked 'paid in the old software': the whole plan, not j
     oldSoftwareCredit: 1500,
   });
   assert.equal(planSoldFor("gym", { ...plan, oldSoftwarePaid: 1500 }, whole), 2000);
+});
+
+/* ------------------------------------------------------------------------- refundLimit */
+
+const gymPlan = (over: Partial<RefundPlan> = {}): RefundPlan => ({
+  id: "g1",
+  kind: "gym",
+  price: 5000,
+  startDate: "2026-09-01",
+  ...over,
+});
+const ptPlan = (over: Partial<RefundPlan> = {}): RefundPlan => ({
+  id: "p1",
+  kind: "pt",
+  price: 12000,
+  startDate: "2026-09-01",
+  ...over,
+});
+const rbill = (over: Partial<RefundBill> = {}): RefundBill => ({
+  membershipId: "g1",
+  ptAssignmentId: null,
+  subtotal: 5000,
+  amountPaid: 5000,
+  membershipGross: 5000,
+  ptGross: 0,
+  ...over,
+});
+
+test("audit 5: an old plan with no bill here is capped at what was paid in the old software", () => {
+  const plan = gymPlan({ paidInOldSoftware: true, oldSoftwarePaid: 5000 });
+  assert.equal(refundLimit([plan], [], []).max, 5000);
+});
+
+test("old money is read from its payment record when there is one (not counted twice)", () => {
+  const plan = gymPlan({ paidInOldSoftware: true, oldSoftwarePaid: 5000 });
+  const doc = { amount: 4500, oldSoftware: true, membershipId: "g1", ptAssignmentId: null };
+  assert.equal(refundLimit([plan], [], [doc]).max, 4500);
+});
+
+test("old plan with a balance bill: old money + what was collected on the balance here", () => {
+  const plan = gymPlan({ paidInOldSoftware: true, oldSoftwarePaid: 4000 });
+  const bill = rbill({ subtotal: 1000, amountPaid: 600, membershipGross: 1000 });
+  const r = refundLimit([plan], [bill], []);
+  assert.deepEqual(r, { here: 600, old: 4000, refunded: 0, max: 4600 });
+});
+
+test("a gym + PT pair from the old software counts its shared money once", () => {
+  const g = gymPlan({ paidInOldSoftware: true, oldSoftwarePaid: 15000 });
+  const p = ptPlan({ paidInOldSoftware: true, oldSoftwarePaid: 15000 });
+  assert.equal(refundLimit([g, p], [], []).old, 15000);
+  const doc = { amount: 15000, oldSoftware: true, membershipId: "g1", ptAssignmentId: "p1" };
+  assert.equal(refundLimit([g, p], [], [doc]).old, 15000);
+});
+
+test("a gym + PT balance bill (all of it on gym) is not counted for the PT plan too", () => {
+  const bill = rbill({
+    ptAssignmentId: "p1",
+    subtotal: 2000,
+    amountPaid: 2000,
+    membershipGross: 2000,
+  });
+  assert.equal(billSharePaid("gym", 5000, bill), 2000);
+  assert.equal(billSharePaid("pt", 12000, bill), 0);
+  const g = gymPlan({ paidInOldSoftware: true, oldSoftwarePaid: 0 });
+  const p = ptPlan({ paidInOldSoftware: true, oldSoftwarePaid: 0 });
+  assert.equal(refundLimit([g, p], [bill], []).max, 2000);
+});
+
+test("a sale here: its bill's share, less refunds already given for it", () => {
+  const bill = rbill({
+    ptAssignmentId: "p1",
+    subtotal: 14500,
+    amountPaid: 12000,
+    membershipGross: 2500,
+    ptGross: 12000,
+  });
+  const refund = { amount: -1000, membershipId: "g1", ptAssignmentId: null };
+  const other = { amount: -700, membershipId: "x", ptAssignmentId: null };
+  const r = refundLimit([gymPlan()], [bill], [refund, other]);
+  assert.deepEqual(r, { here: 2069, old: 0, refunded: 1000, max: 1069 });
+});
+
+test("a plan with no bill and nothing from the old software counts at its price", () => {
+  assert.equal(refundLimit([gymPlan()], [rbill({ membershipId: "other" })], []).max, 5000);
+});
+
+test("a bill without the gym/PT split falls back to the price", () => {
+  const bill = rbill({ membershipGross: 0, ptGross: 0, subtotal: 5000, amountPaid: 2500 });
+  assert.equal(billSharePaid("gym", 5000, bill), 2500);
 });

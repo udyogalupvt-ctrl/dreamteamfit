@@ -73,6 +73,7 @@ import { saleMoneyDay } from "@/lib/late-sales";
 import { planSoldFor } from "@/lib/plan-money";
 import { cashOpenFrom } from "@/services/finance.service";
 import { OldPaidRows } from "@/components/clients/old-paid-rows";
+import { RemindOldBalance } from "@/components/clients/add-old-plan-dialog";
 import {
   cleanMemberId,
   findClientsByPhone,
@@ -175,6 +176,8 @@ interface Draft {
   /** Moving from the old software: plan paid there; "" = the old plan's balance. */
   paidOld?: boolean;
   oldBalance?: string;
+  /** The old balance was checked with the member: send the WhatsApp balance reminders. */
+  remindOld?: boolean;
   oldPaid?: string;
   /** A plan that started before today: the member paid today (not on its first day). */
   paidToday?: boolean;
@@ -258,6 +261,7 @@ export function EnrollmentWizard({
   const [memberNo, setMemberNo] = useState(restored?.memberNo ?? "");
   const [paidOld, setPaidOld] = useState(restored?.paidOld ?? false);
   const [oldBalanceText, setOldBalanceText] = useState(restored?.oldBalance ?? "");
+  const [remindOld, setRemindOld] = useState(restored?.remindOld ?? false);
   // What they really paid in the old software (offers there differ from today's prices).
   const [oldPaidText, setOldPaidText] = useState(restored?.oldPaid ?? "");
   /** Paid in the old software in parts / on another day; null = all of it on the start day. */
@@ -569,6 +573,7 @@ export function EnrollmentWizard({
     setOldPaidText("");
     setOldRows(null);
     setOldBalanceText("");
+    setRemindOld(false);
     if (startDate !== oldRunning.start) setStartDate(oldRunning.start);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [oldLocked, oldRunning?.start]);
@@ -591,6 +596,7 @@ export function EnrollmentWizard({
       setStartDate(run.start);
       setPaidOld(true);
       setOldBalanceText("");
+      setRemindOld(false);
     }
     toast.success("Filled in from the old software", {
       description: `Joined ${formatDateISO(oldJoinedOn(m))}${run ? ` · ${run.name} until ${formatDateISO(run.end)}` : ""}`,
@@ -608,6 +614,7 @@ export function EnrollmentWizard({
     setClient((c) => ({ ...c, joinedOn: "", oldMemberId: "" }));
     setPaidOld(false);
     setOldBalanceText("");
+    setRemindOld(false);
     setOldPaidText("");
     setOldRows(null);
   };
@@ -639,6 +646,7 @@ export function EnrollmentWizard({
             memberNo,
             paidOld,
             oldBalance: oldBalanceText,
+            remindOld,
             oldPaid: oldPaidText,
             paidToday,
             savedOn: todayISO(),
@@ -669,6 +677,7 @@ export function EnrollmentWizard({
     memberNo,
     paidOld,
     oldBalanceText,
+    remindOld,
     oldPaidText,
     paidToday,
   ]);
@@ -689,6 +698,7 @@ export function EnrollmentWizard({
     setMemberNo("");
     setPaidOld(false);
     setOldBalanceText("");
+    setRemindOld(false);
     setPaidToday(false);
     setStep(firstStep);
   };
@@ -791,6 +801,7 @@ export function EnrollmentWizard({
               balance: oldBalance,
               paid: oldPaid,
               billNo: oldRunning?.bill ?? "",
+              remind: oldBalance > 0 && remindOld,
               ...(oldLocked ? { end: oldRunning.end } : {}),
               ...(oldRows && oldPaid > 0 ? { rows: oldRows } : {}),
             }
@@ -1402,6 +1413,15 @@ export function EnrollmentWizard({
                           ))}
                         </div>
                       </Field>
+                    ) : null}
+                    {oldBalance > 0 ? (
+                      <div className="col-span-2">
+                        <RemindOldBalance
+                          id="e-remindold"
+                          checked={remindOld}
+                          onChange={setRemindOld}
+                        />
+                      </div>
                     ) : null}
                     {oldPaid > 0 ? (
                       <div className="col-span-2">
