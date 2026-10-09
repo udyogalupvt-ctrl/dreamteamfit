@@ -12,11 +12,13 @@ import { getServer } from "@/lib/server-api";
 import { COLLECTIONS } from "@/services/firestore.service";
 import { mapInvoice } from "@/services/invoices.service";
 import { mapMembership } from "@/services/memberships.service";
+import { gymMoveTarget, ptMoveTarget, type OldMoveTarget } from "@/services/old-software.service";
+import { mapPtAssignment } from "@/services/pt.service";
 import type { OldSaleSuspect } from "@/lib/old-data";
-import type { Invoice, Membership } from "@/types/models";
+import type { Invoice } from "@/types/models";
 
 type Open = {
-  m: Membership;
+  target: OldMoveTarget;
   bill: Invoice | null;
   s: OldSaleSuspect;
   phone: string;
@@ -24,9 +26,10 @@ type Open = {
 } | null;
 
 /**
- * Income & expenses: sales since the 1st of last month that look like plans paid in the old
- * software (the old data has a paid plan for the same days, or the plan started well before it
- * was paid here). Each one is checked and corrected by the owner; nothing changes by itself.
+ * Income & expenses: sales since the 1st of last month (gym plans, and PT plans sold alone) that
+ * look like plans paid in the old software (the old data has a paid plan for the same days, this
+ * app already has an old-software plan for them, or the plan started well before it was paid
+ * here). Each one is checked and corrected by the owner; nothing changes by itself.
  */
 export function OldSalesReview() {
   const [rows, setRows] = useState<OldSaleSuspect[] | null>(null);
@@ -52,14 +55,21 @@ export function OldSalesReview() {
 
   const check = async (s: OldSaleSuspect) => {
     try {
+      const pt = s.kind === "pt";
       const [m, b, c] = await Promise.all([
-        getDoc(doc(db, COLLECTIONS.memberships, s.membershipId)),
+        getDoc(
+          pt
+            ? doc(db, COLLECTIONS.ptAssignments, s.ptAssignmentId)
+            : doc(db, COLLECTIONS.memberships, s.membershipId),
+        ),
         getDoc(doc(db, COLLECTIONS.invoices, s.invoiceId)),
         getDoc(doc(db, COLLECTIONS.clients, s.clientId)),
       ]);
       if (!m.exists()) throw new Error("This plan no longer exists.");
       setOpen({
-        m: mapMembership(m.id, m.data()),
+        target: pt
+          ? ptMoveTarget(mapPtAssignment(m.id, m.data()))
+          : gymMoveTarget(mapMembership(m.id, m.data())),
         bill: b.exists() ? mapInvoice(b.id, b.data()) : null,
         s,
         phone: String(c.data()?.["phone"] ?? ""),
@@ -131,7 +141,7 @@ export function OldSalesReview() {
         ))}
       </ul>
       <OldSoftwareDialog
-        membership={open?.m ?? null}
+        target={open?.target ?? null}
         bill={open?.bill ?? null}
         memberName={open?.s.clientName ?? ""}
         memberPhone={open?.phone}

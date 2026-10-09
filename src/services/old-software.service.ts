@@ -11,7 +11,7 @@ import {
 import { db } from "@/lib/firebase";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { billTaxRate, calculateInvoiceTotals } from "@/lib/invoice-utils";
-import type { Invoice, Membership, MembershipEdit } from "@/types/models";
+import type { Invoice, Membership, MembershipEdit, PtAssignment } from "@/types/models";
 import { allocatePayment, cashOpenFrom } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
 import { oldPaymentData, readOldRows, type OldPayLink } from "./old-money.service";
@@ -36,6 +36,47 @@ import { defaultOldRows, type OldPayRow } from "@/lib/old-money";
  */
 
 const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/**
+ * The plan being marked: a gym plan, or a PT plan sold alone (a PT-only bill). A PT plan on a gym
+ * plan's bill moves with the gym plan.
+ */
+export interface OldMoveTarget {
+  kind: "gym" | "pt";
+  id: string;
+  clientId: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  /** Its price here (gym: the plan price; PT: the PT price). */
+  price: number;
+  packageId: string;
+  paidInOldSoftware: boolean;
+}
+
+export const gymMoveTarget = (m: Membership): OldMoveTarget => ({
+  kind: "gym",
+  id: m.id,
+  clientId: m.clientId,
+  name: m.packageNameSnapshot,
+  startDate: m.startDate,
+  endDate: m.endDate,
+  price: m.priceSnapshot,
+  packageId: m.packageId,
+  paidInOldSoftware: !!m.paidInOldSoftware,
+});
+
+export const ptMoveTarget = (p: PtAssignment): OldMoveTarget => ({
+  kind: "pt",
+  id: p.id,
+  clientId: p.clientId,
+  name: `PT · ${p.ptPackageNameSnapshot}`,
+  startDate: p.startDate,
+  endDate: p.endDate,
+  price: p.ptPrice,
+  packageId: "",
+  paidInOldSoftware: !!p.paidInOldSoftware,
+});
 
 export interface OldMoveRow {
   id: string;
@@ -249,7 +290,7 @@ const gymPrice = (w: WholeEntry) => {
 };
 
 export async function markPaidInOldSoftware(input: {
-  membership: Membership;
+  plan: OldMoveTarget;
   bill: Invoice | null;
   amount: number;
   /** The whole entry was a re-entry of the old software's plan (see WholeEntry). */
@@ -261,7 +302,8 @@ export async function markPaidInOldSoftware(input: {
   by: { uid: string; name: string };
   clientName?: string;
 }) {
-  const { membership: m, bill } = input;
+  const { plan: m, bill } = input;
+  const pt = m.kind === "pt";
   if (!input.canFinance)
     throw new Error("This changes money: it needs the owner's login (Income & expenses).");
   if (m.paidInOldSoftware)
@@ -277,12 +319,12 @@ export async function markPaidInOldSoftware(input: {
   const reason = input.reason.trim().slice(0, 300);
   const now = serverTimestamp();
   const moveRef = doc(col(COLLECTIONS.oldSoftwareMoves));
-  const planRef = doc(db, COLLECTIONS.memberships, m.id);
+  const planRef = doc(db, pt ? COLLECTIONS.ptAssignments : COLLECTIONS.memberships, m.id);
   const billRef = bill ? doc(db, COLLECTIONS.invoices, bill.id) : null;
   const pubRef = bill?.publicToken ? doc(db, COLLECTIONS.publicInvoices, bill.publicToken) : null;
-  const ptRef = bill?.ptAssignmentId
-    ? doc(db, COLLECTIONS.ptAssignments, bill.ptAssignmentId)
-    : null;
+  // (A PT-only bill: its PT plan is the plan itself.)
+  const ptRef =
+    !pt && bill?.ptAssignmentId ? doc(db, COLLECTIONS.ptAssignments, bill.ptAssignmentId) : null;
   const enrRef = bill?.enrollmentId ? doc(db, COLLECTIONS.enrollments, bill.enrollmentId) : null;
   const edit: MembershipEdit = {
     on: today,
@@ -290,7 +332,7 @@ export async function markPaidInOldSoftware(input: {
     reason,
     changes: whole
       ? [
-          `Paid in the old software: ${formatPrice(whole.paid)}${whole.lines?.length ? ` (${whole.lines.map((l) => l.name).join(" + ")})` : ""}; plan price ${formatPrice(m.priceSnapshot)} → ${formatPrice(gymPrice(whole))}`,
+          `Paid in the old software: ${formatPrice(whole.paid)}${whole.lines?.length ? ` (${whole.lines.map((l) => l.name).join(" + ")})` : ""}${pt ? "" : `; plan price ${formatPrice(m.price)} → ${formatPrice(gymPrice(whole))}`}`,
           ...(bill && takenOff
             ? [
                 `${formatPrice(takenOff)} entered here by mistake taken off this app's money (bill ${bill.invoiceNumber})`,
@@ -336,7 +378,8 @@ export async function markPaidInOldSoftware(input: {
     ) => (s && s.exists() ? { id: s.id, data: s.data() ?? {} } : null);
     // 1. Everything as it was, for Undo.
     tx.set(moveRef, {
-      membershipId: m.id,
+      membershipId: pt ? "" : m.id,
+      ...(pt ? { ptAssignmentId: m.id } : {}),
       clientId: m.clientId,
       invoiceId: bill?.id ?? "",
       amount,
@@ -347,10 +390,10 @@ export async function markPaidInOldSoftware(input: {
       undone: false,
       after: plan.after,
       before: {
-        membership: { id: m.id, data: planSnap.data() },
+        membership: pt ? null : { id: m.id, data: planSnap.data() },
         invoice: keep(billSnap),
         publicInvoice: keep(pubSnap),
-        ptAssignment: keep(ptSnap),
+        ptAssignment: pt ? { id: m.id, data: planSnap.data() } : keep(ptSnap),
         enrollment: keep(enrSnap),
         payments: paySnaps.map(keep).filter(Boolean),
         payouts: payoutSnaps.map(keep).filter(Boolean),
@@ -362,8 +405,9 @@ export async function markPaidInOldSoftware(input: {
       paidInOldSoftware: true,
       oldSoftwarePaid: amount,
       // The real deal was the old software's.
-      // The gym plan's own price there (PT lines are not part of it).
-      ...(whole ? { priceSnapshot: round(gymPrice(whole)) } : {}),
+      // The gym plan's own price there (PT lines are not part of it). A PT plan keeps its price:
+      // the trainer's share is worked out from it.
+      ...(whole && !pt ? { priceSnapshot: round(gymPrice(whole)) } : {}),
       ...(input.billNo.trim() ? { oldSoftwareBillNo: input.billNo.trim().slice(0, 40) } : {}),
       oldSoftwareMoveId: moveRef.id,
       edits: [...(Array.isArray(prev["edits"]) ? prev["edits"] : []), edit],
@@ -398,18 +442,18 @@ export async function markPaidInOldSoftware(input: {
                 quantity: 1,
                 unitPrice: round(l.amount),
                 total: round(l.amount),
-                packageId: isOldPtPlan(l.name) ? null : m.packageId || null,
+                packageId: pt || isOldPtPlan(l.name) ? null : m.packageId || null,
               }))
             : [
                 {
-                  name: `Paid in the old software · ${m.packageNameSnapshot}`,
+                  name: `Paid in the old software · ${m.name}`,
                   description: input.billNo.trim()
                     ? `Old software bill ${input.billNo.trim().slice(0, 40)}`
                     : "Plan bought and paid in the old software",
                   quantity: 1,
                   unitPrice: round(whole.deal),
                   total: round(whole.deal),
-                  packageId: m.packageId || null,
+                  packageId: pt ? null : m.packageId || null,
                 },
               ],
           subtotal: round(whole.deal),
@@ -429,7 +473,11 @@ export async function markPaidInOldSoftware(input: {
     };
     tx.update(billRef, {
       ...money,
-      ...(whole ? { membershipGross: round(whole.deal), ptGross: 0, trainerShareTotal: 0 } : {}),
+      ...(whole
+        ? pt
+          ? { membershipGross: 0, ptGross: round(whole.deal), trainerShareTotal: 0 }
+          : { membershipGross: round(whole.deal), ptGross: 0, trainerShareTotal: 0 }
+        : {}),
       paidInOldSoftware: plan.after.amountPaid <= 0,
       notes: [
         String(b["notes"] ?? ""),
@@ -479,7 +527,7 @@ export async function markPaidInOldSoftware(input: {
  * split like the bill was (gym / PT / trainer), linked to the PT plan too when it moved with it.
  */
 function oldPaymentOfMove(
-  m: Membership,
+  m: OldMoveTarget,
   bill: Invoice | null,
   amount: number,
   whole: WholeEntry | null,
@@ -491,22 +539,39 @@ function oldPaymentOfMove(
   if (!row?.date) return null;
   return {
     row,
-    link: {
-      clientId: m.clientId,
-      clientName: clientName || bill?.clientNameSnapshot || "",
-      membershipId: m.id,
-      ptAssignmentId: ptMoved && bill?.ptAssignmentId ? bill.ptAssignmentId : null,
-      billNo: "",
-      basis: whole
-        ? { gym: { price: whole.deal }, pt: null }
+    link:
+      m.kind === "pt"
+        ? {
+            clientId: m.clientId,
+            clientName: clientName || bill?.clientNameSnapshot || "",
+            membershipId: null,
+            ptAssignmentId: m.id,
+            billNo: "",
+            // Old PT: the trainer was paid there, no share here.
+            basis: {
+              gym: null,
+              pt: {
+                price: whole ? whole.deal : bill ? bill.ptGross : m.price,
+                trainerShare: whole ? 0 : (bill?.trainerShareTotal ?? 0),
+              },
+            },
+          }
         : {
-            gym: { price: bill ? bill.membershipGross : m.priceSnapshot },
-            pt:
-              bill && bill.ptGross > 0
-                ? { price: bill.ptGross, trainerShare: bill.trainerShareTotal }
-                : null,
+            clientId: m.clientId,
+            clientName: clientName || bill?.clientNameSnapshot || "",
+            membershipId: m.id,
+            ptAssignmentId: ptMoved && bill?.ptAssignmentId ? bill.ptAssignmentId : null,
+            billNo: "",
+            basis: whole
+              ? { gym: { price: whole.deal }, pt: null }
+              : {
+                  gym: { price: bill ? bill.membershipGross : m.price },
+                  pt:
+                    bill && bill.ptGross > 0
+                      ? { price: bill.ptGross, trainerShare: bill.trainerShareTotal }
+                      : null,
+                },
           },
-    },
   };
 }
 

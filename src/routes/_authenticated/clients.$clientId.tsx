@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PhotoLinkButtons } from "@/components/clients/photo-link-button";
 import { MemberAppCard } from "@/components/clients/member-app-card";
 import { OldHistoryCard } from "@/components/clients/old-history-card";
@@ -88,7 +88,7 @@ import { subscribeClientMemberships, undoLastPause } from "@/services/membership
 import { PausePlanDialog } from "@/components/clients/pause-plan-dialog";
 import { EditPlanDialog, PlanEdits } from "@/components/clients/edit-plan-dialog";
 import { OldSoftwareDialog } from "@/components/clients/old-software-dialog";
-import { undoOldSoftwareMove } from "@/services/old-software.service";
+import { gymMoveTarget, undoOldSoftwareMove } from "@/services/old-software.service";
 import { lookupOldMembers } from "@/services/old-data.service";
 import { isOldPtPlanName, matchingOldPlan, runningOldPlan, type OldMember } from "@/lib/old-data";
 import { AddOldPlanDialog } from "@/components/clients/add-old-plan-dialog";
@@ -191,6 +191,7 @@ function ClientProfilePage() {
   const [pausing, setPausing] = useState<Membership | null>(null);
   const [editing, setEditing] = useState<Membership | null>(null);
   const [oldMove, setOldMove] = useState<Membership | null>(null);
+  const oldMoveTarget = useMemo(() => (oldMove ? gymMoveTarget(oldMove) : null), [oldMove]);
   // A plan added by mistake, being removed (bin icon).
   const [removing, setRemoving] = useState<RemoveTarget | null>(null);
   const removeGym = (m: Membership) =>
@@ -867,7 +868,7 @@ function ClientProfilePage() {
       <BookingFormDialog open={addBookingOpen} onOpenChange={setAddBookingOpen} initialClient={c} />
       <PhotoDialog open={photoOpen} onOpenChange={setPhotoOpen} client={c} />
       <OldSoftwareDialog
-        membership={oldMove}
+        target={oldMoveTarget}
         bill={oldMove ? billOfPlan(oldMove, invoices.data) : null}
         memberName={c.fullName}
         memberPhone={c.phone}

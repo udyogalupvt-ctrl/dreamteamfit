@@ -136,3 +136,25 @@ export function overlapPlan(id: string, d: Record<string, unknown>): OverlapPlan
     overlapOk: Array.isArray(d["overlapOk"]) ? (d["overlapOk"] as unknown[]).map(String) : [],
   };
 }
+
+/** Income & expenses → "Plans that overlap": one plan of a pair, as the owner sees it. */
+export interface OverlapListPlan {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  paidInOldSoftware: boolean;
+  /** Paid in the old software (₹), for an old plan. */
+  oldPaid: number;
+  invoiceId: string;
+}
+
+export interface OverlapListRow {
+  clientId: string;
+  clientName: string;
+  clientCode: string;
+  days: number;
+  a: OverlapListPlan;
+  b: OverlapListPlan;
+}

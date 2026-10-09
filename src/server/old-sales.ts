@@ -3,19 +3,30 @@
  * software?"). Read-only: the owner checks each and corrects it from the member's plan.
  *
  *   GET /api/old-data/suspects   Income & expenses: payments since the 1st of last month whose
- *                                plan the old software already had (or that started well before
- *                                it was paid here)
+ *                                plan (gym, or PT sold alone) the old software already had, or
+ *                                that this app already has as an old-software plan, or that
+ *                                started well before it was paid here
+ *   GET /api/old-data/overlaps   Income & expenses: one member's gym plans for the same days
+ *                                (ending on or after the 1st of last month), see plan-overlap.ts
  *
  * Why: before "Paid in the old software" could take the old offer price, staff unticked it and
  * gave a discount instead, so money paid months ago was recorded as paid the day it was typed in.
  */
 import {
+  isOldPtPlanName,
   oldPhoneKey,
   pickOldMember,
   type OldMember,
   type OldPlan,
   type OldSaleSuspect,
 } from "@/lib/old-data";
+import {
+  overlapDays,
+  overlapPairs,
+  overlapPlan,
+  type OverlapListPlan,
+  type OverlapListRow,
+} from "@/lib/plan-overlap";
 import { db, json, localDate, requireFeature } from "./admin";
 
 const DAY = 86_400_000;
@@ -52,6 +63,8 @@ export async function oldSaleSuspects(request: Request) {
     string,
     {
       membershipId: string;
+      /** A PT plan sold alone (no gym plan on the bill). */
+      ptAssignmentId: string;
       clientId: string;
       paid: number;
       dates: string[];
@@ -63,9 +76,11 @@ export async function oldSaleSuspects(request: Request) {
     const p = d.data();
     const amount = Number(p["amount"] ?? 0);
     const bill = String(p["invoiceId"] ?? "");
-    if (!bill || !p["membershipId"]) continue;
+    const ptOnly = !p["membershipId"] && !!p["ptAssignmentId"];
+    if (!bill || (!p["membershipId"] && !ptOnly)) continue;
     const row = byBill.get(bill) ?? {
-      membershipId: String(p["membershipId"]),
+      membershipId: ptOnly ? "" : String(p["membershipId"]),
+      ptAssignmentId: ptOnly ? String(p["ptAssignmentId"]) : "",
       clientId: String(p["clientId"] ?? ""),
       paid: 0,
       dates: [],
@@ -81,10 +96,14 @@ export async function oldSaleSuspects(request: Request) {
     byBill.set(bill, row);
   }
   const rows = [...byBill.entries()].filter(([, r]) => r.paid > 0);
-  const [plans, bills, clients] = await Promise.all([
+  const [plans, ptPlans, bills, clients] = await Promise.all([
     getAll(
       "memberships",
       rows.map(([, r]) => r.membershipId),
+    ),
+    getAll(
+      "ptAssignments",
+      rows.map(([, r]) => r.ptAssignmentId),
     ),
     getAll(
       "invoices",
@@ -102,10 +121,32 @@ export async function oldSaleSuspects(request: Request) {
     "oldMembers",
     keys.filter((k) => k.length >= 6),
   );
+  // Plans already in this app as paid in the old software (gym and PT), per member.
+  const inApp = new Map<string, { kind: "gym" | "pt"; d: FirebaseFirestore.DocumentData }[]>();
+  const ptClients = new Set(rows.filter(([, r]) => r.ptAssignmentId).map(([, r]) => r.clientId));
+  await Promise.all(
+    [...clients.keys()].map(async (id) => {
+      const [g, t] = await Promise.all([
+        db().collection("memberships").where("clientId", "==", id).get(),
+        ptClients.has(id)
+          ? db().collection("ptAssignments").where("clientId", "==", id).get()
+          : Promise.resolve(null),
+      ]);
+      const keep = (d: FirebaseFirestore.DocumentData) =>
+        d["paidInOldSoftware"] === true && d["status"] !== "cancelled";
+      inApp.set(id, [
+        ...g.docs.filter((x) => keep(x.data())).map((x) => ({ kind: "gym" as const, d: x.data() })),
+        ...(t?.docs ?? [])
+          .filter((x) => keep(x.data()))
+          .map((x) => ({ kind: "pt" as const, d: x.data() })),
+      ]);
+    }),
+  );
 
   const out: OldSaleSuspect[] = [];
   for (const [billId, r] of rows) {
-    const m = plans.get(r.membershipId);
+    const kind = r.ptAssignmentId ? ("pt" as const) : ("gym" as const);
+    const m = kind === "pt" ? ptPlans.get(r.ptAssignmentId) : plans.get(r.membershipId);
     const b = bills.get(billId);
     const c = clients.get(r.clientId);
     if (!m || !b || !c || m["paidInOldSoftware"] === true) continue;
@@ -119,10 +160,12 @@ export async function oldSaleSuspects(request: Request) {
       records.find((x) => x.memberId && x.memberId === c["oldMemberId"]) ??
       pickOldMember(records, String(c["fullName"] ?? "")) ??
       (records.length === 1 ? records[0]! : null);
-    // An old plan, paid there, that covers these days and began before it was paid here.
+    // An old plan of the same kind (gym / PT), paid there, that covers these days and began before
+    // it was paid here.
     const oldPlan =
       person?.plans
         .filter((p) => paidOf(p) > 0 && p.start && p.end)
+        .filter((p) => isOldPtPlanName(p.name) === (kind === "pt"))
         .filter((p) => p.start <= end && p.end >= start && p.start <= firstPaid)
         .sort((a, b2) => Math.abs(days(a.start, start)) - Math.abs(days(b2.start, start)))[0] ??
       null;
@@ -131,22 +174,55 @@ export async function oldSaleSuspects(request: Request) {
       reasons.push(
         `Old software: ${oldPlan.name} ${oldPlan.start} → ${oldPlan.end}, paid ₹${paidOf(oldPlan).toLocaleString("en-IN")}${oldPlan.bill ? ` (bill ${oldPlan.bill})` : ""}`,
       );
+    // The same days already in this app as an old-software plan: usually this sale is a copy.
+    const already =
+      (inApp.get(r.clientId) ?? [])
+        .filter((x) => x.kind === kind)
+        .map((x) => ({
+          name: String(
+            kind === "pt"
+              ? `PT · ${x.d["ptPackageNameSnapshot"] ?? ""}`
+              : (x.d["packageNameSnapshot"] ?? ""),
+          ),
+          start: String(x.d["startDate"] ?? ""),
+          end: String(x.d["endDate"] ?? ""),
+          paid: Number(x.d["oldSoftwarePaid"] ?? 0),
+        }))
+        .filter(
+          (x) =>
+            overlapDays(
+              { startDate: x.start, endDate: x.end },
+              { startDate: start, endDate: end },
+            ) > 0,
+        )
+        .sort((a, b2) => Math.abs(days(a.start, start)) - Math.abs(days(b2.start, start)))[0] ??
+      null;
+    if (already)
+      reasons.push(
+        `Already in this app as an old-software plan: ${already.name} ${already.start} → ${already.end}${already.paid > 0 ? `, paid ₹${already.paid.toLocaleString("en-IN")} there` : ""}`,
+      );
     const late = days(start, firstPaid);
     if (late >= 7) reasons.push(`Plan started ${late} days before it was typed in here`);
     const discount = Number(b["discount"] ?? 0) - Number(b["upgradeCredit"] ?? 0);
     if (discount > 0) reasons.push(`Discount ₹${discount.toLocaleString("en-IN")} on the bill`);
     if (oldPlan && Math.abs(Number(b["total"] ?? 0) - oldPlan.amount) < 1)
       reasons.push("Bill total is the same as the old software's amount");
-    if (!oldPlan && late < 7) continue;
+    if (!oldPlan && !already && late < 7) continue;
     out.push({
+      kind,
       membershipId: r.membershipId,
+      ptAssignmentId: r.ptAssignmentId,
       clientId: r.clientId,
       clientName: String(c["fullName"] ?? ""),
       clientCode: String(c["clientCode"] ?? ""),
-      plan: String(m["packageNameSnapshot"] ?? ""),
+      plan: String(
+        kind === "pt"
+          ? `PT · ${m["ptPackageNameSnapshot"] ?? ""}`
+          : (m["packageNameSnapshot"] ?? ""),
+      ),
       start,
       end,
-      price: Number(m["priceSnapshot"] ?? 0),
+      price: Number((kind === "pt" ? m["ptPrice"] : m["priceSnapshot"]) ?? 0),
       invoiceId: billId,
       invoiceNumber: String(b["invoiceNumber"] ?? ""),
       discount: Math.max(0, discount),
@@ -166,13 +242,16 @@ export async function oldSaleSuspects(request: Request) {
             bill: oldPlan.bill,
           }
         : null,
+      inApp: already,
       reasons,
-      // Strong only when it is the same plan: same start or end (±7 days) and about as long
-      // (a 1-month old plan is not the same as an annual plan here).
+      // Strong when it is the same plan: already in this app as an old plan for these days, or the
+      // old data has one with the same start or end (±7 days) and about as long (a 1-month old plan
+      // is not the same as an annual plan here).
       strength:
-        oldPlan &&
-        (Math.abs(days(oldPlan.start, start)) <= 7 || Math.abs(days(oldPlan.end, end)) <= 7) &&
-        days(oldPlan.start, oldPlan.end) >= 0.8 * days(start, end)
+        already ||
+        (oldPlan &&
+          (Math.abs(days(oldPlan.start, start)) <= 7 || Math.abs(days(oldPlan.end, end)) <= 7) &&
+          days(oldPlan.start, oldPlan.end) >= 0.8 * days(start, end))
           ? "strong"
           : "check",
     });
@@ -182,4 +261,45 @@ export async function oldSaleSuspects(request: Request) {
       (a.strength === b.strength ? 0 : a.strength === "strong" ? -1 : 1) || b.paidHere - a.paidHere,
   );
   return json({ from, suspects: out, total: out.reduce((n, s) => n + s.paidHere, 0) });
+}
+
+/**
+ * Gym plans of one member for the same days, both counted (usually a copy). Plans ending before the
+ * 1st of last month are not read: their money is in closed Day Book months.
+ */
+export async function planOverlaps(request: Request) {
+  if (!(await requireFeature(request, "finance")))
+    return json({ error: "This needs Income & expenses (the owner)." }, 403);
+  const from = firstOfLastMonth(localDate());
+  const snap = await db().collection("memberships").where("endDate", ">=", from).get();
+  const docs = new Map(snap.docs.map((d) => [d.id, d.data()]));
+  const pairs = overlapPairs(snap.docs.map((d) => overlapPlan(d.id, d.data())));
+  const clients = await getAll(
+    "clients",
+    pairs.map((p) => p.clientId),
+  );
+  const shown = (id: string): OverlapListPlan => {
+    const d = docs.get(id) ?? {};
+    return {
+      id,
+      name: String(d["packageNameSnapshot"] ?? ""),
+      startDate: String(d["startDate"] ?? ""),
+      endDate: String(d["endDate"] ?? ""),
+      status: String(d["status"] ?? ""),
+      paidInOldSoftware: d["paidInOldSoftware"] === true,
+      oldPaid: Number(d["oldSoftwarePaid"] ?? 0),
+      invoiceId: String(d["invoiceId"] ?? ""),
+    };
+  };
+  const rows: OverlapListRow[] = pairs
+    .filter((p) => clients.has(p.clientId))
+    .map((p) => ({
+      clientId: p.clientId,
+      clientName: String(clients.get(p.clientId)?.["fullName"] ?? ""),
+      clientCode: String(clients.get(p.clientId)?.["clientCode"] ?? ""),
+      days: p.days,
+      a: shown(p.a.id),
+      b: shown(p.b.id),
+    }));
+  return json({ from, overlaps: rows });
 }

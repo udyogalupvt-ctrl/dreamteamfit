@@ -19,8 +19,9 @@ import {
   undoOldSoftwareMove,
   type OldDealLine,
   type OldMovePlan,
+  type OldMoveTarget,
 } from "@/services/old-software.service";
-import type { Invoice, Membership } from "@/types/models";
+import type { Invoice } from "@/types/models";
 
 const paidOf = (p: Pick<OldPlan, "amount" | "balance">) =>
   Math.max(0, (p.amount || 0) - (p.balance || 0));
@@ -30,13 +31,13 @@ const keyOf = (p: Pick<OldPlan, "name" | "start" | "end">) => `${p.name}|${p.sta
 
 /**
  * The old plans this bill most likely covered: those starting within a week of this plan (a PT
- * plan only when the bill has PT). The owner can change the ticks.
+ * plan only when the bill has PT; only PT plans for a PT-only bill). The owner can change the ticks.
  */
-function preselect(plans: OldPlan[], m: Membership, billHasPt: boolean) {
+function preselect(plans: OldPlan[], m: OldMoveTarget, billHasPt: boolean) {
   return new Set(
     plans
       .filter((p) => p.amount > 0 && p.start && dayGap(p.start, m.startDate) <= 7)
-      .filter((p) => (isOldPtPlan(p.name) ? billHasPt : true))
+      .filter((p) => (isOldPtPlan(p.name) ? billHasPt : m.kind === "gym"))
       .map(keyOf),
   );
 }
@@ -50,7 +51,7 @@ function preselect(plans: OldPlan[], m: Membership, billHasPt: boolean) {
  * - only part was paid there: just that part comes off, the rest stays as money paid here.
  */
 export function OldSoftwareDialog({
-  membership,
+  target,
   bill,
   memberName,
   memberPhone,
@@ -58,7 +59,8 @@ export function OldSoftwareDialog({
   onClose,
   onDone,
 }: {
-  membership: Membership | null;
+  /** The plan to mark: a gym plan, or a PT plan sold alone. */
+  target: OldMoveTarget | null;
   bill: Invoice | null;
   memberName: string;
   /** To find the member in the old software's records. */
@@ -67,7 +69,7 @@ export function OldSoftwareDialog({
   onClose: () => void;
   onDone?: () => void;
 }) {
-  const open = !!membership;
+  const open = !!target;
   const { can } = useAccess();
   const { user } = useAuth();
   const money = can("finance");
@@ -86,7 +88,7 @@ export function OldSoftwareDialog({
 
   // The member's old-software record (by phone; their linked old ID first).
   useEffect(() => {
-    if (!membership) return;
+    if (!target) return;
     setRecord(null);
     setTicked(new Set());
     setMode("whole");
@@ -108,12 +110,12 @@ export function OldSoftwareDialog({
             r.members.find((x) => x.memberId && x.memberId === oldMemberId) ??
             (r.members.length === 1 ? r.members[0]! : null) ??
             r.members.find((x) =>
-              x.plans.some((p) => p.start && dayGap(p.start, membership.startDate) <= 7),
+              x.plans.some((p) => p.start && dayGap(p.start, target.startDate) <= 7),
             ) ??
             null;
           setRecord(person);
           if (person) {
-            const pre = preselect(person.plans, membership, billHasPt);
+            const pre = preselect(person.plans, target, billHasPt);
             setTicked(pre);
             const first = person.plans.find((p) => pre.has(keyOf(p)) && p.bill);
             setBillNo(first?.bill ?? "");
@@ -125,7 +127,7 @@ export function OldSoftwareDialog({
     return () => {
       live = false;
     };
-  }, [membership, bill, memberPhone, oldMemberId, billHasPt]);
+  }, [target, bill, memberPhone, oldMemberId, billHasPt]);
 
   const lines: OldDealLine[] = useMemo(
     () =>
@@ -155,7 +157,7 @@ export function OldSoftwareDialog({
   const value = Number(amount);
   const wholeKey = whole ? `${whole.deal}|${whole.paid}|${lines.length}` : "";
   useEffect(() => {
-    if (!membership) return;
+    if (!target) return;
     let live = true;
     const t = setTimeout(() => {
       previewOldMove(bill, Number.isFinite(value) ? value : 0, whole).then(
@@ -168,17 +170,17 @@ export function OldSoftwareDialog({
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [membership, bill, value, wholeKey]);
+  }, [target, bill, value, wholeKey]);
 
-  if (!membership) return null;
-  const m = membership;
+  if (!target) return null;
+  const m = target;
   const takenOff = plan ? plan.remove.reduce((n, p) => n + p.amount, 0) : 0;
   const gymLines = lines.filter((l) => !isOldPtPlan(l.name));
   const newPrice = whole
     ? gymLines.length
       ? gymLines.reduce((n, l) => n + l.amount, 0)
       : whole.deal
-    : m.priceSnapshot;
+    : m.price;
   const toggle = (p: OldPlan) =>
     setTicked((s) => {
       const n = new Set(s);
@@ -191,7 +193,7 @@ export function OldSoftwareDialog({
     setError("");
     try {
       const r = await markPaidInOldSoftware({
-        membership: m,
+        plan: m,
         bill,
         amount: whole ? whole.paid : value,
         whole,
@@ -222,7 +224,7 @@ export function OldSoftwareDialog({
       open={open}
       onOpenChange={(o) => !o && onClose()}
       title="Paid in the old software?"
-      description={`${memberName} · ${m.packageNameSnapshot} · ${formatDateISO(m.startDate)} → ${formatDateISO(m.endDate)}. Use this when the plan was entered here as a new sale but the member bought it in the old software.`}
+      description={`${memberName} · ${m.name} · ${formatDateISO(m.startDate)} → ${formatDateISO(m.endDate)}. Use this when the plan was entered here as a new sale but the member bought it in the old software.`}
       footer={
         <>
           <Button variant="outline" onClick={onClose}>
@@ -394,9 +396,11 @@ export function OldSoftwareDialog({
               ))}
               {whole ? (
                 <>
-                  <li>
-                    Plan price {formatPrice(m.priceSnapshot)} → {formatPrice(newPrice)}
-                  </li>
+                  {m.kind === "gym" ? (
+                    <li>
+                      Plan price {formatPrice(m.price)} → {formatPrice(newPrice)}
+                    </li>
+                  ) : null}
                   <li>
                     Bill becomes{" "}
                     {fromRecord

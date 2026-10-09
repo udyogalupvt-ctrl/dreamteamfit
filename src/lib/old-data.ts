@@ -368,7 +368,12 @@ export function matchStaffName<T extends { name: string }>(staff: T[], name: str
 
 /** A sale here that looks like a plan paid in the old software (Income & expenses review). */
 export interface OldSaleSuspect {
+  /** gym = a gym plan's bill (PT on it moves with it); pt = a PT plan sold alone. */
+  kind: "gym" | "pt";
+  /** "" for a PT plan sold alone. */
   membershipId: string;
+  /** Set only for a PT plan sold alone. */
+  ptAssignmentId: string;
   clientId: string;
   clientName: string;
   clientCode: string;
@@ -394,6 +399,8 @@ export interface OldSaleSuspect {
     balance: number;
     bill: string;
   } | null;
+  /** The member's old-software plan already in this app for the same days (usually a copy). */
+  inApp: { name: string; start: string; end: string; paid: number } | null;
   /** Why it is on the list, in plain words. */
   reasons: string[];
   /** Strong = the old software has a paid plan for the same days. */
