@@ -1,11 +1,11 @@
 # Handoff
 
-Last updated: 2026-10-09 (evening)
+Last updated: 2026-10-09 (late evening, merged and pushed)
 
 ## 2026-10-09 (evening): sales typed in after the plan started count on the plan's first day
 
-**State:** branch `late-sale-dates` (local commits, NOT merged or pushed). Waiting for the user's OK to
-merge into main and push (Vercel deploys from main). No Firestore rules change needed.
+**State:** branch `late-sale-dates` merged into main (fast-forward) and pushed 2026-10-09 with the user's OK
+(Vercel deploys from main). Before the push: unit 200/200, build OK. No Firestore rules change needed.
 
 User's report: A. Sharath Kumar's plan runs 2 Oct → 1 Nov but his ₹1,699 counted as "yesterday"
 (8 Oct, the day he was typed in). Rule (user, 2026-10-09): "we don't know when he paid, so the
@@ -52,7 +52,7 @@ Built:
   latedates_local.py`); screenshots light/dark 390/1440 in that scratchpad's `shots/`.
 
 ### Next
-1. User OK → merge `late-sale-dates` into main and push.
+1. Done 2026-10-09: merged and pushed. Check the Vercel deploy finished.
 2. Owner, once it is live: Income & expenses → Profit & income → "Sales typed in after the plan
    started" → Check → untick any sale really paid on the day it was typed in → Move. A. Sharath
    Kumar's ₹1,699 then counts on 2 Oct. Undo is on the same card.
