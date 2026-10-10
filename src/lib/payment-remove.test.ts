@@ -106,16 +106,39 @@ test("old-software money: only when its plan is cancelled (else Edit plan), no b
   );
 });
 
-test("a cancellation's refund can go (its bill never changed); other refunds can't", () => {
+test("a cancellation's refund can go and its bill never changed", () => {
   const refund = pay({ amount: -5000, kind: "refund", cancelId: "c1" });
   assert.deepEqual(planRemove(refund, bill(), cancelled, OPEN), { error: "", bill: null });
   assert.match(
-    planRemove({ ...refund, cancelId: "" }, bill(), running, OPEN).error,
-    /Edit bill or Edit plan/,
-  );
-  assert.match(
     planRemove({ ...refund, trainerShareAmount: -1000 }, bill(), cancelled, OPEN).error,
     /Restore/,
+  );
+});
+
+test("a price-change refund can be taken off: the bill shows that money as paid again", () => {
+  // ₹1,799 was taken, the price was corrected to ₹1,750 and ₹49 came back by mistake.
+  const refund = pay({ amount: -49, kind: "refund", cancelId: "" });
+  const b = bill({ total: 1750, amountPaid: 1701, balanceDue: 49, paymentStatus: "partial" });
+  const r = planRemove(refund, b, running, OPEN);
+  assert.equal(r.error, "");
+  assert.equal(r.bill?.after.amountPaid, 1750);
+  assert.equal(r.bill?.after.balanceDue, 0);
+  assert.equal(r.bill?.after.paymentStatus, "paid");
+});
+
+test("a price-change refund that would overpay the bill says to fix the payment first", () => {
+  // The real stuck case: ₹1,799 paid, ₹299 given back, bill now ₹1,750.
+  const refund = pay({ amount: -299, kind: "refund", cancelId: "" });
+  const b = bill({ total: 1750, amountPaid: 1500, balanceDue: 250, paymentStatus: "partial" });
+  const r = planRemove(refund, b, running, OPEN);
+  assert.match(r.error, /set the payment to ₹1,750 with Edit payment/);
+  assert.equal(r.bill, null);
+});
+
+test("money given back that is not a refund entry still points at Edit bill / Edit plan", () => {
+  assert.match(
+    planRemove(pay({ amount: -500, kind: "balance" }), bill(), running, OPEN).error,
+    /Edit bill or Edit plan/,
   );
 });
 

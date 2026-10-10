@@ -10,6 +10,7 @@
 import { billOwed, billStatus, takeBackBlocked, type CancelledParts } from "./bill-cancel.ts";
 
 const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+const rupee = (n: number) => `₹${round(n).toLocaleString("en-IN")}`;
 
 export interface RemovePayment {
   amount: number;
@@ -61,6 +62,16 @@ const nice = (iso: string) => {
 
 const statusOf = (total: number, paid: number, dropped = 0) => billStatus(total, paid, dropped);
 
+/** The bill's money fields as they stand now (what Undo puts back). */
+const stateOf = (b: RemoveBill): RemoveBillState => ({
+  amountPaid: round(b.amountPaid),
+  balanceDue: round(b.balanceDue),
+  paymentStatus: b.paymentStatus,
+  closedAmount: b.paymentStatus === "closed" || b.closedAmount ? round(b.closedAmount) : null,
+  cancelId: b.cancelId || null,
+  beforeCancel: b.beforeCancel,
+});
+
 /**
  * @param plans the payment's plans here: their status ("missing" = no longer here) and
  *   cancellation ("" when not cancelled).
@@ -95,7 +106,7 @@ export function planRemove(
       `It is dated ${nice(p.paymentDate)}, in a closed Day Book month (before ${nice(openFrom)}): it can't be removed.`,
     );
   if (p.amount < 0) {
-    if (p.kind !== "refund" || !p.cancelId)
+    if (p.kind !== "refund")
       return fail(
         "This money given back belongs to a bill change: correct it with Edit bill or Edit plan.",
       );
@@ -104,7 +115,33 @@ export function planRemove(
         "This refund also took back a trainer's share: use Restore on the cancelled plan instead.",
       );
     // A cancellation's refund never changed its bill.
-    return { error: "", bill: null };
+    if (p.cancelId) return { error: "", bill: null };
+    // Money the app gave back when a bill's price was lowered. Often no money really left the
+    // drawer (the price was simply typed wrong), so it can be taken off: the bill then shows that
+    // money as paid again, which only works while the bill still has room for it.
+    if (!p.invoiceId || !bill) return fail("This payment's bill was not found.");
+    if (bill.paymentStatus === "refunded")
+      return fail(`Bill ${bill.invoiceNumber} was refunded: it can't change.`);
+    const owedNow = Math.max(0, Number(bill.cancelledDue) || 0);
+    const asked = round(bill.total - owedNow);
+    const back = round(bill.amountPaid - p.amount);
+    if (back > asked + 0.005)
+      return fail(
+        `Taking this off would show ${rupee(back)} paid on a ${rupee(asked)} bill. First set the payment to ${rupee(asked)} with Edit payment, then take this off.`,
+      );
+    const was = stateOf(bill);
+    return {
+      error: "",
+      bill: {
+        before: was,
+        after: {
+          ...was,
+          amountPaid: back,
+          balanceDue: billOwed(bill.total, back, owedNow),
+          paymentStatus: statusOf(bill.total, back, owedNow),
+        },
+      },
+    };
   }
   if (!(p.amount > 0)) return fail("This payment is ₹0: nothing to remove.");
   if (!p.invoiceId || !bill) return fail("This payment's bill was not found.");
@@ -121,15 +158,7 @@ export function planRemove(
   const blocked = takeBackBlocked(bill, p.amount);
   if (blocked) return fail(blocked);
   const paid = round(Math.max(0, bill.amountPaid - p.amount));
-  const before: RemoveBillState = {
-    amountPaid: round(bill.amountPaid),
-    balanceDue: round(bill.balanceDue),
-    paymentStatus: bill.paymentStatus,
-    closedAmount:
-      bill.paymentStatus === "closed" || bill.closedAmount ? round(bill.closedAmount) : null,
-    cancelId: bill.cancelId || null,
-    beforeCancel: bill.beforeCancel,
-  };
+  const before = stateOf(bill);
   const dropped = Math.max(0, Number(bill.cancelledDue) || 0);
   const owed = billOwed(bill.total, paid, dropped);
   if (cancelled || bill.paymentStatus === "closed") {
