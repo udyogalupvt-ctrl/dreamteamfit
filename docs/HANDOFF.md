@@ -134,6 +134,26 @@ UPI 1 Oct (owner) · **K. Sai now one ₹1,750 UPI payment, bill paid in full, n
 October app vs register is now **+₹1,971**: the suspected duplicate Joshi sale (₹1,999) less ~₹28
 of ₹1 rounding on sales already made. Everything else matches to the rupee.
 
+**2026-10-10 (late): the ₹1 rounding rows closed.** 26 October sales were saved ₹1 under the
+register (₹1,999 for ₹2,000 taken, ₹2,499 for ₹2,500 …). All were lifted with Edit plan →
+Price +₹1 and the existing **"Already paid"** tick, which puts the ₹1 on the same payment, same
+mode, same day — no refund line was created anywhere (checked). K. Sudheer's Cash + UPI sale
+can't use that tick, so his ₹1 was collected on the UPI part (₹999 + ₹1 = ₹1,000 PhonePe,
+₹1,000 cash). Script + list: scratchpad `rupee_fix.py`, `rupee_rows.json`.
+**October now: Cash ₹34,100 and Card ₹27,700 match the register EXACTLY; UPI is +₹1,998**, which
+is the unconfirmed duplicate Joshi sale (₹1,999) less S. Aniket's ₹1 (below). Health check after
+the run: no refund lines, every bill's payments add up to its amountPaid, the only bills left due
+are genuine (J. Vijay Kumar ₹6,000, Hrudai N ₹1,800, Dr. M Bharath ₹7,000, Jyothi prasad ₹8,999).
+Not touched on purpose: MD. Roshan ₹2,499 (the register really says ₹2,499) and JOSHI K ₹1,999
+(the suspected duplicate).
+
+**S. Aniket needs the owner (not a rounding problem).** He has TWO identical "1 month
+strengthening" plans for 1–31 Oct: the **cancelled** one carries all his money (bill
+RF-2026-000014, ₹1,500 Cash + ₹299 UPI) and the **active** one points at a bill that no longer
+exists and has no money. So Edit plan can't reach his money and his ₹1 (₹299 → ₹300 UPI,
+register ₹300 PhonePe + ₹1,500 cash) is still open. Fix: Remove the empty active plan (added by
+mistake), Restore the cancelled one, then Edit plan → Price ₹2,000 and Collect the ₹1 by UPI.
+
 ### Next
 1. Owner: go through the morning chat list (October rows, in Telugu-English): Remove+resell
    Joshi/Sri Devi-type rows, Remove Roshan's cancelled copy, split Aniket/K. Sudheer payments
