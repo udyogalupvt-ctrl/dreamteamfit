@@ -74,6 +74,38 @@ due ₹8,999 and Collect balance already takes PART amounts (screenshot in scrat
 K. Sudheer 8 Oct are REFUSED by the overlap rule (each overlaps the member's own old-software
 plan) — money dates already match the register; owner decides keep-as-is vs an owner override.
 
+**October vs the paper register — reconciled 2026-10-10 after the owner's own fixes:**
+App October (new money, old-software money excluded) = **₹1,57,171** · register (1-9 Oct) =
+₹1,54,949 · gap **+₹2,222**, explained to the rupee:
+`+1,999` JOSHI K (#69) sold a ₹1,999 plan on 1 Oct AND P Victor Joshi (#126) the same — the
+register has only one "P. Joshi ₹2,000" row, so one is likely a duplicate (owner to confirm);
+`+500` Md. Abdul (owner set ₹2,500; register says ₹2,000); `-250` K. Sai (owner gave a ₹250
+discount + ₹299 refund; register says ₹1,750 received); `-28` the ₹1,999-vs-₹2,000 package
+rounding across ~28 rows. Claude fixed only the mode on G. Ayyappa and G. Mounika
+(₹2,200 each UPI → **Cash**, register says cash) — Day Book cash gap went from -₹5,402 to +₹498.
+Owner had already fixed (left untouched): Roshan, Gopichandh ₹2,500→₹300, Jyothi Prasad's
+wrong ₹8,999, K. Sri Devi ₹10,000 cash, Unknown ₹200 cash, Md. Abdul, K. Sai, Mothilal ₹6,000,
+both Joshi sales.
+
+**Open money questions for the owner (all listed in the chat reply of 2026-10-10):**
+1. JOSHI K (#69) vs P Victor Joshi (#126): which one is the register's "P. Joshi ₹2,000"? The
+   other sale should be Removed (added by mistake). Joshi K also carries TWO old ₹1,800
+   payments (one "Not recorded" from the migration, one "Other" from the old hand-entry) for
+   the same September plan, and both of those plans are now cancelled → ₹3,600 of September
+   old money for one ₹1,800 plan; one payment should be Removed.
+2. K. Mothilal: the ₹6,000 renewal is booked 100% as PT. Owner says it is ₹2,500 gym
+   (strength+cardio) + ₹3,500 PT → trainer N. Abhilash's share is ₹2,100 instead of ₹1,225
+   (₹875 too much) and he has no gym plan. Fix = Remove that sale, sell again as gym +
+   PT with a ₹2,500 PT discount. His ₹1,000 old-software balance (bill RF-2026-000078) is
+   still open — collect it if the ₹7,000 included it.
+3. Package prices all end in 999 (₹1,999 / ₹2,499 / ₹9,999 / ₹14,999 …) while the desk takes
+   round amounts → a ₹1 mismatch on every sale, forever. Round them or keep them?
+4. Plan starts T. Rajesh 4 Oct / N. Shiva 6 Oct / K. Sudheer 8 Oct stay refused by the overlap
+   rule (each overlaps that member's own old-software plan). Money dates already match the
+   register and the app's dates give the member MORE days, so the recommendation is to leave
+   them; otherwise an owner-only "different plans, not a copy" override on Edit plan is a
+   ~1 hour change (reuses the existing overlapOk marks).
+
 ### Next
 1. Owner: go through the morning chat list (October rows, in Telugu-English): Remove+resell
    Joshi/Sri Devi-type rows, Remove Roshan's cancelled copy, split Aniket/K. Sudheer payments
