@@ -525,7 +525,7 @@ export function ClientPtPlans({ client, invoices }: { client: Client; invoices: 
                     <XCircle aria-hidden />
                   </Button>
                 ) : null}
-                {canDelete("plans") && (ptOpen(p) || p.status === "cancelled") ? (
+                {canDelete("plans") ? (
                   <Button
                     variant="ghost"
                     size="icon-sm"
