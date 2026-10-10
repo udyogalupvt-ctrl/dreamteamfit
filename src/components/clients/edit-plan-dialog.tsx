@@ -301,23 +301,6 @@ export function EditPlanDialog({
     setError("");
     const byName = user?.displayName || user?.email || "Staff";
     try {
-      // Correct the payment BEFORE the plan, so the bill never asks for money back.
-      if (dropFix && lowerPayment)
-        await editPayment({
-          payment: dropFix,
-          form: {
-            amount: Math.round((dropFix.amount - lowerPayment) * 100) / 100,
-            method: dropFix.method,
-            paymentDate: paidOn.changed ? paidOn.value : dropFix.paymentDate,
-            note: dropFix.note,
-          },
-          reason: reason || "Amount corrected: this is what the member really paid",
-          can: { billing: can("billing"), finance: money },
-          // The bill still carries the old, higher total for a moment (the plan edit right after
-          // brings it down to match), so the gap it leaves needs a day on it.
-          nextPaymentDate: payBy || todayISO(),
-          by: byName,
-        });
       if (preview.changes.length)
         await editMembership({
           client,
@@ -328,7 +311,8 @@ export function EditPlanDialog({
           reason,
           refundMethod: method,
           canRefund: money,
-          amountTypedWrong: !!lowerPayment,
+          // The plan edit lowers this payment itself, in the same write.
+          ...(lowerPayment && dropFix ? { typedWrongPaymentId: dropFix.id } : {}),
           nextPaymentDate: bc?.newBalance ? payBy || todayISO() : null,
           by: { uid: user?.uid ?? "", name: byName },
         });
@@ -347,7 +331,7 @@ export function EditPlanDialog({
           nextPaymentDate: null,
           by: byName,
         });
-      else if (!lowerPayment) await paidOn.save(reason, byName);
+      else await paidOn.save(reason, byName);
       onClose();
       toast.success("Plan updated", {
         description:

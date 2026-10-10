@@ -106,6 +106,34 @@ both Joshi sales.
    them; otherwise an owner-only "different plans, not a copy" override on Edit plan is a
    ~1 hour change (reuses the existing overlapOk marks).
 
+**2026-10-10 (afternoon): a price corrected DOWN is a typing fix, not money handed back.**
+Owner hit a dead end on K. Sai: ₹1,799 was saved for a ₹1,750 sale, correcting the price made an
+automatic "refund given back ₹299" line, the member then showed ₹250 still due, and the refund
+could not be removed ("correct it with Edit bill or Edit plan" — which could not fix it either).
+Edit plan already asked the right question when a price goes UP ("Already paid"); it now asks the
+same going DOWN: **"The amount was typed wrong: ₹1,750 was taken, not ₹1,799"**, ticked by
+default, which corrects the payment in the SAME write (`typedWrongPaymentId` on
+`editMembership`) instead of making a refund. Untick it only when money really went back
+(old behaviour, kept and tested). Cash + UPI split payments keep the old path with a note.
+`payment-remove`: a price-change refund can now be taken off when its bill has room for the money
+again; when it has not, it says exactly what to do ("set the payment to ₹1,750 with Edit payment,
+then take this off") instead of a dead end. A cancellation's refund is unchanged.
+Checks: unit 346/346 (3 new in `payment-remove.test.ts`), new emulator suite
+`pricedrop_local.py` 12/12 (typed-wrong path, money-given-back path, removing a stuck refund),
+price 11/11, moneyfix 21/21, remove 39/39. Live from build `45024d23e591`.
+NOTE for the next change here: the payment fix must stay INSIDE `editMembership`'s transaction —
+doing it as a separate `editPayment` call first trips the bill's "A payment was just added"
+concurrency guard.
+
+**Register corrections finished (owner asked; register = truth):** Aniket ₹299 UPI + ₹1,500 Cash ·
+K. Sudheer ₹999 UPI + ₹1,000 Cash · G. Ayyappa and G. Mounika ₹2,200 each UPI → **Cash** ·
+G. Vijay Kumar ends 1 Sep 2027 · P Victor Joshi's old-software entry removed and resold ₹1,999
+UPI 1 Oct (owner) · **K. Sai now one ₹1,750 UPI payment, bill paid in full, no refund line** ·
+**Md. Abdul ₹2,500 → ₹2,000** · all 9 package prices rounded (₹1,999 → ₹2,000, ₹2,499 → ₹2,500,
+₹14,999 → ₹15,000 …) so future sales match the desk's round amounts; old sales keep their price.
+October app vs register is now **+₹1,971**: the suspected duplicate Joshi sale (₹1,999) less ~₹28
+of ₹1 rounding on sales already made. Everything else matches to the rupee.
+
 ### Next
 1. Owner: go through the morning chat list (October rows, in Telugu-English): Remove+resell
    Joshi/Sri Devi-type rows, Remove Roshan's cancelled copy, split Aniket/K. Sudheer payments

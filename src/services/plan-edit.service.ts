@@ -313,11 +313,11 @@ export interface PlanEditInput {
   /** May give money back and change a discount (Income & expenses). */
   canRefund: boolean;
   /**
-   * The old price was simply typed wrong (₹1,799 saved, ₹1,750 taken): no money was given back,
-   * so no refund line is made. The caller lowers the bill's payment by the same amount FIRST, so
-   * the payments and the bill still add up.
+   * The old price was simply typed wrong (₹1,799 saved, ₹1,750 really taken): no money was given
+   * back. This payment on the bill is lowered by the difference in the same write instead of
+   * making a "money given back" line. Left out = the difference is given back as before.
    */
-  amountTypedWrong?: boolean;
+  typedWrongPaymentId?: string;
   /** When a new / bigger balance is left: the day the member will pay it. */
   nextPaymentDate: string | null;
   by: { uid: string; name: string };
@@ -338,6 +338,7 @@ export async function editMembership(input: PlanEditInput) {
     );
   if (bc && bc.newBalance && !input.nextPaymentDate)
     throw new Error("Pick the date the member will pay the balance.");
+  const typedWrongId = bc && bc.refund > 0 ? (input.typedWrongPaymentId ?? "") : "";
 
   // The counsellor follows onto the plan's bill and its payments (incentives count from those).
   const counsellorBill = preview.counsellorChanged && !m.paidInOldSoftware ? input.bill : null;
@@ -570,14 +571,33 @@ export async function editMembership(input: PlanEditInput) {
       };
       paysSnap?.docs
         .filter((p) => Number(p.data()["amount"] ?? 0) > 0)
-        .forEach((p) =>
+        .forEach((p) => {
+          const was = Number(p.data()["amount"] ?? 0);
+          // The one payment the owner said was typed wrong: it becomes what was really taken, so
+          // the bill is paid in full at the new price and nothing is "given back".
+          const fix = p.id === typedWrongId && bc.refund > 0;
+          const amount = fix ? Math.round((was - bc.refund) * 100) / 100 : was;
           tx.update(p.ref, {
-            ...allocatePayment(split, Number(p.data()["amount"])),
+            ...(fix
+              ? {
+                  amount,
+                  edits: [
+                    ...((p.data()["edits"] as unknown[] | undefined) ?? []),
+                    {
+                      on: today,
+                      by: input.by.name,
+                      reason: reason || "The amount was typed wrong",
+                      changes: [`Amount ${formatPrice(was)} → ${formatPrice(amount)}`],
+                    },
+                  ],
+                }
+              : {}),
+            ...allocatePayment(split, amount),
             ...(preview.counsellorChanged ? counsellorFields : {}),
             updatedAt: now,
-          }),
-        );
-      if (bc.refund > 0 && !input.amountTypedWrong)
+          });
+        });
+      if (bc.refund > 0 && !typedWrongId)
         tx.set(doc(col(COLLECTIONS.payments)), {
           clientId: client.id,
           clientNameSnapshot: client.fullName,
