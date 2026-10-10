@@ -1,13 +1,78 @@
 # Handoff
 
-Last updated: 2026-10-10 (split-pay merged; next: old plans as-is, approved design, not built)
+Last updated: 2026-10-10 (old plans as-is LIVE: migration run + verified; owner list in chat)
 
-## 2026-10-10: NEXT — old-software members keep their old plan as-is (approved, not built)
+## 2026-10-10/11 (overnight): old-software members keep their old plan AS-IS — built
 
-Design: [docs/superpowers/specs/2026-10-10-old-plans-as-is-design.md](superpowers/specs/2026-10-10-old-plans-as-is-design.md).
-Next: (1) show the owner ONE preview screen (old member's page) and get a yes; (2) plan + build on a
-worktree of main (another chat may be on branch split-pay in this folder); (3) emulator tests on own ports;
-(4) back up live data, run once, check totals, owner page with Undo.
+Design: [docs/superpowers/specs/2026-10-10-old-plans-as-is-design.md](superpowers/specs/2026-10-10-old-plans-as-is-design.md) ·
+plan + as-built record: [docs/superpowers/plans/2026-10-10-old-plans-as-is.md](superpowers/plans/2026-10-10-old-plans-as-is.md).
+Owner pre-approved the whole overnight run in writing (2026-10-10 message), including live data.
+
+**State**
+- **Engine:** pure decisions in `src/lib/old-migrate.ts` (23 unit tests, every decision-table case);
+  server `src/server/old-migrate.ts` (`/api/old-migrate/preview|apply|carry|undo|undo-run|search`,
+  owner-gated bulk, `members`-gated carry/search). Per-member transactions, full before-copies in
+  `oldSoftwareMoves` kind `"as-is"`, per-member Undo + Undo-all; undo refuses if anything changed
+  since (created doc's updatedAt moved, new records on a created member). Door checks queued;
+  `currentMembership` recomputed; invoice numbers from settings/counters. No rules change needed
+  (browser only reads `oldSoftwareMoves`, allowed for finance).
+- **Owner card "Old software check"** first on Income & expenses → Profit & income: Check (paged
+  preview), Run (typeToConfirm MIGRATE), was → now per member, per-row Undo, Undo all per run,
+  "Not changed, and why" grouped list.
+- **Every hand-entry path retired:** checkout tick + old amounts + lock GONE (wizard shows a
+  carry-first banner; a same-kind sale over a not-yet-carried old plan's days is refused);
+  `enrollMember` no longer accepts `oldSoftware`; Add-old-plan dialog and Check & mark
+  (OldSoftwareDialog) deleted (legacy per-plan Undo kept); Backup page Add, Member calls Add and
+  the member-page banner all use the one-press as-is carry; global search got "In the old
+  software" with one-press "add as member" (feature `members`).
+- **Money:** mode `"Not recorded"` (literal method string; not offered at checkout; editable via
+  Edit plan's old rows); the This-month "Old software" chip is gone (chips show the method);
+  `priceSnapshot` = old amount (CFO earned right); old money still never in drawer cash,
+  incentives or payouts. PT plans now count in the in-app punch decision (PT-only members log
+  allowed, like the machine's own rule). Edit plan on a packageId-less as-is plan no longer
+  crashes (old name shown read-only). Member app lists a carried plan once.
+- **Harness (this session's scratchpad b170b240… `harness/`):** `bash regress_mine.sh <suite>`
+  (ports 8280/9299, app :5499, fake WA :5599). New `asis_local.py` (full decision table E2E,
+  undo, idempotence, search, carry-first, phone+desktop light/dark shots in `shots_asis/`);
+  `oldlock_local.py` rewritten carry-first; `renew_pt` B-case + `audit2` D/E updated (Check &
+  mark retired). Live tools in the same scratchpad: `backup_live.mjs` (read-only dump),
+  `live_run.py` (owner browser: preview → run → screenshots in `shots_live/`),
+  `verify_asis.mjs` (re-runs the decisions on live data + sacred-invariant diff vs the backup;
+  report JSON stays local).
+- Checks: tsc + eslint clean, build OK, unit 343/343; 13 emulator suites green on this build —
+  asis 38/38 (new), oldlock 11/11 (rewritten), renew_pt 26/26, audit2 21/21, paidon 15/15,
+  paidon_edit 13/13, latedates 26/26, update 6/6, remove 39/39, plans_end 12/12, moneyfix 21/21,
+  audit9 23/23, price 11/11 (remove/moneyfix/latedates need the split-aware copies from
+  fc9b07bc — `name="Cash"` substring-matches the "Cash + UPI" chip). Adversarial review
+  workflow on the engine: 13 real findings fixed BEFORE the live run (undo blind-restore,
+  null===null payment relink, surname-only name match, and more — see the plan doc).
+- **LIVE RUN DONE (2026-10-10 morning, build 997399e80a57):** backup first (scratchpad
+  b170b240… `backup-pre-run.json`), then 279 member changes applied: 136 members created,
+  all running/prepaid old plans carried, hand-entries exactified, 1 copy recycled.
+  Verified EVERY old member (scratchpad `verify_asis.mjs`, `verify_report3.json`): 1022 old
+  members, 270 running plans → 269 exact in the app (name, dates, price, paid, balance), 0
+  remaining changes, no duplicates, all 49 payments taken here byte-identical, cashDays
+  untouched. 726 "not changed" rows are listed on the owner page with reasons (mostly
+  ended-plan members who come via search → "In the old software" → one press).
+  **Lesson:** the old export repeats some subscription rows — the engine now carries one
+  oldPlanKey once (fix deployed mid-run; 5 members' duplicated moves undone + re-applied).
+  Driving the card's apply loop by browser kept dying; the API driver (scratchpad
+  `api_run.py`: Firebase sign-in + /api/old-migrate/preview+apply) is the reliable way.
+- Deliberately left (listed for the owner, also in the morning chat message): 3 October
+  entries "paid in the old software" with no such old plan (remove + resell with the real
+  mode), Roshan's cancelled duplicate entry (Remove it; his carry was undone — don't re-apply
+  his row), K. Sri Devi's records, 2 old plans with missing dates, prepaid old plans starting
+  24 Oct (check the register when they start).
+
+### Next
+1. Owner: go through the morning chat list (October rows, in Telugu-English): Remove+resell
+   Joshi/Sri Devi-type rows, Remove Roshan's cancelled copy, split Aniket/K. Sudheer payments
+   (Edit payment → Cash + UPI), add the 3 missing register sales with Paid on, decide the
+   ₹1,999-vs-₹2,000 package prices.
+2. Ended-plan old members (≈700) come over on first visit: search their name → "In the old
+   software" → one press. Nothing else to migrate.
+3. If a carried plan is ever wrong: Income & expenses → Old software check → that member →
+   Undo (per member), fix, Check → Run again.
 
 ## 2026-10-10: Cash + UPI split payment and the "paid in the old software" check (merged into main 2026-10-10)
 
