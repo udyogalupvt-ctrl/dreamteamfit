@@ -261,6 +261,9 @@ export function EnrollmentWizard({
   const [ptStartText, setPtStartText] = useState(restored?.ptStart ?? "");
   const [ptEndText, setPtEndText] = useState(restored?.ptEnd ?? "");
   const [amountPaid, setAmountPaid] = useState<number | null>(restored?.amountPaid ?? null);
+  // The board price ends in 99 (₹1,999) but members hand over ₹2,000 and take no change, so the
+  // bill is made for what was really handed over. The package keeps its board price.
+  const [roundUp, setRoundUp] = useState(true);
   const [method, setMethod] = useState<PayMode>(restored?.method ?? "UPI");
   const [cashText, setCashText] = useState(restored?.cashPart ?? "");
   // "" = the default day (see paidOn below).
@@ -516,10 +519,37 @@ export function EnrollmentWizard({
       : ptDiscount > maxPtDiscount(ptPkg)
         ? `Too much: at most ${formatPrice(maxPtDiscount(ptPkg))} on this PT package`
         : "";
-  const totals = useMemo(
+  // What the bill comes to at the board price, before any rounding up.
+  const boardTotals = useMemo(
     () =>
       enrollmentTotals({
         gymPackage,
+        pt,
+        discount,
+        amountPaid: Number.MAX_SAFE_INTEGER,
+        settings: settings.data,
+        upgrade,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [gymPackage, pt, discount, settings.data, upgrade?.credit, upgrade?.membershipId],
+  );
+  // More handed over than the board price asks: up to ₹99 it is the usual rounding up (₹1,999
+  // taken as ₹2,000, no change given). Anything bigger is a typing mistake and is still refused.
+  const overPaid =
+    gymPackage && !upgrading && amountPaid !== null && amountPaid > boardTotals.total
+      ? Math.round((amountPaid - boardTotals.total) * 100) / 100
+      : 0;
+  const canRoundUp = overPaid > 0 && overPaid <= 99;
+  const addedUp = canRoundUp && roundUp ? overPaid : 0;
+  // This one sale is priced for what was handed over; the package itself is never changed.
+  const salePackage =
+    gymPackage && addedUp
+      ? { ...gymPackage, price: Math.round((gymPackage.price + addedUp) * 100) / 100 }
+      : gymPackage;
+  const totals = useMemo(
+    () =>
+      enrollmentTotals({
+        gymPackage: salePackage,
         pt,
         discount,
         amountPaid: amountPaid ?? Number.MAX_SAFE_INTEGER,
@@ -527,7 +557,16 @@ export function EnrollmentWizard({
         upgrade,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [gymPackage, pt, discount, amountPaid, settings.data, upgrade?.credit, upgrade?.membershipId],
+    [
+      salePackage?.price,
+      gymPackage,
+      pt,
+      discount,
+      amountPaid,
+      settings.data,
+      upgrade?.credit,
+      upgrade?.membershipId,
+    ],
   );
   const paid = amountPaid ?? totals.total;
   // A plan typed in after it started: its money counts on the plan's first day, unless the member
@@ -734,6 +773,7 @@ export function EnrollmentWizard({
     setPtStartText("");
     setPtEndText("");
     setAmountPaid(null);
+    setRoundUp(true);
     setCashText("");
     setNotes("");
     setNextPaymentDate("");
@@ -785,7 +825,9 @@ export function EnrollmentWizard({
           `${oldToCarry.name} still runs in the old software until ${formatDateISO(oldToCarry.end)}. Carry it over first (button above); a sale here is new money and starts ${formatDateISO(addDaysISO(oldToCarry.end, 1))} or later.`;
       if (!gymPackage && !pt) e["package"] = "Pick a package first";
       if (!(paid >= 0) || paid > totals.total)
-        e["amountPaid"] = `Enter 0 to ${formatPrice(totals.total)}`;
+        e["amountPaid"] = canRoundUp
+          ? `Tick "Make the bill ${formatPrice(boardTotals.total + overPaid)}" below, or enter 0 to ${formatPrice(totals.total)}.`
+          : `Enter 0 to ${formatPrice(totals.total)}`;
       if (paid > 0 && paidOnProblem) e["paidOn"] = paidOnProblem;
       if (paid > 0 && splitOn) {
         const bad = splitProblem(Math.min(paid, totals.total), cashPartOf(cashText));
@@ -821,7 +863,7 @@ export function EnrollmentWizard({
         whatsappOptIn,
         existingClient: existing,
         inquiryId: options.inquiryId ?? null,
-        gymPackage,
+        gymPackage: salePackage,
         pt: pt ? { ...pt, startDate: ptStart, endDate: ptEnd } : null,
         startDate,
         discount,
@@ -1486,13 +1528,36 @@ export function EnrollmentWizard({
                       type="number"
                       inputMode="decimal"
                       min={0}
-                      max={totals.total}
+                      max={gymPackage && !upgrading ? boardTotals.total + 99 : totals.total}
                       value={paid}
                       onChange={(e) =>
                         setAmountPaid(e.target.value === "" ? 0 : Number(e.target.value))
                       }
                     />
                   </Field>
+                  {canRoundUp ? (
+                    <label className="col-span-2 flex items-start gap-3 rounded-lg bg-info/10 p-3 text-sm">
+                      <Checkbox
+                        checked={roundUp}
+                        onCheckedChange={(v) => setRoundUp(v === true)}
+                        className="mt-0.5"
+                        aria-label="Make the bill the amount handed over"
+                      />
+                      <span>
+                        <span className="block font-semibold">
+                          Make the bill {formatPrice(boardTotals.total + overPaid)} — that is what
+                          was handed over
+                        </span>
+                        <span className="text-meta">
+                          {formatPrice(boardTotals.total)} + {formatPrice(overPaid)}. The package
+                          keeps its board price of {formatPrice(gymPackage?.price ?? 0)}; only this
+                          bill is made for {formatPrice(boardTotals.total + overPaid)}, so nothing
+                          is left due and the Day Book matches the cash. Untick if{" "}
+                          {formatPrice(overPaid)} was given back as change.
+                        </span>
+                      </span>
+                    </label>
+                  ) : null}
                   <PayModeField
                     id="e-method"
                     className="col-span-2"
