@@ -769,10 +769,10 @@ function ClientProfilePage() {
                             <XCircle aria-hidden />
                           </Button>
                         ) : null}
-                        {canDelete("plans") &&
-                        (m.effective === "active" ||
-                          m.effective === "pending" ||
-                          m.status === "cancelled") ? (
+                        {/* Any plan can be an entry made by mistake, ended ones too (an old
+                            month typed in as a new sale). Remove does its own checking and
+                            says why when it can't go, so the bin is never silently missing. */}
+                        {canDelete("plans") ? (
                           <Button
                             variant="ghost"
                             size="icon-sm"
