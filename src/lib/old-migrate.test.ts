@@ -817,3 +817,11 @@ test("review fixes: a hand-entry a renewal ended stays ended after the fix", () 
   );
   assert.deepEqual(r.members[0]!.fixes[0]!.keepEnded, { status: "expired", endedBy: "mNew" });
 });
+
+test("review fixes: a subscription row duplicated in the export is carried ONCE", () => {
+  const p = plan({ name: "1 MONTH ALT PT", start: d2(14), end: d2(44), amount: 6000 });
+  const m = person({ plans: [p, { ...p }, { ...p }, { ...p }, { ...p }] });
+  const r = planMigration(base({ oldMembers: [m] }));
+  assert.equal(r.members.length, 1);
+  assert.equal(r.members[0]!.carries.length, 1);
+});
