@@ -575,7 +575,9 @@ export const INVOICE_PAYMENT_STATUSES = [
 ] as const;
 export type InvoicePaymentStatus = (typeof INVOICE_PAYMENT_STATUSES)[number];
 export const PAYMENT_METHODS = ["Cash", "UPI", "Card", "Bank Transfer", "Other"] as const;
-export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+/** Old-software money: how it was paid was never recorded there (editable later). */
+export const NOT_RECORDED_METHOD = "Not recorded";
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number] | typeof NOT_RECORDED_METHOD;
 
 export interface InvoiceItem {
   name: string;

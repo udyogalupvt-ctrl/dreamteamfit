@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { todayISO } from "@/lib/format";
 import { useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
 import {
   CalendarCheck,
   CalendarClock,
   Cpu,
   Dumbbell,
+  History,
   MessageSquareHeart,
   Package,
   ReceiptIndianRupee,
@@ -38,6 +40,8 @@ import { subscribeInvoices } from "@/services/invoices.service";
 import { subscribeAttendanceDay } from "@/services/attendance.service";
 import { subscribeDevices } from "@/services/biometric-devices.service";
 import { subscribeFollowUps } from "@/services/followups.service";
+import { carryOldPlan, searchOldSoftware } from "@/services/old-migrate.service";
+import type { OldDirectoryEntry } from "@/lib/old-data";
 import type {
   AttendanceEvent,
   BiometricDevice,
@@ -70,7 +74,9 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
   const dietPlans = useLive<DietPlan[]>(armed ? subscribeDietPlans : null, [], [armed]);
   const bookings = useLive<Booking[]>(armed ? subscribeBookings : null, [], [armed]);
   const classes = useLive<GroupClass[]>(armed ? subscribeGroupClasses : null, [], [armed]);
-  const finance = useAccess().can("finance");
+  const { can } = useAccess();
+  const finance = can("finance");
+  const membersAccess = can("members");
   const expenses = useLive<Expense[]>(
     armed && finance ? subscribeExpenses : null,
     [],
@@ -86,6 +92,48 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
   const followUps = useLive<FollowUp[]>(armed ? subscribeFollowUps : null, [], [armed]);
   const q = query.trim().toLowerCase();
   const phone = normalizePhone(query);
+  // People still only in the old software ("Add from old software"): looked up on the server,
+  // which also says who is already a member here.
+  const [oldHits, setOldHits] = useState<(OldDirectoryEntry & { clientId: string })[]>([]);
+  useEffect(() => {
+    if (!open || q.length < 3 || !membersAccess) {
+      setOldHits([]);
+      return;
+    }
+    let live = true;
+    const t = setTimeout(() => {
+      searchOldSoftware(q).then(
+        (r) => live && setOldHits(r.entries),
+        () => undefined,
+      );
+    }, 350);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [open, q, membersAccess]);
+  const addFromOld = (e: OldDirectoryEntry & { clientId: string }) => {
+    setOpen(false);
+    setQuery("");
+    if (e.clientId) {
+      void navigate({ to: "/clients/$clientId", params: { clientId: e.clientId } });
+      return;
+    }
+    toast.promise(
+      carryOldPlan(e.k, e.id).then((r) => {
+        void navigate({ to: "/clients/$clientId", params: { clientId: r.clientId } });
+        return r;
+      }),
+      {
+        loading: "Adding from the old software…",
+        success: (r) => ({
+          message: "Added with their old plan, as it is",
+          description: r.summary,
+        }),
+        error: (err: unknown) => (err instanceof Error ? err.message : String(err)),
+      },
+    );
+  };
 
   const results = useMemo(
     () => ({
@@ -277,6 +325,25 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
                   <Users aria-hidden />
                   <span className="min-w-0 truncate">{item.fullName}</span>
                   <span className="ml-auto text-xs text-muted-foreground">{item.clientCode}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          ) : null}
+          {oldHits.length ? (
+            <CommandGroup heading="In the old software">
+              {oldHits.map((e) => (
+                <CommandItem
+                  key={`${e.k}-${e.id}`}
+                  value={`old ${e.n} ${e.k}`}
+                  onSelect={() => addFromOld(e)}
+                >
+                  <History aria-hidden />
+                  <span className="min-w-0 truncate">{e.n}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {e.clientId
+                      ? "already a member"
+                      : `${e.p || "no plan"}${e.pe ? ` · to ${e.pe}` : ""} · add as member`}
+                  </span>
                 </CommandItem>
               ))}
             </CommandGroup>

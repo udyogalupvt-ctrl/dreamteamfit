@@ -1246,16 +1246,30 @@ async function attendance(device: Device, body: string) {
       }
     }
     if (client && !memberships.has(client.id)) {
-      const ms = await firestore.collection("memberships").where("clientId", "==", client.id).get();
-      memberships.set(
-        client.id,
-        ms.docs.map((m) => ({
+      // PT plans count like entitled(): an active PT covering the day opens the door, so a
+      // PT-only member (e.g. carried over from the old software) is not logged "blocked".
+      const [ms, pts] = await Promise.all([
+        firestore.collection("memberships").where("clientId", "==", client.id).get(),
+        firestore.collection("ptAssignments").where("clientId", "==", client.id).get(),
+      ]);
+      memberships.set(client.id, [
+        ...ms.docs.map((m) => ({
           id: m.id,
           status: String(m.data()["status"] ?? ""),
           startDate: String(m.data()["startDate"] ?? ""),
           endDate: String(m.data()["endDate"] ?? ""),
         })),
-      );
+        ...pts.docs.map((m) => {
+          const s = String(m.data()["status"] ?? "");
+          return {
+            id: m.id,
+            // A pending PT does not open the door; a completed one counts as expired.
+            status: s === "active" ? "active" : s === "completed" ? "expired" : s === "cancelled" ? "cancelled" : "pt_pending",
+            startDate: String(m.data()["startDate"] ?? ""),
+            endDate: String(m.data()["endDate"] ?? ""),
+          };
+        }),
+      ]);
     }
     // Not linked to a member yet: keep the name the machine has for them (from "Read users").
     if (!client && !machineNames.has(pin)) {

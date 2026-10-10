@@ -13,7 +13,7 @@
 
 const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-export const OLD_PAY_METHODS = ["Cash", "UPI", "Card", "Bank Transfer", "Other"] as const;
+export const OLD_PAY_METHODS = ["Cash", "UPI", "Card", "Bank Transfer", "Other", "Not recorded"] as const;
 export type OldPayMethod = (typeof OLD_PAY_METHODS)[number];
 
 /** One payment made in the old software. `id` = its payment record, once saved. */

@@ -1,3 +1,4 @@
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -138,5 +139,41 @@ export function OldPaidRows({
         </p>
       )}
     </fieldset>
+  );
+}
+
+/**
+ * The old software's balance is often stale (paid there, never updated), so the daily WhatsApp
+ * balance reminders go out only when staff tick this after checking with the member.
+ */
+export function RemindOldBalance({
+  checked,
+  onChange,
+  id = "old-plan-remind",
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  id?: string;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm"
+    >
+      <Checkbox
+        id={id}
+        checked={checked}
+        onCheckedChange={(v) => onChange(v === true)}
+        className="mt-0.5"
+      />
+      <span>
+        <span className="block font-semibold">Send WhatsApp reminders for this balance</span>
+        <span className="text-meta">
+          Tick only after checking with the member that it is still owed: the old software was not
+          always updated when a balance was paid. Unticked, the bill still shows the balance to
+          collect at the desk.
+        </span>
+      </span>
+    </label>
   );
 }

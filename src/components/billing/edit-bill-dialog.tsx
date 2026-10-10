@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { useAccess } from "@/hooks/use-access";
 import { useAuth } from "@/hooks/use-auth";
-import { RemindOldBalance } from "@/components/clients/add-old-plan-dialog";
+import { RemindOldBalance } from "@/components/clients/old-paid-rows";
 import { formatDateISO, formatPrice } from "@/lib/format";
 import { isOldBalanceBill } from "@/lib/old-money";
 import { editBill, previewBillEdit, staffDiscountOf } from "@/services/bill-edit.service";

@@ -9,6 +9,7 @@ import { handleStaff } from "./staff";
 import { handleDeviceUsers } from "./device-import";
 import { handleMemberPhoto } from "./member-photo";
 import { handleOldData } from "./old-data";
+import { handleOldMigrate } from "./old-migrate";
 import { handlePortal } from "./portal";
 import { handlePush } from "./push";
 import { json, rememberOrigin, serverHealth, text } from "./admin";
@@ -35,6 +36,10 @@ export async function handleServerRoute(request: Request): Promise<Response> {
     if (path.startsWith("/api/portal/")) return await handlePortal(request, url);
     if (path.startsWith("/api/push/")) return await handlePush(request, url);
     if (path.startsWith("/api/old-data/")) return await handleOldData(request, url);
+    if (path.startsWith("/api/old-migrate/")) {
+      const r = await handleOldMigrate(request, url);
+      if (r) return r;
+    }
     return text("Not found", 404);
   } catch (error) {
     console.error("server route failed", path, error);

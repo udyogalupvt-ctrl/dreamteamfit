@@ -1,29 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { History, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
-import { OldSoftwareDialog } from "@/components/clients/old-software-dialog";
 import { StatusPill } from "@/components/common/status-pill";
 import { Button } from "@/components/ui/button";
-import { doc, getDoc } from "@/lib/firestore";
-import { db } from "@/lib/firebase";
 import { formatDateISO, formatPrice } from "@/lib/format";
 import { getServer } from "@/lib/server-api";
-import { COLLECTIONS } from "@/services/firestore.service";
-import { mapInvoice } from "@/services/invoices.service";
-import { mapMembership } from "@/services/memberships.service";
-import { gymMoveTarget, ptMoveTarget, type OldMoveTarget } from "@/services/old-software.service";
-import { mapPtAssignment } from "@/services/pt.service";
 import type { OldNotInRecords, OldSaleSuspect } from "@/lib/old-data";
-import type { Invoice } from "@/types/models";
-
-type Open = {
-  target: OldMoveTarget;
-  bill: Invoice | null;
-  s: OldSaleSuspect;
-  phone: string;
-  oldMemberId: string;
-} | null;
 
 /**
  * Income & expenses: sales since the 1st of last month (gym plans, and PT plans sold alone) that
@@ -38,7 +20,6 @@ export function OldSalesReview() {
   const [notIn, setNotIn] = useState<OldNotInRecords[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState<Open>(null);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -58,33 +39,6 @@ export function OldSalesReview() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  const check = async (s: OldSaleSuspect) => {
-    try {
-      const pt = s.kind === "pt";
-      const [m, b, c] = await Promise.all([
-        getDoc(
-          pt
-            ? doc(db, COLLECTIONS.ptAssignments, s.ptAssignmentId)
-            : doc(db, COLLECTIONS.memberships, s.membershipId),
-        ),
-        getDoc(doc(db, COLLECTIONS.invoices, s.invoiceId)),
-        getDoc(doc(db, COLLECTIONS.clients, s.clientId)),
-      ]);
-      if (!m.exists()) throw new Error("This plan no longer exists.");
-      setOpen({
-        target: pt
-          ? ptMoveTarget(mapPtAssignment(m.id, m.data()))
-          : gymMoveTarget(mapMembership(m.id, m.data())),
-        bill: b.exists() ? mapInvoice(b.id, b.data()) : null,
-        s,
-        phone: String(c.data()?.["phone"] ?? ""),
-        oldMemberId: String(c.data()?.["oldMemberId"] ?? ""),
-      });
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  };
 
   if (error)
     return (
@@ -108,8 +62,9 @@ export function OldSalesReview() {
               </h2>
               <p className="text-meta mt-1 max-w-2xl">
                 {rows.length} sale{rows.length === 1 ? "" : "s"} ({formatPrice(total)}) counted as
-                money here may have been paid in the old software. Each one you mark is taken off
-                Collected, the Day Book and income; the plan stays. Undo is possible right after.
+                money here may really be old-software plans. The "Old software check" above fixes
+                plans that are in the old records. For money typed in wrongly, open the member and
+                use Remove (added by mistake), then sell it again the right way.
               </p>
             </div>
             <Button variant="outline" size="sm" onClick={() => void load()} disabled={busy}>
@@ -148,21 +103,9 @@ export function OldSalesReview() {
                     ))}
                   </ul>
                 </div>
-                <Button size="sm" onClick={() => void check(s)} className="justify-self-start">
-                  Check & mark
-                </Button>
               </li>
             ))}
           </ul>
-          <OldSoftwareDialog
-            target={open?.target ?? null}
-            bill={open?.bill ?? null}
-            memberName={open?.s.clientName ?? ""}
-            memberPhone={open?.phone}
-            oldMemberId={open?.oldMemberId}
-            onClose={() => setOpen(null)}
-            onDone={() => void load()}
-          />
         </section>
       ) : null}
     </>

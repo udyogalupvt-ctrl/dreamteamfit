@@ -70,15 +70,13 @@ import {
   ptNetPrice,
   subscribeEnrollment,
 } from "@/services/enrollment.service";
+import { carryOldPlan } from "@/services/old-migrate.service";
 import { subscribeStaff } from "@/services/staff.service";
 import { useAccess } from "@/hooks/use-access";
 import { addDaysISO, latestJoinDate } from "@/lib/format";
-import { checkOldRows, defaultOldRows, oldRowsTotal, type OldPayRow } from "@/lib/old-money";
 import { saleMoneyDay } from "@/lib/late-sales";
 import { planSoldFor } from "@/lib/plan-money";
 import { cashOpenFrom } from "@/services/finance.service";
-import { OldPaidRows } from "@/components/clients/old-paid-rows";
-import { RemindOldBalance } from "@/components/clients/add-old-plan-dialog";
 import {
   cleanMemberId,
   findClientsByPhone,
@@ -94,8 +92,6 @@ import { subscribeInvoice } from "@/services/invoices.service";
 import { downloadInvoicePdf } from "@/lib/invoice-download";
 import { markInvoiceShared, sendInvoiceWhatsApp } from "@/services/whatsapp.service";
 import { cashPartOf, PayModeField } from "@/components/billing/pay-mode-field";
-import { useOldRecordCheck } from "@/components/clients/use-old-record-check";
-import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { SPLIT_MODE, splitParts, splitProblem, type PayMode } from "@/lib/split-pay";
 import {
   DEFAULT_WHATSAPP_SETTINGS,
@@ -191,12 +187,6 @@ interface Draft {
   nextPaymentDate?: string;
   photoLater?: boolean;
   memberNo?: string;
-  /** Moving from the old software: plan paid there; "" = the old plan's balance. */
-  paidOld?: boolean;
-  oldBalance?: string;
-  /** The old balance was checked with the member: send the WhatsApp balance reminders. */
-  remindOld?: boolean;
-  oldPaid?: string;
   /** A plan that started before today: the member paid today (not on its first day). Old drafts. */
   paidToday?: boolean;
   /** "Paid on" chosen by staff; "" = the default (the plan's first day if it started before today). */
@@ -286,15 +276,6 @@ export function EnrollmentWizard({
   // Most members send their photo later from their phone, so this starts ticked.
   const [photoLater, setPhotoLater] = useState(restored?.photoLater ?? true);
   const [memberNo, setMemberNo] = useState(restored?.memberNo ?? "");
-  const [paidOld, setPaidOld] = useState(restored?.paidOld ?? false);
-  // Staff said this sale is new money paid here, though a plan still runs in the old software.
-  const [paidHere, setPaidHere] = useState(false);
-  const [oldBalanceText, setOldBalanceText] = useState(restored?.oldBalance ?? "");
-  const [remindOld, setRemindOld] = useState(restored?.remindOld ?? false);
-  // What they really paid in the old software (offers there differ from today's prices).
-  const [oldPaidText, setOldPaidText] = useState(restored?.oldPaid ?? "");
-  /** Paid in the old software in parts / on another day; null = all of it on the start day. */
-  const [oldRows, setOldRows] = useState<OldPayRow[] | null>(null);
   // The old software's record(s) for the phone typed (Backup page data).
   const [oldFound, setOldFound] = useState<{ members: OldMember[]; today: string }>({
     members: [],
@@ -304,8 +285,6 @@ export function EnrollmentWizard({
   const [carried, setCarried] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  // Saving "paid in the old software" for a plan its records don't have: asked once.
-  const [askOld, setAskOld] = useState(false);
   const [enrollmentId, setEnrollmentId] = useState<string | null>(
     options.resumeEnrollmentId ?? null,
   );
@@ -611,83 +590,33 @@ export function EnrollmentWizard({
   // Who was their counsellor in the old software: always shown, matched to staff or not.
   const oldCounsellor = oldLinked ? oldCounsellorOf(oldLinked, oldFound.today || today) : "";
   const oldCounsellorStaff = oldCounsellor ? matchStaffName(counsellors, oldCounsellor) : null;
-  // "Paid in the old software" is offered to a member from the old data, or one whose plan
-  // started before today, as long as they have no plan in this app yet (a renewal here is paid
-  // here). Members already added (Excel import, thumb first) count too.
-  // Any plan here counts, PT too: K. Mothilal's old PT plan was already carried over as a PT plan
-  // here, and the next plan he paid for must be a normal renewal, not the old plan again.
-  const plansHere = plans.data.length + ptPlans.data.length;
-  const canPaidOld =
-    !resuming && (Boolean(oldId) || startDate < today) && !(existing && plansHere > 0);
-  // A plan still running in the old software is carried over as it is: paid there, its own
-  // dates, amounts read-only (no discount, nothing counted today). They renew here after it ends.
-  // Only by a sale of the same kind (a PT sale never carries the old gym plan: a new ₹10,000 PT
-  // was forced into an old annual gym plan's dates as "paid there"), and staff can always say it
-  // was paid here.
+  // An old plan still running is carried over AS-IS with one press, never typed into a sale.
+  // A sale here is always new money paid here.
   const oldIsPt = !!oldRunning && isOldPtPlanName(oldRunning.name);
-  const sameKind = !!oldRunning && (oldIsPt ? ptOn : !!gymPackage);
-  const oldLocked = canPaidOld && !!oldRunning && sameKind && !paidHere;
-  const paidInOld = canPaidOld && (paidOld || oldLocked);
-  // The old plan this one carries over: the one running there, else the one that started within
-  // 10 days of this plan's start (its amounts are suggested).
-  const oldMatch =
-    oldRunning ??
-    (oldLinked && /^\d{4}-\d{2}-\d{2}$/.test(startDate)
-      ? (oldLinked.plans
-          .filter(
-            (p) =>
-              /^\d{4}-\d{2}-\d{2}$/.test(p.start) &&
-              Math.abs(Date.parse(p.start) - Date.parse(startDate)) <= 10 * 86_400_000,
-          )
-          .sort(
-            (a, b) =>
-              Math.abs(Date.parse(a.start) - Date.parse(startDate)) -
-              Math.abs(Date.parse(b.start) - Date.parse(startDate)),
-          )[0] ?? null)
-      : null);
-  const oldBalance =
-    oldBalanceText === ""
-      ? (oldMatch?.balance ?? 0)
-      : Math.max(0, Math.floor(Number(oldBalanceText) || 0));
-  const oldPaidSuggested = oldMatch ? Math.max(0, oldMatch.amount - oldMatch.balance) : 0;
-  const oldPaid =
-    oldPaidText === "" ? oldPaidSuggested : Math.max(0, Math.floor(Number(oldPaidText) || 0));
-  const dueLeft = paidInOld ? oldBalance > 0 : balanceLeft;
+  const oldCarried =
+    !!oldRunning &&
+    [...plans.data, ...ptPlans.data].some(
+      (p) =>
+        p.paidInOldSoftware === true &&
+        p.startDate === oldRunning.start &&
+        p.endDate === oldRunning.end,
+    );
+  const oldToCarry = oldRunning && !oldCarried ? oldRunning : null;
+  const dueLeft = balanceLeft;
   // A plan whose start date was left as it was (a new joining, not a renewal) starts on the day
   // the member paid: paid yesterday, typed in today → the plan runs from yesterday.
-  const followsPaidOn =
-    !showChoice && !oldLocked && !paidInOld && !startTouched && !joinStartsLater && !resuming;
+  const followsPaidOn = !showChoice && !startTouched && !joinStartsLater && !resuming;
   useEffect(() => {
     if (!followsPaidOn || !paidOnText || paidOnProblem) return;
     if (paidOnText !== startDate) setStartDate(paidOnText);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paidOnText, followsPaidOn]);
-  const newEnd = oldLocked
-    ? oldRunning.end
-    : gymPackage
-      ? calculateEndDate(startDate, gymPackage.durationDays)
-      : "";
+  const newEnd = gymPackage ? calculateEndDate(startDate, gymPackage.durationDays) : "";
   // The PT plan's dates: by default the plan's start date and the PT package's length (the gym
   // plan's dates when both are the same length); staff can change either.
   const ptStart = ptStartText || startDate;
-  const ptEndDefault = ptPkg
-    ? oldLocked && !gymPackage
-      ? oldRunning.end
-      : calculateEndDate(ptStart, ptPkg.durationDays)
-    : "";
+  const ptEndDefault = ptPkg ? calculateEndDate(ptStart, ptPkg.durationDays) : "";
   const ptEnd = ptEndText || ptEndDefault;
-  // "Paid in the old software" for a plan the old software's records don't have: probably money
-  // paid here (the October check). A plan still running there is in its records anyway.
-  const oldCheck = useOldRecordCheck({
-    on: paidInOld && !oldLocked,
-    phone: oldPhone,
-    name: existing?.fullName ?? client.fullName,
-    oldMemberId: oldId,
-    kind: gymPackage ? "gym" : "pt",
-    start: gymPackage ? startDate : ptStart,
-    end: gymPackage ? newEnd : ptEnd,
-  });
-  const oldDoubt = oldCheck.state === "missing" ? oldCheck.text : "";
   const ptMin = ptOn && ptLastEnd ? addDaysISO(ptLastEnd, 1) : "";
   const ptDateProblem = !ptPkg
     ? ""
@@ -698,30 +627,6 @@ export function EnrollmentWizard({
         : ptMin && ptStart < ptMin
           ? `PT plan here until ${formatDateISO(ptLastEnd)}: start PT on ${formatDateISO(ptMin)} or later`
           : "";
-  // Unlocked again (staff said "paid here", or another kind of plan was picked): back to a normal
-  // sale from the usual day, not the old plan's dates.
-  const wasLocked = useRef(oldLocked);
-  useEffect(() => {
-    const was = wasLocked.current;
-    wasLocked.current = oldLocked;
-    if (!was || oldLocked) return;
-    setPaidOld(false);
-    setOldPaidText("");
-    setOldRows(null);
-    setOldBalanceText("");
-    setStartDate(existing && !resuming && showChoice ? renewFrom : todayISO());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [oldLocked]);
-  useEffect(() => {
-    if (!oldLocked) return;
-    setPaidOld(true);
-    setOldPaidText("");
-    setOldRows(null);
-    setOldBalanceText("");
-    setRemindOld(false);
-    if (startDate !== oldRunning.start) setStartDate(oldRunning.start);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [oldLocked, oldRunning?.start]);
 
   /** "Use old details": name (if empty), gender, birthday, joining date, old ID, counsellor. */
   const fillFromOld = (m: OldMember) => {
@@ -737,12 +642,6 @@ export function EnrollmentWizard({
     const match = matchStaffName(counsellors, oldCounsellorOf(m, oldFound.today || today));
     if (match) setCounsellorId(match.id);
     const run = runningOldPlan(m, oldFound.today || today);
-    if (run) {
-      setStartDate(run.start);
-      setPaidOld(true);
-      setOldBalanceText("");
-      setRemindOld(false);
-    }
     toast.success("Filled in from the old software", {
       description: `Joined ${formatDateISO(oldJoinedOn(m))}${run ? ` · ${run.name} until ${formatDateISO(run.end)}` : ""}`,
     });
@@ -757,11 +656,6 @@ export function EnrollmentWizard({
   };
   const unlinkOld = () => {
     setClient((c) => ({ ...c, joinedOn: "", oldMemberId: "" }));
-    setPaidOld(false);
-    setOldBalanceText("");
-    setRemindOld(false);
-    setOldPaidText("");
-    setOldRows(null);
   };
 
   // Keep an unsaved draft so an accidental close never loses what staff typed.
@@ -793,10 +687,6 @@ export function EnrollmentWizard({
             nextPaymentDate,
             photoLater,
             memberNo,
-            paidOld,
-            oldBalance: oldBalanceText,
-            remindOld,
-            oldPaid: oldPaidText,
             paidOn: paidOnText,
             savedOn: todayISO(),
           }
@@ -828,10 +718,6 @@ export function EnrollmentWizard({
     nextPaymentDate,
     photoLater,
     memberNo,
-    paidOld,
-    oldBalanceText,
-    remindOld,
-    oldPaidText,
     paidOnText,
   ]);
 
@@ -853,9 +739,6 @@ export function EnrollmentWizard({
     setNextPaymentDate("");
     setPhotoLater(true);
     setMemberNo("");
-    setPaidOld(false);
-    setOldBalanceText("");
-    setRemindOld(false);
     setPaidOnText("");
     setStartTouched(false);
     setStep(firstStep);
@@ -895,24 +778,11 @@ export function EnrollmentWizard({
         e["startDate"] =
           `They join on ${formatDateISO(client.joinedOn)}: the plan can't start before that. Change this date or the joining date.`;
     }
-    if (s === PAYMENT && paidInOld) {
-      if (!gymPackage && !pt) e["package"] = "Pick a package first";
-      if (oldPaid <= 0 && oldBalance <= 0)
-        e["oldPaid"] = "Type what they paid in the old software (their old bill)";
-      else if (oldRows) {
-        const bad = checkOldRows(oldRows, todayISO());
-        if (bad) e["oldRows"] = bad;
-        else if (oldRowsTotal(oldRows) !== oldPaid)
-          e["oldRows"] =
-            `The parts add up to ${formatPrice(oldRowsTotal(oldRows))}, but ${formatPrice(oldPaid)} was paid there.`;
-      } else if (oldPaid > 0 && startDate > todayISO())
-        // No start day to count it on yet (never "today"): the day it was paid there.
-        e["oldRows"] =
-          "This plan starts after today: give the day it was paid in the old software.";
-      if (oldBalance > 0 && !nextPaymentDate) e["nextPaymentDate"] = "When will the rest be paid?";
-      else if (oldBalance > 0 && nextPaymentDate < todayISO())
-        e["nextPaymentDate"] = "Pick today or a later date";
-    } else if (s === PAYMENT) {
+    if (s === PAYMENT) {
+      // An old-software plan of this kind still runs and is not carried yet: carry it first.
+      if (oldToCarry && (oldIsPt ? ptOn : !!gymPackage) && startDate <= oldToCarry.end)
+        e["oldCarry"] =
+          `${oldToCarry.name} still runs in the old software until ${formatDateISO(oldToCarry.end)}. Carry it over first (button above); a sale here is new money and starts ${formatDateISO(addDaysISO(oldToCarry.end, 1))} or later.`;
       if (!gymPackage && !pt) e["package"] = "Pick a package first";
       if (!(paid >= 0) || paid > totals.total)
         e["amountPaid"] = `Enter 0 to ${formatPrice(totals.total)}`;
@@ -934,17 +804,12 @@ export function EnrollmentWizard({
     if (await validate(step)) setStep((s) => Math.min(s + 1, PAYMENT));
   };
 
-  /** `sure`: staff said yes, it was paid in the old software, though its records don't show it. */
-  const confirm = async (sure = false) => {
+  const confirm = async () => {
     if (!(await validate(DETAILS)) || !(await validate(PACKAGE))) {
       setStep(!existing && (!client.fullName || !client.phone) ? DETAILS : PACKAGE);
       return;
     }
     if (!(await validate(PAYMENT))) return;
-    if (paidInOld && oldDoubt && !sure) {
-      setAskOld(true);
-      return;
-    }
     setSaving(true);
     try {
       const r = await enrollMember({
@@ -959,12 +824,12 @@ export function EnrollmentWizard({
         gymPackage,
         pt: pt ? { ...pt, startDate: ptStart, endDate: ptEnd } : null,
         startDate,
-        discount: paidInOld ? 0 : discount,
-        amountPaid: paidInOld ? 0 : paid,
+        discount,
+        amountPaid: paid,
         method: method === SPLIT_MODE ? "UPI" : method,
-        split: !paidInOld && splitOn && paid > 0 ? { cash: cashPartOf(cashText) } : null,
-        paidToday: !paidInOld && paidOn === today && startDate < today,
-        ...(!paidInOld && !upgrading && paid > 0 ? { paidOn } : {}),
+        split: splitOn && paid > 0 ? { cash: cashPartOf(cashText) } : null,
+        paidToday: paidOn === today && startDate < today,
+        ...(!upgrading && paid > 0 ? { paidOn } : {}),
         notes,
         settings: settings.data,
         staff: { uid: user?.uid ?? "", name: user?.displayName || user?.email || "Staff" },
@@ -972,27 +837,12 @@ export function EnrollmentWizard({
         nextPaymentDate: dueLeft ? nextPaymentDate : null,
         memberId: cleanMemberId(memberNo),
         upgrade,
-        oldSoftware: paidInOld
-          ? {
-              balance: oldBalance,
-              paid: oldPaid,
-              billNo: oldRunning?.bill ?? "",
-              remind: oldBalance > 0 && remindOld,
-              ...(oldLocked ? { end: oldRunning.end } : {}),
-              ...(oldRows && oldPaid > 0 ? { rows: oldRows } : {}),
-            }
-          : null,
       });
       writeDraft(draftKey, null);
       setEnrollmentId(r.enrollmentId);
-      if (paidInOld || !r.invoice) {
-        // Paid in the old software: nothing to collect or share now; on to the thumb.
+      if (!r.invoice) {
         setCarried(true);
-        toast.success("Member saved · plan carried over from the old software", {
-          description: r.invoice
-            ? `Balance ${formatPrice(oldBalance)} to collect: bill ${r.invoice.invoiceNumber}`
-            : "No money counted today",
-        });
+        toast.success("Member saved", { description: "No bill to share" });
         setStep(THUMB);
         return;
       }
@@ -1291,7 +1141,6 @@ export function EnrollmentWizard({
                         id="e-start"
                         type="date"
                         value={startDate}
-                        disabled={oldLocked}
                         onChange={(e) => {
                           setStartTouched(true);
                           setStartDate(e.target.value);
@@ -1562,66 +1411,16 @@ export function EnrollmentWizard({
                         <span>
                           PT: {ptPackageLabel(pt.pkg)} · {pt.trainer.name} ·{" "}
                           {formatDateISO(ptStart)} → {formatDateISO(ptEnd)}
-                          {!paidInOld && ptDiscountOf(pt) > 0
+                          {ptDiscountOf(pt) > 0
                             ? ` · ${formatPrice(pt.pkg.price)} less ${formatPrice(ptDiscountOf(pt))} PT discount`
                             : ""}
                         </span>
-                        <b className="tabular-nums">
-                          {formatPrice(paidInOld ? pt.pkg.price : ptNetPrice(pt))}
-                        </b>
+                        <b className="tabular-nums">{formatPrice(ptNetPrice(pt))}</b>
                       </li>
                     ) : null}
                   </ul>
                 </div>
-                {canPaidOld ? (
-                  <label className="flex items-start gap-3 rounded-xl border border-border p-3 text-sm">
-                    <Checkbox
-                      checked={paidInOld}
-                      disabled={oldLocked}
-                      onCheckedChange={(v) => setPaidOld(v === true)}
-                      className="mt-0.5"
-                      aria-label="Paid in the old software"
-                    />
-                    <span>
-                      <span className="block font-semibold">Paid in the old software</span>
-                      <span className="text-meta">
-                        {oldLocked
-                          ? `${oldRunning.name} still runs in the old software until ${formatDateISO(oldRunning.end)}: it is carried over as paid there (amounts from the old software, nothing counted today). Paying now for the next plan too? Save this one first, then press Renew again: the new plan starts on ${formatDateISO(addDaysISO(oldRunning.end, 1))}.`
-                          : "For a member moving over whose plan is already paid there. No money is taken today: what they paid there counts on the day they paid it, never in today's cash or the Day Book. Their old offer price is kept: no discount needed."}
-                      </span>
-                    </span>
-                  </label>
-                ) : null}
-                {canPaidOld && oldRunning && sameKind ? (
-                  <div className="-mt-2 flex flex-wrap items-center gap-2 text-sm">
-                    {paidHere ? (
-                      <>
-                        <span className="text-meta">
-                          New money paid here (the old-software plan {oldRunning.name} is not
-                          carried over).
-                        </span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setPaidHere(false)}
-                        >
-                          Carry the old plan instead
-                        </Button>
-                      </>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPaidHere(true)}
-                      >
-                        No, this is new money paid here
-                      </Button>
-                    )}
-                  </div>
-                ) : null}
-                {paidInOld && oldDoubt ? (
+                {oldToCarry ? (
                   <div
                     role="status"
                     className="grid gap-2.5 rounded-xl border border-warning/50 bg-warning/10 p-3 text-sm"
@@ -1629,323 +1428,217 @@ export function EnrollmentWizard({
                     <p className="flex gap-2.5">
                       <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
                       <span className="min-w-0">
-                        <b>Really paid in the old software?</b> {oldDoubt} Paid now by cash or UPI?
-                        Then it is money paid here: untick this and enter the amount and mode.
+                        <b>{oldToCarry.name}</b> still runs in the old software until{" "}
+                        <b>{formatDateISO(oldToCarry.end)}</b>. Carry it over first, exactly as it
+                        is (its own name, dates and money — nothing counted today). A sale here is
+                        always new money paid here; they renew with our packages from{" "}
+                        {formatDateISO(addDaysISO(oldToCarry.end, 1))}.
                       </span>
                     </p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="justify-self-start sm:ml-6.5"
-                      onClick={() => setPaidOld(false)}
-                    >
-                      Paid here (untick)
-                    </Button>
+                    {oldId ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="justify-self-start sm:ml-6.5"
+                        onClick={() =>
+                          carryOldPlan(oldPhone, oldId).then(
+                            (r) =>
+                              toast.success("Old plan carried over as it is", {
+                                description: r.summary,
+                              }),
+                            (err: unknown) =>
+                              toast.error("Could not carry the old plan", {
+                                description: err instanceof Error ? err.message : String(err),
+                              }),
+                          )
+                        }
+                      >
+                        Carry the old plan as it is
+                      </Button>
+                    ) : (
+                      <p className="text-meta sm:ml-6.5">
+                        Press "Use old details" on the first step, so the right old member is
+                        linked.
+                      </p>
+                    )}
+                    {errors["oldCarry"] ? (
+                      <p className="text-xs font-medium text-destructive sm:ml-6.5">
+                        {errors["oldCarry"]}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
-                {paidInOld ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field
-                      label="Paid in the old software ₹"
-                      htmlFor="e-oldpaid"
-                      className="col-span-2 sm:col-span-1"
-                      error={errors["oldPaid"]}
-                      hint={
-                        oldMatch
-                          ? `Old software: ${formatPrice(oldPaidSuggested)} paid for ${oldMatch.name}${oldMatch.bill ? ` (bill ${oldMatch.bill})` : ""}`
-                          : "What they paid there. Kept on the plan, not counted as money today."
+                <div className="grid grid-cols-2 gap-3">
+                  <Field
+                    label="Amount received ₹"
+                    htmlFor="e-paid"
+                    error={errors["amountPaid"]}
+                    className="col-span-2 sm:col-span-1"
+                    hint={
+                      paid < totals.total
+                        ? `Balance ${formatPrice(totals.total - paid)} stays due`
+                        : "Full payment"
+                    }
+                  >
+                    <Input
+                      id="e-paid"
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      max={totals.total}
+                      value={paid}
+                      onChange={(e) =>
+                        setAmountPaid(e.target.value === "" ? 0 : Number(e.target.value))
                       }
-                    >
-                      <Input
-                        id="e-oldpaid"
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        value={oldPaidText === "" ? oldPaid : oldPaidText}
-                        readOnly={oldLocked}
-                        onChange={(e) =>
-                          setOldPaidText(e.target.value === "" ? "0" : e.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field
-                      label="Balance still to pay ₹"
-                      htmlFor="e-oldbal"
-                      className="col-span-2 sm:col-span-1"
-                      hint={
-                        oldMatch
-                          ? `Old software: ${formatPrice(oldMatch.balance)} balance on ${oldMatch.name}`
-                          : "0 if fully paid"
-                      }
-                    >
-                      <Input
-                        id="e-oldbal"
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        value={oldBalanceText === "" ? oldBalance : oldBalanceText}
-                        readOnly={oldLocked}
-                        onChange={(e) =>
-                          setOldBalanceText(e.target.value === "" ? "0" : e.target.value)
-                        }
-                      />
-                    </Field>
-                    {oldBalance > 0 ? (
-                      <Field
-                        label="Next payment date"
-                        htmlFor="e-nextpay"
-                        required
-                        error={errors["nextPaymentDate"]}
-                        className="col-span-2"
-                        hint="A bill for the balance is made, to collect as usual."
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Input
-                            id="e-nextpay"
-                            type="date"
-                            min={todayISO()}
-                            value={nextPaymentDate}
-                            onChange={(e) => setNextPaymentDate(e.target.value)}
-                            className="w-auto"
-                          />
-                          {[7, 15, 30].map((d) => (
-                            <Button
-                              key={d}
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setNextPaymentDate(addDaysISO(todayISO(), d))}
-                            >
-                              +{d} days
-                            </Button>
-                          ))}
-                        </div>
-                      </Field>
-                    ) : null}
-                    {oldBalance > 0 ? (
-                      <div className="col-span-2">
-                        <RemindOldBalance
-                          id="e-remindold"
-                          checked={remindOld}
-                          onChange={setRemindOld}
-                        />
-                      </div>
-                    ) : null}
-                    {oldPaid > 0 ? (
-                      <div className="col-span-2">
-                        {oldRows ? (
-                          <OldPaidRows
-                            id="e-oldrows"
-                            rows={oldRows}
-                            onChange={(r) => setOldRows(r.length ? r : null)}
-                            error={errors["oldRows"]}
-                          />
-                        ) : (
-                          <p
-                            className={
-                              errors["oldRows"]
-                                ? "text-xs font-medium text-destructive"
-                                : "text-meta"
-                            }
-                          >
-                            {startDate > todayISO()
-                              ? "This plan starts after today, so give the day it was paid there."
-                              : `${formatPrice(oldPaid)} is counted in Collected on ${formatDateISO(startDate)} (the plan's first day), not in today's cash.`}{" "}
-                            <button
-                              type="button"
-                              className="font-semibold text-primary underline-offset-2 hover:underline"
-                              onClick={() =>
-                                setOldRows(defaultOldRows(startDate, oldPaid, todayISO()))
-                              }
-                            >
-                              {startDate > todayISO()
-                                ? "Give the day"
-                                : "Paid in parts or on another day?"}
-                            </button>
-                          </p>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field
-                      label="Amount received ₹"
-                      htmlFor="e-paid"
-                      error={errors["amountPaid"]}
-                      className="col-span-2 sm:col-span-1"
-                      hint={
-                        paid < totals.total
-                          ? `Balance ${formatPrice(totals.total - paid)} stays due`
-                          : "Full payment"
-                      }
-                    >
-                      <Input
-                        id="e-paid"
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        max={totals.total}
-                        value={paid}
-                        onChange={(e) =>
-                          setAmountPaid(e.target.value === "" ? 0 : Number(e.target.value))
-                        }
-                      />
-                    </Field>
-                    <PayModeField
-                      id="e-method"
-                      className="col-span-2"
-                      mode={method}
-                      onMode={setMethod}
-                      cash={cashText}
-                      onCash={setCashText}
-                      total={Math.min(paid, totals.total)}
-                      error={errors["paySplit"]}
                     />
-                    {paid > 0 && !upgrading ? (
-                      <Field
-                        label="Paid on"
-                        htmlFor="e-paidon"
-                        className="col-span-2"
-                        error={errors["paidOn"] || paidOnProblem}
-                        hint={
-                          paidOn === today
-                            ? `Counted in today's Collected${method === "Cash" ? " and today's Day Book cash" : splitOn ? "; the cash part in today's Day Book cash" : ""}.`
-                            : `Counted in Collected on ${formatDateISO(paidOn)}${method === "Cash" ? ", in that day's Day Book cash" : splitOn ? ", the cash part in that day's Day Book cash" : ""}, not today.${followsPaidOn && startDate === paidOn ? " The plan starts that day too (change it in the Package step)." : ""}`
-                        }
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Input
-                            id="e-paidon"
-                            type="date"
-                            min={openFrom}
-                            max={today}
-                            value={paidOn}
-                            onChange={(e) => setPaidOnText(e.target.value)}
-                            className="w-auto"
-                          />
-                          {paidOn !== today ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setPaidOnText(today)}
-                            >
-                              Today
-                            </Button>
-                          ) : null}
-                          {lateDay !== today && paidOn !== lateDay ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setPaidOnText(lateDay)}
-                            >
-                              Plan&apos;s first day
-                            </Button>
-                          ) : null}
-                        </div>
-                      </Field>
-                    ) : null}
-                    {balanceLeft ? (
-                      <Field
-                        label="Next payment date"
-                        htmlFor="e-nextpay"
-                        required
-                        error={errors["nextPaymentDate"]}
-                        className="col-span-2"
-                        hint="A WhatsApp reminder goes to the member that morning."
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Input
-                            id="e-nextpay"
-                            type="date"
-                            min={todayISO()}
-                            value={nextPaymentDate}
-                            onChange={(e) => setNextPaymentDate(e.target.value)}
-                            className="w-auto"
-                          />
-                          {[7, 15, 30].map((d) => (
-                            <Button
-                              key={d}
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setNextPaymentDate(addDaysISO(todayISO(), d))}
-                            >
-                              +{d} days
-                            </Button>
-                          ))}
-                        </div>
-                      </Field>
-                    ) : null}
+                  </Field>
+                  <PayModeField
+                    id="e-method"
+                    className="col-span-2"
+                    mode={method}
+                    onMode={setMethod}
+                    cash={cashText}
+                    onCash={setCashText}
+                    total={Math.min(paid, totals.total)}
+                    error={errors["paySplit"]}
+                  />
+                  {paid > 0 && !upgrading ? (
                     <Field
-                      label="Discount ₹"
-                      htmlFor="e-disc"
-                      error={discountProblem || errors["discount"]}
+                      label="Paid on"
+                      htmlFor="e-paidon"
+                      className="col-span-2"
+                      error={errors["paidOn"] || paidOnProblem}
                       hint={
-                        [
-                          maxDiscount !== null ? `Max ${formatPrice(maxDiscount)}` : "",
-                          pt ? "On the whole bill; PT's own discount is in the PT box" : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" · ") || undefined
+                        paidOn === today
+                          ? `Counted in today's Collected${method === "Cash" ? " and today's Day Book cash" : splitOn ? "; the cash part in today's Day Book cash" : ""}.`
+                          : `Counted in Collected on ${formatDateISO(paidOn)}${method === "Cash" ? ", in that day's Day Book cash" : splitOn ? ", the cash part in that day's Day Book cash" : ""}, not today.${followsPaidOn && startDate === paidOn ? " The plan starts that day too (change it in the Package step)." : ""}`
                       }
                     >
-                      <Input
-                        id="e-disc"
-                        type="number"
-                        inputMode="decimal"
-                        min={0}
-                        max={maxDiscount ?? undefined}
-                        value={discount}
-                        onChange={(e) => setDiscount(Number(e.target.value))}
-                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Input
+                          id="e-paidon"
+                          type="date"
+                          min={openFrom}
+                          max={today}
+                          value={paidOn}
+                          onChange={(e) => setPaidOnText(e.target.value)}
+                          className="w-auto"
+                        />
+                        {paidOn !== today ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPaidOnText(today)}
+                          >
+                            Today
+                          </Button>
+                        ) : null}
+                        {lateDay !== today && paidOn !== lateDay ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPaidOnText(lateDay)}
+                          >
+                            Plan&apos;s first day
+                          </Button>
+                        ) : null}
+                      </div>
                     </Field>
-                    <Field label="Note on bill" htmlFor="e-inote">
-                      <Input
-                        id="e-inote"
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        placeholder="Optional"
-                      />
+                  ) : null}
+                  {balanceLeft ? (
+                    <Field
+                      label="Next payment date"
+                      htmlFor="e-nextpay"
+                      required
+                      error={errors["nextPaymentDate"]}
+                      className="col-span-2"
+                      hint="A WhatsApp reminder goes to the member that morning."
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Input
+                          id="e-nextpay"
+                          type="date"
+                          min={todayISO()}
+                          value={nextPaymentDate}
+                          onChange={(e) => setNextPaymentDate(e.target.value)}
+                          className="w-auto"
+                        />
+                        {[7, 15, 30].map((d) => (
+                          <Button
+                            key={d}
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setNextPaymentDate(addDaysISO(todayISO(), d))}
+                          >
+                            +{d} days
+                          </Button>
+                        ))}
+                      </div>
                     </Field>
-                  </div>
-                )}
+                  ) : null}
+                  <Field
+                    label="Discount ₹"
+                    htmlFor="e-disc"
+                    error={discountProblem || errors["discount"]}
+                    hint={
+                      [
+                        maxDiscount !== null ? `Max ${formatPrice(maxDiscount)}` : "",
+                        pt ? "On the whole bill; PT's own discount is in the PT box" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || undefined
+                    }
+                  >
+                    <Input
+                      id="e-disc"
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      max={maxDiscount ?? undefined}
+                      value={discount}
+                      onChange={(e) => setDiscount(Number(e.target.value))}
+                    />
+                  </Field>
+                  <Field label="Note on bill" htmlFor="e-inote">
+                    <Input
+                      id="e-inote"
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Optional"
+                    />
+                  </Field>
+                </div>
               </div>
               <aside className="h-fit rounded-2xl bg-foreground p-4 text-background sm:p-5">
                 <dl className="space-y-2 text-sm">
-                  {(paidInOld
-                    ? ([
-                        ["Paid in the old software", oldPaid],
-                        ["Counted today", 0],
-                        ["Balance to collect", oldBalance],
-                      ] as const)
-                    : ([
-                        ["Subtotal", totals.subtotal],
-                        ["Discount", -(totals.discount - totals.upgradeCredit)],
-                        ...(totals.upgradeCredit
-                          ? [["Upgrade credit", -totals.upgradeCredit] as const]
-                          : []),
-                        ...(totals.tax ? [["Tax", totals.tax] as const] : []),
-                        ["Total", totals.total],
-                        ["Received", Math.min(paid, totals.total)],
-                        ...(splitParts_
-                          ? ([
-                              ["· by UPI", splitParts_[0]!.amount],
-                              ["· in cash", splitParts_[1]!.amount],
-                            ] as const)
-                          : []),
-                        ["Balance", Math.max(0, totals.total - paid)],
-                      ] as const)
+                  {(
+                    [
+                      ["Subtotal", totals.subtotal],
+                      ["Discount", -(totals.discount - totals.upgradeCredit)],
+                      ...(totals.upgradeCredit
+                        ? [["Upgrade credit", -totals.upgradeCredit] as const]
+                        : []),
+                      ...(totals.tax ? [["Tax", totals.tax] as const] : []),
+                      ["Total", totals.total],
+                      ["Received", Math.min(paid, totals.total)],
+                      ...(splitParts_
+                        ? ([
+                            ["· by UPI", splitParts_[0]!.amount],
+                            ["· in cash", splitParts_[1]!.amount],
+                          ] as const)
+                        : []),
+                      ["Balance", Math.max(0, totals.total - paid)],
+                    ] as const
                   ).map(([k, v]) => (
                     <div
                       key={k}
                       className={cn(
                         "flex justify-between",
-                        (k === "Total" || k === "Counted today") &&
-                          "border-t border-background/20 pt-2 text-base",
+                        k === "Total" && "border-t border-background/20 pt-2 text-base",
                       )}
                     >
                       <dt>{k}</dt>
@@ -1953,7 +1646,7 @@ export function EnrollmentWizard({
                     </div>
                   ))}
                 </dl>
-                {!paidInOld && lateSale && paid > 0 ? (
+                {lateSale && paid > 0 ? (
                   <p className="mt-3 border-t border-background/20 pt-2 text-xs">
                     Counted in Collected on {formatDateISO(paidOn)}
                   </p>
@@ -2054,21 +1747,10 @@ export function EnrollmentWizard({
                     <Check aria-hidden />
                   )}
                   <span className="truncate">
-                    {paidInOld
-                      ? "Save member · paid in the old software"
-                      : `Confirm payment · ${formatPrice(Math.min(paid, totals.total))}`}
+                    {`Confirm payment · ${formatPrice(Math.min(paid, totals.total))}`}
                   </span>
                 </Button>
               )}
-              <ConfirmDialog
-                open={askOld}
-                onOpenChange={setAskOld}
-                title="Paid in the old software?"
-                description={`${oldDoubt} If they paid now by cash or UPI, go back and untick "Paid in the old software", or the Day Book and Collected will be short.`}
-                cancelLabel="Go back"
-                confirmLabel="Yes, paid in the old software"
-                onConfirm={() => void confirm(true)}
-              />
             </>
           ) : (
             <>
