@@ -487,7 +487,9 @@ export function planMigration(input: MigrateInput): MigrateResult {
       now: [],
     };
 
-    // Newest old plan first (old-data sorts them that way already).
+    // Newest old plan first (old-data sorts them that way already). The old software's export
+    // sometimes holds the SAME subscription row more than once: one plan is one plan here.
+    const seenKeys = new Set<string>();
     for (const p of m.plans) {
       const label = planWord(p);
       if (!DAY.test(p.start) || !DAY.test(p.end) || p.end < p.start) {
@@ -499,6 +501,8 @@ export function planMigration(input: MigrateInput): MigrateResult {
         continue;
       }
       const key = asIsKey(m.memberId, p);
+      if (seenKeys.has(key)) continue; // a duplicated export row, not a second plan
+      seenKeys.add(key);
       const carriedAlready =
         myMs.some((r) => r.data["oldPlanKey"] === key) ||
         myPts.some((r) => r.data["oldPlanKey"] === key);
