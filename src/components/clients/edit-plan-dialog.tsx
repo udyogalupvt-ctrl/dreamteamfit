@@ -111,6 +111,8 @@ export function EditPlanDialog({
   const [priceText, setPriceText] = useState("");
   /** A higher total on a bill paid in full: the member already paid it (with the checkout payment). */
   const [paidMore, setPaidMore] = useState(true);
+  // A lower price on a paid bill is nearly always a typing fix, not money handed back.
+  const [typedWrong, setTypedWrong] = useState(true);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [counsellorId, setCounsellorId] = useState("");
@@ -127,6 +129,7 @@ export function EditPlanDialog({
     setPkgId(membership.packageId);
     setPriceText("");
     setPaidMore(true);
+    setTypedWrong(true);
     setStart(membership.startDate);
     setEnd(membership.endDate);
     setCounsellorId(membership.counsellorId);
@@ -268,6 +271,18 @@ export function EditPlanDialog({
   const splitPay = !!(paidOn.payment as { splitId?: string } | null)?.splitId;
   const payFix = raise > 0 && money && !splitPay ? paidOn.payment : null;
   const addToPayment = payFix && paidMore ? raise : 0;
+  // The other way round: the bill's total goes DOWN on a bill paid in full. Usually the price was
+  // typed wrong (₹1,799 saved, ₹1,750 really taken) and nothing was handed back, so the payment
+  // itself is corrected instead of inventing a "money given back" line that can't be undone.
+  const drop =
+    bc && bc.bill.balanceDue <= 0.005 && bc.bill.amountPaid > 0 && bc.total < bc.bill.total - 0.005
+      ? Math.round((bc.bill.total - bc.total) * 100) / 100
+      : 0;
+  const dropFix =
+    drop > 0 && money && !splitPay && paidOn.payment && paidOn.payment.amount - drop > 0.005
+      ? paidOn.payment
+      : null;
+  const lowerPayment = dropFix && typedWrong ? drop : 0;
   const changes = [
     ...preview.changes,
     ...(paidOn.change ? [paidOn.change] : []),
@@ -276,11 +291,31 @@ export function EditPlanDialog({
           `Payment ${formatPrice(payFix.amount)} → ${formatPrice(payFix.amount + addToPayment)} (${payFix.method}, already paid)`,
         ]
       : []),
+    ...(dropFix && lowerPayment
+      ? [
+          `Payment ${formatPrice(dropFix.amount)} → ${formatPrice(dropFix.amount - lowerPayment)} (${dropFix.method}, amount was typed wrong)`,
+        ]
+      : []),
   ];
   const save = async () => {
     setError("");
     const byName = user?.displayName || user?.email || "Staff";
     try {
+      // Correct the payment BEFORE the plan, so the bill never asks for money back.
+      if (dropFix && lowerPayment)
+        await editPayment({
+          payment: dropFix,
+          form: {
+            amount: Math.round((dropFix.amount - lowerPayment) * 100) / 100,
+            method: dropFix.method,
+            paymentDate: paidOn.changed ? paidOn.value : dropFix.paymentDate,
+            note: dropFix.note,
+          },
+          reason: reason || "Amount corrected: this is what the member really paid",
+          can: { billing: can("billing"), finance: money },
+          nextPaymentDate: null,
+          by: byName,
+        });
       if (preview.changes.length)
         await editMembership({
           client,
@@ -291,6 +326,7 @@ export function EditPlanDialog({
           reason,
           refundMethod: method,
           canRefund: money,
+          amountTypedWrong: !!lowerPayment,
           nextPaymentDate: bc?.newBalance ? payBy || todayISO() : null,
           by: { uid: user?.uid ?? "", name: byName },
         });
@@ -309,12 +345,14 @@ export function EditPlanDialog({
           nextPaymentDate: null,
           by: byName,
         });
-      else await paidOn.save(reason, byName);
+      else if (!lowerPayment) await paidOn.save(reason, byName);
       onClose();
       toast.success("Plan updated", {
         description:
           [
-            bc?.refund ? `${formatPrice(bc.refund)} recorded as money given back.` : "",
+            bc?.refund && !lowerPayment
+              ? `${formatPrice(bc.refund)} recorded as money given back.`
+              : "",
             bc && bc.balanceDue > 0 ? `Balance due ${formatPrice(bc.balanceDue)}.` : "",
           ]
             .filter(Boolean)
@@ -331,7 +369,7 @@ export function EditPlanDialog({
     !!paidOn.problem ||
     (m.paidInOldSoftware && pays.loading) ||
     (preview.discountChanged && !money) ||
-    !!(bc && bc.refund > 0 && !money) ||
+    !!(bc && bc.refund > 0 && !money && !lowerPayment) ||
     priceBad ||
     !!(bc?.newBalance && !addToPayment && !payBy);
 
@@ -533,7 +571,7 @@ export function EditPlanDialog({
                 {formatPrice(bc.bill.balanceDue)} → <b>{formatPrice(bc.balanceDue)}</b>
               </dd>
             </dl>
-            {bc.refund > 0 ? (
+            {bc.refund > 0 && !lowerPayment ? (
               money ? (
                 <div className="grid gap-2 rounded-lg bg-info/10 p-3">
                   <p>
@@ -581,6 +619,34 @@ export function EditPlanDialog({
                   </span>
                 </span>
               </label>
+            ) : null}
+            {dropFix ? (
+              <label className="flex items-start gap-3 rounded-lg bg-info/10 p-3">
+                <Checkbox
+                  checked={typedWrong}
+                  onCheckedChange={(v) => setTypedWrong(v === true)}
+                  className="mt-0.5"
+                  aria-label="The amount was typed wrong"
+                />
+                <span>
+                  <span className="block font-semibold">
+                    The amount was typed wrong: {formatPrice(dropFix.amount - drop)} was taken, not{" "}
+                    {formatPrice(dropFix.amount)}
+                  </span>
+                  <span className="text-meta">
+                    The {formatPrice(dropFix.amount)} {dropFix.method} payment of{" "}
+                    {formatDateISO(dropFix.paymentDate)} is corrected to{" "}
+                    {formatPrice(dropFix.amount - drop)}. Nothing is given back and nothing stays
+                    due. Untick only if {formatPrice(drop)} was really handed back to the member.
+                  </span>
+                </span>
+              </label>
+            ) : null}
+            {drop > 0 && money && splitPay ? (
+              <p className="rounded-lg bg-info/10 p-3">
+                Paid in two modes (Cash + UPI): {formatPrice(drop)} is recorded as money given back.
+                If the amount was only typed wrong, correct the right part with Edit payment first.
+              </p>
             ) : null}
             {raise > 0 && money && splitPay ? (
               <p className="rounded-lg bg-info/10 p-3">

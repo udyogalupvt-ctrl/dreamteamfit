@@ -312,6 +312,12 @@ export interface PlanEditInput {
   refundMethod: PaymentMethod;
   /** May give money back and change a discount (Income & expenses). */
   canRefund: boolean;
+  /**
+   * The old price was simply typed wrong (₹1,799 saved, ₹1,750 taken): no money was given back,
+   * so no refund line is made. The caller lowers the bill's payment by the same amount FIRST, so
+   * the payments and the bill still add up.
+   */
+  amountTypedWrong?: boolean;
   /** When a new / bigger balance is left: the day the member will pay it. */
   nextPaymentDate: string | null;
   by: { uid: string; name: string };
@@ -571,7 +577,7 @@ export async function editMembership(input: PlanEditInput) {
             updatedAt: now,
           }),
         );
-      if (bc.refund > 0)
+      if (bc.refund > 0 && !input.amountTypedWrong)
         tx.set(doc(col(COLLECTIONS.payments)), {
           clientId: client.id,
           clientNameSnapshot: client.fullName,
