@@ -313,7 +313,9 @@ export function EditPlanDialog({
           },
           reason: reason || "Amount corrected: this is what the member really paid",
           can: { billing: can("billing"), finance: money },
-          nextPaymentDate: null,
+          // The bill still carries the old, higher total for a moment (the plan edit right after
+          // brings it down to match), so the gap it leaves needs a day on it.
+          nextPaymentDate: payBy || todayISO(),
           by: byName,
         });
       if (preview.changes.length)
