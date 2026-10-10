@@ -193,6 +193,25 @@ New suite `roundup_local.py` **13/13** (including "the package itself is still �
 The 27 October sales already set to round amounts stay as they are — those members really did
 hand over round amounts.
 
+**2026-10-10 (closing): the last wrong entries removed — the register now matches to ZERO.**
+The owner spotted JOSHI K: a ₹1,999 October sale had been added for him, but his money is the
+old-software plan **13 Sep → 12 Oct (₹1,800 paid there, still running)**; he has not renewed yet.
+He also carried a second, hand-entered copy of that same old plan. Both wrong entries were
+Removed (plan + bill + payment together) and the carried **STRENGTH 1MONTH** was Restored, so he
+is back to one active plan exactly as the old records show.
+A scan of **every** member for the same shape (duplicate old-software plans, a carried plan
+cancelled while it still runs, a new sale overlapping that member's own old plan) found only one
+other: **P. Sai Ram** had two empty cancelled "1 year cardio and strengthening" entries
+duplicating his carried Annual Package — both removed (they held no money; his ₹5,000 + ₹5,000
+sit on the correct plan). Checked and deliberately left alone: S. Lovaraju's two overlapping
+annuals (his OLD RECORD genuinely has both, one at ₹0), the gym+PT overlaps (normal), the
+one-day boundary overlaps between consecutive annual renewals, and K. Sri Devi's annual which
+the owner cancelled on purpose this morning.
+
+**OCTOBER 1-9 vs the paper register: ₹1,54,949 = ₹1,54,949. UPI 0, Cash 0, Card 0, dues
+₹15,000 = ₹15,000. Nothing left unexplained.** (A ₹1,700 UPI sale on 10 Oct by keerthi M is
+new business after the register pages we were given.)
+
 ### Next
 1. Owner: go through the morning chat list (October rows, in Telugu-English): Remove+resell
    Joshi/Sri Devi-type rows, Remove Roshan's cancelled copy, split Aniket/K. Sudheer payments
