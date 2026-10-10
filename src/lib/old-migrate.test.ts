@@ -11,6 +11,7 @@ import {
   matchClient,
   oldPlanKind,
   planMigration,
+  endedOnPurpose,
   saleUnits,
   type MigrateInput,
   type Row,
@@ -18,6 +19,8 @@ import {
 } from "./old-migrate.ts";
 
 const TODAY = "2026-10-10";
+const d2 = (n: number) =>
+  new Date(Date.parse(`${TODAY}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 const plan = (o: Partial<OldPlan>): OldPlan => ({
   name: "6 MONTHS GYM",
@@ -667,4 +670,150 @@ test("the invariant: no plan ever deletes or edits money taken here", () => {
       assert.ok(!fix.deletePaymentIds.includes("pHere"));
       if (fix.payment) assert.equal(fix.payment["oldSoftware"], true);
     }
+});
+
+test("review fixes: a blank old member id never links a client", () => {
+  const m = person({ memberId: "", name: "Subs Only" });
+  assert.equal(matchClient([row("a", { fullName: "Someone Else", oldMemberId: "" })], m), null);
+});
+
+test("review fixes: one shared surname does not claim the wrong person; a short form does", () => {
+  const m = person({ memberId: "9", name: "Ravi Kumar" });
+  assert.equal(matchClient([row("a", { fullName: "Lakshmi Kumar" })], m), null);
+  const short = person({ memberId: "9", name: "Sudheer Kumar K" });
+  assert.equal(matchClient([row("a", { fullName: "K. Sudheer" })], short)!.id, "a");
+});
+
+test("review fixes: a prepaid future old plan is carried in the bulk run (pending)", () => {
+  const m = person({ plans: [plan({ start: d2(5), end: d2(35) })] });
+  const r = planMigration(base({ oldMembers: [m] }));
+  assert.equal(r.members.length, 1);
+  assert.equal(r.members[0]!.carries[0]!.membership!["status"], "pending");
+});
+
+test("review fixes: a doubtful old-marked entry blocks a fresh carry (no double old money)", () => {
+  const live = plan({ start: d2(-10), end: d2(20) });
+  const m = person({ plans: [live] });
+  const r = planMigration(
+    base({
+      oldMembers: [m],
+      clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
+      memberships: [
+        row("mDoubt", {
+          clientId: "c1",
+          packageNameSnapshot: "October money",
+          startDate: d2(-60),
+          endDate: d2(-31),
+          status: "expired",
+          paidInOldSoftware: true,
+        }),
+      ],
+    }),
+  );
+  assert.equal(r.members.length, 0);
+  assert.ok(r.skips.some((s) => s.reason.includes("clear that first")));
+});
+
+test("review fixes: an unpaid sale with a different end is NOT eaten as a copy", () => {
+  const p = plan({ start: d2(-5), end: d2(25) });
+  const m = person({ plans: [p] });
+  const r = planMigration(
+    base({
+      oldMembers: [m],
+      clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
+      memberships: [
+        row("m1", {
+          clientId: "c1",
+          packageNameSnapshot: "entered",
+          startDate: p.start,
+          endDate: p.end,
+          status: "active",
+          paidInOldSoftware: true,
+        }),
+        row("mRenew", {
+          clientId: "c1",
+          packageNameSnapshot: "unpaid renewal",
+          startDate: d2(-3),
+          endDate: d2(85),
+          status: "active",
+          invoiceId: "i2",
+        }),
+      ],
+      invoices: [row("i2", { clientId: "c1", total: 6000, amountPaid: 0 })],
+    }),
+  );
+  assert.equal(r.members[0]!.recycles.length, 0);
+});
+
+test("review fixes: money taken here on another bill blocks the fix (owner decides)", () => {
+  const p = plan({ amount: 6000, balance: 2000 });
+  const m = person({ plans: [p] });
+  const r = planMigration(
+    base({
+      oldMembers: [m],
+      clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
+      memberships: [
+        row("m1", {
+          clientId: "c1",
+          packageNameSnapshot: "six",
+          startDate: p.start,
+          endDate: p.end,
+          status: "active",
+          paidInOldSoftware: true,
+          invoiceId: "i1",
+        }),
+      ],
+      invoices: [
+        row("i1", {
+          clientId: "c1",
+          total: 2000,
+          amountPaid: 0,
+          items: [{ name: "Balance from the old software · six" }],
+        }),
+      ],
+      payments: [
+        row("pElse", {
+          clientId: "c1",
+          membershipId: "m1",
+          invoiceId: "iOther",
+          amount: 500,
+          method: "Cash",
+          paymentDate: d2(-1),
+        }),
+      ],
+    }),
+  );
+  assert.equal(r.members.length, 0);
+  assert.ok(r.skips.some((s) => s.reason.includes("another bill")));
+});
+
+test("review fixes: a hand-entry a renewal ended stays ended after the fix", () => {
+  const ts = (n: number) => ({ toMillis: () => n });
+  const ended = row("mOld", {
+    clientId: "c1",
+    packageNameSnapshot: "six",
+    startDate: d2(-40),
+    endDate: d2(20),
+    status: "expired",
+    paidInOldSoftware: true,
+    updatedAt: ts(111),
+  });
+  const renewal = row("mNew", {
+    clientId: "c1",
+    startDate: d2(1),
+    endDate: d2(31),
+    status: "active",
+    createdAt: ts(111),
+  });
+  assert.deepEqual(endedOnPurpose(ended, [ended, renewal]), { status: "expired", endedBy: "mNew" });
+  const p = plan({ start: d2(-40), end: d2(20), amount: 6000, balance: 0 });
+  const m = person({ plans: [p] });
+  const r = planMigration(
+    base({
+      oldMembers: [m],
+      clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
+      memberships: [ended, renewal],
+    }),
+  );
+  assert.deepEqual(r.members[0]!.fixes[0]!.keepEnded, { status: "expired", endedBy: "mNew" });
 });

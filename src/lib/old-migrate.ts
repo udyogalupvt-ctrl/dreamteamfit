@@ -197,13 +197,25 @@ export function nameScore(a: string, b: string) {
  * name match on the phone; null when none fits (a family member not in the app yet).
  */
 export function matchClient(clients: Row[], m: OldMember): Row | null {
-  const linked = clients.find((c) => String(c.data["oldMemberId"] ?? "") === m.memberId);
+  const linked = m.memberId
+    ? clients.find((c) => String(c.data["oldMemberId"] ?? "") === m.memberId)
+    : null;
   if (linked) return linked;
   const free = clients.filter((c) => !c.data["oldMemberId"]);
+  // Every word of the shorter name must be shared ("K. Sudheer" = "Sudheer Kumar K"); one shared
+  // surname alone must not claim somebody else's record.
+  const subset = (a: string, b: string) => {
+    const wa = [...nameWords(a)];
+    const wb = [...nameWords(b)];
+    if (!wa.length || !wb.length) return false;
+    const [small, big] = wa.length <= wb.length ? [wa, new Set(wb)] : [wb, new Set(wa)];
+    return small.every((w) => big.has(w));
+  };
   const scored = free
     .map((c) => ({ c, score: nameScore(String(c.data["fullName"] ?? ""), m.name) }))
+    .filter((x) => x.score > 0 && subset(String(x.c.data["fullName"] ?? ""), m.name))
     .sort((a, b) => b.score - a.score);
-  if (!scored.length || scored[0]!.score === 0) return null;
+  if (!scored.length) return null;
   if (scored[1] && scored[1].score === scored[0]!.score) return null;
   return scored[0]!.c;
 }
@@ -248,6 +260,8 @@ export interface FixPlan extends CarryPlan {
   /** Non-old payments whose invoiceId must point at the kept/created bill. */
   repointPaymentIds: string[];
   paidHere: number;
+  /** The hand-entry was ended on purpose (a renewal here): keep it ended, stamped. */
+  keepEnded: { status: string; endedBy: string } | null;
 }
 
 export interface RecycleSale {
@@ -297,6 +311,29 @@ export interface MigrateResult {
 
 const isCancelled = (d: D) => String(d["status"]) === "cancelled" || !!d["cancelId"];
 const money = (v: unknown) => Number(v ?? 0) || 0;
+const tsMs = (v: unknown) =>
+  v && typeof (v as { toMillis?: () => number }).toMillis === "function"
+    ? (v as { toMillis: () => number }).toMillis()
+    : NaN;
+/**
+ * A hand-entry that is expired/completed because a renewal ENDED it (endedBy stamp, or the
+ * older style: its updatedAt equals the renewal's createdAt — the same write). Fixing its dates
+ * must not bring it back to life.
+ */
+export function endedOnPurpose(
+  row: Row,
+  siblings: Row[],
+): { status: string; endedBy: string } | null {
+  const st = String(row.data["status"] ?? "");
+  if (!["expired", "completed"].includes(st)) return null;
+  const by = String(row.data["endedBy"] ?? "");
+  if (by) return { status: st, endedBy: by };
+  const up = tsMs(row.data["updatedAt"]);
+  const sib = Number.isFinite(up)
+    ? siblings.find((o) => o.id !== row.id && tsMs(o.data["createdAt"]) === up)
+    : null;
+  return sib ? { status: st, endedBy: sib.id } : null;
+}
 
 /** Client draft for a member who only exists in the old software (case 1). */
 export function clientDraft(
@@ -468,7 +505,8 @@ export function planMigration(input: MigrateInput): MigrateResult {
       if (carriedAlready) continue; // carried once, nothing to do
 
       const kind = oldPlanKind(p.name);
-      const running = p.end >= today && p.start <= today && !/inactive/i.test(p.status);
+      // Running today, or paid in advance and starting later: both are live money and come over.
+      const liveNow = p.end >= today && !/inactive/i.test(p.status);
 
       // Hand-entered copies of this old plan: old-marked units whose dates fit.
       const matches = units.filter(
@@ -493,7 +531,12 @@ export function planMigration(input: MigrateInput): MigrateResult {
             (r) => r && (r.data["paidInOldSoftware"] === true || r.data["oldPlanAsIs"]),
           ) &&
           [u.membership, u.pt].some(
-            (r) => r && datesMatch(r.data, p) && dayGap(String(r.data["startDate"]), p.start) <= 10,
+            (r) =>
+              r &&
+              datesMatch(r.data, p) &&
+              dayGap(String(r.data["startDate"]), p.start) <= 10 &&
+              DAY.test(String(r.data["endDate"] ?? "")) &&
+              dayGap(String(r.data["endDate"]), p.end) <= 10,
           ) &&
           u.payments.length === 0 &&
           money(u.invoice?.data["amountPaid"]) === 0,
@@ -549,6 +592,15 @@ export function planMigration(input: MigrateInput): MigrateResult {
           blocked = true;
           continue;
         }
+        if (
+          herePays.some(
+            (x) => x.data["invoiceId"] && (!u.invoice || x.data["invoiceId"] !== u.invoice.id),
+          )
+        ) {
+          skipUnit(u, "money taken here sits on another bill — owner decides");
+          blocked = true;
+          continue;
+        }
         const paidHere = herePays.reduce((s, x) => s + money(x.data["amount"]), 0);
         const balance = oldBalanceOf(p);
         if (paidHere > balance) {
@@ -599,12 +651,9 @@ export function planMigration(input: MigrateInput): MigrateResult {
                 : "none",
             deletePaymentIds: keepPayments ? [] : oldPays.map((x) => x.id),
             keepPayments,
-            repointPaymentIds: herePays
-              .filter(
-                (x) => !u.invoice || x.data["invoiceId"] === u.invoice.id || !x.data["invoiceId"],
-              )
-              .map((x) => x.id),
+            repointPaymentIds: herePays.map((x) => x.id),
             paidHere,
+            keepEnded: endedOnPurpose((u.membership ?? u.pt)!, [...myMs, ...myPts]),
           };
           // A plan whose membership stays must keep running-state stamps (endedBy means a
           // renewal here already ended it — keep it ended).
@@ -628,9 +677,38 @@ export function planMigration(input: MigrateInput): MigrateResult {
 
       if (fixed || blocked) continue;
 
-      // Not in the app yet: carry it when it runs today (bulk) or it is the latest plan (first visit).
+      // An old-marked hand-entry that fits NO old plan (October's mistake): carrying this plan
+      // beside it could count the same old money twice, so the owner clears it first.
+      const doubtful = units.filter(
+        (u) =>
+          !consumed.has(u) &&
+          [u.membership, u.pt].some(
+            (r) =>
+              r &&
+              r.data["paidInOldSoftware"] === true &&
+              !r.data["oldPlanAsIs"] &&
+              !isCancelled(r.data),
+          ) &&
+          !m.plans.some(
+            (q) =>
+              DAY.test(q.start) &&
+              DAY.test(q.end) &&
+              [u.membership, u.pt].some((r) => r && datesMatch(r.data, q)),
+          ),
+      );
+      if (doubtful.length && (liveNow || input.scope === "latest")) {
+        skips.push({
+          who: m.name,
+          what: planWord(p),
+          reason:
+            "not carried yet: a plan here is saved as paid in the old software but its records have no such plan — clear that first (owner decides)",
+        });
+        continue;
+      }
+
+      // Not in the app yet: carry it when it is live (bulk) or it is the latest plan (first visit).
       const isLatest = m.plans[0] === p;
-      if (running || (input.scope === "latest" && isLatest)) {
+      if (liveNow || (input.scope === "latest" && isLatest)) {
         // A sold-here plan covering any of the same days: never touched; the as-is plan is
         // created with overlapOk marks so the owner's overlap list stays quiet.
         const sharesDays = (d: D) => {
@@ -657,7 +735,7 @@ export function planMigration(input: MigrateInput): MigrateResult {
         result.now.push(
           `${planWord(p)} — carried as-is${overlapWith.length ? " (runs alongside a plan sold here)" : ""}`,
         );
-      } else if (!running && input.scope === "running" && isLatest && !client) {
+      } else if (!liveNow && input.scope === "running" && isLatest && !client) {
         skips.push({
           who: m.name,
           what: label,

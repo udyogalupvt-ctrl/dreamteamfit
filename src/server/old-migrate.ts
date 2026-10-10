@@ -233,19 +233,17 @@ const planEdit = (by: Actor) => ({
   tool: "old-migrate",
 });
 
-/** Next free Member ID for a created member: the old numeric ID when free, else max + 1. */
-function allocateCode(state: AppState, desired: string | null): string {
-  if (desired && !state.usedCodes.has(desired)) {
-    state.usedCodes.add(desired);
-    return desired;
-  }
+/**
+ * Next free Member ID for a created member: the old numeric ID when free, else max + 1. Pure —
+ * a transaction retry must pick the same candidate; the caller marks it used only on commit.
+ */
+function codeCandidate(state: AppState, desired: string | null): string {
+  if (desired && !state.usedCodes.has(desired)) return desired;
   let max = 0;
   state.usedCodes.forEach((c) => {
     if (/^\d+$/.test(c)) max = Math.max(max, Number(c));
   });
-  const next = String(Math.min(Math.max(max + 1, 1), 8999));
-  state.usedCodes.add(next);
-  return next;
+  return String(Math.min(Math.max(max + 1, 1), 8999));
 }
 
 /**
@@ -262,13 +260,14 @@ async function applyMember(
   runId: string,
   by: Actor,
   onlyPlanKey = "",
+  knownClientIds: string[] = [],
 ): Promise<{ moveId: string; clientId: string; summary: string } | null> {
   const firestore = db();
   const today = localDate();
   const year = new Date(`${today}T00:00:00`).getFullYear();
   const invKey = `invoiceSeq${year}`;
 
-  return firestore.runTransaction(async (tx) => {
+  const done = await firestore.runTransaction(async (tx) => {
     // Fresh reads inside the transaction (the page-level state may be stale).
     const clientSnap = await tx.get(
       firestore.collection("clients").where("phoneNormalized", "==", key),
@@ -280,6 +279,11 @@ async function applyMember(
     rowsOf(linked as FirebaseFirestore.QuerySnapshot).forEach((c) => {
       if (!clients.some((x) => x.id === c.id)) clients = [...clients, c];
     });
+    for (const id of knownClientIds) {
+      if (clients.some((x) => x.id === id)) continue;
+      const snap = await tx.get(firestore.doc(`clients/${id}`));
+      if (snap.exists) clients = [...clients, { id, data: snap.data()! }];
+    }
     const ids = clients.map((c) => c.id);
     const read = async (col: string) => {
       const out: Row[] = [];
@@ -330,10 +334,10 @@ async function applyMember(
     let invSeq = Number(counter?.data()?.[invKey] ?? 0);
     const invPrefix = String(settings?.data()?.["invoicePrefix"] ?? "INV");
 
-    // Member ID for a created member.
+    // Member ID for a created member (candidate is pure: safe across transaction retries).
     let claim: { ref: FirebaseFirestore.DocumentReference; code: string } | null = null;
     if (!result.clientId && result.client) {
-      const code = allocateCode(state, result.client.desiredCode);
+      const code = codeCandidate(state, result.client.desiredCode);
       const idRef = firestore.doc(`memberIds/${code}`);
       const taken = await tx.get(idRef);
       if (taken.exists) throw new Error(`Member ID ${code} was just taken. Run again.`);
@@ -371,13 +375,23 @@ async function applyMember(
     const rowById = (rows: Row[], id: string | null | undefined) =>
       (id && rows.find((r) => r.id === id)) || null;
     const publicSnaps = new Map<string, D | null>();
-    for (const f of result.fixes) {
-      const inv = rowById(invoices, f.invoiceId);
-      const tok = inv ? String(inv.data["publicToken"] ?? "") : "";
+    const prefetchPub = async (invRow: Row | null) => {
+      const tok = invRow ? String(invRow.data["publicToken"] ?? "") : "";
       if (tok && !publicSnaps.has(tok)) {
-        const p = await tx.get(firestore.doc(`publicInvoices/${tok}`));
-        publicSnaps.set(tok, p.exists ? (p.data() as D) : null);
+        const pub = await tx.get(firestore.doc(`publicInvoices/${tok}`));
+        publicSnaps.set(tok, pub.exists ? (pub.data() as D) : null);
       }
+    };
+    for (const f of result.fixes) await prefetchPub(rowById(invoices, f.invoiceId));
+    for (const r of result.recycles) {
+      const mRow = rowById(memberships, r.membershipId);
+      const ptRow = rowById(ptAssignments, r.ptAssignmentId);
+      await prefetchPub(
+        rowById(
+          invoices,
+          String(mRow?.data["invoiceId"] ?? ptRow?.data["invoiceId"] ?? "") || null,
+        ),
+      );
     }
 
     /* ---------- writes ---------- */
@@ -456,7 +470,7 @@ async function applyMember(
       });
       created.invoices.push(invRef.id);
       created.publicInvoices.push(tok);
-      return invRef.id;
+      return { id: invRef.id, number: invoiceNumber };
     };
 
     const makePayment = (draft: D, links: { m?: string | undefined; pt?: string | undefined }) => {
@@ -491,7 +505,6 @@ async function applyMember(
           created.memberships.push(ref.id);
           mId = ref.id;
         }
-        newPlanRows.push({ id: ref.id, data: c.membership });
       }
       if (c.pt) {
         const ref = ptId
@@ -513,10 +526,10 @@ async function applyMember(
         ? makeBill(c.plan, c.bill, {
             m: c.membership ? mId : undefined,
             pt: c.pt ? ptId : undefined,
-          })
+          }).id
         : "";
       if (c.membership) {
-        tx.set(firestore.doc(`memberships/${mId}`), {
+        const doc = {
           ...c.membership,
           clientId: clientRef.id,
           invoiceId: billId,
@@ -524,7 +537,9 @@ async function applyMember(
           ...(c.overlapWith.length ? { overlapOk: c.overlapWith } : {}),
           createdAt: now,
           updatedAt: now,
-        });
+        };
+        tx.set(firestore.doc(`memberships/${mId}`), doc);
+        newPlanRows.push({ id: mId, data: doc });
       }
       if (c.pt) {
         tx.set(firestore.doc(`ptAssignments/${ptId}`), {
@@ -582,11 +597,14 @@ async function applyMember(
       // The bill first (plans point at it).
       const inv = rowById(invoices, f.invoiceId);
       let billId = "";
+      let billNo = "";
       if (f.billAction === "create") {
-        billId = makeBill(f.plan, f.bill!, {
+        const made = makeBill(f.plan, f.bill!, {
           m: f.membership ? mId : undefined,
           pt: f.pt ? ptId : undefined,
         });
+        billId = made.id;
+        billNo = made.number;
       } else if (inv) {
         snapOnce(before.invoices, inv);
         const tok = String(inv.data["publicToken"] ?? "");
@@ -597,6 +615,7 @@ async function applyMember(
           if (tok) tx.delete(firestore.doc(`publicInvoices/${tok}`));
         } else if (f.billAction === "rewrite") {
           billId = inv.id;
+          billNo = String(inv.data["invoiceNumber"] ?? "");
           const money = f.bill ?? {
             items: [
               {
@@ -680,14 +699,19 @@ async function applyMember(
           createdAt: d["createdAt"] ?? now,
         };
       };
-      if (f.membership)
-        tx.set(firestore.doc(`memberships/${mId}`), {
+      if (f.membership) {
+        const written = {
           ...f.membership,
           clientId: clientRef.id,
           invoiceId: billId,
           ...keepOf(mRow && f.membershipId ? mRow : null),
+          // A renewal here ended this plan on purpose (even without a stamp): keep it ended.
+          ...(f.keepEnded ? { status: f.keepEnded.status, endedBy: f.keepEnded.endedBy } : {}),
           updatedAt: now,
-        });
+        };
+        tx.set(firestore.doc(`memberships/${mId}`), written);
+        newPlanRows.push({ id: mId, data: written });
+      }
       if (f.pt)
         tx.set(firestore.doc(`ptAssignments/${ptId}`), {
           ...f.pt,
@@ -695,6 +719,7 @@ async function applyMember(
           clientNameSnapshot: clientName,
           invoiceId: billId,
           ...keepOf(ptRow && f.ptAssignmentId ? ptRow : null),
+          ...(f.keepEnded ? { status: f.keepEnded.status } : {}),
           updatedAt: now,
         });
 
@@ -711,13 +736,14 @@ async function applyMember(
       if (f.keepPayments) {
         // Staff's rows stay; only their plan links move when the shape changed.
         for (const p of payments.filter((x) => x.data["oldSoftware"] === true)) {
-          const linksM = p.data["membershipId"] === f.deleteMembershipId && f.membership;
-          const linksPt = p.data["ptAssignmentId"] === f.deletePtId && f.pt;
+          const linksM =
+            f.deleteMembershipId != null && p.data["membershipId"] === f.deleteMembershipId;
+          const linksPt = f.deletePtId != null && p.data["ptAssignmentId"] === f.deletePtId;
           if (linksM || linksPt) {
             snapOnce(before.payments, p);
             tx.update(firestore.doc(`payments/${p.id}`), {
-              ...(linksM ? { membershipId: mId } : {}),
-              ...(linksPt ? { ptAssignmentId: ptId } : {}),
+              membershipId: f.membership ? mId : null,
+              ptAssignmentId: f.pt ? ptId : null,
               updatedAt: now,
             });
           }
@@ -729,7 +755,7 @@ async function applyMember(
         snapOnce(before.payments, p);
         tx.update(firestore.doc(`payments/${pid}`), {
           invoiceId: billId,
-          invoiceNumber: billId && inv ? (inv.data["invoiceNumber"] ?? "") : "",
+          invoiceNumber: billId ? billNo : "",
           ...(f.membership ? { membershipId: mId } : {}),
           ...(f.pt ? { ptAssignmentId: ptId } : {}),
           updatedAt: now,
@@ -791,7 +817,9 @@ async function applyMember(
         if (invRow) {
           item("invoices", invRow);
           const tok = String(invRow.data["publicToken"] ?? "");
-          if (tok) tx.delete(firestore.doc(`publicInvoices/${tok}`));
+          const pub = tok ? publicSnaps.get(tok) : null;
+          if (tok && pub) item("publicInvoices", { id: tok, data: pub });
+          else if (tok) tx.delete(firestore.doc(`publicInvoices/${tok}`));
         }
         unitPays.forEach((p) => item("payments", p));
         summaryBits.push(`copy to the Recycle Bin (${r.reason})`);
@@ -880,8 +908,15 @@ async function applyMember(
       byUid: by.uid,
       createdAt: now,
     });
-    return { moveId: moveRef.id, clientId: clientRef.id, summary: summaryBits.join("; ") };
+    return {
+      moveId: moveRef.id,
+      clientId: clientRef.id,
+      summary: summaryBits.join("; "),
+      reservedCode: claim?.code ?? "",
+    };
   });
+  if (done?.reservedCode) state.usedCodes.add(done.reservedCode);
+  return done;
 }
 
 /* ------------------------------------------------------------------ undo */
@@ -946,9 +981,35 @@ async function undoMove(moveId: string, by: Actor): Promise<{ ok: true } | { err
           throw new Error("Can't undo: the Recycle Bin copy was restored or emptied already.");
         binItems.push({ id, data: s.data()! });
       }
+      // Kept-but-rewritten documents (a legacy bill rewritten in place, a repointed payment, an
+      // overlap-marked plan) must be untouched since the run: their updatedAt is either the
+      // run's own write time, or — overlap marks never bump it — exactly what the copy holds.
+      // Anything else means staff edited or collected money since: refuse instead of erasing it.
+      const runStamp = move["createdAt"];
+      const word: Record<string, string> = {
+        memberships: "a plan",
+        ptAssignments: "a PT plan",
+        invoices: "a bill",
+        publicInvoices: "a bill",
+        payments: "a payment",
+      };
+      for (const c of ["memberships", "ptAssignments", "invoices", "publicInvoices", "payments"])
+        for (const r of before[c] ?? []) {
+          const snap = await tx.get(col(c, r.id));
+          if (!snap.exists) continue; // the run deleted it; recreating it IS the undo
+          const d = snap.data()!;
+          if (!tsEq(d["updatedAt"], runStamp) && !tsEq(d["updatedAt"], r.data["updatedAt"]))
+            throw new Error(
+              `Can't undo: ${word[c]} was changed after the run (edit or money collected). Undo that first.`,
+            );
+        }
       const clientId = String(move["clientId"] ?? "");
       const clientSnap =
         clientId && !created.clientId ? await tx.get(col("clients", clientId)) : null;
+      const liveMs =
+        clientId && !created.clientId
+          ? await tx.get(firestore.collection("memberships").where("clientId", "==", clientId))
+          : null;
 
       const now = FieldValue.serverTimestamp();
       // Delete everything the run created.
@@ -970,12 +1031,27 @@ async function undoMove(moveId: string, by: Actor): Promise<{ ok: true } | { err
           if (c === "clients") continue; // patched below, so later unrelated edits survive
           tx.set(firestore.doc(`${c}/${r.id}`), r.data);
         }
-      // The member record: only the fields this run touched.
+      // The member record: recompute the current plan from what is really there after the
+      // undo (other plans may have been sold since the run; the before-copy would be stale).
       if (clientSnap?.exists) {
         const beforeClient = (before["clients"] ?? []).find((r) => r.id === clientId);
+        const createdSet = new Set(created.memberships ?? []);
+        const byId = new Map<string, D>();
+        if (liveMs)
+          rowsOf(liveMs as FirebaseFirestore.QuerySnapshot).forEach((r) => {
+            if (!createdSet.has(r.id)) byId.set(r.id, r.data);
+          });
+        for (const r of before["memberships"] ?? []) byId.set(r.id, r.data);
+        for (const b of binItems)
+          if (b.data["collection"] === "memberships")
+            byId.set(String(b.data["docId"]), b.data["data"] as D);
+        const current = pickCurrent(
+          [...byId.entries()].map(([id, d2]) => currentRow(id, d2 as never)),
+          localDate(),
+        );
         tx.update(col("clients", clientId), {
-          currentMembership: beforeClient?.data["currentMembership"] ?? null,
-          status: beforeClient?.data["status"] ?? "active",
+          currentMembership: current.summary,
+          ...(current.active ? { status: "active" } : {}),
           ...(beforeClient && !beforeClient.data["oldMemberId"]
             ? { oldMemberId: FieldValue.delete() }
             : {}),
@@ -1064,8 +1140,22 @@ async function apply(request: Request) {
       skipped.push({ ...m, reason: "no old record" });
       continue;
     }
+    const known = [
+      ...(state.byPhone.get(key) ?? []).map((c) => c.id),
+      state.byOldId.get(m.oldMemberId)?.id ?? "",
+    ].filter(Boolean);
     try {
-      const r = await applyMember(state, key, oldMembers, m.oldMemberId, "running", runId, by);
+      const r = await applyMember(
+        state,
+        key,
+        oldMembers,
+        m.oldMemberId,
+        "running",
+        runId,
+        by,
+        "",
+        known,
+      );
       if (r) {
         applied.push({ ...m, ...r });
         await audit(by, r.clientId, "", `Old software migration: ${r.summary}`);
@@ -1105,6 +1195,10 @@ async function carry(request: Request) {
       `carry-${localDate()}`,
       by,
       String(body.planKey ?? ""),
+      [
+        ...(state.byPhone.get(key) ?? []).map((c) => c.id),
+        state.byOldId.get(oldMemberId)?.id ?? "",
+      ].filter(Boolean),
     );
     if (!r) return json({ error: "Their old plan is already in the app." }, 409);
     await audit(by, r.clientId, "", `Old software carry: ${r.summary}`);
