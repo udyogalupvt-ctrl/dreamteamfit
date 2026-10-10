@@ -64,6 +64,16 @@ Owner pre-approved the whole overnight run in writing (2026-10-10 message), incl
   his row), K. Sri Devi's records, 2 old plans with missing dates, prepaid old plans starting
   24 Oct (check the register when they start).
 
+**Register corrections (2026-10-10, owner asked in chat, done as the owner through the app):**
+Aniket ₹1,799 → ₹299 UPI + ₹1,500 Cash pair (1 Oct); K. Sudheer ₹1,999 → ₹999 UPI + ₹1,000
+Cash (8 Oct); G. Vijay Kumar end → 1 Sep 2027 (Edit plan has an end field); P. Victor Joshi's
+wrong "old software" entry → Recycle Bin (resell pending: the auto-mode classifier refuses a
+NEW SALE on the live site — owner does it in the app or allows it); Jyothi prasad bill stands
+due ₹8,999 and Collect balance already takes PART amounts (screenshot in scratchpad
+`shots_fixes/7_jyothi_parts_howto.png`). Plan starts T. Rajesh 4 Oct / N. Shiva 6 Oct /
+K. Sudheer 8 Oct are REFUSED by the overlap rule (each overlaps the member's own old-software
+plan) — money dates already match the register; owner decides keep-as-is vs an owner override.
+
 ### Next
 1. Owner: go through the morning chat list (October rows, in Telugu-English): Remove+resell
    Joshi/Sri Devi-type rows, Remove Roshan's cancelled copy, split Aniket/K. Sudheer payments
