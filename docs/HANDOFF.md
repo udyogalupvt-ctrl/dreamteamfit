@@ -154,6 +154,27 @@ exists and has no money. So Edit plan can't reach his money and his ₹1 (₹299
 register ₹300 PhonePe + ₹1,500 cash) is still open. Fix: Remove the empty active plan (added by
 mistake), Restore the cancelled one, then Edit plan → Price ₹2,000 and Collect the ₹1 by UPI.
 
+**2026-10-10 (last): the Remove bin was hidden on ended plans — fixed, and the last two rows
+closed.** An old month typed in as a new sale becomes "expired", and the bin only showed for
+active / pending / cancelled plans (Edit plan skips ended ones too), so such an entry could not be
+taken out at all. Hrudai N was stuck with a ₹1,800 bill for a month his old software had already
+paid, with nothing to click. The bin now shows on every plan (gym and PT) whenever the login may
+delete plans; `planRemoval`'s own checks still refuse and say why. Live from `64b0d7e`,
+remove 39/39, plans_end 12/12.
+- **Hrudai N**: the phantom 2 Aug–1 Sep plan AND its bill RF-2026-000088 removed together (the
+  dialog confirmed "No money was recorded for it"). Deleting just the bill would have left the
+  plan pointing at a bill that no longer exists — which is exactly how S. Aniket got broken.
+- **Jyothi Prasad**: unpaid bill ₹8,999 → **₹9,000** (price ₹14,999 → ₹15,000 with his ₹6,000
+  discount). **Total dues are now ₹15,000 — the register's figure exactly.**
+- **S. Aniket**: a second plan had been created for him on 10 Oct 03:57 whose bill never existed,
+  while his real money sat on the plan that was cancelled the same morning. Fixed in order:
+  removed the empty plan → Restored the cancelled one → price ₹1,999 → ₹2,000 (bill ₹1,800) →
+  collected the ₹1 on the UPI part. He is now **₹300 UPI + ₹1,500 cash = ₹1,800**, one active
+  plan, matching the register.
+- **October: Cash ₹34,100 ✔, Card ₹27,700 ✔, and the whole remaining gap is +₹1,999 — only the
+  second Joshi sale**, which the owner says is fine as it stands (both Joshis may be real and the
+  register simply missed a row). Nothing else differs.
+
 ### Next
 1. Owner: go through the morning chat list (October rows, in Telugu-English): Remove+resell
    Joshi/Sri Devi-type rows, Remove Roshan's cancelled copy, split Aniket/K. Sudheer payments
