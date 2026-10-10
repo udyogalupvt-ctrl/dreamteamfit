@@ -1,6 +1,6 @@
 # Handoff
 
-Last updated: 2026-10-10 (old plans as-is LIVE: migration run + verified; owner list in chat)
+Last updated: 2026-10-10 (migration + October clean-up COMPLETE; register matches to zero)
 
 ## 2026-10-10/11 (overnight): old-software members keep their old plan AS-IS — built
 
@@ -213,14 +213,30 @@ the owner cancelled on purpose this morning.
 new business after the register pages we were given.)
 
 ### Next
-1. Owner: go through the morning chat list (October rows, in Telugu-English): Remove+resell
-   Joshi/Sri Devi-type rows, Remove Roshan's cancelled copy, split Aniket/K. Sudheer payments
-   (Edit payment → Cash + UPI), add the 3 missing register sales with Paid on, decide the
-   ₹1,999-vs-₹2,000 package prices.
-2. Ended-plan old members (≈700) come over on first visit: search their name → "In the old
-   software" → one press. Nothing else to migrate.
-3. If a carried plan is ever wrong: Income & expenses → Old software check → that member →
-   Undo (per member), fix, Check → Run again.
+**The old-software migration and the whole October clean-up are DONE.** 1-9 Oct matches the paper
+register to zero on every mode, dues ₹15,000 = ₹15,000, and every member listed in the earlier
+"Next" lists (Roshan, P. Joshi, JOSHI K, K. Sri Devi, Aniket, K. Sudheer, Mothilal, Md. Abdul,
+K. Sai, Ayyappa, Mounika, Gopichandh, Hrudai, Jyothi Prasad, P. Sai Ram, M. Rohith, the ₹200
+walk-in) is settled. Nothing is pending for Claude.
+
+Small things left for the owner, none urgent:
+1. **Change the owner password** — it was shared in chat for today's live work. `owner_login.txt`
+   should be deleted from the Desktop afterwards (Claude deletes it on request).
+2. **Member "Unknown" (#174)**, phone 8341388418 — give them their real name when it is known
+   (Profile → Edit). Their ₹200 cash on 3 Oct is already correct.
+3. **"2 days strength" is priced ₹300 but was sold twice at ₹200** (P. Abhishek, Unknown). If
+   ₹200 is the real walk-in rate, change the package price so the desk stops discounting it.
+4. **Prepaid old-software money lands on the plan's start day** (the agreed rule), so ₹2,500
+   R. Kavitha and ₹5,000 Govindha Rao appear in Collected on **24 Oct**, and ₹10,000 B. Vasanth
+   Kumar on 2 Nov, ₹10,000 P. Venkat Reddy on 4 Nov, ₹10,000 P. Prasuna on 1 Dec, A. Nitesh
+   Varma ₹4,500 in Aug 2027 (₹42,000 in total). That is income, **never drawer cash** — the Day
+   Book is unaffected, but do not expect notes in the till on those days.
+5. **CFO AI is dormant** (`/api/health`: aiProvider/aiKey missing). Set `CFO_AI_PROVIDER=gemini`,
+   `CFO_AI_MODEL` and `GEMINI_API_KEY` on Vercel whenever the AI wording is wanted; every CFO
+   number already works without it.
+6. Ended-plan old members (≈700) still come over on first visit: search the name → "In the old
+   software" → one press. If a carried plan is ever wrong: Income & expenses → Old software
+   check → that member → Undo, fix, Check → Run again.
 
 ## 2026-10-10: Cash + UPI split payment and the "paid in the old software" check (merged into main 2026-10-10)
 
