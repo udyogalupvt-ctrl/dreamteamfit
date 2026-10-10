@@ -175,6 +175,24 @@ remove 39/39, plans_end 12/12.
   second Joshi sale**, which the owner says is fine as it stands (both Joshis may be real and the
   register simply missed a row). Nothing else differs.
 
+**2026-10-10 (final): the ₹1 is handled at the till, the board price stays.** Claude had rounded
+the package prices to ₹2,000 / ₹2,500 …; the owner pointed out the **printed brochure says
+₹1,999 / ₹2,499 / ₹5,499 / ₹6,499 / ₹7,499 / ₹8,999 / ₹11,999 / ₹14,999**, so the app was
+contradicting the board and the desk had no answer to "you said 1999, why 2000?".
+**All 8 package prices were put back to the brochure** (verified against the photo), and the ₹1
+is now handled where it actually happens — at checkout:
+- Typing **₹2,000** for a ₹1,999 bill offers **"Make the bill ₹2,000 — that is what was handed
+  over"**, ticked by default. The PACKAGE keeps its board price; only that one sale is priced at
+  ₹2,000 (`salePackage` in enrollment-wizard.tsx, a per-sale copy of the package).
+- A member who pays ₹1,999 exactly still gets a ₹1,999 bill — untick, or just type 1999.
+- Only **₹1–₹99** over counts as rounding; ₹20,000 for a ₹1,999 plan is still refused as a typo.
+  Upgrades are excluded (they carry a credit). Part payments unchanged.
+So the Day Book always matches the cash in the drawer, and the board is never contradicted.
+New suite `roundup_local.py` **13/13** (including "the package itself is still ₹1,999"), paidon
+15/15, price 11/11, unit 346/346. Live from `9e7b4ae`.
+The 27 October sales already set to round amounts stay as they are — those members really did
+hand over round amounts.
+
 ### Next
 1. Owner: go through the morning chat list (October rows, in Telugu-English): Remove+resell
    Joshi/Sri Devi-type rows, Remove Roshan's cancelled copy, split Aniket/K. Sudheer payments
