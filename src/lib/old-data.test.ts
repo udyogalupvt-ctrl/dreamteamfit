@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  linkableOldMember,
   oldPersonFor,
   oldPlanCovering,
   oldPlanInRecords,
@@ -103,4 +104,14 @@ test("a family's phone: the name fits no record clearly → any record on the ph
   assert.equal(oldPlanInRecords(records, { oldMemberId: "", name: "Ravi Kumar" }, days), sep);
   // Their own record found: only theirs counts.
   assert.equal(oldPlanInRecords(records, { oldMemberId: "2", name: "Teja R" }, days), null);
+});
+
+test("Link members: a phone's only old record links only when the names share a word", () => {
+  const father = { id: "RFM1", n: "K. Ramesh Babu" };
+  assert.equal(linkableOldMember([father], "Ramesh K")?.id, "RFM1");
+  assert.equal(linkableOldMember([father], "K. Sai Kiran"), null);
+  assert.equal(linkableOldMember([], "Ramesh"), null);
+  const family = [father, { id: "RFM2", n: "K. Sai Kiran" }];
+  assert.equal(linkableOldMember(family, "Sai Kiran K")?.id, "RFM2");
+  assert.equal(linkableOldMember(family, "Lakshmi"), null);
 });

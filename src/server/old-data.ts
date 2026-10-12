@@ -25,7 +25,7 @@ import {
   oldJoinedOn,
   oldPhoneKey,
   parseCsv,
-  pickOldMember,
+  linkableOldMember,
   type OldDirectoryEntry,
   type OldFileKind,
   type OldMember,
@@ -334,7 +334,7 @@ async function sync(request: Request) {
     }
     const e = c["oldMemberId"]
       ? (found.find((x) => x.id === c["oldMemberId"]) ?? null)
-      : pickOldMember(found, String(c["fullName"] ?? ""));
+      : linkableOldMember(found, String(c["fullName"] ?? ""));
     if (!e) {
       unclear++;
       continue;

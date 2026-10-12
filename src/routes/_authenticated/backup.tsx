@@ -350,7 +350,7 @@ function OldMembersSection({ owner, reload }: { owner: boolean; reload: number }
     try {
       const r = await syncOldData();
       toast.success(`Linked ${r.linked} member${r.linked === 1 ? "" : "s"} to their old data`, {
-        description: `${r.joined} joining date${r.joined === 1 ? "" : "s"} set · ${r.already} already linked · ${r.notFound} not in the old data${r.unclear ? ` · ${r.unclear} share a number (link them from their profile)` : ""}`,
+        description: `${r.joined} joining date${r.joined === 1 ? "" : "s"} set · ${r.already} already linked · ${r.notFound} not in the old data${r.unclear ? ` · ${r.unclear} with a matching phone but a different name (link them from their profile)` : ""}`,
       });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -512,7 +512,7 @@ function OldMembersSection({ owner, reload }: { owner: boolean; reload: number }
         open={syncOpen}
         onOpenChange={setSyncOpen}
         title="Link old data to members already added?"
-        description="Members whose phone number is in the old data get their old member ID. Where the app has nothing yet, their old joining date, date of birth and gender are filled in. Nothing they already have is changed."
+        description="Members whose phone number and name match the old data get their old member ID. Where the app has nothing yet, their old joining date, date of birth and gender are filled in. Their member ID here, thumb, plans and money are never changed, and nothing they already have is overwritten. Safe to press again."
         confirmLabel="Link now"
         onConfirm={() => void sync()}
       />

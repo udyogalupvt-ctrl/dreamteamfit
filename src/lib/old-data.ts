@@ -297,6 +297,19 @@ export function pickOldMember<T extends { name?: string; n?: string }>(
 }
 
 /**
+ * For Link members: like pickOldMember, but a phone's only record must share a name word too, so a
+ * son added on his father's phone never takes the father's old ID, birth date and gender.
+ */
+export function linkableOldMember<T extends { name?: string; n?: string }>(
+  records: T[],
+  name: string,
+): T | null {
+  const picked = pickOldMember(records, name);
+  if (!picked || records.length > 1) return picked;
+  return pickOldMember([picked, { n: "" } as T], name);
+}
+
+/**
  * The member's own old record among a phone's records: the linked old member ID, else the best
  * name match, else the only record.
  */
