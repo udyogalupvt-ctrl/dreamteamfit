@@ -85,6 +85,7 @@ export interface PtIn {
   ptPrice: number;
   /** The bill the PT plan was sold on (All plans tab). */
   invoiceId?: string;
+  paidInOldSoftware?: boolean;
   oldSoftwarePaid?: number;
 }
 
