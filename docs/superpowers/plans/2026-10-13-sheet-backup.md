@@ -25,7 +25,7 @@
 
 ### Look (user, 2026-10-13: "should look really good for viewing", readers are non-technical)
 
-- Spreadsheet properties: `locale: "en_IN"`, `timeZone: "Asia/Kolkata"`, default font Roboto 10 (so `TODAY()` and dates are Indian). The empty default "Sheet1" is deleted once real tabs exist.
+- Spreadsheet properties: `locale: "en_GB"` (Google has no en_IN), `timeZone: "Asia/Kolkata"`, default font Roboto 10 (so `TODAY()` and dates are Indian). The empty default "Sheet1" is deleted once real tabs exist.
 - Dates are REAL dates (serial number = days since 1899-12-30, written RAW) with number format `dd-mm-yyyy`, so the owner can sort and filter; never text.
 - Money: Indian grouping `[>=10000000]₹##\,##\,##\,##0;[>=100000]₹##\,##\,##0;₹##,##0` (₹1,59,046); empty when 0 (write "" not 0). Right-aligned.
 - Header row: background `#ECEFF1`, bold dark text `#263238`, centered, wrapped, height 44, bottom border medium `#90A4AE`. Mode headers as pastel chips with dark matching text (contrast ≥ 4.5:1): PP `#F3E5F5`/`#6A1B9A`, CASH `#E3F2FD`/`#0D47A1`, CARD `#E8F5E9`/`#1B5E20`, DUE `#FFEBEE`/`#B71C1C`.

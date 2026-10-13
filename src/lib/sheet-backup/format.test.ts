@@ -252,7 +252,7 @@ test("spreadsheet setup: Indian locale, IST, Roboto 10", () => {
     timeZone: string;
     defaultFormat: { textFormat: { fontFamily: string; fontSize: number } };
   };
-  assert.equal(p.locale, "en_IN");
+  assert.equal(p.locale, "en_GB");
   assert.equal(p.timeZone, "Asia/Kolkata");
   assert.equal(p.defaultFormat.textFormat.fontFamily, "Roboto");
   assert.equal(p.defaultFormat.textFormat.fontSize, 10);

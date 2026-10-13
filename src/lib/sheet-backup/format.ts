@@ -498,7 +498,7 @@ export function spreadsheetSetupRequests(): unknown[] {
     {
       updateSpreadsheetProperties: {
         properties: {
-          locale: "en_IN",
+          locale: "en_GB", // Google has no en_IN; en_GB gives day-month-year, money uses our own ₹ format
           timeZone: "Asia/Kolkata",
           defaultFormat: { textFormat: { fontFamily: "Roboto", fontSize: 10 } },
         },
