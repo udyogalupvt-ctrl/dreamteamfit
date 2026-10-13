@@ -1,6 +1,37 @@
 # Handoff
 
-Last updated: 2026-10-13 (migration cards removed; security audit run-2 in progress)
+Last updated: 2026-10-13 (date filter everywhere, Plans that overlap back, phone logo, WhatsApp scroll)
+
+## 2026-10-13: one date filter everywhere, Plans that overlap back, phone logo, WhatsApp scroll
+
+**State**
+- **6333c83 (local, NOT pushed; main is 4 ahead of origin):**
+  - Shared date filter `components/common/period-picker.tsx` + pure `lib/periods.ts` (unit tests in
+    test:cfo): Today, Yesterday, 2/3/4/5 days back (each shows its date), This week (Mon→today), This
+    month, Pick a date, From – to; pages add Last month / This year / All dates via `choicesWith`.
+    Used by Attendance, Day Book, Dashboard, Billing, Income, Expenses list, Reports, WhatsApp usage.
+    Any new date filter must use it. Staff attendance stays a monthly register (left as is).
+  - Attendance: the filter is at the top and drives the cards, the Visits tab (old Today + History
+    merged) and the Access log; "Currently present" is always now; lists show 200 rows at a time.
+  - Income & expenses: only "Plans that overlap" restored (owner asked to keep it). Live check
+    (read-only, 2026-10-13): 8 pairs; 5 were the old software starting a renewal on the plan's last
+    day → no longer listed (`overlapPairs` rule + test). 3 left for the owner, all old-software
+    rows: member #158 (annual + "2 mnths ALT" both from 24 Aug 2026, ₹10,000 each) and #73 (two
+    plans queued for Aug 2027, payments dated 2027 — probably a year typo in the old software).
+    Not changed by me: no 100% proof which is right.
+  - Phone/tablet top bar shows the logo (size-11, header still 64 px).
+  - WhatsApp phone: chat list scrolls again (root cause: `overscroll-contain` on a list that can't
+    scroll swallowed swipes; now lg-only); search + chips stick under the top bar. App column uses
+    `overflow-x-clip` (hidden broke the sticky top bar on every page).
+- Checks: tsc clean, unit 358/358, build OK; emulator suites in session scratchpad a6a73589…/h:
+  `periods_local.py` 108/108 (light/dark, 390/1440), `wa_scroll_local.py` 14/14 (real touch drags;
+  CDP synthesizeScrollGesture does NOT scroll headless — use dispatchTouchEvent steps).
+
+### Next
+1. Owner: push main (git here is signed in as ishaputrabiz, no access) so Vercel deploys 417b073 +
+   6333c83; then check Attendance filter and the phone WhatsApp list on the live site.
+2. Owner: decide the 3 overlap pairs (#158, #73) from the old software / register.
+3. Finish audit run-2 (`~/security-audit-skill/dreamteamfit/run-2/NEXT.md`).
 
 ## 2026-10-12/13: Income & expenses cleaned up, Link members safer, security audit run-2
 
