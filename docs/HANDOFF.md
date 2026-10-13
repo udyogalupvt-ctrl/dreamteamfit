@@ -1,6 +1,58 @@
 # Handoff
 
-Last updated: 2026-10-13 (date filter everywhere, Plans that overlap back, phone logo, WhatsApp scroll)
+Last updated: 2026-10-13 evening (security audit run-2 finished; carried-member bill links fixed)
+
+## 2026-10-13 evening: audit run-2 finished, bill-link crash fixed
+
+**State**
+- **97e05a5 (local, NOT pushed):** bill links of members carried from the old software crashed
+  (carry wrote `publicInvoices` with no `business`; `invoice.$token.tsx` read `b.address`). Now
+  `billBusiness()` (`src/lib/invoice-utils.ts`, unit test in test:cfo) fills blanks on the page, so
+  the live bills already made open with no data change. The carry stores the billing fields from
+  `settings/business` too. Checks: tsc clean, unit 361/361, eslint clean. The emulator test
+  `bill_business_local.py` passed: the carry route made a bill with the gym details, and the old
+  bill and the carried bill both open at 390 and 1440 px with no page error. The test is in session
+  scratchpad 8e05ed8a…/h, a copy of the a6a73589 harness on ports 8480/9499/5799.
+  `asis_local.py` is stale: it opens the removed "Old software check" card.
+- **Audit run-2 complete** (`~/security-audit-skill/dreamteamfit/run-2/REPORT.md`; validators pass):
+  - Results: 0 confirmed (no sandbox), 14 needs_validation, 6 rejected.
+  - Coverage: 7 covered, 15 candidate, 13 deferred.
+  - Leads, with exact local emulator plans, are in `NEEDS-VALIDATION.md` in priority order.
+  - The final critic added 3 deferred units for a future run: staff-writable door fields on clients and
+    staff, pre-auth work on the WhatsApp webhooks, and Recycle Bin `extra` consumers.
+
+### Next
+1. Owner: push main (97e05a5 + 6333c83 + 417b073), as before.
+2. Owner, Firebase console (audit lead 1, decides whether anyone can become owner):
+   - Authentication > Users: does `admin@elevategym.com` exist? It is in the owner list in
+     `firestore.rules:13` and `src/constants/owners.ts`. Is "Enable create (sign-up)" off?
+   - If that address is not a real owner mailbox: remove it from both lists (needs a rules deploy, owner OK).
+   - Don't add `email_verified`: a password login is usually unverified and the owner would be locked out.
+3. Fix the audit leads, server-side only, no rules deploy. For each one: emulator test first
+   (red), then fix (green); the plan for each is in NEEDS-VALIDATION.md.
+   1. `src/server/whatsapp.ts` send/test: typed-number and test sends need
+      `requireFeature('announcements')`. Member sends: the recipient must be the opted-in client's phone,
+      not the doc's `normalizedPhone`. `src/server/push.ts` members route: same feature check.
+   2. `src/server/whatsapp-gateway.ts` saveConnection: the stored key may be reused only when the URL is
+      unchanged. Require https and refuse private or loopback hosts.
+   3. `src/server/old-migrate.ts` undoMove (~941-1035): an allowlist of collections, and RESTORABLE for bin paths.
+   4. `src/server/staff.ts` updateLogin (~101-131): act only on a uid that this staff record's
+      server-created login owns, like `ownPortalUid` (lead 6, owner restore of a planted bin entry).
+   5. `src/server/portal.ts` trainerCall (~1190): `followUpId` must belong to that client and counsellor;
+      lead branch: `clientId` must match the lead.
+   6. Push chat route (`push.ts` ~284-300): require a live PT for that trainer. Clearing
+      `chats.trainerId` when a PT ends needs the rules change in item 4 below.
+   7. `biometric.ts` attendance (~1218): refuse punches more than about 10 min in the future.
+      `restoreCommand` (~752): same printable filter as `userInfoCommand`.
+   8. `push.ts`: subscribe checks that p256dh is a valid P-256 point, and pushTo uses try/catch per
+      subscription. `automation.ts` handleCron: try/catch per step (reliability, rejected as security).
+4. Rules changes, owner OK + full emulator regression + rules deploy:
+   - biometricCommands gated by `can('devices')` with a type allowlist; templates no longer staff-readable;
+   - deny browser create/update of `oldSoftwareMoves` with kind 'as-is';
+   - isTrainerOf checks a live PT;
+   - money collections gated per feature (big redesign: needs its own plan).
+5. Owner checks: the door machine serial number is a secret (see who can see it); add a relay secret
+   for `/iclock` (needs the Cloudflare worker changed); set APP_URL in Vercel.
 
 ## 2026-10-13: one date filter everywhere, Plans that overlap back, phone logo, WhatsApp scroll
 
@@ -31,7 +83,7 @@ Last updated: 2026-10-13 (date filter everywhere, Plans that overlap back, phone
 1. Owner: push main (git here is signed in as ishaputrabiz, no access) so Vercel deploys 417b073 +
    6333c83; then check Attendance filter and the phone WhatsApp list on the live site.
 2. Owner: decide the 3 overlap pairs (#158, #73) from the old software / register.
-3. Finish audit run-2 (`~/security-audit-skill/dreamteamfit/run-2/NEXT.md`).
+3. Done 2026-10-13 evening (see top section).
 
 ## 2026-10-12/13: Income & expenses cleaned up, Link members safer, security audit run-2
 
