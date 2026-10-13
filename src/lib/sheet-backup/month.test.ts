@@ -3,7 +3,12 @@ import { test } from "node:test";
 import { buildMonth, CATEGORY_LABEL, dmy, MONTH_COLUMNS, type MonthInput } from "./month.ts";
 import type { BillIn, ClientIn, PackageIn, PayIn, PlanIn, PtIn } from "./types.ts";
 
-const client: ClientIn = { id: "c1", clientCode: "RF0001", fullName: "Asha Rao", phone: "9876500001" };
+const client: ClientIn = {
+  id: "c1",
+  clientCode: "RF0001",
+  fullName: "Asha Rao",
+  phone: "9876500001",
+};
 const pkg: PackageIn = {
   id: "pk1",
   name: "Gold",
@@ -117,7 +122,12 @@ test("split pair is one row: CASH + PP, paid is the sum", () => {
 });
 
 test("a ₹1 balance is a Balance row with a top-up note and no fees", () => {
-  const p = pay({ amount: 1, kind: "balance", paymentDate: "2026-10-10", createdDay: "2026-10-10" });
+  const p = pay({
+    amount: 1,
+    kind: "balance",
+    paymentDate: "2026-10-10",
+    createdDay: "2026-10-10",
+  });
   const r = buildMonth(input({ payments: [p] })).rows[0]!;
   assert.equal(r.kind, "Balance");
   assert.ok(r.note.includes("₹1 top-up"));
@@ -127,7 +137,13 @@ test("a ₹1 balance is a Balance row with a top-up note and no fees", () => {
 
 test("a refund is negative and counted in the app total", () => {
   const sale = pay({ id: "p1", amount: 2000 });
-  const refund = pay({ id: "p2", amount: -500, kind: "refund", paymentDate: "2026-10-09", createdDay: "2026-10-09" });
+  const refund = pay({
+    id: "p2",
+    amount: -500,
+    kind: "refund",
+    paymentDate: "2026-10-09",
+    createdDay: "2026-10-09",
+  });
   const m = buildMonth(input({ payments: [sale, refund] }));
   const r = m.rows.find((x) => x.kind === "Refund")!;
   assert.equal(r.status, "Refunded");
@@ -158,7 +174,9 @@ test("an old bill with no payment records is counted on its bill date", () => {
 
 test("renewal when the member has an earlier plan, new when not", () => {
   const earlier = plan({ id: "m0", startDate: "2026-08-01", endDate: "2026-08-30" });
-  const renew = buildMonth(input({ payments: [pay()], plansOfClients: [earlier, plan()], plans: [plan()] }));
+  const renew = buildMonth(
+    input({ payments: [pay()], plansOfClients: [earlier, plan()], plans: [plan()] }),
+  );
   assert.equal(renew.rows[0]?.kind, "Renewal");
   const fresh = buildMonth(input({ payments: [pay()] }));
   assert.equal(fresh.rows[0]?.kind, "New");
@@ -174,7 +192,9 @@ test("old-software payment without a bill goes in its own column and keeps the b
     oldSoftware: true,
     oldSoftwareBillNo: "77",
   });
-  const m = buildMonth(input({ payments: [p], bills: [], plans: [plan({ oldSoftwareBalance: 1200 })] }));
+  const m = buildMonth(
+    input({ payments: [p], bills: [], plans: [plan({ oldSoftwareBalance: 1200 })] }),
+  );
   const r = m.rows[0]!;
   assert.equal(r.kind, "Old software");
   assert.equal(r.old, 3000);
@@ -191,21 +211,65 @@ test("columns are in the approved order", () => {
   assert.deepEqual(
     MONTH_COLUMNS.map((c) => c.header),
     [
-      "S.NO", "DATE PAID", "NAME", "PHONE NO", "PAYMENT FOR", "PACKAGE", "PP", "CASH", "CARD", "OTHER",
-      "PAID IN OLD SOFTWARE", "PAID AMOUNT", "DUE NOW", "TOTAL BILL", "GYM FEE", "PT FEE", "DISCOUNT",
-      "Counseller", "PT Trainer", "TYPE OF CLIENT", "START DATE", "ENDING DATE", "DAYS", "PT End date",
-      "Membership payment due date", "STATUS", "NOTE", "ENTERED ON", "BILL NO", "MEMBER ID",
+      "S.NO",
+      "DATE PAID",
+      "NAME",
+      "PHONE NO",
+      "PAYMENT FOR",
+      "PACKAGE",
+      "PP",
+      "CASH",
+      "CARD",
+      "OTHER",
+      "PAID IN OLD SOFTWARE",
+      "PAID AMOUNT",
+      "DUE NOW",
+      "TOTAL BILL",
+      "GYM FEE",
+      "PT FEE",
+      "DISCOUNT",
+      "Counseller",
+      "PT Trainer",
+      "TYPE OF CLIENT",
+      "START DATE",
+      "ENDING DATE",
+      "DAYS",
+      "PT End date",
+      "Membership payment due date",
+      "STATUS",
+      "NOTE",
+      "ENTERED ON",
+      "BILL NO",
+      "MEMBER ID",
     ],
   );
   for (const c of MONTH_COLUMNS) assert.ok(c.width > 0, c.header);
 });
 
 test("sale row money, cancelled status, due counted once per bill, sort by date then bill no", () => {
-  const b = bill({ total: 1700, discount: 300, subtotal: 2000, amountPaid: 1000, balanceDue: 700, dueDate: "2026-10-20" });
+  const b = bill({
+    total: 1700,
+    discount: 300,
+    subtotal: 2000,
+    amountPaid: 1000,
+    balanceDue: 700,
+    dueDate: "2026-10-20",
+  });
   const first = pay({ id: "p1", amount: 1000 });
-  const second = pay({ id: "p2", amount: 100, kind: "balance", paymentDate: "2026-10-09", createdDay: "2026-10-09" });
-  const m = buildMonth(input({ payments: [second, first], bills: [b], plans: [plan({ status: "cancelled" })] }));
-  assert.deepEqual(m.rows.map((r) => r.kind), ["New", "Balance"]);
+  const second = pay({
+    id: "p2",
+    amount: 100,
+    kind: "balance",
+    paymentDate: "2026-10-09",
+    createdDay: "2026-10-09",
+  });
+  const m = buildMonth(
+    input({ payments: [second, first], bills: [b], plans: [plan({ status: "cancelled" })] }),
+  );
+  assert.deepEqual(
+    m.rows.map((r) => r.kind),
+    ["New", "Balance"],
+  );
   const sale = m.rows[0]!;
   assert.equal(sale.gymFee, 1700);
   assert.equal(sale.totalBill, 1700);

@@ -85,12 +85,33 @@ export const MONTH_COLUMNS: Column<MonthRow>[] = [
   { header: "PAYMENT FOR", value: (r) => r.kind, width: 130, kind: "text" },
   { header: "PACKAGE", value: (r) => r.pkg, width: 150, kind: "text" },
   { header: "PP", value: (r) => r.pp, width: 96, kind: "money", money: "sum", color: "#6A1B9A" },
-  { header: "CASH", value: (r) => r.cash, width: 96, kind: "money", money: "sum", color: "#0D47A1" },
-  { header: "CARD", value: (r) => r.card, width: 96, kind: "money", money: "sum", color: "#1B5E20" },
+  {
+    header: "CASH",
+    value: (r) => r.cash,
+    width: 96,
+    kind: "money",
+    money: "sum",
+    color: "#0D47A1",
+  },
+  {
+    header: "CARD",
+    value: (r) => r.card,
+    width: 96,
+    kind: "money",
+    money: "sum",
+    color: "#1B5E20",
+  },
   { header: "OTHER", value: (r) => r.other, width: 96, kind: "money", money: "sum" },
   { header: "PAID IN OLD SOFTWARE", value: (r) => r.old, width: 110, kind: "money", money: "sum" },
   { header: "PAID AMOUNT", value: (r) => r.paid, width: 104, kind: "money", money: "sum" },
-  { header: "DUE NOW", value: (r) => r.due, width: 96, kind: "money", money: "due", color: "#B71C1C" },
+  {
+    header: "DUE NOW",
+    value: (r) => r.due,
+    width: 96,
+    kind: "money",
+    money: "due",
+    color: "#B71C1C",
+  },
   { header: "TOTAL BILL", value: (r) => r.totalBill, width: 100, kind: "money", money: "sum" },
   { header: "GYM FEE", value: (r) => r.gymFee, width: 96, kind: "money", money: "sum" },
   { header: "PT FEE", value: (r) => r.ptFee, width: 96, kind: "money", money: "sum" },
@@ -122,11 +143,19 @@ export function buildMonth(input: MonthInput): {
   const pays = input.payments.filter((p) => p.paymentDate >= from && p.paymentDate <= to);
   const legacy = input.legacyBills.filter((b) => b.invoiceDate >= from && b.invoiceDate <= to);
 
-  const saleKind = (clientId: string, plan: PlanIn | undefined, pt: PtIn | undefined, b: BillIn | undefined) => {
-    if (b && (b.items[0]?.name ?? "").startsWith("Balance from the old software")) return "Old software balance";
+  const saleKind = (
+    clientId: string,
+    plan: PlanIn | undefined,
+    pt: PtIn | undefined,
+    b: BillIn | undefined,
+  ) => {
+    if (b && (b.items[0]?.name ?? "").startsWith("Balance from the old software"))
+      return "Old software balance";
     if ((b?.upgradeCredit ?? 0) > 0) return "Upgrade";
     if (!plan) return pt ? "PT" : "Other";
-    return input.plansOfClients.some((m) => m.clientId === clientId && m.id !== plan.id && m.startDate < plan.startDate)
+    return input.plansOfClients.some(
+      (m) => m.clientId === clientId && m.id !== plan.id && m.startDate < plan.startDate,
+    )
       ? "Renewal"
       : "New";
   };
@@ -171,16 +200,22 @@ export function buildMonth(input: MonthInput): {
     const pkg = plan ? input.packages.get(plan.packageId) : undefined;
     const notes: string[] = [];
     if (p.paymentDate < p.createdDay) notes.push("entered later, dated the day it was paid");
-    if (p.kind === "balance" && amount > 0 && amount <= 10) notes.push(`₹${amount} top-up after price change`);
+    if (p.kind === "balance" && amount > 0 && amount <= 10)
+      notes.push(`₹${amount} top-up after price change`);
     rows.push({
       date: p.paymentDate,
       entered: p.createdDay,
-      billNo: b?.invoiceNumber ?? (p.oldSoftwareBillNo ? `Old ${p.oldSoftwareBillNo}` : "Old software"),
+      billNo:
+        b?.invoiceNumber ?? (p.oldSoftwareBillNo ? `Old ${p.oldSoftwareBillNo}` : "Old software"),
       billKey: b?.id ?? `old:${p.membershipId ?? p.ptAssignmentId}`,
       id: c?.clientCode ?? "",
       name: c?.fullName ?? p.clientNameSnapshot,
       kind,
-      type: plan ? (CATEGORY_LABEL[pkg?.category ?? ""] ?? pkg?.category ?? "") : pt ? "Personal training" : "",
+      type: plan
+        ? (CATEGORY_LABEL[pkg?.category ?? ""] ?? pkg?.category ?? "")
+        : pt
+          ? "Personal training"
+          : "",
       phone: c?.phone ?? "",
       start: plan?.startDate ?? pt?.startDate ?? "",
       end: plan?.endDate ?? pt?.endDate ?? "",
@@ -195,13 +230,22 @@ export function buildMonth(input: MonthInput): {
       due,
       gymFee: gym ? gym.total : sale && !b && plan ? round(amount + due) : "",
       totalBill: sale ? (b ? b.total : round(amount + due)) : "",
-      discount: sale && b ? Math.max(0, (b.discount || 0) - (b.upgradeCredit || 0) - (b.oldSoftwareCredit || 0)) : "",
+      discount:
+        sale && b
+          ? Math.max(0, (b.discount || 0) - (b.upgradeCredit || 0) - (b.oldSoftwareCredit || 0))
+          : "",
       counsellor: p.counsellorName || b?.counsellorName || plan?.counsellorName || "",
       ptFee: ptm ? ptm.total : "",
       trainer: pt?.trainerNameSnapshot ?? "",
       ptEnd: pt?.endDate ?? "",
       payBy: due > 0 && b ? b.dueDate : "",
-      status: cancelled ? "Cancelled" : p.kind === "refund" ? "Refunded" : due > 0 ? "Part paid" : "Paid",
+      status: cancelled
+        ? "Cancelled"
+        : p.kind === "refund"
+          ? "Refunded"
+          : due > 0
+            ? "Part paid"
+            : "Paid",
       note: notes.join(" · "),
     });
   }
@@ -245,11 +289,15 @@ export function buildMonth(input: MonthInput): {
   }
 
   rows.sort(
-    (a, b) => a.date.localeCompare(b.date) || String(a.billNo).localeCompare(String(b.billNo), undefined, { numeric: true }),
+    (a, b) =>
+      a.date.localeCompare(b.date) ||
+      String(a.billNo).localeCompare(String(b.billNo), undefined, { numeric: true }),
   );
 
   // The dashboard's own formula: payments by paid date + old bills without payment records.
-  const appTotal = round(pays.reduce((s, p) => s + p.amount, 0) + legacy.reduce((s, b) => s + b.amountPaid, 0));
+  const appTotal = round(
+    pays.reduce((s, p) => s + p.amount, 0) + legacy.reduce((s, b) => s + b.amountPaid, 0),
+  );
   const sheetTotal = round(rows.reduce((s, r) => s + r.paid, 0));
   const seen = new Set<string>();
   const dueOnBills = round(
@@ -259,5 +307,11 @@ export function buildMonth(input: MonthInput): {
       return s + (r.due || 0);
     }, 0),
   );
-  return { rows, appTotal, sheetTotal, dueOnBills, matches: Math.abs(appTotal - sheetTotal) < 0.01 };
+  return {
+    rows,
+    appTotal,
+    sheetTotal,
+    dueOnBills,
+    matches: Math.abs(appTotal - sheetTotal) < 0.01,
+  };
 }

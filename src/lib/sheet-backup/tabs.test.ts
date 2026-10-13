@@ -76,7 +76,11 @@ const member = (endDate: string, over: Record<string, unknown> = {}) => ({
   currentMembership: { packageName: "1 month", startDate: "2026-09-01", endDate, status: "active" },
   ...over,
 });
-const cell = (tab: { columns: { header: string; value(r: never, i: number): unknown }[]; rows: unknown[] }, header: string, i = 0) => {
+const cell = (
+  tab: { columns: { header: string; value(r: never, i: number): unknown }[]; rows: unknown[] },
+  header: string,
+  i = 0,
+) => {
   const col = tab.columns.find((c) => c.header === header);
   assert.ok(col, `column ${header}`);
   return col.value(tab.rows[i] as never, i);
@@ -89,7 +93,16 @@ test("members STATUS: ending soon, ended, active, no plan", () => {
       member("2026-10-12", { id: "b", fullName: "B" }),
       member("2026-11-30", { id: "c", fullName: "C" }),
       { ...client({ id: "d", fullName: "D" }), status: "active", currentMembership: null },
-      member("2026-10-20", { id: "e", fullName: "E", currentMembership: { packageName: "x", startDate: "2026-09-20", endDate: "2026-10-20", status: "cancelled" } }),
+      member("2026-10-20", {
+        id: "e",
+        fullName: "E",
+        currentMembership: {
+          packageName: "x",
+          startDate: "2026-09-20",
+          endDate: "2026-10-20",
+          status: "cancelled",
+        },
+      }),
     ],
     pts: [],
     openBills: [],
@@ -104,10 +117,26 @@ test("members STATUS: ending soon, ended, active, no plan", () => {
   assert.equal(status("C"), "Active");
   assert.equal(status("D"), "No plan");
   assert.equal(status("E"), "Ended");
-  assert.deepEqual(tab.columns.map((c) => c.header), [
-    "MEMBER ID", "NAME", "PHONE NO", "GENDER", "DATE OF BIRTH", "JOINED", "CURRENT PLAN", "START DATE",
-    "ENDING DATE", "DAYS LEFT", "STATUS", "PT TRAINER", "PT END", "BALANCE DUE", "LAST VISIT",
-  ]);
+  assert.deepEqual(
+    tab.columns.map((c) => c.header),
+    [
+      "MEMBER ID",
+      "NAME",
+      "PHONE NO",
+      "GENDER",
+      "DATE OF BIRTH",
+      "JOINED",
+      "CURRENT PLAN",
+      "START DATE",
+      "ENDING DATE",
+      "DAYS LEFT",
+      "STATUS",
+      "PT TRAINER",
+      "PT END",
+      "BALANCE DUE",
+      "LAST VISIT",
+    ],
+  );
 });
 
 test("members: DAYS LEFT is a live formula on the ENDING DATE cell, PT and balance are joined", () => {
@@ -145,16 +174,42 @@ test("dues total is the open bills only (closed and refunded are excluded)", () 
   // The dated bill (most overdue) comes first.
   assert.equal(cell(tab, "PAY BY", 0), "2026-10-10");
   assert.equal(cell(tab, "PAY BY", 1), "");
-  assert.deepEqual(tab.columns.map((c) => c.header), [
-    "NAME", "PHONE NO", "BILL NO", "BILL DATE", "TOTAL BILL", "PAID", "DUE", "PAY BY", "DAYS OVERDUE", "MEMBER ID",
-  ]);
+  assert.deepEqual(
+    tab.columns.map((c) => c.header),
+    [
+      "NAME",
+      "PHONE NO",
+      "BILL NO",
+      "BILL DATE",
+      "TOTAL BILL",
+      "PAID",
+      "DUE",
+      "PAY BY",
+      "DAYS OVERDUE",
+      "MEMBER ID",
+    ],
+  );
 });
 
 test("expenses: newest first with a total", () => {
   const tab = expensesTab({
     expenses: [
-      { date: "2026-10-01", category: "Rent", amount: 20000, paymentMethod: "UPI", title: "October rent", createdBy: "Owner" },
-      { date: "2026-10-12", category: "Supplies", amount: 450, paymentMethod: "Cash", description: "towels", notes: "from the market" },
+      {
+        date: "2026-10-01",
+        category: "Rent",
+        amount: 20000,
+        paymentMethod: "UPI",
+        title: "October rent",
+        createdBy: "Owner",
+      },
+      {
+        date: "2026-10-12",
+        category: "Supplies",
+        amount: 450,
+        paymentMethod: "Cash",
+        description: "towels",
+        notes: "from the market",
+      },
     ],
   });
   assert.equal(tab.total, 20450);
@@ -162,18 +217,36 @@ test("expenses: newest first with a total", () => {
   assert.equal(cell(tab, "NOTE", 0), "towels · from the market");
   assert.equal(cell(tab, "NOTE", 1), "October rent");
   assert.equal(cell(tab, "MODE", 1), "UPI");
-  assert.deepEqual(tab.columns.map((c) => c.header), ["DATE", "CATEGORY", "AMOUNT", "MODE", "NOTE", "ADDED BY"]);
+  assert.deepEqual(
+    tab.columns.map((c) => c.header),
+    ["DATE", "CATEGORY", "AMOUNT", "MODE", "NOTE", "ADDED BY"],
+  );
 });
 
 test("plans tab has one row per gym plan and per PT plan, newest start first", () => {
   const tab = plansTab({
-    plans: [plan(), plan({ id: "m0", startDate: "2026-08-01", endDate: "2026-08-30", paidInOldSoftware: true, invoiceId: "none" })],
+    plans: [
+      plan(),
+      plan({
+        id: "m0",
+        startDate: "2026-08-01",
+        endDate: "2026-08-30",
+        paidInOldSoftware: true,
+        invoiceId: "none",
+      }),
+    ],
     pts: [pt()],
     clients: new Map([["c1", client()]]),
-    bills: new Map([["b1", bill()], ["b2", bill({ id: "b2", invoiceNumber: "INV-12" })]]),
+    bills: new Map([
+      ["b1", bill()],
+      ["b2", bill({ id: "b2", invoiceNumber: "INV-12" })],
+    ]),
   });
   assert.equal(tab.rows.length, 3);
-  assert.deepEqual([0, 1, 2].map((i) => cell(tab, "KIND", i)), ["PT", "Gym", "Gym"]);
+  assert.deepEqual(
+    [0, 1, 2].map((i) => cell(tab, "KIND", i)),
+    ["PT", "Gym", "Gym"],
+  );
   assert.equal(cell(tab, "BILL NO", 0), "INV-12");
   assert.equal(cell(tab, "BILL NO", 1), "INV-10");
   assert.equal(cell(tab, "FROM OLD SOFTWARE", 2), "Yes");
@@ -194,7 +267,10 @@ test("staff and trainers: no secrets, a trainer already on the Staff page is not
     ],
   });
   assert.equal(tab.rows.length, 3);
-  assert.deepEqual(tab.columns.map((c) => c.header), ["NAME", "ROLE", "PHONE NO", "ACTIVE"]);
+  assert.deepEqual(
+    tab.columns.map((c) => c.header),
+    ["NAME", "ROLE", "PHONE NO", "ACTIVE"],
+  );
   assert.equal(cell(tab, "ROLE", 2), "Trainer");
   assert.equal(cell(tab, "ACTIVE", 0), "Yes");
   assert.equal(cell(tab, "ACTIVE", 2), "No");
@@ -202,8 +278,19 @@ test("staff and trainers: no secrets, a trainer already on the Staff page is not
 
 test("packages: gym packages then PT packages", () => {
   const tab = packagesTab({
-    packages: [{ id: "pk1", name: "Gold", category: "Strength + Cardio", durationDays: 30, price: 2000, isActive: true }],
-    ptPackages: [{ name: "PT monthly", price: 5000, durationDays: 30, schedule: "daily", isActive: false }],
+    packages: [
+      {
+        id: "pk1",
+        name: "Gold",
+        category: "Strength + Cardio",
+        durationDays: 30,
+        price: 2000,
+        isActive: true,
+      },
+    ],
+    ptPackages: [
+      { name: "PT monthly", price: 5000, durationDays: 30, schedule: "daily", isActive: false },
+    ],
   });
   assert.equal(tab.rows.length, 2);
   assert.equal(cell(tab, "CATEGORY", 0), "Cardio & strengthening");
@@ -228,12 +315,22 @@ test("read me lists every tab, shows ticks and crosses, and what to do if the ap
   assert.ok(flat.some((l) => l.startsWith("✓ Oct 2026 matches the app (₹2,07,049)")));
   assert.ok(flat.some((l) => l.startsWith("✗ Sep 2026")));
   assert.ok(flat.some((l) => l.includes("If the app is down")));
-  assert.ok(!flat.some((l) => l.startsWith("_data_payments |")), "restore tabs get one shared line");
-  assert.deepEqual(readMeCheckRows(rows).map((c) => c.ok), [true, false]);
+  assert.ok(
+    !flat.some((l) => l.startsWith("_data_payments |")),
+    "restore tabs get one shared line",
+  );
+  assert.deepEqual(
+    readMeCheckRows(rows).map((c) => c.ok),
+    [true, false],
+  );
 });
 
 test("read me with a failing check contains a cross", () => {
-  const rows = readMeRows({ updatedAt: "x", checks: [{ name: "Dues", ok: false, detail: "₹1" }], tabs: [] });
+  const rows = readMeRows({
+    updatedAt: "x",
+    checks: [{ name: "Dues", ok: false, detail: "₹1" }],
+    tabs: [],
+  });
   assert.ok(rows.some((r) => String(r[0]).includes("✗")));
 });
 
@@ -241,5 +338,8 @@ test("read me layout finds the table header and the section headings", () => {
   const rows = readMeRows({ updatedAt: "x", checks: [], tabs: ["Members"] });
   const layout = readMeLayout(rows);
   assert.equal(rows[layout.tableHeaderRow]?.[0], "Tab");
-  assert.deepEqual(layout.headingRows.map((r) => rows[r]?.[0]), ["Checks (does this sheet match the app?)", "If the app is down"]);
+  assert.deepEqual(
+    layout.headingRows.map((r) => rows[r]?.[0]),
+    ["Checks (does this sheet match the app?)", "If the app is down"],
+  );
 });

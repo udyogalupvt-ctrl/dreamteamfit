@@ -55,7 +55,7 @@ test("a document with nested Timestamps, arrays, nulls and numbers round-trips e
   assert.equal(data["flag"], false);
   const list = (data["nested"] as { list: unknown[] }).list;
   assert.deepEqual(list.slice(0, 3), [1, "two", null]);
-  assert.equal(((list[3] as { at: FakeTs }).at).toDate().toISOString(), "2025-10-13T10:00:00.000Z");
+  assert.equal((list[3] as { at: FakeTs }).at.toDate().toISOString(), "2025-10-13T10:00:00.000Z");
   assert.deepEqual((data["place"] as { latitude: number; longitude: number }).latitude, 17.4);
   assert.equal((data["owner"] as { path: string }).path, "clients/c1");
   assert.equal((data["raw"] as Buffer).toString(), "hello");
@@ -65,8 +65,12 @@ test("a document with nested Timestamps, arrays, nulls and numbers round-trips e
 });
 
 test("encodeValue uses the tagged JSON shapes and drops undefined", () => {
-  assert.deepEqual(encodeValue({ toDate: () => new Date("2026-01-02T03:04:05Z") }), { __ts: "2026-01-02T03:04:05.000Z" });
-  assert.deepEqual(encodeValue(new Date("2026-01-02T03:04:05Z")), { __ts: "2026-01-02T03:04:05.000Z" });
+  assert.deepEqual(encodeValue({ toDate: () => new Date("2026-01-02T03:04:05Z") }), {
+    __ts: "2026-01-02T03:04:05.000Z",
+  });
+  assert.deepEqual(encodeValue(new Date("2026-01-02T03:04:05Z")), {
+    __ts: "2026-01-02T03:04:05.000Z",
+  });
   assert.deepEqual(encodeValue({ a: 1, b: undefined }), { a: 1 });
   assert.deepEqual(encodeValue({ path: "x/y", firestore: {} }), { __ref: "x/y" });
   assert.deepEqual(encodeValue(Buffer.from("hi")), { __b64: "aGk=" });
@@ -96,7 +100,8 @@ test("rowToRecord names the id when the JSON is broken", () => {
 });
 
 test("EXCLUDED_COLLECTIONS keeps secrets and logs out of the sheet", () => {
-  for (const c of ["serverSecrets", "loginVault", "staffPrivate", "auditLogs"]) assert.ok(EXCLUDED_COLLECTIONS.has(c), c);
+  for (const c of ["serverSecrets", "loginVault", "staffPrivate", "auditLogs"])
+    assert.ok(EXCLUDED_COLLECTIONS.has(c), c);
   assert.ok(!EXCLUDED_COLLECTIONS.has("payments"));
   assert.ok(!EXCLUDED_COLLECTIONS.has("clients"));
 });

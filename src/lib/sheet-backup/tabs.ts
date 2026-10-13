@@ -23,7 +23,8 @@ const DAY_MS = 86_400_000;
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / DAY_MS);
 const yesNo = (v: boolean | undefined) => (v ? "Yes" : "No");
 /** A bill that is still asked for: not refunded, not closed (its plan was cancelled), money due. */
-const isOpenBill = (b: BillIn) => b.balanceDue > 0 && b.paymentStatus !== "closed" && b.paymentStatus !== "refunded";
+const isOpenBill = (b: BillIn) =>
+  b.balanceDue > 0 && b.paymentStatus !== "closed" && b.paymentStatus !== "refunded";
 
 /* ------------------------------------------------------------------ Members */
 
@@ -33,7 +34,12 @@ export interface MemberIn extends ClientIn {
   joinedOn?: string | undefined;
   lastVisitDate?: string | undefined;
   status: string;
-  currentMembership: { packageName: string; startDate: string; endDate: string; status: string } | null;
+  currentMembership: {
+    packageName: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+  } | null;
 }
 
 export interface MemberRow {
@@ -60,15 +66,22 @@ export function memberStatus(m: MemberIn["currentMembership"], today: string): s
   return daysBetween(today, m.endDate) <= 7 ? "Ending in 7 days" : "Active";
 }
 
-export function membersTab(input: { clients: MemberIn[]; pts: PtIn[]; openBills: BillIn[]; today: string }): TabData<MemberRow> {
+export function membersTab(input: {
+  clients: MemberIn[];
+  pts: PtIn[];
+  openBills: BillIn[];
+  today: string;
+}): TabData<MemberRow> {
   const owed = new Map<string, number>();
-  for (const b of input.openBills) if (isOpenBill(b)) owed.set(b.clientId, round((owed.get(b.clientId) ?? 0) + b.balanceDue));
+  for (const b of input.openBills)
+    if (isOpenBill(b)) owed.set(b.clientId, round((owed.get(b.clientId) ?? 0) + b.balanceDue));
   // The PT the member is on now: not cancelled, the one that ends last.
   const ptOf = (clientId: string) =>
     input.pts
       .filter((p) => p.clientId === clientId && p.status !== "cancelled")
       .sort((a, b) => b.endDate.localeCompare(a.endDate))[0];
-  const gender = (g: string | undefined) => (!g || g === "unspecified" ? "" : g.charAt(0).toUpperCase() + g.slice(1));
+  const gender = (g: string | undefined) =>
+    !g || g === "unspecified" ? "" : g.charAt(0).toUpperCase() + g.slice(1);
 
   const rows: MemberRow[] = [...input.clients]
     .sort((a, b) => a.fullName.localeCompare(b.fullName, undefined, { sensitivity: "base" }))
@@ -114,7 +127,14 @@ export function membersTab(input: { clients: MemberIn[]; pts: PtIn[]; openBills:
     { header: "STATUS", value: (r) => r.status, width: 130, kind: "text" },
     { header: "PT TRAINER", value: (r) => r.trainer, width: 120, kind: "text" },
     { header: "PT END", value: (r) => r.ptEnd, width: 96, kind: "date" },
-    { header: "BALANCE DUE", value: (r) => r.balance, width: 100, kind: "money", money: "sum", color: "#B71C1C" },
+    {
+      header: "BALANCE DUE",
+      value: (r) => r.balance,
+      width: 100,
+      kind: "money",
+      money: "sum",
+      color: "#B71C1C",
+    },
     { header: "LAST VISIT", value: (r) => r.lastVisit, width: 96, kind: "date" },
   ];
   return { columns, rows };
@@ -134,7 +154,11 @@ export interface DueRow {
   id: string;
 }
 
-export function duesTab(input: { openBills: BillIn[]; clients: Map<string, ClientIn>; today: string }): TabData<DueRow> {
+export function duesTab(input: {
+  openBills: BillIn[];
+  clients: Map<string, ClientIn>;
+  today: string;
+}): TabData<DueRow> {
   const bills = input.openBills.filter(isOpenBill);
   // Most overdue first; bills with no pay-by date last.
   bills.sort(
@@ -164,12 +188,20 @@ export function duesTab(input: { openBills: BillIn[]; clients: Map<string, Clien
     { header: "BILL DATE", value: (r) => r.billDate, width: 96, kind: "date" },
     { header: "TOTAL BILL", value: (r) => r.totalBill, width: 100, kind: "money", money: "sum" },
     { header: "PAID", value: (r) => r.paid, width: 96, kind: "money", money: "sum" },
-    { header: "DUE", value: (r) => r.due, width: 96, kind: "money", money: "sum", color: "#B71C1C" },
+    {
+      header: "DUE",
+      value: (r) => r.due,
+      width: 96,
+      kind: "money",
+      money: "sum",
+      color: "#B71C1C",
+    },
     { header: "PAY BY", value: (r) => r.payBy, width: 96, kind: "date" },
     // Live: counts up every day without a new sync. PAY BY is column H.
     {
       header: "DAYS OVERDUE",
-      value: (_r, i) => `=IF(H${sheetRow(i)}="","",IF(TODAY()>H${sheetRow(i)},TODAY()-H${sheetRow(i)},""))`,
+      value: (_r, i) =>
+        `=IF(H${sheetRow(i)}="","",IF(TODAY()>H${sheetRow(i)},TODAY()-H${sheetRow(i)},""))`,
       width: 100,
       kind: "number",
     },
@@ -210,7 +242,9 @@ export function expensesTab(input: { expenses: ExpenseIn[] }): TabData<ExpenseRo
       amount: e.amount,
       mode: e.paymentMethod ?? "",
       // What it was for: the title, then the description and notes when they say something more.
-      note: [...new Set([e.title, e.description, e.notes].map((t) => (t ?? "").trim()).filter(Boolean))].join(" · "),
+      note: [
+        ...new Set([e.title, e.description, e.notes].map((t) => (t ?? "").trim()).filter(Boolean)),
+      ].join(" · "),
       by: e.createdBy ?? "",
     }));
   const columns: Column<ExpenseRow>[] = [
@@ -248,7 +282,8 @@ export function plansTab(input: {
   bills: Map<string, BillIn>;
 }): TabData<PlanRow> {
   const who = (clientId: string) => input.clients.get(clientId);
-  const billNo = (invoiceId: string | undefined) => (invoiceId ? (input.bills.get(invoiceId)?.invoiceNumber ?? "") : "");
+  const billNo = (invoiceId: string | undefined) =>
+    invoiceId ? (input.bills.get(invoiceId)?.invoiceNumber ?? "") : "";
   const rows: PlanRow[] = [
     ...input.plans.map((p) => ({
       id: who(p.clientId)?.clientCode ?? "",
@@ -304,7 +339,13 @@ export interface StaffRow {
 
 /** Names, roles and phones only: pay, logins and biometric ids never go in the sheet. */
 export function staffTab(input: {
-  staff: { id?: string | undefined; name: string; role?: string | undefined; phone?: string | undefined; active?: boolean | undefined }[];
+  staff: {
+    id?: string | undefined;
+    name: string;
+    role?: string | undefined;
+    phone?: string | undefined;
+    active?: boolean | undefined;
+  }[];
   trainers: {
     name: string;
     phone?: string | undefined;
@@ -317,7 +358,12 @@ export function staffTab(input: {
 }): TabData<StaffRow> {
   const staffIds = new Set(input.staff.map((s) => s.id).filter(Boolean));
   const rows: StaffRow[] = [
-    ...input.staff.map((s) => ({ name: s.name, role: s.role ?? "", phone: s.phone ?? "", active: yesNo(s.active) })),
+    ...input.staff.map((s) => ({
+      name: s.name,
+      role: s.role ?? "",
+      phone: s.phone ?? "",
+      active: yesNo(s.active),
+    })),
     ...input.trainers
       .filter((t) => !(t.staffId && staffIds.has(t.staffId)))
       .map((t) => ({
@@ -397,7 +443,8 @@ const TAB_HELP: Record<string, string> = {
   Packages: "the gym and PT packages and their prices.",
 };
 const MONTH_TAB = /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4}$/;
-const MONTH_HELP = "Every payment taken in the month, one row per payment, on the day it was paid. The top line says if it matches the app.";
+const MONTH_HELP =
+  "Every payment taken in the month, one row per payment, on the day it was paid. The top line says if it matches the app.";
 
 /** Plain-English guide, one line per tab, then the health checks, then what to do if the app is down. */
 export function readMeRows(input: {
@@ -417,17 +464,26 @@ export function readMeRows(input: {
     rows.push([t, help]);
   }
   if (input.tabs.some((t) => t.startsWith("_data_")))
-    rows.push(["(hidden tabs)", "A full copy of every record, used only to rebuild the app. Do not edit them."]);
+    rows.push([
+      "(hidden tabs)",
+      "A full copy of every record, used only to rebuild the app. Do not edit them.",
+    ]);
   rows.push([""], ["Checks (does this sheet match the app?)"]);
   if (!input.checks.length) rows.push(["No checks have run yet."]);
   for (const c of input.checks)
-    rows.push([c.ok ? `✓ ${c.name} matches the app (${c.detail})` : `✗ ${c.name} does NOT match the app (${c.detail})`]);
+    rows.push([
+      c.ok
+        ? `✓ ${c.name} matches the app (${c.detail})`
+        : `✗ ${c.name} does NOT match the app (${c.detail})`,
+    ]);
   rows.push(
     [""],
     ["If the app is down"],
     ["1. Open Members to check a member's plan and days left."],
     ["2. Write new sales and payments on paper (name, phone, plan, amount, cash/UPI/card)."],
-    ["3. When the app is back, enter them there. The app is the truth; this sheet is only a copy and updates itself."],
+    [
+      "3. When the app is back, enter them there. The app is the truth; this sheet is only a copy and updates itself.",
+    ],
   );
   return rows;
 }
@@ -445,11 +501,15 @@ export function readMeCheckRows(rows: Cell[][]): { row: number; ok: boolean }[] 
 
 /** Where the table header and the section headings sit (0-based rows), for readMeFormatRequests. */
 export function readMeLayout(rows: Cell[][]): { tableHeaderRow: number; headingRows: number[] } {
-  const tableHeaderRow = Math.max(0, rows.findIndex((r) => r[0] === "Tab" && r.length > 1));
+  const tableHeaderRow = Math.max(
+    0,
+    rows.findIndex((r) => r[0] === "Tab" && r.length > 1),
+  );
   const headingRows: number[] = [];
   rows.forEach((r, row) => {
     const first = String(r[0] ?? "");
-    if (r.length === 1 && (first.startsWith("Checks") || first === "If the app is down")) headingRows.push(row);
+    if (r.length === 1 && (first.startsWith("Checks") || first === "If the app is down"))
+      headingRows.push(row);
   });
   return { tableHeaderRow, headingRows };
 }

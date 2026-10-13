@@ -86,7 +86,8 @@ export function decodeValue(
     const k = keys[0]!;
     const x = v[k];
     if (k === "__ts" && typeof x === "string") return make.ts(new Date(x));
-    if (k === "__geo" && Array.isArray(x) && x.length === 2) return make.geo(Number(x[0]), Number(x[1]));
+    if (k === "__geo" && Array.isArray(x) && x.length === 2)
+      return make.geo(Number(x[0]), Number(x[1]));
     if (k === "__ref" && typeof x === "string") return make.ref(x);
     if (k === "__b64" && typeof x === "string") return make.bytes(x);
     if (k === "__num" && typeof x === "string") return Number(x);
