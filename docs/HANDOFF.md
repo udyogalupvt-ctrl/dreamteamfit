@@ -5,7 +5,7 @@ Last updated: 2026-10-13 night (audit run-2 leads fixed server-side, Next 3 done
 ## 2026-10-13 night: audit run-2 leads fixed (server only, no rules change)
 
 **State**
-- **Local commit, NOT pushed** (see `git log`): Next step 3.1–3.8 below, all server-side.
+- **Local commit, NOT pushed** 04afaff: Next step 3.1–3.8 below, all server-side.
   Every lead was first reproduced on the emulators, then fixed; one reviewer agent checked the
   diff and its 5 server-side findings are fixed too:
   - 3.1 `whatsapp.ts` send: tests need Settings or Announcements; EVERY announcement (to members or
