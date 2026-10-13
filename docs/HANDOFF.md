@@ -1,6 +1,28 @@
 # Handoff
 
-Last updated: 2026-10-10 (migration + October clean-up COMPLETE; register matches to zero)
+Last updated: 2026-10-13 (migration cards removed; security audit run-2 in progress)
+
+## 2026-10-12/13: Income & expenses cleaned up, Link members safer, security audit run-2
+
+**State**
+- **417b073 (local, NOT pushed):** the five finished migration cards are gone from Income & expenses →
+  Profit & income (Old software check with Undo / Undo all, "Paid in the old software?", Plans that
+  overlap, late-sale dates, old-money dates): owner asked, one wrong tap could undo verified work.
+  Their browser services went too; the server routes (`/api/old-migrate/*`, `/api/old-data/
+  suspects|overlaps`) stay (owner-only, nothing in the app calls undo now). Carry, search and the
+  Backup page are unchanged. The quick "Undo" toasts right after your own action stay.
+- **Link members already added** (Backup page): never changed the app's member ID (`clientCode`),
+  thumb, plans or money — only fills blank oldMemberId / joinedOn / DOB / gender. Gap fixed: a phone's
+  only old record now links only when a name word matches (`linkableOldMember`, unit test), so a
+  family member on someone else's phone doesn't get their old details. Confirm box says this.
+- **Push failed:** git on this PC is signed in as `ishaputrabiz`, which has no access to
+  `udyogalupvt-ctrl/dreamteamfit` (403). Owner pushes, or signs Git in as the right account.
+- Checks: tsc clean, unit 347/347, build OK; emulator screenshots light/dark 390/1440 (session
+  scratchpad ebe6c1d9… `harness/shots/`; harness = copy of b170b240's pointed at this folder).
+- **Security audit run-2** (quick, ~7 agents): `~/security-audit-skill/dreamteamfit/run-2/`
+  (setup.cjs, ledger, hunter prompts in `agents/*/prompt.md`). Covers run-1's 14 deferred units +
+  the new old-migrate server. If the chat is cut: read each agent's result from the session
+  transcript before relaunching.
 
 ## 2026-10-10/11 (overnight): old-software members keep their old plan AS-IS — built
 
