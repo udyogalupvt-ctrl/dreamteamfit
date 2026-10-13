@@ -12,6 +12,7 @@ import { handleOldData } from "./old-data";
 import { handleOldMigrate } from "./old-migrate";
 import { handlePortal } from "./portal";
 import { handlePush } from "./push";
+import { handleSheetBackup } from "./sheet-backup";
 import { json, rememberOrigin, serverHealth, text } from "./admin";
 import { handleWhatsApp } from "./whatsapp";
 
@@ -35,6 +36,7 @@ export async function handleServerRoute(request: Request): Promise<Response> {
     if (path === "/api/member-photo") return await handleMemberPhoto(request, url);
     if (path.startsWith("/api/portal/")) return await handlePortal(request, url);
     if (path.startsWith("/api/push/")) return await handlePush(request, url);
+    if (path.startsWith("/api/backup/sheet/")) return await handleSheetBackup(request, url);
     if (path.startsWith("/api/old-data/")) return await handleOldData(request, url);
     if (path.startsWith("/api/old-migrate/")) {
       const r = await handleOldMigrate(request, url);

@@ -7,6 +7,7 @@
 import { FieldValue, type DocumentData } from "firebase-admin/firestore";
 import { db, json, localDate } from "./admin";
 import { runCfoMorning } from "./cfo";
+import { runSheetBackup } from "./sheet-backup";
 import { memberOwner, pushTo, type PushMessage } from "./push";
 import {
   currentRow,
@@ -616,7 +617,14 @@ export async function handleCron(request: Request, url: URL) {
     const cfo = await step("cfo", () => runCfoMorning(startedAt));
     return json({ ok: true, plans, renewals, birthdays, paymentsDue, deviceLog, oldCommands, cfo });
   }
-  if (job === "night")
-    return json({ ok: true, absences: await step("absences", processAbsenceNudges) });
+  if (job === "night") {
+    const absences = await step("absences", processAbsenceNudges);
+    // Backup sheet: only at night (the morning job already runs the CFO and the function stops at
+    // 60 s). What does not fit in the budget stays queued and the next change or Sync now continues.
+    const sheetBackup = await step("sheetBackup", () =>
+      runSheetBackup({ mode: "nightly", budgetMs: 45_000 }),
+    );
+    return json({ ok: true, absences, sheetBackup });
+  }
   return json({ error: "Unknown job" }, 404);
 }
