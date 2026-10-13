@@ -16,7 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { NumberDetails, type NumberCard } from "@/components/dashboard/number-details";
-import { usePeriodPicker } from "@/components/dashboard/period-picker";
+import { usePeriodPicker } from "@/components/common/period-picker";
 import { useEnrollment } from "@/components/enrollment/enrollment-context";
 import { useQuickActions } from "@/components/layout/quick-actions";
 import { PageHeader } from "@/components/common/page-header";

@@ -121,7 +121,8 @@ export interface OverlapPair {
 /**
  * One member's (or many members') plans → the pairs that share days and are both counted. Left out:
  * cancelled plans, a plan a renewal or upgrade ended (stamped, or ended in the same write that made
- * the other plan), and pairs the owner marked "Not a duplicate".
+ * the other plan), a renewal that starts on the last day of the plan before, and pairs the owner
+ * marked "Not a duplicate".
  */
 export function overlapPairs(plans: OverlapPlan[]): OverlapPair[] {
   const byClient = new Map<string, OverlapPlan[]>();
@@ -139,6 +140,9 @@ export function overlapPairs(plans: OverlapPlan[]): OverlapPair[] {
         const b = sorted[j]!;
         const days = overlapDays(a, b);
         if (days <= 0) continue;
+        // The old software started a renewal on the last day of the plan before (a year plan to
+        // 4 Nov, the next from 4 Nov): two different periods, each with its own money, not a copy.
+        if (a.startDate < b.startDate && b.startDate === a.endDate) continue;
         if (endedByOther(a, b) || endedByOther(b, a)) continue;
         if (a.overlapOk.includes(b.id) || b.overlapOk.includes(a.id)) continue;
         out.push({ clientId, a, b, days });

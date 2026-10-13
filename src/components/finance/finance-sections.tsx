@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
-import { endOfMonth, format, startOfMonth, startOfYear, subMonths } from "date-fns";
 import { CheckCircle2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/common/empty-state";
 import { StatCard } from "@/components/common/stat-card";
 import { StatusPill } from "@/components/common/status-pill";
 import { FormDialog, Field } from "@/components/common/form-dialog";
+import { usePeriodPicker } from "@/components/common/period-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,6 +19,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { toastWithUndo } from "@/lib/undo-toast";
+import { choicesWith } from "@/lib/periods";
 import { cn } from "@/lib/utils";
 import {
   addManualIncome,
@@ -43,20 +44,6 @@ import {
   type TrainerPayout,
 } from "@/types/models";
 
-type Period = "today" | "month" | "last" | "year" | "custom";
-const iso = (d: Date) => format(d, "yyyy-MM-dd");
-function rangeFor(p: Period, from: string, to: string): [string, string] {
-  const now = new Date();
-  if (p === "today") return [todayISO(), todayISO()];
-  if (p === "month") return [iso(startOfMonth(now)), todayISO()];
-  if (p === "last") {
-    const last = subMonths(now, 1);
-    return [iso(startOfMonth(last)), iso(endOfMonth(last))];
-  }
-  if (p === "year") return [iso(startOfYear(now)), todayISO()];
-  return [from, to];
-}
-
 type Row = {
   id: string;
   date: string;
@@ -73,10 +60,12 @@ export function IncomeSection() {
   const invoices = useLive(subscribeInvoices, [] as Invoice[], []);
   const manual = useLive(subscribeManualIncome, [] as ManualIncome[], []);
   const expenses = useLive(subscribeExpenses, [] as Expense[], []);
-  const [period, setPeriod] = useState<Period>("month");
-  const [customFrom, setCustomFrom] = useState(iso(startOfMonth(new Date())));
-  const [customTo, setCustomTo] = useState(todayISO());
-  const [from, to] = rangeFor(period, customFrom, customTo);
+  const { period, picker } = usePeriodPicker(
+    "month",
+    choicesWith("lastMonth", "year"),
+    "Income dates",
+  );
+  const { from, to } = period;
   const [open, setOpen] = useState(false);
   // The "other income" line being corrected (null = adding a new one).
   const [editId, setEditId] = useState<string | null>(null);
@@ -191,60 +180,11 @@ export function IncomeSection() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-2">
-        <div
-          className="no-scrollbar -mx-4 flex flex-1 gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:px-0"
-          role="tablist"
-          aria-label="Period"
-        >
-          {(
-            [
-              ["today", "Today"],
-              ["month", "This month"],
-              ["last", "Last month"],
-              ["year", "This year"],
-              ["custom", "Custom"],
-            ] as const
-          ).map(([v, l]) => (
-            <button
-              key={v}
-              role="tab"
-              aria-selected={period === v}
-              onClick={() => setPeriod(v)}
-              className={cn(
-                "shrink-0 rounded-full border px-3 py-1.5 text-sm font-semibold",
-                period === v
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border hover:bg-accent",
-              )}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
+        <div className="flex-1">{picker}</div>
         <Button variant="outline" onClick={() => setOpen(true)}>
           <Plus aria-hidden /> Add other income
         </Button>
       </div>
-      {period === "custom" ? (
-        <div className="grid max-w-md grid-cols-2 gap-3">
-          <Field label="From" htmlFor="fi-from">
-            <Input
-              id="fi-from"
-              type="date"
-              value={customFrom}
-              onChange={(e) => setCustomFrom(e.target.value)}
-            />
-          </Field>
-          <Field label="To" htmlFor="fi-to">
-            <Input
-              id="fi-to"
-              type="date"
-              value={customTo}
-              onChange={(e) => setCustomTo(e.target.value)}
-            />
-          </Field>
-        </div>
-      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
         <section className="surface-card p-4 sm:p-5">

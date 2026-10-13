@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Bell, ChevronDown, CreditCard, Fingerprint, Phone, RefreshCcw } from "lucide-react";
+import { BrandMark } from "@/components/layout/brand-mark";
 import { GlobalSearch } from "@/components/layout/global-search";
 import { InstallAppButton } from "@/components/layout/install-app-button";
 import { useNewVersionReady } from "@/lib/app-version";
@@ -84,6 +85,14 @@ export function Topbar() {
     <header className="sticky top-0 z-30 border-b border-border bg-background/85 backdrop-blur">
       <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
         <MobileNavDrawer />
+        {/* Phones and tablets have no sidebar: the logo sits in the bar, sized to its height. */}
+        <Link
+          to="/dashboard"
+          aria-label="Rebuild Fitness: dashboard"
+          className="shrink-0 rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none lg:hidden"
+        >
+          <BrandMark className="size-11" />
+        </Link>
 
         <div className="hidden min-w-0 flex-1 md:block">
           <GlobalSearch />

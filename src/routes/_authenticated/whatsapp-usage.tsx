@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { format, startOfMonth, subMonths, endOfMonth } from "date-fns";
+import { format } from "date-fns";
 import { MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingRows } from "@/components/common/loading-state";
 import { PageHeader } from "@/components/common/page-header";
+import { usePeriodPicker } from "@/components/common/period-picker";
 import { StatusPill } from "@/components/common/status-pill";
 import { Input } from "@/components/ui/input";
 import {
@@ -27,7 +28,8 @@ import { useAccess } from "@/hooks/use-access";
 import { useLive } from "@/hooks/use-live-query";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot, setDoc } from "@/lib/firestore";
-import { formatPrice, todayISO } from "@/lib/format";
+import { formatPrice } from "@/lib/format";
+import { choicesWith } from "@/lib/periods";
 import { getServer } from "@/lib/server-api";
 import { subscribeWhatsAppMessages } from "@/services/whatsapp.service";
 import {
@@ -41,7 +43,6 @@ export const Route = createFileRoute("/_authenticated/whatsapp-usage")({
   component: WhatsAppUsagePage,
 });
 
-type Period = "today" | "month" | "last" | "custom";
 type Template = { name: string; status: string; category: string };
 type Rates = { utility: number; marketing: number };
 /**
@@ -69,10 +70,7 @@ function WhatsAppUsagePage() {
   const { can } = useAccess();
   const [templates, setTemplates] = useState<Template[]>([]);
   const [rates, setRates] = useState<Rates>(DEFAULT_RATES);
-  const [period, setPeriod] = useState<Period>("month");
-  const today = todayISO();
-  const [from, setFrom] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
-  const [to, setTo] = useState(today);
+  const { period, picker } = usePeriodPicker("month", choicesWith("lastMonth"), "Messages sent");
 
   useEffect(() => {
     void getServer<{ templates: Template[] }>("/api/whatsapp/templates")
@@ -83,16 +81,7 @@ function WhatsAppUsagePage() {
     );
   }, []);
 
-  const range = useMemo<[string, string]>(() => {
-    const now = new Date();
-    if (period === "today") return [today, today];
-    if (period === "last") {
-      const last = subMonths(now, 1);
-      return [format(startOfMonth(last), "yyyy-MM-dd"), format(endOfMonth(last), "yyyy-MM-dd")];
-    }
-    if (period === "custom") return [from, to];
-    return [format(startOfMonth(now), "yyyy-MM-dd"), today];
-  }, [period, from, to, today]);
+  const range = useMemo<[string, string]>(() => [period.from, period.to], [period.from, period.to]);
   // Only messages from the start of the chosen period (not every message ever sent).
   const messages = useLive<WhatsAppMessage[]>(
     (ok, fail) =>
@@ -146,38 +135,7 @@ function WhatsAppUsagePage() {
         breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "WhatsApp usage" }]}
       />
       {messages.error ? <ErrorState error={messages.error} title="Couldn't load messages" /> : null}
-      <div className="flex flex-wrap items-center gap-2">
-        <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
-          <SelectTrigger className="w-40" aria-label="Period">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="today">Today</SelectItem>
-            <SelectItem value="month">This month</SelectItem>
-            <SelectItem value="last">Last month</SelectItem>
-            <SelectItem value="custom">Pick dates</SelectItem>
-          </SelectContent>
-        </Select>
-        {period === "custom" ? (
-          <>
-            <Input
-              type="date"
-              aria-label="From"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="w-auto"
-            />
-            <Input
-              type="date"
-              aria-label="To"
-              value={to}
-              min={from}
-              onChange={(e) => setTo(e.target.value)}
-              className="w-auto"
-            />
-          </>
-        ) : null}
-      </div>
+      <div className="flex flex-wrap items-center gap-2">{picker}</div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <div className="surface-card p-4">
           <p className="text-meta">Messages sent</p>

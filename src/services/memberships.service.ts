@@ -1,4 +1,6 @@
 import {
+  arrayRemove,
+  arrayUnion,
   limit,
   doc,
   getDocs,
@@ -219,3 +221,16 @@ export const subscribeRecentMemberships = (
     orderBy("createdAt", "desc"),
     limit(n),
   );
+
+/**
+ * Income & expenses → "Plans that overlap": the owner checked these two plans, and one is not a copy
+ * of the other, so the pair is no longer listed. `back` takes the mark off again (Undo).
+ * updatedAt is left alone: Remove and the overlap list tell a plan a renewal ended by it.
+ */
+export async function markNotDuplicate(aId: string, bId: string, back = false) {
+  const op = back ? arrayRemove : arrayUnion;
+  const batch = writeBatch(db);
+  batch.update(doc(db, COLLECTIONS.memberships, aId), { overlapOk: op(bId) });
+  batch.update(doc(db, COLLECTIONS.memberships, bId), { overlapOk: op(aId) });
+  await batch.commit();
+}

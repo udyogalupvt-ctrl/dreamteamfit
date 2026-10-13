@@ -44,7 +44,9 @@ export function ChatList({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--wa-panel)]">
-      <div className="space-y-2.5 px-3 pt-3 pb-2">
+      {/* Phone: search and the All / Unread / Members chips stay under the top bar while the
+          list scrolls, like the WhatsApp app. */}
+      <div className="space-y-2.5 bg-[var(--wa-panel)] px-3 pt-3 pb-2 max-lg:sticky max-lg:top-[65px] max-lg:z-10">
         <label className="relative block">
           <span className="sr-only">Search chats</span>
           <Search
@@ -96,7 +98,12 @@ export function ChatList({
         </div>
       </div>
       {banner}
-      <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain" aria-label="Chats">
+      {/* Desktop: the list scrolls inside its pane. Phone: the page scrolls (an inner scroller
+          that can't scroll, with overscroll-contain, swallowed every swipe). */}
+      <ul
+        className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain"
+        aria-label="Chats"
+      >
         {loading && !chats.length
           ? Array.from({ length: 6 }, (_, i) => (
               <li key={i} className="flex items-center gap-3 px-3 py-3" aria-hidden>

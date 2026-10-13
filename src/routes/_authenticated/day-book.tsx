@@ -1,26 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { endOfWeek, format, startOfMonth, startOfWeek, subDays, subMonths } from "date-fns";
+import { format, startOfMonth, subMonths } from "date-fns";
 import { Download, HandCoins, Pencil, Plus, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import { z } from "zod";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingRows } from "@/components/common/loading-state";
 import { PageHeader } from "@/components/common/page-header";
+import { usePeriodPicker } from "@/components/common/period-picker";
 import { StatusPill } from "@/components/common/status-pill";
 import { EditPaymentDialog, usePaymentEditRights } from "@/components/billing/edit-payment-dialog";
 import { ExpenseFormDialog } from "@/components/expenses/expense-form-dialog";
 import { SettleDialog } from "@/components/expenses/settle-dialog";
 import { HandoverDialog } from "@/components/finance/cash-book-section";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -49,8 +42,6 @@ export const Route = createFileRoute("/_authenticated/day-book")({
   component: DayBookPage,
 });
 
-type Period = "today" | "yesterday" | "week" | "month" | "custom";
-
 /**
  * The front desk's daily register, instead of the Excel sheet: who paid, expenses (who gave
  * the money, settled or not) and cash (opening, received, expenses, balance, handover).
@@ -59,9 +50,7 @@ function DayBookPage() {
   const { add } = Route.useSearch();
   const staff = useLive<Staff[]>(subscribeStaff, [], []);
   const today = todayISO();
-  const [period, setPeriod] = useState<Period>("today");
-  const [from, setFrom] = useState(today);
-  const [to, setTo] = useState(today);
+  const { period, picker } = usePeriodPicker("today", undefined, "Day book dates");
   // Carry-forward points (about one a month): the cash book starts from the latest one before the
   // period shown, so only the records since then are read, not every payment / expense ever.
   const [checkpoints, setCheckpoints] = useState<string[] | null>(null);
@@ -77,16 +66,7 @@ function DayBookPage() {
   // The handover window, open on one day's cash; `drawer` = ask for the morning's drawer cash too.
   const [handover, setHandover] = useState<{ date: string; drawer: boolean } | null>(null);
 
-  const [start, end] = useMemo<[string, string]>(() => {
-    const now = new Date();
-    const f = (d: Date) => format(d, "yyyy-MM-dd");
-    if (period === "yesterday") return [f(subDays(now, 1)), f(subDays(now, 1))];
-    if (period === "week")
-      return [f(startOfWeek(now, { weekStartsOn: 1 })), f(endOfWeek(now, { weekStartsOn: 1 }))];
-    if (period === "month") return [f(startOfMonth(now)), today];
-    if (period === "custom") return [from, to];
-    return [today, today];
-  }, [period, from, to, today]);
+  const [start, end] = [period.from, period.to];
   // "" = from the very first record (no carry-forward yet, or a period older than all of them).
   const base =
     checkpoints === null ? null : ([...checkpoints].reverse().find((d) => d <= start) ?? "");
@@ -272,43 +252,7 @@ function DayBookPage() {
           </>
         }
       />
-      <div className="flex flex-wrap items-center gap-2">
-        <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
-          <SelectTrigger className="w-40" aria-label="Period">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="today">Today</SelectItem>
-            <SelectItem value="yesterday">Yesterday</SelectItem>
-            <SelectItem value="week">This week</SelectItem>
-            <SelectItem value="month">This month</SelectItem>
-            <SelectItem value="custom">Pick dates</SelectItem>
-          </SelectContent>
-        </Select>
-        {period === "custom" ? (
-          <>
-            <Input
-              type="date"
-              aria-label="From"
-              value={from}
-              max={today}
-              onChange={(e) => setFrom(e.target.value)}
-              className="w-auto"
-            />
-            <Input
-              type="date"
-              aria-label="To"
-              value={to}
-              min={from}
-              max={today}
-              onChange={(e) => setTo(e.target.value)}
-              className="w-auto"
-            />
-          </>
-        ) : (
-          <span className="text-sm font-semibold">{label}</span>
-        )}
-      </div>
+      <div className="flex flex-wrap items-center gap-2">{picker}</div>
       {error ? <ErrorState error={error} title="Couldn't load the day book" /> : null}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Card

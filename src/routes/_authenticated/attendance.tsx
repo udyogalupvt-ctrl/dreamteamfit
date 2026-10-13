@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { addDays, endOfWeek, format, startOfMonth, startOfWeek } from "date-fns";
+import { addDays, format } from "date-fns";
 import {
   AlertTriangle,
   CalendarCheck,
@@ -19,11 +19,11 @@ import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingRows } from "@/components/common/loading-state";
 import { PageHeader } from "@/components/common/page-header";
+import { usePeriodPicker } from "@/components/common/period-picker";
 import { SearchInput } from "@/components/common/search-input";
 import { StatCard } from "@/components/common/stat-card";
 import { StatusPill } from "@/components/common/status-pill";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -75,7 +75,6 @@ export const Route = createFileRoute("/_authenticated/attendance")({
   }),
   component: AttendancePage,
 });
-type Period = "today" | "yesterday" | "week" | "month" | "custom";
 /**
  * A punch from someone on the machine who isn't linked to a member yet: the machine let them
  * in; the app just doesn't know them. Shown as "not linked", not as a blocked attempt.
@@ -88,32 +87,18 @@ function AttendancePage() {
   const [manual, setManual] = useState(false),
     [simulate, setSimulate] = useState(false),
     [search, setSearch] = useState(""),
-    [period, setPeriod] = useState<Period>("today"),
-    [from, setFrom] = useState(todayISO()),
-    [to, setTo] = useState(todayISO()),
     [device, setDevice] = useState("all"),
     [decision, setDecision] = useState("all"),
     [eventType, setEventType] = useState("all"),
     [source, setSource] = useState("all");
   const today = todayISO();
-  const range = useMemo<[string, string]>(() => {
-    const now = new Date();
-    if (period === "yesterday") {
-      const d = format(addDays(now, -1), "yyyy-MM-dd");
-      return [d, d];
-    }
-    if (period === "week")
-      return [
-        format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-        format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"),
-      ];
-    if (period === "month") return [format(startOfMonth(now), "yyyy-MM-dd"), today];
-    if (period === "custom") return [from, to];
-    return [today, today];
-  }, [period, from, to, today]);
+  // One date filter for the cards, the visit list and the access log ("Currently present" is
+  // always now).
+  const { period, picker } = usePeriodPicker("today", undefined, "Show visits for");
+  const range: [string, string] = [period.from, period.to];
   // Only what is on screen: today's visits live, other dates only once they are picked, and the
   // member list only when a dialog needs it (the free plan allows 50,000 reads a day).
-  const todayOnly = range[0] === today && range[1] === today;
+  const todayOnly = period.isToday;
   const todayLive = useLive<AttendanceEvent[]>(
     (ok, fail) => subscribeAttendanceDay(today, ok, fail),
     [],
@@ -148,7 +133,7 @@ function AttendancePage() {
     () => (todayOnly ? todayEvents : named(rangeLive.data)),
     [todayOnly, todayEvents, named, rangeLive.data],
   );
-  const summary = attendanceSummary(todayEvents),
+  const summary = attendanceSummary(events),
     present = currentlyPresent(todayEvents);
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -199,7 +184,7 @@ function AttendancePage() {
       id: "visits",
       label: "Total Visits",
       value: formatNumber(summary.visits),
-      hint: "allowed check-ins today",
+      hint: `allowed check-ins · ${period.label}`,
       icon: CalendarCheck,
       tone: "primary" as const,
     },
@@ -207,15 +192,15 @@ function AttendancePage() {
       id: "unique",
       label: "Unique Members",
       value: formatNumber(summary.unique),
-      hint: "today",
+      hint: period.label,
       icon: Users,
       tone: "info" as const,
     },
     {
       id: "present",
       label: "Currently Present",
-      value: formatNumber(summary.present),
-      hint: "latest event is check-in",
+      value: formatNumber(present.length),
+      hint: "in the gym right now",
       icon: LogIn,
       tone: "success" as const,
     },
@@ -223,7 +208,7 @@ function AttendancePage() {
       id: "blocked",
       label: "Blocked Attempts",
       value: formatNumber(summary.blocked),
-      hint: "today",
+      hint: period.label,
       icon: ShieldX,
       tone: "danger" as const,
     },
@@ -274,18 +259,21 @@ function AttendancePage() {
           title="Couldn't load attendance"
         />
       ) : null}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-section-title">Visits · {period.label}</h2>
+        {picker}
+      </div>
       <div className="no-scrollbar -mx-4 flex snap-x gap-3 overflow-x-auto px-4 sm:mx-0 sm:grid sm:grid-cols-2 sm:px-0 xl:grid-cols-4">
         {cards.map((c) => (
           <StatCard key={c.id} metric={c} className="w-[74vw] shrink-0 sm:w-auto" />
         ))}
       </div>
-      <Tabs defaultValue="today">
-        {/* Six tabs don't fit a phone: the row scrolls sideways (like Settings). */}
+      <Tabs defaultValue="visits">
+        {/* Five tabs don't fit a phone: the row scrolls sideways (like Settings). */}
         <div className="no-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <TabsList className="w-max">
-            <TabsTrigger value="today">Today</TabsTrigger>
+            <TabsTrigger value="visits">Visits</TabsTrigger>
             <TabsTrigger value="present">Currently Present</TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
             <TabsTrigger value="access">Access Log</TabsTrigger>
             <TabsTrigger value="staff">Staff</TabsTrigger>
             <TabsTrigger value="busy">Busy hours</TabsTrigger>
@@ -293,9 +281,6 @@ function AttendancePage() {
         </div>
         <TabsContent value="busy">
           <BusyHours />
-        </TabsContent>
-        <TabsContent value="today">
-          <EventList events={todayEvents} loading={attendance.loading} title="Today's Attendance" />
         </TabsContent>
         <TabsContent value="present">
           {present.length ? (
@@ -330,26 +315,14 @@ function AttendancePage() {
             />
           )}
         </TabsContent>
-        <TabsContent value="history" className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <TabsContent value="visits" className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <SearchInput
               value={search}
               onValueChange={setSearch}
               label="Search attendance"
               placeholder="Member or biometric ID…"
             />
-            <Select value={period} onValueChange={(v) => setPeriod(v as Period)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="yesterday">Yesterday</SelectItem>
-                <SelectItem value="week">This Week</SelectItem>
-                <SelectItem value="month">This Month</SelectItem>
-                <SelectItem value="custom">Custom Date Range</SelectItem>
-              </SelectContent>
-            </Select>
             <Filter
               value={device}
               set={setDevice}
@@ -384,20 +357,30 @@ function AttendancePage() {
                 ["manual", "Manual"],
               ]}
             />
-            {period === "custom" ? (
-              <>
-                <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-                <Input type="date" value={to} min={from} onChange={(e) => setTo(e.target.value)} />
-              </>
-            ) : null}
           </div>
-          <EventList events={filtered} loading={attendance.loading} title="Attendance History" />
+          <EventList
+            key={`v${period.from}${period.to}`}
+            events={filtered}
+            loading={attendance.loading}
+            title={period.isToday ? "Today's Attendance" : `Attendance · ${period.label}`}
+            empty={
+              events.length
+                ? "No visits match these filters"
+                : period.isToday
+                  ? "Nobody has come in yet today"
+                  : period.from === period.to && period.label !== "yesterday"
+                    ? `Nobody came in on ${period.label}`
+                    : `Nobody came in ${period.label}`
+            }
+          />
         </TabsContent>
         <TabsContent value="access">
           <EventList
+            key={`a${period.from}${period.to}`}
             events={events}
             loading={attendance.loading}
-            title="Biometric Access Log"
+            title={`Biometric Access Log · ${period.label}`}
+            empty={`No punches · ${period.label}`}
             access
           />
         </TabsContent>
@@ -442,33 +425,41 @@ function Filter({
     </Select>
   );
 }
+/** Rows drawn at a time: a month of punches is thousands of rows. */
+const PAGE = 200;
 function EventList({
-  events,
+  events: all,
   loading,
   title,
+  empty,
   access = false,
 }: {
   events: AttendanceEvent[];
   loading: boolean;
   title: string;
+  empty: string;
   access?: boolean;
 }) {
+  const [shown, setShown] = useState(PAGE);
   if (loading) return <LoadingRows rows={6} />;
-  if (!events.length)
+  if (!all.length)
     return (
       <EmptyState
         icon={Clock}
-        title={
-          title === "Today's Attendance"
-            ? "Nobody has come in yet today"
-            : `No ${title.toLowerCase()}`
-        }
+        title={empty}
         description="Each thumb punch at the door shows here. Use Mark visit by hand when the machine is off."
       />
     );
+  const events = all.slice(0, shown);
+  const left = all.length - events.length;
   return (
     <section className="surface-card overflow-hidden">
-      <h2 className="text-section-title border-b border-border p-5">{title}</h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-border p-5">
+        <h2 className="text-section-title">{title}</h2>
+        <span className="text-meta tabular-nums">
+          {formatNumber(all.length)} punch{all.length === 1 ? "" : "es"}
+        </span>
+      </div>
       <div className="hidden md:block">
         <Table>
           <TableHeader>
@@ -535,6 +526,13 @@ function EventList({
           </article>
         ))}
       </div>
+      {left > 0 ? (
+        <div className="border-t border-border p-4 text-center">
+          <Button variant="outline" onClick={() => setShown((n) => n + PAGE)}>
+            Show {formatNumber(Math.min(PAGE, left))} more ({formatNumber(left)} left)
+          </Button>
+        </div>
+      ) : null}
     </section>
   );
 }

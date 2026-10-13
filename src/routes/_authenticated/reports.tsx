@@ -20,13 +20,13 @@ import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingRows } from "@/components/common/loading-state";
 import { PageHeader } from "@/components/common/page-header";
+import { usePeriodPicker } from "@/components/common/period-picker";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useReportsData } from "@/hooks/use-reports-data";
 import { formatDateISO, formatNumber, formatPrice, todayISO } from "@/lib/format";
 import { downloadCsv, downloadExcel, type ReportSheet } from "@/lib/report-export";
-import type { ReportDateRange, ReportPeriod } from "@/lib/reporting";
+import { choicesWith } from "@/lib/periods";
+import type { ReportDateRange } from "@/lib/reporting";
 import { EXPENSE_CATEGORIES } from "@/types/models";
 
 export const Route = createFileRoute("/_authenticated/reports")({
@@ -48,17 +48,13 @@ export const Route = createFileRoute("/_authenticated/reports")({
   }),
   component: ReportsPage,
 });
-const labels: Record<ReportPeriod, string> = {
-  today: "Today",
-  week: "This Week",
-  month: "This Month",
-  year: "This Year",
-  custom: "Custom",
-};
 function ReportsPage() {
-  const [period, setPeriod] = useState<ReportPeriod>("month");
-  const [custom, setCustom] = useState<ReportDateRange>({ start: todayISO(), end: todayISO() });
-  const report = useReportsData(period, custom);
+  const { period, picker } = usePeriodPicker(
+    "month",
+    choicesWith("lastMonth", "year"),
+    "Report dates",
+  );
+  const report = useReportsData({ start: period.from, end: period.to });
   const [exporting, setExporting] = useState(false);
   const max = Math.max(...report.expenseBreakdown.map((x) => x.amount), 0);
   if (report.loading)
@@ -106,33 +102,8 @@ function ReportsPage() {
               {formatDateISO(report.range.start)} to {formatDateISO(report.range.end)}
             </p>
           </div>
-          <Tabs value={period} onValueChange={(v) => setPeriod(v as ReportPeriod)}>
-            <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-5 lg:w-auto">
-              {Object.entries(labels).map(([v, l]) => (
-                <TabsTrigger key={v} value={v}>
-                  {l}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+          {picker}
         </div>
-        {period === "custom" ? (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <Input
-              aria-label="Custom start date"
-              type="date"
-              value={custom.start}
-              onChange={(e) => setCustom((c) => ({ ...c, start: e.target.value }))}
-            />
-            <Input
-              aria-label="Custom end date"
-              type="date"
-              min={custom.start}
-              value={custom.end}
-              onChange={(e) => setCustom((c) => ({ ...c, end: e.target.value }))}
-            />
-          </div>
-        ) : null}
       </section>
       <div className="grid gap-4 lg:grid-cols-3">
         <MetricCard

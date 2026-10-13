@@ -12,13 +12,7 @@ import {
   SOURCE_LABELS,
   todayISO,
 } from "@/lib/format";
-import {
-  calculateProfitLoss,
-  getReportDateRange,
-  isDateInRange,
-  type ReportDateRange,
-  type ReportPeriod,
-} from "@/lib/reporting";
+import { calculateProfitLoss, isDateInRange, type ReportDateRange } from "@/lib/reporting";
 import type { ReportCell, ReportSheet } from "@/lib/report-export";
 import { billModesLabel } from "@/lib/split-pay";
 import { ACCESS_REASON_LABELS, EVENT_LABELS } from "@/lib/attendance-utils";
@@ -59,7 +53,7 @@ const cap = (v: string | null | undefined) => {
   const t = String(v ?? "").replace(/_/g, " ");
   return t ? t[0]!.toUpperCase() + t.slice(1) : "";
 };
-export function useReportsData(period: ReportPeriod, custom?: ReportDateRange) {
+export function useReportsData(range: ReportDateRange) {
   const finance = useAccess().can("finance");
   const clients = useLive<Client[]>(subscribeClients, [], []),
     memberships = useLive<Membership[]>(subscribeMemberships, [], []),
@@ -72,7 +66,6 @@ export function useReportsData(period: ReportPeriod, custom?: ReportDateRange) {
     invoices = useLive<Invoice[]>(subscribeInvoices, [], []),
     followups = useLive<FollowUp[]>(subscribeFollowUps, [], []),
     notifications = useLive<Notification[]>(subscribeNotifications, [], []);
-  const range = getReportDateRange(period, custom);
   // Money collected = payments by the day they came in (same as the Dashboard, Billing, Day Book):
   // a balance paid later counts on the day it was paid, not on the bill's date.
   const payments = useLive<Payment[]>(

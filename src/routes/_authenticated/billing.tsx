@@ -11,7 +11,8 @@ import {
 import { z } from "zod";
 import { CreateBillDialog } from "@/components/billing/create-bill-dialog";
 import { billModesLabel } from "@/lib/split-pay";
-import { usePeriodPicker } from "@/components/dashboard/period-picker";
+import { usePeriodPicker } from "@/components/common/period-picker";
+import { choicesWith } from "@/lib/periods";
 import { InvoiceActions } from "@/components/billing/invoice-actions";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
@@ -83,7 +84,7 @@ function BillingPage() {
     };
   }, [recent, due]);
   // The period the cards and the bill list show (same choices as the Dashboard).
-  const { period, picker } = usePeriodPicker("month");
+  const { period, picker } = usePeriodPicker("month", choicesWith("lastMonth"));
   const paymentsFrom = period.from < monthStart ? period.from : monthStart;
   const payments = useLive<Payment[]>(
     (ok, fail) => subscribePaymentsSince(paymentsFrom, ok, fail),

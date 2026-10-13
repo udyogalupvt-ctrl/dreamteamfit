@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { CashBookSection } from "@/components/finance/cash-book-section";
 import { StaffPaySection } from "@/components/finance/staff-pay-section";
 import { PtReportSection } from "@/components/finance/pt-report-section";
+import { PlanOverlapsReview } from "@/components/finance/plan-overlaps-review";
+import { usePeriodPicker } from "@/components/common/period-picker";
 import { SettleDialog } from "@/components/expenses/settle-dialog";
 import { StatusPill } from "@/components/common/status-pill";
 import { HandCoins } from "lucide-react";
@@ -63,6 +65,7 @@ import { useLive } from "@/hooks/use-live-query";
 import { formatDate, formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { deleteExpense, subscribeExpenses } from "@/services/expenses.service";
 import { expenseCategoryOptions } from "@/lib/expense-validation";
+import { choicesWith } from "@/lib/periods";
 import { EXPENSE_PAYMENT_METHODS, type Expense } from "@/types/models";
 
 export const Route = createFileRoute("/_authenticated/expenses")({
@@ -115,6 +118,7 @@ function ExpensesPage() {
           </TabsList>
         </div>
       </Tabs>
+      {section === "income" ? <PlanOverlapsReview /> : null}
       {section === "income" ? (
         <IncomeSection />
       ) : section === "payouts" ? (
@@ -136,7 +140,11 @@ function ExpensesList() {
   const { user } = useAuth();
   const live = useLive<Expense[]>(subscribeExpenses, [], []);
   const [search, setSearch] = useState("");
-  const [date, setDate] = useState("");
+  const { period, picker } = usePeriodPicker(
+    "all",
+    choicesWith("lastMonth", "year", "all"),
+    "Expense dates",
+  );
   const [category, setCategory] = useState("all");
   const [payment, setPayment] = useState("all");
   const [open, setOpen] = useState(Boolean(create));
@@ -156,12 +164,13 @@ function ExpensesList() {
     const q = search.trim().toLowerCase();
     return live.data.filter(
       (e) =>
-        (!date || e.date === date) &&
+        e.date >= period.from &&
+        e.date <= period.to &&
         (category === "all" || e.category === category) &&
         (payment === "all" || e.paymentMethod === payment) &&
         (!q || [e.title, e.category, e.notes].some((v) => v.toLowerCase().includes(q))),
     );
-  }, [live.data, search, date, category, payment]);
+  }, [live.data, search, period.from, period.to, category, payment]);
   // Delete (owner, or a login given "Expenses" delete): into the Recycle Bin.
   const bin = useBin();
   const remove = async () => {
@@ -253,12 +262,7 @@ function ExpensesList() {
             placeholder="Search title, category or notes…"
             label="Search expenses"
           />
-          <Input
-            type="date"
-            aria-label="Filter by date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
+          {picker}
           <Select value={category} onValueChange={setCategory}>
             <SelectTrigger aria-label="Filter by category">
               <SelectValue placeholder="All categories" />

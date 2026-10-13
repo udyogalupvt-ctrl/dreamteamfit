@@ -128,6 +128,20 @@ test("overlapPairs leaves out renewals, upgrades, cancelled, checked pairs and o
   );
 });
 
+test("overlapPairs: a renewal starting on the old plan's last day (the old software's way) is not a copy", () => {
+  const year1 = plan("Y1", "2025-11-05", "2026-11-04", { paidInOldSoftware: true });
+  const year2 = plan("Y2", "2026-11-04", "2027-11-03", { paidInOldSoftware: true });
+  assert.deepEqual(overlapPairs([year1, year2]), []);
+  // Two copies of a one-day plan share their only day: still listed.
+  const d1 = plan("D1", "2026-10-13", "2026-10-13", { clientId: "c2" });
+  const d2 = plan("D2", "2026-10-13", "2026-10-13", { clientId: "c2" });
+  assert.equal(overlapPairs([d1, d2]).length, 1);
+  // Two days shared: listed.
+  const m1 = plan("M1", "2026-10-01", "2026-10-31", { clientId: "c3" });
+  const m2 = plan("M2", "2026-10-30", "2026-11-29", { clientId: "c3" });
+  assert.equal(overlapPairs([m1, m2])[0]!.days, 2);
+});
+
 test("overlapPairs: most shared days first", () => {
   const pairs = overlapPairs([
     plan("A", "2026-10-01", "2026-10-31"),

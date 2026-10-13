@@ -89,7 +89,7 @@ function WhatsAppPage() {
   return (
     <div className="wa-theme -mx-4 -mt-5 sm:-mx-6 lg:mx-0 lg:mt-0">
       <h1 className="sr-only">WhatsApp chats</h1>
-      <div className="overflow-hidden bg-[var(--wa-panel)] lg:grid lg:h-[calc(100dvh-7.75rem)] lg:min-h-[520px] lg:grid-cols-[minmax(320px,30%)_1fr] lg:rounded-xl lg:border lg:border-[var(--wa-divider)] lg:shadow-sm">
+      <div className="bg-[var(--wa-panel)] lg:grid lg:overflow-hidden lg:h-[calc(100dvh-7.75rem)] lg:min-h-[520px] lg:grid-cols-[minmax(320px,30%)_1fr] lg:rounded-xl lg:border lg:border-[var(--wa-divider)] lg:shadow-sm">
         <aside
           className={cn(
             "flex min-h-0 flex-col lg:border-r lg:border-[var(--wa-divider)]",
