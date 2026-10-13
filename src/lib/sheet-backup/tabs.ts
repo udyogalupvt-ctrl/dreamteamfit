@@ -510,10 +510,12 @@ export function readMeRows(input: {
   rows.push(
     [""],
     ["If the app is down"],
-    ["1. Open Members to check a member's plan and days left."],
-    ["2. Write new sales and payments on paper (name, phone, plan, amount, cash/UPI/card)."],
+    // Step number in A, the words in B (B wraps), so long lines are never cut off.
+    ["Step 1", "Open Members to check a member's plan and days left."],
+    ["Step 2", "Write new sales and payments on paper (name, phone, plan, amount, cash/UPI/card)."],
     [
-      "3. When the app is back, enter them there. The app is the truth; this sheet is only a copy and updates itself.",
+      "Step 3",
+      "When the app is back, enter them there. The app is the truth; this sheet is only a copy and updates itself.",
     ],
   );
   return rows;
