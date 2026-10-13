@@ -25,8 +25,11 @@ Last updated: 2026-10-13 night (audit run-2 leads fixed server-side, Next 3 done
   due tile. User said YES (columns reordered: money right after name/phone/payment-for/package;
   Bill No / Member ID / Entered On at the end; NO frozen columns; empty money columns hidden).
 - Design written: `docs/superpowers/specs/2026-10-13-sheet-backup-design.md` (branch `sheet-backup`).
-- **Next:** writing-plans from that spec → build → tests → push (user asked to push; pushing main also
-  sends the 3 audit commits listed under "2026-10-13 night" Next 1).
+- Row-by-row check (scratchpad `verify_rows.mjs`): Oct 58/58, Sep 67/67 rows identical to the app,
+  66/66 bills internally consistent. ₹1 top-ups (₹1,999→₹2,000) are balance payments → "Balance" rows.
+- Plan: `docs/superpowers/plans/2026-10-13-sheet-backup.md` (Tasks 1–7, incl. "Look" rules).
+- **Next:** execute the plan task by task (builders: T1+T2+T3+T3b pure lib, T4 server, T5 browser,
+  T6 restore; one reviewer), then push (also sends the 3 audit commits under "2026-10-13 night" Next 1).
 
 ## 2026-10-13 night: audit run-2 leads fixed (server only, no rules change)
 
