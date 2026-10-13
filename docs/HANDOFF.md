@@ -19,10 +19,17 @@ Last updated: 2026-10-13 (migration cards removed; security audit run-2 in progr
   `udyogalupvt-ctrl/dreamteamfit` (403). Owner pushes, or signs Git in as the right account.
 - Checks: tsc clean, unit 347/347, build OK; emulator screenshots light/dark 390/1440 (session
   scratchpad ebe6c1d9… `harness/shots/`; harness = copy of b170b240's pointed at this folder).
-- **Security audit run-2** (quick, ~7 agents): `~/security-audit-skill/dreamteamfit/run-2/`
-  (setup.cjs, ledger, hunter prompts in `agents/*/prompt.md`). Covers run-1's 14 deferred units +
-  the new old-migrate server. If the chat is cut: read each agent's result from the session
-  transcript before relaunching.
+- **Security audit run-2** (quick, ~7 agents): `~/security-audit-skill/dreamteamfit/run-2/`.
+  4 hunters DONE (results in `agents/hunter-*/result.json`, 20 leads in `candidates.json`, ledger
+  valid). Left: 1 critic + 2 verifiers + report, then fixes — exact steps in
+  `~/security-audit-skill/dreamteamfit/run-2/NEXT.md`.
+- **Likely live bug found by the audit:** bills created by the old-software carry have no
+  `business` block, and the public bill page reads `b.address` → those members' bill links may
+  crash. Fix first (NEXT.md step 4.1).
+
+### Next
+1. Owner: push 417b073 + this commit (git signed in as ishaputrabiz has no access; see above).
+2. Finish audit run-2 and fix what it confirms: follow `~/security-audit-skill/dreamteamfit/run-2/NEXT.md`.
 
 ## 2026-10-10/11 (overnight): old-software members keep their old plan AS-IS — built
 
