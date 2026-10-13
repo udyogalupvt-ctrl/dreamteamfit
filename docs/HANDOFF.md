@@ -2,6 +2,32 @@
 
 Last updated: 2026-10-13 night (audit run-2 leads fixed server-side, Next 3 done)
 
+## 2026-10-13: Google Sheet register backup (design talk, nothing built yet)
+
+- Sheet "REBUILD FITNESS – Register Backup" in the gym's Google account, id
+  `1Rsn0jB8HX8TsbYmrxeT6VCPl4wcmyh2VhU7yy2_qJxc`, shared as Editor with the Firebase service account
+  (`firebase-adminsdk-fbsvc@rebuildfitos.iam.gserviceaccount.com`); Sheets API enabled on rebuildfitos.
+  Connection CHECKED 2026-10-13: JWT (node:crypto, scope `auth/spreadsheets`) → add tab, write/read,
+  delete tab all ok (scratchpad 948c07bc…/sheet_check.mjs). No new dependency or key needed.
+- Proposed v1: per-month Register tab (user's columns + Bill No., Member ID, Status), Collections tab
+  (money by day), Members tab, month totals, "last updated" + failure notice, sheet view-only for
+  people. App rewrites the month from Firestore (after each sale/payment + night cron + Sync now).
+  Old-software money never in Cash/PP/Card. Optional later: weekly full Firestore export.
+- Columns settled from their real register (TYPE OF CLIENT = workout type, TOTAL AMT = bill total,
+  last column = membership payment due date). User wants a FULL backup (every record, readable tabs +
+  hidden restore tabs, restore only on their word), auto-added on every new entry, then pushed.
+- User rule: sheet totals MUST equal the app dashboard. Dashboard Collected = payments by `paymentDate`
+  (late sales are dated the plan's start, often last month; future-dated old-software money counts on its
+  day) + legacy untracked bills. So month tabs = ONE ROW PER PAYMENT on its paid date (split pair = one
+  row), with "ENTERED ON" + note for late entries; Balance/Refund rows on their own day.
+- Preview v2 DONE (scratchpad 948c07bc…/month_preview.mjs, live read-only): Oct 2026 58 rows ₹2,07,049
+  and Sep 2026 67 rows ₹4,19,645 both MATCH the dashboard formula, mode by mode; due ₹14,000 = Balance
+  due tile. User said YES (columns reordered: money right after name/phone/payment-for/package;
+  Bill No / Member ID / Entered On at the end; NO frozen columns; empty money columns hidden).
+- Design written: `docs/superpowers/specs/2026-10-13-sheet-backup-design.md` (branch `sheet-backup`).
+- **Next:** writing-plans from that spec → build → tests → push (user asked to push; pushing main also
+  sends the 3 audit commits listed under "2026-10-13 night" Next 1).
+
 ## 2026-10-13 night: audit run-2 leads fixed (server only, no rules change)
 
 **State**
