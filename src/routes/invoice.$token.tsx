@@ -5,7 +5,7 @@ import { BrandMark } from "@/components/layout/brand-mark";
 import { Button } from "@/components/ui/button";
 import { useLive } from "@/hooks/use-live-query";
 import { formatPrice } from "@/lib/format";
-import { billCredits } from "@/lib/invoice-utils";
+import { billBusiness, billCredits } from "@/lib/invoice-utils";
 import { downloadInvoicePdf } from "@/lib/invoice-download";
 import { subscribePublicInvoice } from "@/services/invoices.service";
 import type { PublicInvoice } from "@/types/models";
@@ -47,7 +47,7 @@ function PublicInvoicePage() {
       </main>
     );
   const i = live.data,
-    b = i.business;
+    b = billBusiness(i.business);
   return (
     <main className="min-h-screen bg-slate-100 px-3 py-6 text-slate-950 sm:px-6 print:bg-white print:p-0">
       <article className="mx-auto max-w-4xl overflow-hidden rounded-2xl bg-white shadow-xl print:max-w-none print:rounded-none print:shadow-none">

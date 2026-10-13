@@ -32,6 +32,7 @@ import {
   type Row,
 } from "@/lib/old-migrate";
 import { currentRow, pickCurrent } from "@/lib/current-plan";
+import { billBusiness } from "@/lib/invoice-utils";
 import { db, json, localDate, requireFeature, requireStaff } from "./admin";
 
 const MOVES = "oldSoftwareMoves";
@@ -465,6 +466,8 @@ async function applyMember(
         paymentMethod: NOT_RECORDED,
         invoiceDate: today,
         dueDate: common.dueDate,
+        pdfUrl: "",
+        business: billBusiness(settings?.data()),
         createdAt: now,
         updatedAt: now,
       });

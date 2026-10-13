@@ -55,3 +55,20 @@ export function getInvoicePublicUrl(invoice: Pick<Invoice, "publicToken">) {
   const path = `/invoice/${encodeURIComponent(invoice.publicToken)}`;
   return typeof window === "undefined" ? path : new URL(path, window.location.origin).toString();
 }
+/** The gym details a bill shows. Bills made by the old-software carry have none: blanks, never a crash. */
+export function billBusiness(raw: unknown): BusinessBillingSettings {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const s = (k: string, d = "") => (typeof r[k] === "string" ? (r[k] as string) : d);
+  return {
+    businessName: s("businessName"),
+    logoUrl: s("logoUrl"),
+    address: s("address"),
+    phone: s("phone"),
+    email: s("email"),
+    gstin: s("gstin"),
+    taxEnabled: r["taxEnabled"] === true,
+    taxRate: typeof r["taxRate"] === "number" && Number.isFinite(r["taxRate"]) ? r["taxRate"] : 0,
+    invoicePrefix: s("invoicePrefix", "INV"),
+    currency: s("currency", "INR"),
+  };
+}
