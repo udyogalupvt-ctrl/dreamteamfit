@@ -7,6 +7,7 @@ import {
   packagesTab,
   plansTab,
   readMeCheckRows,
+  readMeLayout,
   readMeRows,
   staffTab,
 } from "./tabs.ts";
@@ -234,4 +235,11 @@ test("read me lists every tab, shows ticks and crosses, and what to do if the ap
 test("read me with a failing check contains a cross", () => {
   const rows = readMeRows({ updatedAt: "x", checks: [{ name: "Dues", ok: false, detail: "₹1" }], tabs: [] });
   assert.ok(rows.some((r) => String(r[0]).includes("✗")));
+});
+
+test("read me layout finds the table header and the section headings", () => {
+  const rows = readMeRows({ updatedAt: "x", checks: [], tabs: ["Members"] });
+  const layout = readMeLayout(rows);
+  assert.equal(rows[layout.tableHeaderRow]?.[0], "Tab");
+  assert.deepEqual(layout.headingRows.map((r) => rows[r]?.[0]), ["Checks (does this sheet match the app?)", "If the app is down"]);
 });

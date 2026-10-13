@@ -442,3 +442,14 @@ export function readMeCheckRows(rows: Cell[][]): { row: number; ok: boolean }[] 
   });
   return out;
 }
+
+/** Where the table header and the section headings sit (0-based rows), for readMeFormatRequests. */
+export function readMeLayout(rows: Cell[][]): { tableHeaderRow: number; headingRows: number[] } {
+  const tableHeaderRow = Math.max(0, rows.findIndex((r) => r[0] === "Tab" && r.length > 1));
+  const headingRows: number[] = [];
+  rows.forEach((r, row) => {
+    const first = String(r[0] ?? "");
+    if (r.length === 1 && (first.startsWith("Checks") || first === "If the app is down")) headingRows.push(row);
+  });
+  return { tableHeaderRow, headingRows };
+}
