@@ -51,19 +51,21 @@ DAYS · PT End date · Membership payment due date · STATUS · NOTE · ENTERED 
 - Money columns empty for the whole month are hidden.
 - Row shading: Cancelled/Refunded red, Balance blue, Part paid orange.
 - NOTE "entered later, dated the day it was paid" when `paymentDate` < typed-in day (IST of createdAt).
+- Small top-ups (user, 2026-10-13): staff changed ₹1,999 packages to ₹2,000 and took the ₹1 as a balance
+  payment. These are `kind: "balance"` already → PAYMENT FOR "Balance" (never a new entry), still counted
+  (the dashboard counts them), NOTE "₹1 top-up after price change" for balance payments ≤ ₹10.
 - Money maths reuses `src/lib/plan-money.ts` (`planMoney`). Old-software money goes only in its own column.
 
 ## Restore tabs (hidden, protected)
 
-One hidden tab per business collection: `clients, memberships, ptAssignments, invoices, payments,
-publicInvoices, packages, ptPackages, trainers, staff, staffAccess, staffAttendance, staffPayments,
-staffPayroll, staffDayMarks, expenses, manualIncome, trainerPayouts, cashDays, memberIds, memberVisits,
-attendance, followups, inquiries, memberCalls, enrollments, workout/diet plans + assignments, bookings,
-groupClasses, classEnrollments, announcements, settings (minus secrets), biometricDevices, deviceUsers,
-biometricTemplates, recycleBin, recycleBinItems, oldSoftwareMoves`.
-Excluded: `serverSecrets, staffPrivate, auditLogs, deviceLog, biometricCommands, whatsappMessages,
-whatsappWebhookEvents, automationActivities, notifications, expenseActivities, leadLogs` (logs/queues/secrets).
-The plan step confirms the real collection names (some live outside `COLLECTIONS`).
+One hidden tab `_data_<collection>` per ROOT collection found by `db.listCollections()` (so new
+collections are included automatically), EXCEPT this exclude list (logs, queues, secrets, regenerable):
+`serverSecrets, staffPrivate, loginVault, pushSubscriptions, oldSoftwareMoveSeals, auditLogs, deviceLog,
+biometricCommands, whatsappMessages, whatsappWebhookEvents, whatsappWebhookStatus, waChats,
+automationActivities, notifications, renewalNotifications, birthdayNotifications, absenceNotifications,
+paymentDueNotifications, expenseActivities, leadLogs, cfoBriefs, cfoReports`.
+Measured 2026-10-13: ~9,000 business records (~7 MB JSON; attendance 2,247 grows ~100/day). Only
+subcollection in use is `waChats/*/messages` (excluded).
 
 Columns: `id | updatedAt | json` (+ `json2…` when a record is over 45,000 characters; Timestamps encoded
 as `{"__ts": ISO}` so they come back exactly). Sorted by id.
