@@ -42,6 +42,8 @@ export default defineConfig(({ command }) => ({
                 crons: [
                   { path: "/api/cron/morning", schedule: "30 2 * * *" },
                   { path: "/api/cron/night", schedule: "0 16 * * *" },
+                  { path: "/api/cron/backup", schedule: "0 17 * * *" },
+                  { path: "/api/cron/backup?run=2", schedule: "0 18 * * *" },
                 ],
               },
             },

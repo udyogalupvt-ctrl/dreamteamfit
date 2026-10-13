@@ -79,7 +79,7 @@ export function monthTotalsLine(p: {
   matches: boolean;
   stamp: string;
 }): string {
-  return `${p.count} payments · app shows ${inr(p.appTotal)} ${p.matches ? "✓ matches" : "✗ DIFFERENT"} · updated ${p.stamp}`;
+  return `${p.count} payment${p.count === 1 ? "" : "s"} · app shows ${inr(p.appTotal)} ${p.matches ? "✓ matches" : "✗ DIFFERENT"} · updated ${p.stamp}`;
 }
 
 /**

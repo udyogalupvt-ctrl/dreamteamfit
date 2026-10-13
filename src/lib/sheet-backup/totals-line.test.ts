@@ -58,6 +58,7 @@ test("month totals line says matches or DIFFERENT", () => {
     "42 payments · app shows ₹2,07,049 ✓ matches · updated 13 Oct, 10:42 pm",
   );
   assert.match(monthTotalsLine({ ...p, matches: false }), /✗ DIFFERENT/);
+  assert.match(monthTotalsLine({ ...p, count: 1, matches: true }), /^1 payment · /);
 });
 
 test("totals row: TOTAL in A, the line in NAME, SUM formulas from row 3, DUE as a number", () => {

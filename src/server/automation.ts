@@ -626,5 +626,14 @@ export async function handleCron(request: Request, url: URL) {
     );
     return json({ ok: true, absences, sheetBackup });
   }
+  // Backup sheet, continued: a nightly refresh takes ~2-3 min of Sheets calls, so two later crons
+  // (22:30 and 23:30 IST) carry on with what the night run left queued. Nothing queued = no work.
+  if (job === "backup")
+    return json({
+      ok: true,
+      sheetBackup: await step("sheetBackup", () =>
+        runSheetBackup({ mode: "quick", budgetMs: 50_000 }),
+      ),
+    });
   return json({ error: "Unknown job" }, 404);
 }
