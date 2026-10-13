@@ -146,7 +146,7 @@ test("members: DAYS LEFT is a live formula on the ENDING DATE cell, PT and balan
     openBills: [bill({ balanceDue: 700 }), bill({ id: "b3", balanceDue: 300 })],
     today: TODAY,
   });
-  // header row 1, totals row 2: the first data row is sheet row 3, ENDING DATE is column I.
+  // totals line row 1, header row 2: the first data row is sheet row 3, ENDING DATE is column I.
   assert.equal(cell(tab, "DAYS LEFT", 0), '=IF(I3="","",MAX(0,I3-TODAY()))');
   assert.equal(cell(tab, "DAYS LEFT", 4), '=IF(I7="","",MAX(0,I7-TODAY()))');
   assert.equal(cell(tab, "PT TRAINER"), "Kiran");

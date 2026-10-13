@@ -114,9 +114,9 @@ export const duesRules: StatusRule[] = [
 export interface TabSpec {
   sheetId: number;
   columns: Column<unknown>[];
-  /** Data rows (below the header and totals rows). */
+  /** Data rows (below the totals and header rows). */
   rowCount: number;
-  /** Row 2 holds totals (styled); the layout is always header, totals, data. */
+  /** Row 1 holds the totals line (styled); the layout is always totals (row 1), header (row 2), data from row 3. */
   hasTotals: boolean;
   tabColor: string;
   statusRules?: StatusRule[];
@@ -176,7 +176,15 @@ export function tabFormatRequests(spec: TabSpec): unknown[] {
     },
   });
 
-  // 3. Body: centred vertically, long text clipped (rows keep one height).
+  // 3. Body: centred vertically, long text clipped (rows keep one height). The totals line (row 1)
+  //    is left unclipped so its text can run across the empty cells.
+  reqs.push(
+    cells(
+      area(0, 1),
+      { verticalAlignment: "MIDDLE", wrapStrategy: "OVERFLOW_CELL" },
+      "userEnteredFormat(verticalAlignment,wrapStrategy)",
+    ),
+  );
   reqs.push(
     cells(
       area(1, end),
@@ -192,7 +200,7 @@ export function tabFormatRequests(spec: TabSpec): unknown[] {
     if (kind === "money")
       reqs.push(
         cells(
-          col(1),
+          col(0),
           { horizontalAlignment: "RIGHT", numberFormat: { type: "NUMBER", pattern: INR_FORMAT } },
           "userEnteredFormat(horizontalAlignment,numberFormat)",
         ),
@@ -225,10 +233,10 @@ export function tabFormatRequests(spec: TabSpec): unknown[] {
       reqs.push(cells(col(2), { textFormat: { bold: true } }, "userEnteredFormat.textFormat.bold"));
   });
 
-  // 5. Header row: calm grey, bold dark text, centred, wrapped; mode headers as pastel chips.
+  // 5. Header row (row 2, under the totals line): calm grey, bold dark text, centred, wrapped; mode headers as pastel chips.
   reqs.push(
     cells(
-      area(0, 1),
+      area(1, 2),
       {
         backgroundColor: rgb(HEADER_BG),
         textFormat: { bold: true, foregroundColor: rgb(HEADER_TEXT) },
@@ -244,7 +252,7 @@ export function tabFormatRequests(spec: TabSpec): unknown[] {
     if (chip)
       reqs.push(
         cells(
-          area(0, 1, i, i + 1),
+          area(1, 2, i, i + 1),
           {
             backgroundColor: rgb(chip[0]),
             textFormat: { bold: true, foregroundColor: rgb(chip[1]) },
@@ -258,23 +266,23 @@ export function tabFormatRequests(spec: TabSpec): unknown[] {
   });
   reqs.push({
     updateBorders: {
-      range: area(0, 1),
+      range: area(1, 2),
       bottom: { style: "SOLID_MEDIUM", color: rgb(HEADER_LINE) },
     },
   });
 
-  // 6. Totals row: bold on cream with solid lines; the "matches the app" line goes green or red.
+  // 6. Totals line (row 1): bold on cream with solid lines; the "matches the app" line goes green or red.
   if (spec.hasTotals) {
     reqs.push(
       cells(
-        area(1, 2),
+        area(0, 1),
         { backgroundColor: rgb(TOTALS_BG), textFormat: { bold: true } },
         "userEnteredFormat.backgroundColor,userEnteredFormat.textFormat.bold",
       ),
     );
     reqs.push({
       updateBorders: {
-        range: area(1, 2),
+        range: area(0, 1),
         top: { style: "SOLID", color: rgb(HEADER_LINE) },
         bottom: { style: "SOLID", color: rgb(HEADER_LINE) },
       },
@@ -289,7 +297,7 @@ export function tabFormatRequests(spec: TabSpec): unknown[] {
       fields: "pixelSize",
     },
   });
-  reqs.push(rowHeight(0, 1, 44), rowHeight(1, 2, 28), rowHeight(2, end, 24));
+  reqs.push(rowHeight(0, 1, 28), rowHeight(1, 2, 44), rowHeight(2, end, 24));
 
   // 8. Fixed column widths (never auto-resized) and hidden empty money columns.
   columns.forEach((c, i) =>
@@ -302,7 +310,7 @@ export function tabFormatRequests(spec: TabSpec): unknown[] {
     }),
   );
 
-  // 9. Banded rows and the filter buttons on the header row.
+  // 9. Banded rows and the filter buttons on the header row (row 2 down, so sorting never moves the totals line).
   reqs.push({
     addBanding: {
       bandedRange: {
@@ -314,7 +322,7 @@ export function tabFormatRequests(spec: TabSpec): unknown[] {
       },
     },
   });
-  reqs.push({ setBasicFilter: { filter: { range: area(0, end) } } });
+  reqs.push({ setBasicFilter: { filter: { range: area(1, end) } } });
 
   // 10. Colour rules, top priority first: whole-row rules, then column chips, then the match line.
   let index = 0;
@@ -351,7 +359,9 @@ export function tabFormatRequests(spec: TabSpec): unknown[] {
   }
   const nameAt = columns.findIndex((c) => c.header === "NAME");
   if (spec.hasTotals && nameAt >= 0) {
-    const cell = [area(1, 2, nameAt, nameAt + 1)];
+    // The line runs across the empty cells to the first money column, so it is coloured that far.
+    const firstMoney = columns.findIndex((c, i) => i > nameAt && c.kind === "money");
+    const cell = [area(0, 1, nameAt, firstMoney > nameAt ? firstMoney : ncol)];
     addRule(
       cell,
       { type: "TEXT_CONTAINS", values: [{ userEnteredValue: "✓" }] },

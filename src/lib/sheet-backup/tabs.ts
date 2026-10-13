@@ -1,7 +1,7 @@
 /**
  * The readable tabs of the backup sheet besides the month registers: Members, Dues, Expenses,
  * All plans, Staff & trainers, Packages and the Read me page. Each builder returns
- * `{ columns, rows, total? }`; the server writes header row 1, a totals row 2 and the rows from
+ * `{ columns, rows, total? }`; the server writes a totals line in row 1, the header in row 2 and the rows from
  * row 3, so a column that needs its own sheet row number (a live formula) uses `i + 3`.
  *
  * Pure (no database): the server reads Firestore and hands plain shapes in.
@@ -16,7 +16,7 @@ export interface TabData<R> {
 }
 
 const round = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
-/** Sheet row of data row `i` (row 1 = header, row 2 = totals). */
+/** Sheet row of data row `i` (row 1 = totals line, row 2 = header). */
 const sheetRow = (i: number) => i + 3;
 const DAY_MS = 86_400_000;
 /** b − a in whole days for two YYYY-MM-DD strings. */

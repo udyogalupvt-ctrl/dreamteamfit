@@ -101,6 +101,36 @@ test("tab formatting: filter, banding, 2 frozen rows, no frozen columns, a width
   });
 });
 
+test("totals line is row 1, header is row 2 with the filter, data from row 3", () => {
+  const reqs = tabFormatRequests(spec());
+  const filter = only(reqs, "setBasicFilter")[0] as { filter: { range: Record<string, number> } };
+  assert.equal(filter.filter.range["startRowIndex"], 1); // header row; the totals line is never sorted
+  const rows = (
+    only(reqs, "updateDimensionProperties") as {
+      range: { dimension: string; startIndex: number; endIndex: number };
+      properties: { pixelSize: number };
+    }[]
+  ).filter((r) => r.range.dimension === "ROWS");
+  assert.deepEqual(
+    rows.map((r) => [r.range.startIndex, r.range.endIndex, r.properties.pixelSize]),
+    [
+      [0, 1, 28],
+      [1, 2, 44],
+      [2, 14, 24],
+    ],
+  );
+  const band = only(reqs, "addBanding")[0] as { bandedRange: { range: Record<string, number> } };
+  assert.equal(band.bandedRange.range["startRowIndex"], 2);
+  // The ✓ / ✗ line sits in the totals row (row 1) and reaches to the first money column.
+  const match = only(reqs, "addConditionalFormatRule").at(-1) as {
+    rule: { ranges: Record<string, number>[] };
+  };
+  assert.equal(match.rule.ranges[0]!["startRowIndex"], 0);
+  assert.equal(match.rule.ranges[0]!["endRowIndex"], 1);
+  assert.equal(match.rule.ranges[0]!["startColumnIndex"], 2); // NAME
+  assert.equal(match.rule.ranges[0]!["endColumnIndex"], 6); // PP is the first money column
+});
+
 test("header chips for PP, CASH, CARD and DUE use the Look colours", () => {
   const reqs = tabFormatRequests(spec());
   const header = (name: string) => {
@@ -112,7 +142,7 @@ test("header chips for PP, CASH, CARD and DUE use the Look colours", () => {
           endRowIndex?: number;
           startColumnIndex?: number;
         };
-        return range.startRowIndex === 0 && range.endRowIndex === 1 && range.startColumnIndex === i;
+        return range.startRowIndex === 1 && range.endRowIndex === 2 && range.startColumnIndex === i;
       }) ??
       only(reqs, "repeatCell").find((r) => {
         // No chip of its own: the plain grey header row covers every column.
@@ -121,7 +151,7 @@ test("header chips for PP, CASH, CARD and DUE use the Look colours", () => {
           endRowIndex?: number;
           startColumnIndex?: number;
         };
-        return range.startRowIndex === 0 && range.endRowIndex === 1 && range.startColumnIndex === 0;
+        return range.startRowIndex === 1 && range.endRowIndex === 2 && range.startColumnIndex === 0;
       });
     assert.ok(hit, name);
     const fmt = (
