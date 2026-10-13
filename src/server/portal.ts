@@ -278,6 +278,12 @@ async function activePt(clientId: string, today: string) {
     .sort((a, b) => s(b["endDate"]).localeCompare(s(a["endDate"])));
 }
 
+/** This trainer runs a live PT with this member (the chat and its pushes end with the PT). */
+export async function liveTrainerOf(clientId: string, trainerId: string) {
+  if (!clientId || !trainerId) return false;
+  return (await activePt(clientId, localDate())).some((p) => s(p["trainerId"]) === trainerId);
+}
+
 /** Makes sure the chat of this member points at their current PT trainer. */
 async function ensureChat(
   clientId: string,
@@ -1088,7 +1094,9 @@ async function trainerCall(trainerId: string, t: D, body: Record<string, unknown
   const who = await trainerCounsellor(t);
   if (!who) return json({ error: "You are not linked to a counsellor profile yet." }, 403);
   const inquiryId = s(input.inquiryId) || null;
-  const clientId = s(input.clientId);
+  // A lead call is about the lead only: no member id from the request is ever linked to it.
+  const clientId = inquiryId ? "" : s(input.clientId);
+  const followUpId = inquiryId ? "" : s(input.followUpId);
   const outcome = CALL_OUTCOME_OPTIONS.find((o) => o.id === s(input.outcomeId) && !o.convert);
   if (!outcome || (outcome.for !== "both" && outcome.for !== (inquiryId ? "lead" : "member")))
     return json({ error: "Pick what they said." }, 400);
@@ -1113,6 +1121,12 @@ async function trainerCall(trainerId: string, t: D, body: Record<string, unknown
     ]);
     if (!c.exists || !ms.docs.some((m) => s(m.data()["counsellorId"]) === who.id))
       return json({ error: "This member is not yours." }, 403);
+    // The follow-up it closes must be this member's own (not a lead's, not someone else's).
+    if (followUpId) {
+      const f = (await firestore.doc(`followups/${followUpId}`).get()).data();
+      if (!f || s(f["clientId"]) !== clientId || s(f["inquiryId"]))
+        return json({ error: "This follow-up is not for this member." }, 403);
+    }
     name = s(c.data()?.["fullName"]);
     phone = s(c.data()?.["phone"]);
   }
@@ -1155,7 +1169,7 @@ async function trainerCall(trainerId: string, t: D, body: Record<string, unknown
         nextAction: outcome.nextAction,
         outcome: "",
         automated: false,
-        parentFollowUpId: s(input.followUpId) || null,
+        parentFollowUpId: followUpId || null,
         updatedAt: now,
       }
     : null;
@@ -1187,8 +1201,7 @@ async function trainerCall(trainerId: string, t: D, body: Record<string, unknown
     else if (pending.docs.some((d) => d.id === stable.id && d.data()["status"] === "pending"))
       batch.update(stable, done);
   } else {
-    const current = s(input.followUpId);
-    if (current) batch.set(firestore.doc(`followups/${current}`), done, { merge: true });
+    if (followUpId) batch.set(firestore.doc(`followups/${followUpId}`), done, { merge: true });
     if (next) batch.set(firestore.collection("followups").doc(), { ...next, createdAt: now });
   }
   await batch.commit();

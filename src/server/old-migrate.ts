@@ -14,7 +14,7 @@
  * Money rules: what was paid there = one payment on the start day, method "Not recorded",
  * oldSoftware: true. Money taken HERE is never deleted or changed (only its bill link may move).
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   FieldValue,
   Timestamp,
@@ -36,6 +36,12 @@ import { billBusiness } from "@/lib/invoice-utils";
 import { db, json, localDate, requireFeature, requireStaff } from "./admin";
 
 const MOVES = "oldSoftwareMoves";
+/**
+ * The server's own fingerprint of each move it wrote (no rule matches it, so no browser can read
+ * or write it). Finance browsers may write oldSoftwareMoves, and Undo runs with full server
+ * rights: it acts only on a move whose undo content still matches its seal.
+ */
+const SEALS = "oldSoftwareMoveSeals";
 const KIND = "as-is";
 /** Phone keys per preview request (reads only). */
 const PREVIEW_PAGE = 120;
@@ -891,8 +897,12 @@ async function applyMember(
       created.commands = 1;
     }
 
-    // 5. The move document: everything needed to put it all back.
+    // 5. The move document: everything needed to put it all back, and its seal.
     const moveRef = firestore.collection(MOVES).doc();
+    tx.set(firestore.doc(`${SEALS}/${moveRef.id}`), {
+      hash: moveSeal({ kind: KIND, runId, clientId: clientRef.id, before, created }),
+      createdAt: now,
+    });
     tx.set(moveRef, {
       kind: KIND,
       runId,
@@ -924,6 +934,96 @@ async function applyMember(
 
 /* ------------------------------------------------------------------ undo */
 
+/**
+ * All a run ever writes, so all an Undo may ever put back. Finance browsers can still write
+ * oldSoftwareMoves (until the rules say otherwise), and Undo runs with full server rights: a move
+ * naming any other collection, an odd id, someone else's records or a bin copy it didn't make is
+ * refused whole.
+ */
+const UNDO_BEFORE = new Set([
+  "clients",
+  "memberships",
+  "ptAssignments",
+  "invoices",
+  "publicInvoices",
+  "payments",
+]);
+const UNDO_BIN = new Set([
+  "memberships",
+  "ptAssignments",
+  "invoices",
+  "publicInvoices",
+  "payments",
+]);
+const plainId = (id: unknown): id is string =>
+  typeof id === "string" && id.length > 0 && id.length <= 200 && !id.includes("/");
+
+/** Why this move can't be one a run wrote ("" when it can). */
+function foreignMove(move: D) {
+  const clientId = move["clientId"];
+  if (!plainId(clientId)) return "no member";
+  const before = (move["before"] ?? {}) as Record<string, unknown>;
+  for (const [c, rows] of Object.entries(before)) {
+    if (!UNDO_BEFORE.has(c) || !Array.isArray(rows)) return c;
+    for (const r of rows as { id?: unknown; data?: D }[]) {
+      if (!plainId(r?.id) || typeof r.data !== "object" || r.data === null) return c;
+      // Every copy is of this member's own records (public bills carry no member id).
+      if (
+        c === "clients"
+          ? r.id !== clientId
+          : c !== "publicInvoices" && r.data["clientId"] !== clientId
+      )
+        return c;
+    }
+  }
+  const created = (move["created"] ?? {}) as Record<string, unknown>;
+  for (const k of [
+    "memberships",
+    "ptAssignments",
+    "invoices",
+    "publicInvoices",
+    "payments",
+    "binItems",
+  ]) {
+    const ids = created[k] ?? [];
+    if (!Array.isArray(ids) || !ids.every(plainId)) return k;
+  }
+  for (const k of ["clientId", "binId", "memberIdReserved"])
+    if (created[k] !== undefined && created[k] !== null && !plainId(created[k])) return k;
+  if (created["clientId"] && created["clientId"] !== clientId) return "clientId";
+  return "";
+}
+
+/** Same value → same text, whatever order the database hands back map keys in. */
+const canon = (v: unknown): unknown =>
+  v instanceof Timestamp
+    ? { $ts: `${v.seconds}.${v.nanoseconds}` }
+    : Array.isArray(v)
+      ? v.map(canon)
+      : v && typeof v === "object"
+        ? Object.fromEntries(
+            Object.keys(v)
+              .sort()
+              .map((k) => [k, canon((v as D)[k])]),
+          )
+        : v;
+
+/** Fingerprint of what an Undo of this move would do. */
+const moveSeal = (m: D) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify(
+        canon({
+          kind: m["kind"],
+          runId: m["runId"],
+          clientId: m["clientId"],
+          before: m["before"],
+          created: m["created"],
+        }),
+      ),
+    )
+    .digest("hex");
+
 const tsEq = (a: unknown, b: unknown) =>
   a instanceof Timestamp && b instanceof Timestamp ? a.isEqual(b) : a === b;
 
@@ -940,6 +1040,11 @@ async function undoMove(moveId: string, by: Actor): Promise<{ ok: true } | { err
       const move = moveSnap.data();
       if (!move || move["kind"] !== KIND) throw new Error("This change was not found.");
       if (move["undone"]) throw new Error("Already undone.");
+      const seal = (await tx.get(firestore.doc(`${SEALS}/${moveId}`))).data();
+      if (!seal || seal["hash"] !== moveSeal(move) || foreignMove(move))
+        throw new Error(
+          "This change record was not made by the migration (or was changed since). Nothing was undone.",
+        );
       const before = (move["before"] ?? {}) as Record<string, { id: string; data: D }[]>;
       const created = (move["created"] ?? {}) as unknown as Created;
       const col = (c: string, id: string) => firestore.doc(`${c}/${id}`);
@@ -955,6 +1060,8 @@ async function undoMove(moveId: string, by: Actor): Promise<{ ok: true } | { err
         const s = await tx.get(col(c, id));
         if (!s.exists) continue;
         const d = s.data()!;
+        if (String(d["clientId"] ?? "") !== String(move["clientId"]))
+          throw new Error("This change record was not made by the migration. Nothing was undone.");
         if (!tsEq(d["updatedAt"], d["createdAt"]))
           throw new Error(
             `Can't undo: ${c === "invoices" ? "the balance bill" : c === "payments" ? "a payment" : "the carried plan"} was changed after the run (edit or money collected). Undo that first.`,
@@ -982,7 +1089,19 @@ async function undoMove(moveId: string, by: Actor): Promise<{ ok: true } | { err
         const s = await tx.get(col("recycleBinItems", id));
         if (!s.exists)
           throw new Error("Can't undo: the Recycle Bin copy was restored or emptied already.");
-        binItems.push({ id, data: s.data()! });
+        const b = s.data()!;
+        const c = String(b["collection"] ?? "");
+        const docId = String(b["docId"] ?? "");
+        // Only this run's own copies, back to their own place in a collection the run moves.
+        if (
+          !created.binId ||
+          b["binId"] !== created.binId ||
+          !UNDO_BIN.has(c) ||
+          !plainId(docId) ||
+          b["path"] !== `${c}/${docId}`
+        )
+          throw new Error("Can't undo: a Recycle Bin copy is not one this change made.");
+        binItems.push({ id, data: b });
       }
       // Kept-but-rewritten documents (a legacy bill rewritten in place, a repointed payment, an
       // overlap-marked plan) must be untouched since the run: their updatedAt is either the

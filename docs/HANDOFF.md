@@ -1,6 +1,57 @@
 # Handoff
 
-Last updated: 2026-10-13 evening (security audit run-2 finished; carried-member bill links fixed)
+Last updated: 2026-10-13 night (audit run-2 leads fixed server-side, Next 3 done)
+
+## 2026-10-13 night: audit run-2 leads fixed (server only, no rules change)
+
+**State**
+- **Local commit, NOT pushed** (see `git log`): Next step 3.1–3.8 below, all server-side.
+  Every lead was first reproduced on the emulators, then fixed; one reviewer agent checked the
+  diff and its 5 server-side findings are fixed too:
+  - 3.1 `whatsapp.ts` send: tests need Settings or Announcements; EVERY announcement (to members or
+    typed numbers) needs Announcements; no other kind may use the free-text announcement template;
+    member sends go to the member's own saved number. `push.ts` members: Announcements.
+  - 3.2 `whatsapp-gateway.ts`: the stored key is tied to its address (`serverSecrets/whatsappGateway.apiKeyUrl`;
+    a key saved before is tied to the address in use at its first use after deploy). Save connection:
+    https + public address only (trailing dot stripped, the name's DNS answers checked too), a new
+    address needs the key typed again; a new address (also from the gym PC) gets a new webhook secret.
+  - 3.3 `old-migrate.ts` undo: each move a run writes gets a seal, `oldSoftwareMoveSeals/{moveId}`
+    (sha256 of kind/runId/clientId/before/created). The default-deny rule covers it, so no browser can
+    touch it. Undo refuses a move with no seal or a changed one, plus the collection, id and member
+    checks. **Moves made before this commit have no seal and can't be undone by the API.** Nothing in
+    the app calls undo; undo those by hand if ever needed.
+  - 3.4 `staff.ts` update-login: only when `staffAccess/<loginUid>.staffId` is this staff member.
+  - 3.5 `portal.ts` trainer-call: the follow-up must be that member's own; lead calls never take a member id.
+  - 3.6 `push.ts` chat: needs a live PT (`liveTrainerOf` in portal.ts). Rules still let the old
+    trainer read/write the chat itself: that is rules item 4 ("isTrainerOf checks a live PT").
+  - 3.7 `biometric.ts`: punches dated after today are skipped (a fast clock later today still counts);
+    `attSeenUntil` never passes now (a future one counts as now); `restoreCommand` keeps only visible
+    ASCII in the template fields.
+  - 3.8 `push.ts`: subscribe checks the key is a real P-256 point; a broken subscription is deleted and
+    never stops the others; `automation.ts` cron runs each step on its own.
+- Checks: tsc clean, eslint clean (only CRLF noise in untouched files), unit 361/361. Emulator suite
+  `sec_local.py`: on the unfixed code 20 of its first 38 checks failed (every lead reproduced). The
+  fixed code passes 46/46, including real carries + Undo (new member, existing member) and 6 checks
+  added after the review. `gym_pc_local.py` 24/24 (gateway link, light/dark 390/1440). The kit is in
+  session scratchpad 50d6b2d7…/h (ports 8580/9599/5899, fake WA :5699, fake push + capture
+  :5398/:5698, fake OpenWA :5443; `restart.sh`, `serve_gympc.sh`).
+- Left open:
+  - **Browser side, not server:** an owner restore of a planted Recycle Bin staff entry
+    (`extra.loginOn`) still switches that staff member's own login back on. Fix it in
+    `recycle-bin.service.ts:290`: honour loginOn only when the bin entry's `deletedByUid` has no staffAccess doc (owner).
+  - Template parameters (the text inside a utility/expiry template) still come from the browser for
+    member sends. Full fix: the server builds them per kind (a redesign).
+  - Production read blocked by auto mode: does any member already have a future `lastVisitDate`?
+    Read-only script for the owner: scratchpad 50d6b2d7…/h/prod_future_check.cjs.
+
+### Next
+1. Owner: push main (this commit + 97e05a5 + 6333c83 + 417b073).
+2. Owner, Firebase console: the `admin@elevategym.com` check (old Next 2 below, unchanged).
+3. The Recycle Bin loginOn fix above (small, browser code, emulator test first).
+4. Rules changes (old Next 4 below), owner OK + full emulator regression + rules deploy. They close
+   what the server alone can't: staff writing biometricCommands/templates, finance writing
+   oldSoftwareMoves, the old trainer's chat access, and money collections per feature.
+5. Owner checks (old Next 5 below).
 
 ## 2026-10-13 evening: audit run-2 finished, bill-link crash fixed
 

@@ -13,12 +13,15 @@
  *
  * The API key lives only in serverSecrets/whatsappGateway (Firestore rules: no browser access);
  * OPENWA_URL / OPENWA_SESSION_ID / OPENWA_API_KEY on Vercel are used when Settings has none.
+ * The key is tied to the address it was saved for (apiKeyUrl): settings/whatsapp is written by
+ * Settings logins' browsers, and a changed address never gets the key until it is typed again.
  *
  * Note: this is WhatsApp Web automation, not Meta's official API. WhatsApp can restrict a number
  * that messages many people unasked, so only bills and member app links go from it (phoneMaySend),
  * and sending pauses by itself while WhatsApp has restricted the number.
  */
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { lookup } from "node:dns/promises";
 import { FieldValue } from "firebase-admin/firestore";
 import {
   PHONE_TEXT_LINKS,
@@ -52,11 +55,27 @@ export async function gatewayConfig(fresh = false): Promise<GatewayConfig> {
   const [ws, sec] = await Promise.all([settingsRef().get(), secretRef().get()]);
   const s = ws.data() ?? {};
   const k = sec.data() ?? {};
+  const url = (String(s["gatewayUrl"] ?? "") || env("OPENWA_URL")).replace(/\/+$/, "");
+  const savedKey = String(k["apiKey"] ?? "");
+  let keyUrl = String(k["apiKeyUrl"] ?? "");
+  if (savedKey && !keyUrl && url) {
+    // A key saved before keys were tied to their address: tied to the one in use now, once.
+    keyUrl = url;
+    await secretRef().set({ apiKeyUrl: url }, { merge: true });
+  }
+  const envUrl = env("OPENWA_URL").replace(/\/+$/, "");
   const value: GatewayConfig = {
     sender: s["sender"] === "phone" ? "phone" : "cloud",
-    url: (String(s["gatewayUrl"] ?? "") || env("OPENWA_URL")).replace(/\/+$/, ""),
+    url,
     sessionId: String(s["gatewaySessionId"] ?? "") || env("OPENWA_SESSION_ID"),
-    apiKey: String(k["apiKey"] ?? "") || env("OPENWA_API_KEY"),
+    // Only ever sent to the address it belongs to.
+    apiKey: savedKey
+      ? keyUrl === url
+        ? savedKey
+        : ""
+      : url === envUrl
+        ? env("OPENWA_API_KEY")
+        : "",
     texts: (s["phoneTexts"] as Record<string, string> | undefined) ?? {},
     webhookSecret: String(k["webhookSecret"] ?? ""),
     restriction: String(s["gatewayRestriction"] ?? ""),
@@ -314,6 +333,57 @@ async function registerWebhook(g: GatewayConfig) {
   return r.ok ? "on" : r.error;
 }
 
+/** An address on the public internet (not this computer, the hosting network or a LAN). */
+function publicIp(ip: string) {
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    return !(
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      a >= 224 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168)
+    );
+  }
+  // IPv6: loopback, unspecified, local (fc00::/7, fe80::/10) and IPv4-mapped are refused.
+  return (
+    ip.includes(":") && !/^(::1?|f[cd][0-9a-f]{0,2}:.*|fe[89ab][0-9a-f]?:.*|::ffff:.*)$/i.test(ip)
+  );
+}
+
+/**
+ * A public internet name or address: the server must never call this computer, the hosting
+ * network or a home / office network for a Settings login (only the gym PC's own link, which
+ * proves itself with its setup key, may report a local test address). A name is checked by what
+ * it points at too (e.g. 127.0.0.1.nip.io).
+ */
+async function publicHost(url: string) {
+  let host: string;
+  try {
+    host = new URL(url).hostname
+      .toLowerCase()
+      .replace(/^\[|\]$/g, "")
+      .replace(/\.+$/, "");
+  } catch {
+    return false;
+  }
+  if (!host) return false;
+  if (/^[\d.]+$/.test(host) || host.includes(":")) return publicIp(host);
+  if (
+    host === "localhost" ||
+    /\.(localhost|local|internal|lan|home)$/.test(host) ||
+    !host.includes(".")
+  )
+    return false;
+  // A name that doesn't resolve is let through: the gateway call then fails on its own.
+  const found = await lookup(host, { all: true }).catch(() => []);
+  return found.every((a) => publicIp(a.address));
+}
+
 async function saveConnection(request: Request) {
   if (!(await requireFeature(request, "settings")))
     return json({ error: "Only logins with Settings can change WhatsApp." }, 403);
@@ -324,18 +394,33 @@ async function saveConnection(request: Request) {
     .replace(/\/api$/, "");
   const sessionId = String(body["sessionId"] ?? "").trim();
   const typedKey = String(body["apiKey"] ?? "").trim();
-  if (!/^https?:\/\/[^\s/]+/i.test(url))
+  if (!/^https:\/\/[^\s/]+/i.test(url))
     return json({ error: "Enter the gateway address, starting with https://" }, 400);
+  if (!(await publicHost(url)))
+    return json(
+      { error: "That address is not allowed: use the gateway's public https address." },
+      400,
+    );
   if (!/^[A-Za-z0-9_-]{3,80}$/.test(sessionId))
     return json({ error: "Enter the instance (session) ID." }, 400);
   const current = await gatewayConfig(true);
-  const apiKey = typedKey || current.apiKey;
-  if (!apiKey) return json({ error: "Enter the API key (token)." }, 400);
+  const moved = url !== current.url;
+  // The saved key goes only to the address it was saved for: a new address needs it typed.
+  const apiKey = typedKey || (moved ? "" : current.apiKey);
+  if (!apiKey)
+    return json(
+      {
+        error: moved
+          ? "A new address needs the API key (token) typed again."
+          : "Enter the API key (token).",
+      },
+      400,
+    );
   const g: GatewayConfig = { ...current, url, sessionId, apiKey };
   // Saved only when the gateway accepts it, so a typing mistake never stops the messages.
   const check = await call<Session>(g, sessionPath(g));
   if (!check.ok) return json({ error: check.error }, 400);
-  if (typedKey) await secretRef().set({ apiKey: typedKey }, { merge: true });
+  if (typedKey) await secretRef().set({ apiKey: typedKey, apiKeyUrl: url }, { merge: true });
   await settingsRef().set(
     {
       gatewayUrl: url,
@@ -350,9 +435,10 @@ async function saveConnection(request: Request) {
     { merge: true },
   );
   cached = null;
+  // A new address gets a new webhook secret: the old one never goes to a server it wasn't made for.
   const webhook = await registerWebhook({
     ...g,
-    webhookSecret: (await gatewayConfig(true)).webhookSecret,
+    webhookSecret: moved ? "" : (await gatewayConfig(true)).webhookSecret,
   });
   const s = await gatewaySession(g);
   return json({ ...(s.ok ? s : {}), webhook, keySaved: true });
@@ -532,7 +618,7 @@ async function linkFromGymPc(request: Request) {
   if (!check.ok) return json({ error: check.error }, 400);
   const changed =
     current.url !== url || current.sessionId !== sessionId || current.apiKey !== apiKey;
-  if (current.apiKey !== apiKey) await secretRef().set({ apiKey }, { merge: true });
+  if (changed) await secretRef().set({ apiKey, apiKeyUrl: url }, { merge: true });
   await settingsRef().set(
     {
       gatewayUrl: url,
@@ -548,8 +634,13 @@ async function linkFromGymPc(request: Request) {
   );
   cached = null;
   // Delivery ticks: the gateway calls the app (its address doesn't change), set up once.
+  // A new address gets a new webhook secret, as in saveConnection: a secret sent to an address
+  // someone else set (via Settings) stops working once the gym PC reports its own again.
   const webhook = changed
-    ? await registerWebhook({ ...g, webhookSecret: (await gatewayConfig(true)).webhookSecret })
+    ? await registerWebhook({
+        ...g,
+        webhookSecret: current.url !== url ? "" : (await gatewayConfig(true)).webhookSecret,
+      })
     : "on";
   const status = String(check.data.status ?? "");
   return json({ ok: true, status, statusLabel: STATUS_WORDS[status] ?? status, webhook });

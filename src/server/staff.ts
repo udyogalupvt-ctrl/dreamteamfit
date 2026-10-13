@@ -100,6 +100,12 @@ async function updateLogin(body: Record<string, unknown>, ownerEmail: string) {
   const staff = await db().doc(`staff/${staffId}`).get();
   const uid = String(staff.data()?.["loginUid"] ?? "");
   if (!staff.exists || !uid) return json({ error: "This staff member has no login." }, 404);
+  // loginUid sits on a browser-written record (a Recycle Bin restore writes whatever the bin
+  // copy holds): act only on a login this server made for THIS staff member (createLogin wrote
+  // staffAccess/<uid>.staffId; only the owner may write staffAccess).
+  const access = await db().doc(`staffAccess/${uid}`).get();
+  if (!access.exists || String(access.data()?.["staffId"] ?? "") !== staffId)
+    return json({ error: "This login does not belong to this staff member." }, 409);
   const patch: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
   const changes: string[] = [];
   if (body["permissions"] !== undefined) {

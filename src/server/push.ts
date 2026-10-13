@@ -26,8 +26,8 @@ import {
 } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { OWNER_EMAILS } from "@/constants/owners";
-import { db, json, requireStaff } from "./admin";
-import { portalUser } from "./portal";
+import { db, json, requireFeature } from "./admin";
+import { liveTrainerOf, portalUser } from "./portal";
 
 export type PushMessage = {
   title: string;
@@ -158,6 +158,14 @@ async function sendOne(sub: Sub, msg: PushMessage, keys: Keys) {
       tag: msg.tag ?? "",
     }),
   );
+  let sealed: ReturnType<typeof encryptPush>;
+  try {
+    sealed = encryptPush(payload, s(sub.data["p256dh"]), s(sub.data["auth"]));
+  } catch {
+    // A key no phone could have made (saved before keys were checked): it can never work.
+    await sub.ref.delete().catch(() => undefined);
+    return false;
+  }
   const r = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -167,7 +175,7 @@ async function sendOne(sub: Sub, msg: PushMessage, keys: Keys) {
       TTL: "86400",
       Urgency: "normal",
     },
-    body: encryptPush(payload, s(sub.data["p256dh"]), s(sub.data["auth"])),
+    body: sealed,
   }).catch(() => null);
   // Gone: the app was removed or notifications were blocked on that phone.
   if (r && (r.status === 404 || r.status === 410)) await sub.ref.delete().catch(() => undefined);
@@ -216,8 +224,11 @@ export async function pushTo(owners: string[], msg: PushMessage) {
     const keys = await pushKeys();
     let ok = 0;
     for (let i = 0; i < subs.length; i += 10) {
-      const results = await Promise.all(subs.slice(i, i + 10).map((x) => sendOne(x, msg, keys)));
-      ok += results.filter(Boolean).length;
+      // One phone that fails never stops the others.
+      const results = await Promise.allSettled(
+        subs.slice(i, i + 10).map((x) => sendOne(x, msg, keys)),
+      );
+      ok += results.filter((r) => r.status === "fulfilled" && r.value).length;
     }
     return ok;
   } catch (e) {
@@ -229,6 +240,19 @@ export async function pushTo(owners: string[], msg: PushMessage) {
 export const memberOwner = (clientId: string) => `member:${clientId}`;
 
 // ------------------------------------------------------------------ endpoints
+
+/** A real P-256 public key, the kind encryptPush can use (65 bytes alone is not enough). */
+const p256Ok = (key: Buffer) => {
+  if (key.length !== 65) return false;
+  try {
+    const e = createECDH("prime256v1");
+    e.generateKeys();
+    e.computeSecret(key);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 async function subscribe(request: Request) {
   const who = await portalUser(request);
@@ -242,7 +266,7 @@ async function subscribe(request: Request) {
   if (
     !pushHostOk(endpoint) ||
     endpoint.length > 1000 ||
-    unb64u(p256dh).length !== 65 ||
+    !p256Ok(unb64u(p256dh)) ||
     unb64u(auth).length !== 16
   )
     return json({ error: "This browser's notification address was not accepted." }, 400);
@@ -283,6 +307,10 @@ async function chat(request: Request) {
   if (!t) return json({ sent: 0 });
   const mine = who.kind === "member" ? who.id === clientId : who.id === s(t["trainerId"]);
   if (!mine) return json({ error: "Not allowed." }, 403);
+  // The chat belongs to a running PT: once it ended (or moved to another trainer), the old
+  // trainer's side is closed and the member's messages are not pushed to them either.
+  if (!(await liveTrainerOf(clientId, s(t["trainerId"]))))
+    return who.kind === "trainer" ? json({ error: "Not allowed." }, 403) : json({ sent: 0 });
   const millis = (v: unknown) => (v as { toMillis?: () => number } | null)?.toMillis?.() ?? 0;
   const lastAt = millis(t["lastAt"]);
   if (t["lastFrom"] !== who.kind || Date.now() - lastAt > 120_000) return json({ sent: 0 });
@@ -307,7 +335,9 @@ async function chat(request: Request) {
 }
 
 async function members(request: Request) {
-  if (!(await requireStaff(request))) return json({ error: "Sign in required." }, 401);
+  // The Announcements page's push to members: only logins given that page (like its WhatsApp).
+  if (!(await requireFeature(request, "announcements")))
+    return json({ error: "Only logins with Announcements can send to members." }, 403);
   const body = (await request.json().catch(() => ({}))) as {
     clientIds?: unknown;
     title?: unknown;

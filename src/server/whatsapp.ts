@@ -9,7 +9,8 @@
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { FieldValue } from "firebase-admin/firestore";
-import { db, json, requireStaff, text } from "./admin";
+import { normalizeWhatsAppPhone } from "@/lib/whatsapp-phone";
+import { db, json, requireFeature, requireStaff, text } from "./admin";
 import { gatewayConfig, gatewayTest, handleGateway, sendFromPhone } from "./whatsapp-gateway";
 import { chatStatus, handleChat, receiveMessages, recordOutgoing } from "./whatsapp-chat";
 
@@ -226,27 +227,48 @@ async function send(request: Request) {
     });
     return json({ error: message }, status);
   };
-  // Tests, and numbers staff typed on the Announcements page, have no member to check.
-  const typedNumber = String(data["type"]) === "announcement" && !data["clientId"];
-  if (String(data["type"]) !== "test" && !typedNumber) {
+  // The message doc is written by any staff browser. Tests reach any number, and announcements
+  // carry free text (to members or typed numbers), at Meta's price: only the logins given that
+  // page (Settings, Announcements) may send them, and no other kind may use the free-text
+  // announcement template.
+  const type = String(data["type"] ?? "");
+  const typedNumber = type === "announcement" && !data["clientId"];
+  if (type === "test" || type === "announcement") {
+    const allowed =
+      (type === "test" && (await requireFeature(request, "settings"))) ||
+      (await requireFeature(request, "announcements"));
+    if (!allowed) return fail("not_allowed", "This login can't send this WhatsApp message.", 403);
+  } else {
+    const ws = (await db().doc("settings/whatsapp").get()).data();
+    const freeText = String(ws?.["announcementTemplate"] || "gym_announcement");
+    if (String(data["templateName"] ?? "") === freeText)
+      return fail("not_allowed", "This login can't send this WhatsApp message.", 403);
+  }
+  let to = String(data["normalizedPhone"]);
+  if (type !== "test" && !typedNumber) {
     const client = await db()
       .doc(`clients/${String(data["clientId"])}`)
       .get();
-    if (!client.exists || client.data()?.["whatsappOptIn"] !== true)
+    const c = client.data();
+    if (!client.exists || c?.["whatsappOptIn"] !== true)
       return fail("opt_in_required", "Client WhatsApp opt-in is required.", 412);
+    // Always the member's own saved number, never the one written into the message doc.
+    const phone = normalizeWhatsAppPhone(String(c["whatsappPhone"] || c["phone"] || ""));
+    if (!phone.ok) return fail("invalid_phone", phone.error, 400);
+    to = phone.value;
   }
   const result = await sendTemplateMessage({
-    to: String(data["normalizedPhone"]),
+    to,
     templateName: String(data["templateName"]),
     language: String(data["templateLanguage"] || "en"),
     bodyParams: Array.isArray(input.parameters) ? input.parameters.map(String) : [],
     // The template's URL button is "https://<app>/invoice/{{1}}": the bill's secret code goes
     // in, so the member opens their bill page (view, download PDF, print).
     buttonUrlParam: String(input.buttonUrlParam ?? ""),
-    kind: String(data["type"] ?? ""),
+    kind: type,
     preview: String(data["messagePreview"] ?? ""),
     // Only a test may try the gym's own number before it is chosen in Send from.
-    ...(input.via === "phone" && String(data["type"]) === "test" ? { via: "phone" as const } : {}),
+    ...(input.via === "phone" && type === "test" ? { via: "phone" as const } : {}),
   });
   if (!result.ok)
     return fail(result.code, result.error, result.code === "not_configured" ? 412 : 502);

@@ -748,9 +748,14 @@ async function keepMachineFields(device: Device, body: string) {
   await writer.close();
 }
 
-/** Device command that puts a stored template back on the device. */
+/**
+ * Device command that puts a stored template back on the device. The fields came from a machine
+ * upload: anything but visible ASCII is dropped, so no value can end the line early.
+ */
 function restoreCommand(pin: string, t: { format: "FP" | "BIODATA"; fields: KV }) {
-  const f = t.fields;
+  const f = Object.fromEntries(
+    Object.entries(t.fields).map(([k, v]) => [k, String(v ?? "").replace(/[^!-~]/g, "")]),
+  ) as KV;
   return t.format === "FP"
     ? `DATA UPDATE FINGERTMP PIN=${pin}\tFID=${f["FID"] ?? "0"}\tSize=${f["SIZE"] ?? String((f["TMP"] ?? "").length)}\tValid=1\tTMP=${f["TMP"] ?? ""}`
     : `DATA UPDATE BIODATA Pin=${pin}\tNo=${f["NO"] ?? "0"}\tIndex=${f["INDEX"] ?? "0"}\tValid=1\tDuress=0\tType=1\tMajorVer=${f["MAJORVER"] ?? "0"}\tMinorVer=${f["MINORVER"] ?? "0"}\tFormat=${f["FORMAT"] ?? "0"}\tTmp=${f["TMP"] ?? ""}`;
@@ -1205,7 +1210,10 @@ async function attendance(device: Device, body: string) {
   const arrivals = new Map<string, Map<string, string>>();
   const rows: { ref: DocumentReference; data: Row }[] = [];
   const today = localDate();
-  const seenUntil = device.attSeenUntil;
+  // A punch dated after today (a forged upload, or a clock wrong by a day or more) is never saved;
+  // one from later today (a fast clock) still counts. The "saved up to" mark never passes now, and
+  // a mark already in the future (from before this check) counts as now.
+  const seenUntil = Math.min(device.attSeenUntil, Date.now());
   let newest = seenUntil;
   let received = 0;
   for (const raw of body.split(/\r?\n/)) {
@@ -1216,11 +1224,11 @@ async function attendance(device: Device, body: string) {
     received += 1;
     const [date = "", time = ""] = stamp.split(" ");
     const at = new Date(`${date}T${time.length === 5 ? `${time}:00` : time}${TZ_OFFSET}`);
-    if (Number.isNaN(at.getTime()) || at.getTime() < cutoff) continue;
+    if (Number.isNaN(at.getTime()) || at.getTime() < cutoff || date > today) continue;
     // The machine re-sends old days after it reconnects: those are already saved, so they are
     // skipped without reading anything. Today's punches are always checked one by one.
     if (date < today && at.getTime() <= seenUntil) continue;
-    newest = Math.max(newest, at.getTime());
+    newest = Math.max(newest, Math.min(at.getTime(), Date.now()));
     if (!clients.has(pin)) clients.set(pin, await clientForPin(pin, device));
     const client = clients.get(pin) ?? null;
     if (!client) {
@@ -1264,7 +1272,14 @@ async function attendance(device: Device, body: string) {
           return {
             id: m.id,
             // A pending PT does not open the door; a completed one counts as expired.
-            status: s === "active" ? "active" : s === "completed" ? "expired" : s === "cancelled" ? "cancelled" : "pt_pending",
+            status:
+              s === "active"
+                ? "active"
+                : s === "completed"
+                  ? "expired"
+                  : s === "cancelled"
+                    ? "cancelled"
+                    : "pt_pending",
             startDate: String(m.data()["startDate"] ?? ""),
             endDate: String(m.data()["endDate"] ?? ""),
           };

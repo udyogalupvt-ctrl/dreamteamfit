@@ -596,17 +596,27 @@ export async function handleCron(request: Request, url: URL) {
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`)
     return json({ error: "Unauthorized" }, 401);
   const job = url.pathname.replace(/^\/api\/cron\/?/, "").replace(/\/+$/, "");
+  // Each step on its own: one that fails (a bad record, a slow service) never skips the rest.
+  const step = async <T>(name: string, run: () => Promise<T>) => {
+    try {
+      return await run();
+    } catch (e) {
+      console.error(`cron ${job}: ${name} failed`, String(e));
+      return { error: String(e).slice(0, 200) };
+    }
+  };
   if (job === "morning") {
-    const plans = await rollPlans();
-    const renewals = await processRenewalReminders();
-    const birthdays = await processBirthdayNotifications();
-    const paymentsDue = await processPaymentDueReminders();
-    const deviceLog = await pruneDeviceLog();
-    const oldCommands = await pruneOldCommands();
+    const plans = await step("plans", rollPlans);
+    const renewals = await step("renewals", processRenewalReminders);
+    const birthdays = await step("birthdays", processBirthdayNotifications);
+    const paymentsDue = await step("paymentsDue", processPaymentDueReminders);
+    const deviceLog = await step("deviceLog", pruneDeviceLog);
+    const oldCommands = await step("oldCommands", pruneOldCommands);
     // The CFO is the last step: it has its own try/catch and never holds up the reminders above.
-    const cfo = await runCfoMorning(startedAt);
+    const cfo = await step("cfo", () => runCfoMorning(startedAt));
     return json({ ok: true, plans, renewals, birthdays, paymentsDue, deviceLog, oldCommands, cfo });
   }
-  if (job === "night") return json({ ok: true, absences: await processAbsenceNudges() });
+  if (job === "night")
+    return json({ ok: true, absences: await step("absences", processAbsenceNudges) });
   return json({ error: "Unknown job" }, 404);
 }
