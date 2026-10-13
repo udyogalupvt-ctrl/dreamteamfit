@@ -59,11 +59,33 @@ export interface MemberRow {
   lastVisit: string;
 }
 
-/** Active / Ending in 7 days / Ended / No plan, from the plan's dates and today. */
-export function memberStatus(m: MemberIn["currentMembership"], today: string): string {
-  if (!m) return "No plan";
-  if (m.status === "cancelled" || m.status === "expired" || m.endDate < today) return "Ended";
-  return daysBetween(today, m.endDate) <= 7 ? "Ending in 7 days" : "Active";
+/**
+ * Active / Ending in 7 days / Ended / No plan, from the gym plan's dates and today. A member with no
+ * running gym plan but a running PT plan (PT-only members) is "PT only", not "No plan" or "Ended".
+ */
+export function memberStatus(m: MemberIn["currentMembership"], today: string, ptEnd = ""): string {
+  const gym = !m
+    ? "No plan"
+    : m.status === "cancelled" || m.status === "expired" || m.endDate < today
+      ? "Ended"
+      : daysBetween(today, m.endDate) <= 7
+        ? "Ending in 7 days"
+        : "Active";
+  return (gym === "No plan" || gym === "Ended") && ptEnd >= today ? "PT only" : gym;
+}
+
+/** Members top line: "326 members · 210 active · 4 ending in 7 days · 3 PT only · 99 ended · updated …". */
+export function membersLine(rows: { status: string }[], stamp: string): string {
+  const n = (s: string) => rows.filter((r) => r.status === s).length;
+  const parts = [
+    `${rows.length} member${rows.length === 1 ? "" : "s"}`,
+    `${n("Active")} active`,
+    `${n("Ending in 7 days")} ending in 7 days`,
+    ...(n("PT only") ? [`${n("PT only")} PT only`] : []),
+    `${n("Ended")} ended`,
+    ...(n("No plan") ? [`${n("No plan")} no plan`] : []),
+  ];
+  return `${parts.join(" · ")} · updated ${stamp}`;
 }
 
 export function membersTab(input: {
@@ -99,7 +121,7 @@ export function membersTab(input: {
         plan: m?.packageName ?? "",
         start: m?.startDate ?? "",
         end: m?.endDate ?? "",
-        status: memberStatus(m, input.today),
+        status: memberStatus(m, input.today, p?.endDate ?? ""),
         trainer: p?.trainerNameSnapshot ?? "",
         ptEnd: p?.endDate ?? "",
         balance: due > 0 ? due : "",
@@ -114,7 +136,7 @@ export function membersTab(input: {
     { header: "GENDER", value: (r) => r.gender, width: 80, kind: "text" },
     { header: "DATE OF BIRTH", value: (r) => r.dob, width: 96, kind: "date" },
     { header: "JOINED", value: (r) => r.joined, width: 96, kind: "date" },
-    { header: "CURRENT PLAN", value: (r) => r.plan, width: 150, kind: "text" },
+    { header: "CURRENT PLAN", value: (r) => r.plan, width: 210, kind: "text" },
     { header: "START DATE", value: (r) => r.start, width: 96, kind: "date" },
     { header: "ENDING DATE", value: (r) => r.end, width: 96, kind: "date" },
     // Live in the sheet (vs TODAY()), so it stays right even if the app is down. ENDING DATE is column I.
@@ -316,7 +338,7 @@ export function plansTab(input: {
     { header: "MEMBER ID", value: (r) => r.id, width: 100, kind: "text" },
     { header: "NAME", value: (r) => r.name, width: 170, kind: "text" },
     { header: "KIND", value: (r) => r.kind, width: 70, kind: "text" },
-    { header: "PACKAGE", value: (r) => r.pkg, width: 160, kind: "text" },
+    { header: "PACKAGE", value: (r) => r.pkg, width: 210, kind: "text" },
     { header: "START DATE", value: (r) => r.start, width: 96, kind: "date" },
     { header: "ENDING DATE", value: (r) => r.end, width: 96, kind: "date" },
     { header: "PRICE", value: (r) => r.price, width: 96, kind: "money" },
@@ -458,10 +480,19 @@ export function readMeRows(input: {
     [""],
     ["Tab", "What it shows / when to use it"],
   ];
+  // The month tabs share one line ("Oct 2026 … Aug 2025") instead of the same sentence 14 times.
+  const months = input.tabs.filter((t) => MONTH_TAB.test(t));
+  let monthsListed = false;
   for (const t of input.tabs) {
     if (t === "Read me" || t.startsWith("_data_")) continue;
-    const help = MONTH_TAB.test(t) ? MONTH_HELP : (TAB_HELP[t] ?? "");
-    rows.push([t, help]);
+    if (MONTH_TAB.test(t)) {
+      if (monthsListed) continue;
+      monthsListed = true;
+      const span = months.length > 1 ? `${months[0]} … ${months[months.length - 1]}` : t;
+      rows.push([`Month tabs (${span})`, MONTH_HELP]);
+      continue;
+    }
+    rows.push([t, TAB_HELP[t] ?? ""]);
   }
   if (input.tabs.some((t) => t.startsWith("_data_")))
     rows.push([

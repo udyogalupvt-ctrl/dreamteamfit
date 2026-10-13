@@ -3,6 +3,8 @@ import { test } from "node:test";
 import {
   duesTab,
   expensesTab,
+  memberStatus,
+  membersLine,
   membersTab,
   packagesTab,
   plansTab,
@@ -311,7 +313,7 @@ test("read me lists every tab, shows ticks and crosses, and what to do if the ap
   assert.equal(rows[0]?.[0], "REBUILD FITNESS — Backup");
   assert.ok(flat.some((l) => l.startsWith("Last updated: 13 Oct 2026, 10:42 pm")));
   assert.ok(flat.some((l) => l.startsWith("Members | ")));
-  assert.ok(flat.some((l) => l.startsWith("Oct 2026 | ")));
+  assert.ok(flat.some((l) => l.startsWith("Month tabs (Oct 2026) | ")));
   assert.ok(flat.some((l) => l.startsWith("✓ Oct 2026 matches the app (₹2,07,049)")));
   assert.ok(flat.some((l) => l.startsWith("✗ Sep 2026")));
   assert.ok(flat.some((l) => l.includes("If the app is down")));
@@ -342,4 +344,39 @@ test("read me layout finds the table header and the section headings", () => {
     layout.headingRows.map((r) => rows[r]?.[0]),
     ["Checks (does this sheet match the app?)", "If the app is down"],
   );
+});
+
+test("PT-only member is 'PT only', not 'No plan' or 'Ended'", () => {
+  assert.equal(memberStatus(null, "2026-10-13", "2026-10-16"), "PT only");
+  assert.equal(
+    memberStatus(
+      { packageName: "x", startDate: "2026-08-01", endDate: "2026-09-30", status: "active" },
+      "2026-10-13",
+      "2026-10-20",
+    ),
+    "PT only",
+  );
+  assert.equal(memberStatus(null, "2026-10-13", "2026-10-01"), "No plan");
+});
+
+test("members line counts each status", () => {
+  const line = membersLine(
+    [{ status: "Active" }, { status: "Active" }, { status: "Ended" }, { status: "PT only" }],
+    "13 Oct, 9:00 pm",
+  );
+  assert.equal(
+    line,
+    "4 members · 2 active · 0 ending in 7 days · 1 PT only · 1 ended · updated 13 Oct, 9:00 pm",
+  );
+});
+
+test("read me lists the month tabs once", () => {
+  const rows = readMeRows({
+    updatedAt: "now",
+    checks: [],
+    tabs: ["Read me", "Members", "Oct 2026", "Sep 2026", "Aug 2025", "Expenses"],
+  });
+  const firstCells = rows.map((r) => String(r[0]));
+  assert.ok(firstCells.includes("Month tabs (Oct 2026 … Aug 2025)"));
+  assert.equal(firstCells.filter((c) => /^(Oct|Sep|Aug) 20/.test(c)).length, 0);
 });

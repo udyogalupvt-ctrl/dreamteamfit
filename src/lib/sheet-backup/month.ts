@@ -83,7 +83,7 @@ export const MONTH_COLUMNS: Column<MonthRow>[] = [
   { header: "NAME", value: (r) => r.name, width: 170, kind: "text" },
   { header: "PHONE NO", value: (r) => r.phone, width: 110, kind: "text" },
   { header: "PAYMENT FOR", value: (r) => r.kind, width: 130, kind: "text" },
-  { header: "PACKAGE", value: (r) => r.pkg, width: 150, kind: "text" },
+  { header: "PACKAGE", value: (r) => r.pkg, width: 210, kind: "text" },
   { header: "PP", value: (r) => r.pp, width: 96, kind: "money", money: "sum", color: "#6A1B9A" },
   {
     header: "CASH",

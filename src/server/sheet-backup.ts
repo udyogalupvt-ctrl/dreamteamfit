@@ -34,6 +34,7 @@ import { EXCLUDED_COLLECTIONS, recordToRow } from "@/lib/sheet-backup/restore-co
 import {
   duesTab,
   expensesTab,
+  membersLine,
   membersTab,
   packagesTab,
   plansTab,
@@ -487,7 +488,7 @@ async function membersStep(ctx: Ctx) {
   });
   await publishTab(ctx, "Members", tab, {
     color: "#1565C0",
-    line: `${tab.rows.length} members · updated ${stamp()}`,
+    line: membersLine(tab.rows, stamp()),
     statusRules: membersStatusRules,
   });
 }

@@ -99,6 +99,7 @@ export function monthRowRules(columns: Column<unknown>[]): RowRule[] {
 /** Members STATUS chips: Active green, Ending in 7 days orange, Ended grey, No plan light grey. */
 export const membersStatusRules: StatusRule[] = [
   { column: "STATUS", equals: "Active", background: "#E8F5E9", text: "#1B5E20" },
+  { column: "STATUS", equals: "PT only", background: "#E8F5E9", text: "#1B5E20" },
   { column: "STATUS", equals: "Ending in 7 days", background: "#FFF3E0", text: "#E65100" },
   { column: "STATUS", equals: "Ended", background: "#ECEFF1", text: "#455A64" },
   { column: "STATUS", equals: "No plan", background: "#F5F5F5", text: "#757575" },
@@ -429,6 +430,10 @@ export function readMeFormatRequests(
     // Column A text runs across into B when B is empty; B wraps.
     cells(area(0, end, 0, 1), { wrapStrategy: "OVERFLOW_CELL" }, "userEnteredFormat.wrapStrategy"),
     cells(area(0, end, 1, 2), { wrapStrategy: "WRAP" }, "userEnteredFormat.wrapStrategy"),
+    // Title and "Last updated" span both columns so they are never cut off.
+    { unmergeCells: { range: area(0, 2) } },
+    { mergeCells: { range: area(0, 1), mergeType: "MERGE_ALL" } },
+    { mergeCells: { range: area(1, 2), mergeType: "MERGE_ALL" } },
     cells(
       area(0, 1),
       { textFormat: { bold: true, fontSize: 16, foregroundColor: rgb(HEADER_TEXT) } },

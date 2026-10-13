@@ -222,10 +222,10 @@ test("month row rules point at the STATUS and PAYMENT FOR columns", () => {
 test("members chips and dues overdue rules", () => {
   assert.deepEqual(
     membersStatusRules.map((r) => r.equals),
-    ["Active", "Ending in 7 days", "Ended", "No plan"],
+    ["Active", "PT only", "Ending in 7 days", "Ended", "No plan"],
   );
   const members = tabFormatRequests(spec({ statusRules: membersStatusRules }));
-  assert.equal(only(members, "addConditionalFormatRule").length, 4 + 2); // 4 chips + match-line ✓/✗
+  assert.equal(only(members, "addConditionalFormatRule").length, 5 + 2); // 5 chips + match-line ✓/✗
   const dues = duesTab({ openBills: [], clients: new Map(), today: "2026-10-13" });
   const reqs = tabFormatRequests(
     spec({ columns: dues.columns as Column<unknown>[], statusRules: duesRules }),
