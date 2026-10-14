@@ -1,6 +1,6 @@
 # Handoff
 
-Last updated: 2026-10-13 night (audit run-2 leads fixed server-side, Next 3 done)
+Last updated: 2026-10-14 (sheet backup paused: T6 restore WIP, then review + push)
 
 ## 2026-10-13: Google Sheet register backup (design talk, nothing built yet)
 
@@ -35,6 +35,20 @@ Last updated: 2026-10-13 night (audit run-2 leads fixed server-side, Next 3 done
   T5 (browser) was cut by the usage limit: its files are UNCOMMITTED in the tree (card, warning, touch,
   service, firestore.ts hook, sheet_backup_browser.py) — tsc + unit tests pass; finishing via workflow.
   Nightly refresh takes ~130 s of Sheets calls → 3 cron runs; watch it as data grows.
+- **2026-10-14 (user said stop, "we will start it later"):** T5 DONE + committed 89764ed (Backup card,
+  touch after writes, dashboard warning; tsc clean, unit 432/432, emulator server 74/74 + browser 53/53,
+  screenshots light/dark 390/1440 in scratchpad 948c07bc…/kit/shots). T6 restore script was CUT MID-WAY:
+  committed as WIP (scripts/restore-from-sheet.mjs, scripts/test/sheet_restore_local.py, run.sh hook) —
+  UNVERIFIED, never run. Not done yet: finish + test T6, review (security / money correctness / reliability
+  lenses, verify each finding), fixes, merge to main, push, then owner presses Sync now once.
+- Research done (user question: old-software migration, paper books, reuse for other gyms):
+  `docs/NEW_GYM_SETUP.md` (setup checklist, gym-specific values table, gaps). Short answer: old software
+  partly (members/plans via Excel with column matching; money only from Rebuild's old software), paper
+  books partly (one-by-one sale form ~3-5 min/member, no bulk entry), another gym partly (2-4 h code +
+  setup; risk of data going to Rebuild's accounts). Build next: per-gym settings, register-style bulk
+  entry, payment/balance columns in Excel import.
+- **Resume:** `Read dreamteamfit/docs/HANDOFF.md and finish the sheet backup: Task 6 restore (WIP commit),
+  review + fixes, merge, push.` (ultracode on if a multi-agent review is wanted).
 - **Next:** execute the plan task by task (builders: T1+T2+T3+T3b pure lib, T4 server, T5 browser,
   T6 restore; one reviewer), then push (also sends the 3 audit commits under "2026-10-13 night" Next 1).
 
