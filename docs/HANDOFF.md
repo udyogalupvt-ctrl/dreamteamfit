@@ -28,6 +28,13 @@ Last updated: 2026-10-13 night (audit run-2 leads fixed server-side, Next 3 done
 - Row-by-row check (scratchpad `verify_rows.mjs`): Oct 58/58, Sep 67/67 rows identical to the app,
   66/66 bills internally consistent. ₹1 top-ups (₹1,999→₹2,000) are balance payments → "Balance" rows.
 - Plan: `docs/superpowers/plans/2026-10-13-sheet-backup.md` (Tasks 1–7, incl. "Look" rules).
+- 2026-10-13/14 progress (branch `sheet-backup`, local): T1–T4 committed (pure lib, server runner, routes,
+  night cron + /api/cron/backup 22:30 & 23:30 IST). LIVE sheet filled from this PC with the real runner
+  (scratchpad 948c07bc…/live_sheet_run.mjs + ts_alias_loader.mjs): 14 month tabs, all ✓; verify_rows.mjs
+  367/367 rows identical. Look fixed after viewing real export (en_GB locale, widths, PT only, read me).
+  T5 (browser) was cut by the usage limit: its files are UNCOMMITTED in the tree (card, warning, touch,
+  service, firestore.ts hook, sheet_backup_browser.py) — tsc + unit tests pass; finishing via workflow.
+  Nightly refresh takes ~130 s of Sheets calls → 3 cron runs; watch it as data grows.
 - **Next:** execute the plan task by task (builders: T1+T2+T3+T3b pure lib, T4 server, T5 browser,
   T6 restore; one reviewer), then push (also sends the 3 audit commits under "2026-10-13 night" Next 1).
 
