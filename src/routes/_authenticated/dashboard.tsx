@@ -15,6 +15,7 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
+import { SheetBackupWarning } from "@/components/backup/sheet-backup-warning";
 import { NumberDetails, type NumberCard } from "@/components/dashboard/number-details";
 import { usePeriodPicker } from "@/components/common/period-picker";
 import { useEnrollment } from "@/components/enrollment/enrollment-context";
@@ -164,6 +165,7 @@ function DashboardPage() {
             );
           })}
         </div>
+        {owner ? <SheetBackupWarning /> : null}
       </section>
 
       <section aria-labelledby="numbers-title" className="space-y-3">

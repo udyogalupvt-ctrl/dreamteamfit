@@ -2,8 +2,11 @@
 # Runs the Google Sheet backup test against LOCAL stand-ins only: Firestore + Auth emulators, a fake
 # Sheets/token server, and the built app server. Nothing reaches production or the real sheet.
 #
-#   npm run build                        # once, and again after changing src/server
+#   VITE_FIREBASE_PROJECT_ID=leadsmanage-1f7cd VITE_USE_EMULATORS=1 VITE_EMU_AUTH_PORT=9699 VITE_EMU_FIRESTORE_PORT=8680 npm run build   # once, and again after changing src
 #   bash scripts/test/sheet_backup_run.sh
+# (the browser test needs the emulator build above; a plain `npm run build` is enough for the server test alone)
+# Screenshots from the browser test go to $SHEET_SHOTS (default: $OUT/shots).
+# SHEET_SKIP_BROWSER=1 runs only the server checks; SHEET_SKIP_SERVER=1 only the browser checks.
 #
 # Needs: Java for the emulators (JAVA_HOME, or the portable JRE path below), Python 3, Node 22.
 # Ports (not the other kit's): firestore 8680, auth 9699, hub 4451, logging 4551, ws 9570, app 5999, fake sheets 5799.
@@ -27,9 +30,11 @@ trap kill_ports EXIT
 
 # Emulator config with an absolute rules path.
 CONFIG="$OUT/firebase.json"
-sed "s#\"rules\": \"firestore.rules\"#\"rules\": \"$REPO/firestore.rules\"#" scripts/test/firebase.sheet-test.json > "$CONFIG"
+# The emulator is a Windows program: give it a Windows-style path (C:/...), not the Git Bash one (/c/...).
+RULES_DIR="$(pwd -W 2>/dev/null || pwd)"
+sed "s#\"rules\": \"firestore.rules\"#\"rules\": \"$RULES_DIR/firestore.rules\"#" scripts/test/firebase.sheet-test.json > "$CONFIG"
 nohup npx firebase emulators:start --only firestore,auth --project leadsmanage-1f7cd --config "$CONFIG" > "$OUT/emu.log" 2>&1 &
-for i in $(seq 1 60); do grep -q "All emulators ready" "$OUT/emu.log" && break; sleep 2; done
+for i in $(seq 1 120); do grep -q "All emulators ready" "$OUT/emu.log" && break; sleep 2; done
 grep -q "All emulators ready" "$OUT/emu.log" || { echo "emulators did not start, see $OUT/emu.log"; exit 3; }
 
 nohup node scripts/test/fake-sheets.mjs 5799 > "$OUT/fake-sheets.log" 2>&1 &
@@ -49,7 +54,13 @@ nohup node .output/server/index.mjs > "$OUT/server.log" 2>&1 &
 for i in $(seq 1 30); do curl -s "http://127.0.0.1:5999/api/version" | grep -q build && break; sleep 1; done
 
 export SERVER_LOG="$OUT/server.log" FAKE_SHEETS=http://127.0.0.1:5799
-python scripts/test/sheet_backup_local.py
-code=$?
+code=0
+if [ "${SHEET_SKIP_SERVER:-0}" != "1" ]; then
+  python scripts/test/sheet_backup_local.py
+  code=$?
+fi
+if [ "${SHEET_SKIP_BROWSER:-0}" != "1" ]; then
+  SHEET_SHOTS="${SHEET_SHOTS:-$OUT/shots}" python scripts/test/sheet_backup_browser.py || code=1
+fi
 echo "(logs: $OUT)"
 exit $code

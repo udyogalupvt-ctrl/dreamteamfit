@@ -12,6 +12,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
+import { SheetBackupCard } from "@/components/backup/sheet-backup-card";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
@@ -77,6 +78,7 @@ function BackupPage() {
         description="The old software's data, kept exactly as it was exported, and the old members still to move over."
         breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Backup" }]}
       />
+      {owner ? <SheetBackupCard /> : null}
       <p className="flex items-start gap-2 rounded-xl border border-success/40 bg-success/10 p-3 text-sm">
         <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
         <span>

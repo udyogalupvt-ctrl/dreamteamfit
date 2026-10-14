@@ -221,6 +221,9 @@ function batchUpdate(requests) {
     } else if (kind === "autoResizeDimensions") {
       const t = tabById(body.dimensions.sheetId);
       t.counts.autoResize = (t.counts.autoResize ?? 0) + 1;
+    } else if (kind === "mergeCells" || kind === "unmergeCells") {
+      const t = tabById(body.range.sheetId);
+      t.counts[kind] = (t.counts[kind] ?? 0) + 1;
     } else if (kind === "updateSpreadsheetProperties") {
       sheet.properties = { ...(sheet.properties ?? {}), ...body.properties };
     } else {

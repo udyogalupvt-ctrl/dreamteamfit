@@ -21,6 +21,7 @@ import type {
 } from "firebase/firestore";
 import { AUDIT_SKIP, auditLine } from "@/lib/audit-describe";
 import { auth, db } from "@/lib/firebase";
+import { noteChanged } from "@/lib/sheet-backup-touch";
 
 export * from "firebase/firestore";
 
@@ -208,6 +209,8 @@ async function commitWithLog(ops: Op[], apply: (b: WriteBatch) => void) {
     ).forEach((x) => batch.set(x.ref, x.data));
   }
   await batch.commit();
+  // The write is done: let the Google Sheet backup know (never blocks or throws).
+  noteChanged(ops.map((o) => o.ref.path));
 }
 
 // ------------------------------------------------------------------ single writes
@@ -249,6 +252,7 @@ export async function addDoc<T>(
   batch.set(ref, data);
   sideWrites([{ op, before: null }]).forEach((x) => batch.set(x.ref, x.data));
   await batch.commit();
+  noteChanged([ref.path]);
   return ref;
 }
 
@@ -285,12 +289,14 @@ export function writeBatch(firestore: Firestore = db): WriteBatch {
  * Log lines are written inside the same transaction, after the caller's own writes (Firestore
  * allows writes after reads). "Before" is whatever the transaction read for that document.
  */
-export function runTransaction<T>(
+export async function runTransaction<T>(
   firestore: Firestore,
   updateFunction: (tx: Transaction) => Promise<T>,
   options?: fs.TransactionOptions,
 ): Promise<T> {
-  return fs.runTransaction(
+  // The writes of the attempt that committed (a retry starts again from empty).
+  let committed: Op[] = [];
+  const out = await fs.runTransaction(
     firestore,
     async (tx) => {
       const seen = new Map<string, D | null>();
@@ -329,8 +335,11 @@ export function runTransaction<T>(
             : {},
       }));
       sideWrites(withBefore).forEach((x) => tx.set(x.ref, x.data));
+      committed = ops;
       return result;
     },
     options,
   );
+  noteChanged(committed.map((o) => o.ref.path));
+  return out;
 }

@@ -178,7 +178,7 @@ step("restore tabs are hidden, protected and last", hidden and all(t["title"].st
      and all(t["hidden"] for t in sorted(dump["tabs"], key=lambda t: t["index"])[len(want_first):]), [(t["title"], t["hidden"], t["protectedRanges"]) for t in dump["tabs"]])
 step("excluded collections are not copied", not any(n in T for n in ("_data_serverSecrets", "_data_loginVault", "_data_staffPrivate", "_data_auditLogs")), names)
 step("business collections are copied", all(f"_data_{c}" in T for c in ("payments", "invoices", "clients", "memberships", "packages", "expenses", "staff")), names)
-step("workbook is Indian: locale en_IN, IST", (dump["properties"] or {}).get("locale") == "en_IN" and (dump["properties"] or {}).get("timeZone") == "Asia/Kolkata", dump["properties"])
+step("workbook is day-month-year (en_GB), IST", (dump["properties"] or {}).get("locale") == "en_GB" and (dump["properties"] or {}).get("timeZone") == "Asia/Kolkata", dump["properties"])
 
 # ------------------------------------------------------------------------------- the month tab
 print("\n== current month tab")
