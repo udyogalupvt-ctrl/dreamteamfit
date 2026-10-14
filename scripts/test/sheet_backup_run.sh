@@ -62,5 +62,8 @@ fi
 if [ "${SHEET_SKIP_BROWSER:-0}" != "1" ]; then
   SHEET_SHOTS="${SHEET_SHOTS:-$OUT/shots}" python scripts/test/sheet_backup_browser.py || code=1
 fi
+if [ "${SHEET_SKIP_RESTORE:-0}" != "1" ] && [ "${SHEET_SKIP_SERVER:-0}" != "1" ]; then
+  python scripts/test/sheet_restore_local.py || code=1
+fi
 echo "(logs: $OUT)"
 exit $code
