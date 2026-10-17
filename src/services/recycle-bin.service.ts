@@ -144,14 +144,14 @@ async function itemsOf(
 
 /**
  * Where a Recycle Bin item may be written back: only the record kinds the app ever moves to the
- * bin, at their own path. Bin items are written by whoever deleted (any staff login), so a planted
- * item aimed elsewhere (logins and features, settings…) is skipped, never written with the
- * restorer's rights. firestore.rules refuses such items too.
+ * bin, at their own path, never a machine command (the door check after a restore re-syncs the
+ * machine). Bin items are written by whoever deleted, so a planted item aimed elsewhere (logins and
+ * features, settings…) is skipped, never written with the restorer's rights. firestore.rules
+ * refuses such items too, and items of a kind the login may not delete (canBin).
  */
 const RESTORABLE = new Set<string>([
   "attendance",
   "automationActivities",
-  "biometricCommands",
   "birthdayNotifications",
   "bookings",
   "classEnrollments",
@@ -238,9 +238,6 @@ export async function restoreFromBin(
       data["biometricUserId"]
     )
       data["deviceAccess"] = "removed";
-    // Machine commands that never ran are not sent after all this time.
-    if (it.collection === COLLECTIONS.biometricCommands && data["status"] === "pending")
-      data["status"] = "cancelled";
     b.set(doc(db, it.collection, it.docId), data);
     b.delete(it.ref);
   });
