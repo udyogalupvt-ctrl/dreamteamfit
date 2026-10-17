@@ -1,6 +1,6 @@
 """Small helpers for the local emulator tests: Firestore REST (admin bypass token "owner") and Auth sign-up.
 Ports come from the environment so a test can run beside other emulators; the defaults are the sheet-backup test's."""
-import json, os, urllib.request, urllib.error
+import json, os, secrets, urllib.request, urllib.error
 from datetime import datetime, timedelta, timezone
 
 PROJECT = os.environ.get("EMU_PROJECT", "leadsmanage-1f7cd")
@@ -12,6 +12,11 @@ FS = f"http://127.0.0.1:{FS_PORT}/v1/projects/{PROJECT}/databases/(default)/docu
 AUTH = f"http://127.0.0.1:{AUTH_PORT}/identitytoolkit.googleapis.com/v1/accounts"
 IST = timezone(timedelta(hours=5, minutes=30))
 d = lambda n: (datetime.now(IST) + timedelta(days=n)).strftime("%Y-%m-%d")
+# The owner login on the Auth emulator: the gym's owner email (firestore.rules), with a password made
+# up per run (never a real one). The run script exports EMU_OWNER_PASSWORD so every step of one run
+# signs in with the same made-up password.
+OWNER_EMAIL = os.environ.get("EMU_OWNER_EMAIL", "rebuildfitnesskkd@gmail.com")
+OWNER_PASSWORD = os.environ.get("EMU_OWNER_PASSWORD") or secrets.token_urlsafe(12)
 
 
 def req(url, method="GET", body=None, tok="owner"):

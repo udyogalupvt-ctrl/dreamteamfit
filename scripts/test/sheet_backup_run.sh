@@ -54,6 +54,8 @@ nohup node .output/server/index.mjs > "$OUT/server.log" 2>&1 &
 for i in $(seq 1 30); do curl -s "http://127.0.0.1:5999/api/version" | grep -q build && break; sleep 1; done
 
 export SERVER_LOG="$OUT/server.log" FAKE_SHEETS=http://127.0.0.1:5799
+# One made-up owner password for every step of this run (emulator only).
+export EMU_OWNER_PASSWORD="$(node -e 'console.log(require("crypto").randomBytes(12).toString("base64url"))')"
 code=0
 if [ "${SHEET_SKIP_SERVER:-0}" != "1" ]; then
   python scripts/test/sheet_backup_local.py

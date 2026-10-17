@@ -8,14 +8,14 @@ from datetime import datetime, timedelta, timezone
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from emu_helpers import BASE, FS, req, put, signup  # noqa: E402
+from emu_helpers import BASE, FS, OWNER_EMAIL, OWNER_PASSWORD, req, put, signup  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 FAKE = os.environ.get("FAKE_SHEETS", "http://127.0.0.1:5799")
 SHOTS = os.environ.get("SHEET_SHOTS", os.path.join(os.environ.get("TMPDIR", "."), "shots"))
 os.makedirs(SHOTS, exist_ok=True)
 SERVICE_EMAIL = "backup-test@leadsmanage-1f7cd.iam.gserviceaccount.com"
-OWNER = ("admin@elevategym.com", "Elevate@12345")
+OWNER = (OWNER_EMAIL, OWNER_PASSWORD)
 STAFF = ("desk2@test.local", "secret123")
 results = []
 

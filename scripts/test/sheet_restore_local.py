@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from emu_helpers import BASE, FS, d, delete, put, req, signup  # noqa: E402
+from emu_helpers import BASE, FS, OWNER_EMAIL, OWNER_PASSWORD, d, delete, put, req, signup  # noqa: E402
 
 FAKE = os.environ.get("FAKE_SHEETS", "http://127.0.0.1:5799")
 SHEET_ID = "1Rsn0jB8HX8TsbYmrxeT6VCPl4wcmyh2VhU7yy2_qJxc"
@@ -49,7 +49,7 @@ open(NOPROJECT_KEY, "w").write(json.dumps({**sa, "project_id": "no-such-project-
 # ---------------------------------------------------------------- seed + full sync
 fake_post("/__reset")
 delete("serverSecrets/sheetBackup")
-owner = signup("admin@elevategym.com", "Elevate@12345")
+owner = signup(OWNER_EMAIL, OWNER_PASSWORD)
 OT = owner["idToken"]
 put("packages/pk1", {"name": "Strength Monthly", "category": "Strength + Cardio", "durationDays": 30, "price": 2000, "isActive": True})
 for n, (cid, name) in enumerate([("c1", "Asha Rao"), ("c2", "Bala Kumar")], 1):

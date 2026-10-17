@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from emu_helpers import BASE, IST, d, delete, get, put, req, signup  # noqa: E402
+from emu_helpers import BASE, IST, OWNER_EMAIL, OWNER_PASSWORD, d, delete, get, put, req, signup  # noqa: E402
 
 FAKE = os.environ.get("FAKE_SHEETS", "http://127.0.0.1:5799")
 SERVER_LOG = os.environ.get("SERVER_LOG", "")
@@ -78,7 +78,7 @@ CUR, PREV = title(cur_ym), title(prev_ym)
 fake_post("/__reset")
 
 # ------------------------------------------------------------------------------- people
-owner = signup("admin@elevategym.com", "Elevate@12345")
+owner = signup(OWNER_EMAIL, OWNER_PASSWORD)
 OT = owner["idToken"]
 staff = signup("desk@test.local", "secret123")
 ST = staff["idToken"]
