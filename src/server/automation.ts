@@ -4,6 +4,7 @@
  *   /api/cron/night    ~9:30 PM IST missed-workout nudges (after closing, punches are final)
  * Vercel's free plan runs each cron once a day, somewhere inside the scheduled hour.
  */
+import { timingSafeEqual } from "node:crypto";
 import { FieldValue, type DocumentData } from "firebase-admin/firestore";
 import { db, json, localDate } from "./admin";
 import { runCfoMorning } from "./cfo";
@@ -591,10 +592,14 @@ async function pruneOldCommands() {
   return n;
 }
 
+/** Compares secrets in constant time (no timing hint about how much of a guess was right). */
+const sameText = (a: string, b: string) =>
+  a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
 export async function handleCron(request: Request, url: URL) {
   const startedAt = Date.now();
   const secret = (process.env["CRON_SECRET"] ?? "").trim();
-  if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`)
+  if (!secret || !sameText(request.headers.get("authorization") ?? "", `Bearer ${secret}`))
     return json({ error: "Unauthorized" }, 401);
   const job = url.pathname.replace(/^\/api\/cron\/?/, "").replace(/\/+$/, "");
   // Each step on its own: one that fails (a bad record, a slow service) never skips the rest.

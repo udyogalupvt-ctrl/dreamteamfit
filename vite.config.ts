@@ -6,6 +6,29 @@ import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
 import tsConfigPaths from "vite-tsconfig-paths";
 
+// Security headers on every response. The Content-Security-Policy is report-only for now: the
+// browser console lists anything it would block, nothing is blocked yet (enforce after a clean week).
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:",
+  "connect-src 'self' https://*.googleapis.com wss://*.firebaseio.com https://*.firebaseio.com https://api.cloudinary.com https://res.cloudinary.com",
+  "frame-src 'self' https://*.firebaseapp.com",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+].join("; ");
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "X-Frame-Options": "DENY",
+  "Permissions-Policy": "camera=(self), microphone=(), geolocation=()",
+  "Content-Security-Policy-Report-Only": CSP,
+};
+
 // This build's version, the same in the browser and the server: a tab left open on an older
 // version sees /api/version change and loads the new one (src/routes/__root.tsx).
 const APP_BUILD = (process.env["VERCEL_GIT_COMMIT_SHA"] ?? "").slice(0, 12) || `b${Date.now()}`;
@@ -34,6 +57,7 @@ export default defineConfig(({ command }) => ({
             // Firebase Admin loads its gRPC / proto files from disk, so it ships as plain
             // node_modules instead of being bundled.
             traceDeps: ["firebase-admin*", "@google-cloud/firestore*", "google-gax*"],
+            routeRules: { "/**": { headers: SECURITY_HEADERS } },
             vercel: {
               // A machine's big upload (hundreds of users) must not be cut off after 10 s.
               functions: { maxDuration: 60 },

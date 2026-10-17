@@ -13,7 +13,7 @@ import { handleOldMigrate } from "./old-migrate";
 import { handlePortal } from "./portal";
 import { handlePush } from "./push";
 import { handleSheetBackup } from "./sheet-backup";
-import { json, rememberOrigin, serverHealth, text } from "./admin";
+import { healthFor, json, rememberOrigin, text } from "./admin";
 import { handleWhatsApp } from "./whatsapp";
 
 export async function handleServerRoute(request: Request): Promise<Response> {
@@ -21,7 +21,7 @@ export async function handleServerRoute(request: Request): Promise<Response> {
   const path = url.pathname;
   rememberOrigin(url.origin);
   try {
-    if (path === "/api/health") return json(await serverHealth());
+    if (path === "/api/health") return json(await healthFor(request));
     // The live version (no database read): open tabs compare it with their own.
     if (path === "/api/version")
       return new Response(JSON.stringify({ build: __APP_BUILD__ }), {
@@ -47,8 +47,8 @@ export async function handleServerRoute(request: Request): Promise<Response> {
     console.error("server route failed", path, error);
     return text(
       String(error).includes("FIREBASE_SERVICE_ACCOUNT")
-        ? "Server is not configured (open /api/health)"
-        : "Server error (open /api/health)",
+        ? "Server is not configured (details in the server log)"
+        : "Server error (details in the server log)",
       500,
     );
   }

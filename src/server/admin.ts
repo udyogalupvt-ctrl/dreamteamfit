@@ -119,6 +119,27 @@ export async function serverHealth() {
   return out;
 }
 
+/**
+ * /api/health for anyone: only whether the server works. The owner (signed-in token) sees what is
+ * wrong; the same detail goes to the server log when something is.
+ */
+export async function healthFor(request: Request) {
+  const detail = await serverHealth();
+  const ok =
+    detail["serviceAccount"] === "ok" &&
+    detail["privateKey"] === "ok" &&
+    detail["firestore"] === "ok";
+  if (!ok) console.error("server health", detail);
+  const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const user =
+    ok && token
+      ? await adminAuth()
+          .verifyIdToken(token)
+          .catch(() => null)
+      : null;
+  return user && isOwnerEmail(user.email) ? { ok, ...detail } : { ok };
+}
+
 let app: App | undefined;
 function adminApp() {
   // Local testing against the Firebase emulators needs no key.
