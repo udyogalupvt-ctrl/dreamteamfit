@@ -28,6 +28,7 @@ import {
 import { currentRow, pickCurrent } from "@/lib/current-plan";
 import { db, localDate, text } from "./admin";
 import { systemAudit } from "./audit";
+import { commandOk, pinOk } from "./biometric-guard";
 import {
   importDeviceData,
   importWindowOpen,
@@ -177,13 +178,64 @@ async function claim(ref: DocumentReference) {
   });
 }
 
+/**
+ * Someone still in the app who uses this machine ID on this machine (never taken off by a note).
+ * Without a machine nothing is sent to one, so nobody is at risk.
+ */
+async function pinInUse(pin: string, deviceId: string) {
+  if (!deviceId) return false;
+  const same = (x: FirebaseFirestore.DocumentData) =>
+    !x["biometricDeviceId"] || String(x["biometricDeviceId"]) === deviceId;
+  const [clients, staff] = await Promise.all([
+    db().collection("clients").where("biometricUserId", "==", pin).limit(5).get(),
+    db().collection("staff").where("biometricUserId", "==", pin).limit(5).get(),
+  ]);
+  return (
+    clients.docs.some((c) => same(c.data())) ||
+    staff.docs.some((s) => s.data()["active"] !== false && same(s.data()))
+  );
+}
+
+/**
+ * Door notes come from the browser, so the server checks they are true before acting: a staff
+ * login must not be able to take a paying member off the machine or erase their fingerprint.
+ * Returns why a note is refused, or "" when it may run.
+ */
+async function taskRefusal(d: FirebaseFirestore.DocumentData) {
+  const type = String(d["type"] ?? "");
+  if (!["staff_off", "forget", "bin_off"].includes(type)) return "";
+  const pin = String(d["biometricUserId"] ?? "");
+  const deviceId = String(d["deviceId"] ?? "");
+  if (pin && !pinOk(pin)) return "the machine ID has characters a machine ID can't have";
+  if (type === "staff_off") {
+    const staffId = String(d["staffId"] ?? "");
+    if (!staffId) return "no staff member named";
+    const s = await db().doc(`staff/${staffId}`).get();
+    if (s.exists) {
+      if (s.data()?.["active"] !== false) return "this staff member is still active";
+      if (pin && String(s.data()?.["biometricUserId"] ?? "") !== pin)
+        return "that machine ID is not this staff member's";
+    } else if (pin && (await pinInUse(pin, deviceId))) return "that machine ID belongs to someone else";
+    return "";
+  }
+  const clientId = String(d["clientId"] ?? "");
+  if (!clientId || clientId.includes("/")) return "no member named";
+  if ((await db().doc(`clients/${clientId}`).get()).exists) return "this member was not deleted";
+  if (pin && (await pinInUse(pin, deviceId))) return "that machine ID belongs to someone else";
+  return "";
+}
+
 async function runServerTasks(tasks: QueryDocumentSnapshot[]) {
   for (const t of tasks) {
     if (!(await claim(t.ref))) continue;
     const d = t.data();
     let error = "";
     try {
-      if (d["type"] === "staff_off")
+      const refused = await taskRefusal(d);
+      if (refused) {
+        error = `Refused: ${refused}.`;
+        console.warn("door task refused", t.id, String(d["type"]), refused);
+      } else if (d["type"] === "staff_off")
         await removeStaffFromDevice(
           String(d["staffId"] ?? ""),
           String(d["biometricUserId"] ?? ""),
@@ -339,6 +391,16 @@ async function nextCommands(device: Device) {
         tx.update(cmd.ref, {
           status: "failed",
           error: "Not sent: the machine was off. Press Try again.",
+          completedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        continue;
+      }
+      if (!commandOk(d)) {
+        console.warn("machine command refused", cmd.ref.id, String(d["type"]));
+        tx.update(cmd.ref, {
+          status: "failed",
+          error: "Not sent: this command is not one the app makes.",
           completedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         });

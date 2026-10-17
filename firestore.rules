@@ -42,8 +42,7 @@ service cloud.firestore {
         'bookings', 'groupClasses', 'classEnrollments',
         'renewalNotifications', 'birthdayNotifications', 'absenceNotifications', 'paymentDueNotifications',
         'notifications', 'automationActivities', 'whatsappMessages', 'ptAssignments',
-        'payments', 'enrollments', 'importBatches', 'leadLogs', 'biometricCommands',
-        'memberCalls'
+        'payments', 'enrollments', 'importBatches', 'leadLogs', 'memberCalls'
       ];
     }
 
@@ -71,6 +70,31 @@ service cloud.firestore {
     match /trainers/{id} {
       allow read: if isStaff();
       allow write: if can('packages') || can('staff');
+    }
+
+    // Machine commands. The app queues only these, with the exact text it builds; everything
+    // else (deletes, template restores, imports) is made by the server. The server checks again
+    // before anything reaches the machine (src/server/biometric-guard.ts). In these patterns
+    // '\t' is the regex escape for a tab (the app's commands are tab-separated).
+    function cmdCreateOk(d) {
+      return d.status == 'pending'
+        && d.biometricUserId is string && d.biometricUserId.matches('[A-Za-z0-9]{0,24}')
+        && d.command is string
+        && ((d.type in ['door_check', 'forget', 'bin_off', 'staff_off', 'photo_sync'] && d.command == '')
+          || (d.type == 'user_upsert' && d.biometricUserId.matches('[0-9]{1,9}')
+            && d.command.matches('DATA UPDATE USERINFO PIN=' + d.biometricUserId
+              + '\tName=[^\t\r\n]{0,40}\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000100000000\tVerify=0'))
+          || (d.type == 'enroll_fp' && d.biometricUserId.matches('[0-9]{1,9}')
+            && d.command.matches('ENROLL_FP PIN=' + d.biometricUserId + '\tFID=5\tRETRY=3\tOVERWRITE=1')));
+    }
+    match /biometricCommands/{id} {
+      allow read: if isStaff();
+      allow create: if isStaff() && cmdCreateOk(request.resource.data);
+      // Withdrawing a registration still waiting for the machine is the only change.
+      allow update: if isStaff()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && resource.data.status in ['pending', 'sent'] && request.resource.data.status == 'cancelled';
+      allow delete: if can('deleteMembers') || can('devices');
     }
 
     match /biometricDevices/{id} {
