@@ -1,6 +1,22 @@
 # Handoff
 
-Last updated: 2026-10-17 (sheet: old-software / deleted-member rows fixed, local commit)
+Last updated: 2026-10-17 (AI gym SaaS plan: market research done; platform audit next)
+
+## 2026-10-17: AI gym software for all gyms (plan, research done, nothing built)
+
+- Goal (user): turn dreamteamfit into an AI gym SaaS sold to any gym, aiming to be the world's best.
+  Landing website + super-admin dashboard that creates gym logins. Tiers not fixed (working names
+  Starter / Pro / Max / Pro Max). Price from Rs 6,000/year (Rs 500/month) up to about Rs 1 lakh
+  (OPEN: per year or per month?). YEARLY billing only. Lowest tier has NO AI. AI usage and WhatsApp
+  charged separately; hosting (one shared domain) and database included.
+- Must-have: easiest migration: template, or upload any export + "AI mode" maps/cleans it; paper
+  registers: photo of each page -> AI reads rows -> staff check side by side -> holding area -> save.
+- Market research: `docs/research/2026-10-17-gym-software-market.md` (global leaders, India prices,
+  AI features, migration, costs, where we stand, proposed lane). Key: nobody sells a real AI CFO;
+  no gym product reads register photos; Indian gap = fingerprint + official WhatsApp under Rs 10k/yr.
+- **Next:** detailed platform audit (money, security/multi-gym readiness, cost per gym, UX, tests,
+  migration) -> verdict "build on it / fix first" + priority list. Needs ultracode (~6 agents).
+  Audit note: Vercel Hobby is non-commercial only; a paid SaaS needs Vercel Pro or another host.
 
 ## 2026-10-17: sheet month tab missed bills of sales made with ₹0 paid
 
