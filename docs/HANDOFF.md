@@ -1,8 +1,24 @@
 # Handoff
 
-Last updated: 2026-10-17 (NEXT: live security + money hardening list from the aigym audit)
+Last updated: 2026-10-17 (hardening PLAN written; nothing built yet)
 
 ## NEXT (2026-10-17): security + money hardening of the LIVE Rebuild app (founder: do this first)
+
+**State (2026-10-17, planning chat):** plan written: `docs/superpowers/plans/2026-10-17-live-hardening.md`
+(Tasks 0-11, rules text, tests, decisions). No code changed yet. Main facts found:
+- S3 is worse than the audit says: server tasks also put the browser's PIN straight into
+  `DATA DELETE USERINFO PIN=${pin}` (`src/server/biometric.ts:1042,1080,1108`), so a PIN with a line break
+  smuggles any command. Plan Task 2 checks every command + PIN on the server too.
+- S5: restore also switches logins on (owner rights) from fields in a staff-written bin entry: rules per
+  section + per collection (Task 3).
+- Item 4 decided: **Option A (rules)**. Closed months freeze cash facts only (amount/method/date/kind/
+  oldSoftware), not split fields, because Edit plan re-splits all of a bill's payments (`plan-edit.service.ts:572`).
+- Deferred (founder decisions): M8 financial-year bill series, M9 payout paid = cash line, M11 one-transaction
+  restore, GST, passwords/App Check, CSP enforce.
+- **Waiting on the founder (Task 0):** run the read-only script (auto mode refused production reads):
+  `node "C:/Users/chala/AppData/Local/Temp/claude/c--Users-chala-OneDrive-Desktop-gym-saas/11359acb-2cda-47fc-98e8-3aa1650a7110/scratchpad/prod_owner_check.mjs" "C:/Users/chala/OneDrive/Desktop/gym saas/dreamteamfit"`
+  and paste the output: does `admin@elevategym.com` exist live; is the owner's email verified. (Sign-up check
+  still to add to that script — plan Task 0.) Tasks 1-3 and 5-10 don't depend on it.
 
 Source: platform audit of an identical copy, `../aigym/docs/audit/2026-10-17-platform-audit.md`
 (sections "Money correctness" M1-M12 and "Security" S1-S9, with file:line). Same code as this repo at fb2cb4c.
