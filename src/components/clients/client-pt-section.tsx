@@ -284,6 +284,7 @@ export function ClientPaymentsList({
   const rightsOf = usePaymentEditRights();
   // Removing an entry made by mistake changes past income: the owner's (Income & expenses).
   const canRemove = useAccess().can("finance");
+  const { user } = useAuth();
   const today = todayISO();
   // Its plan still runs here (not cancelled): its old-software money is changed with Edit plan.
   const runsHere = (p: Payment) =>
@@ -303,7 +304,7 @@ export function ClientPaymentsList({
     setUndoing(null);
     if (!p) return;
     try {
-      await undoBalancePayment(p.id);
+      await undoBalancePayment(p.id, user?.uid ?? "");
       toast.success("Payment taken back", {
         description: `${formatPrice(total)} is due again on ${p.invoiceNumber}.`,
       });
@@ -350,11 +351,14 @@ export function ClientPaymentsList({
                   <Pencil aria-hidden /> Edit
                 </Button>
               ) : null}
-              {/* A balance payment entered by mistake can be taken back the day it was typed in. */}
+              {/* A balance payment entered by mistake can be taken back by whoever collected it,
+                  the day it was typed in. */}
               {p.kind === "balance" &&
               !p.oldSoftware &&
               !canRemove &&
-              (p.paymentDate === today || formatISODay(p.createdAt) === today) ? (
+              !!user?.uid &&
+              p.createdByUid === user.uid &&
+              formatISODay(p.createdAt) === today ? (
                 <Button variant="ghost" size="sm" onClick={() => setUndoing(p)}>
                   <RotateCcw aria-hidden /> Undo
                 </Button>

@@ -425,7 +425,12 @@ export async function getSplitParts(splitId: string): Promise<Payment[]> {
  * is removed and its bill shows the amount as due again (Undo right after saving, or "Undo" on
  * the day's payment).
  */
-export async function undoBalancePayment(paymentId: string) {
+/**
+ * Takes back a balance payment entered by mistake: only by the login that collected it, on the day
+ * it was typed in (firestore.rules allows exactly that). Finance removes anything else with
+ * Remove payment.
+ */
+export async function undoBalancePayment(paymentId: string, byUid: string) {
   const first = await getDoc(doc(db, COLLECTIONS.payments, paymentId));
   const splitId = first.exists() ? String(first.data()["splitId"] ?? "") : "";
   const ids = splitId ? (await getSplitParts(splitId)).map((x) => x.id) : [];
@@ -449,6 +454,12 @@ export async function undoBalancePayment(paymentId: string) {
       )
     )
       throw new Error("Only a balance payment can be undone here.");
+    const typedOn = (x: DocumentData) =>
+      new Date(toDate(x["createdAt"]).getTime() + 5.5 * 3_600_000).toISOString().slice(0, 10);
+    if (all.some((x) => String(x["createdByUid"] ?? "") !== byUid || typedOn(x) !== todayISO()))
+      throw new Error(
+        "Only the person who collected this payment can undo it, on the day it was typed in. Someone with Finance can remove it instead.",
+      );
     const amount = round(all.reduce((n, x) => n + Number(x["amount"] ?? 0), 0));
     const invRef = doc(db, COLLECTIONS.invoices, String(p["invoiceId"]));
     const inv = await tx.get(invRef);

@@ -262,7 +262,7 @@ function BalancePaymentDialog({
       const parts = split ? splitParts(amount, cashPartOf(cashText)) : null;
       toastWithUndo(
         "Payment recorded",
-        () => undoBalancePayment(paymentId),
+        () => undoBalancePayment(paymentId, user?.uid ?? ""),
         `${formatPrice(amount)}${parts ? ` (UPI ${formatPrice(parts[0]!.amount)} + Cash ${formatPrice(parts[1]!.amount)})` : ""} for ${invoice.invoiceNumber}. Entered by mistake? Undo.`,
       );
       onOpenChange(false);

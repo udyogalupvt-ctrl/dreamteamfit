@@ -37,12 +37,12 @@ service cloud.firestore {
     // Front-desk data every staff login uses.
     match /{collection}/{docId} {
       allow read, write: if isStaff() && collection in [
-        'inquiries', 'memberships', 'followups', 'invoices', 'attendance',
+        'inquiries', 'followups', 'attendance',
         'workoutPlans', 'workoutAssignments', 'dietPlans', 'dietAssignments',
         'bookings', 'groupClasses', 'classEnrollments',
         'renewalNotifications', 'birthdayNotifications', 'absenceNotifications', 'paymentDueNotifications',
-        'notifications', 'automationActivities', 'whatsappMessages', 'ptAssignments',
-        'payments', 'enrollments', 'importBatches', 'leadLogs', 'memberCalls'
+        'notifications', 'automationActivities', 'whatsappMessages', 'importBatches', 'leadLogs',
+        'memberCalls'
       ];
     }
 
@@ -52,10 +52,116 @@ service cloud.firestore {
       allow delete: if can('deleteMembers');
     }
 
-    // Settings: bill / member numbers change on every joining; the rest needs "Settings".
+    // ---- Money. Today in India as a number (20261017). The Day Book closes every day before the
+    // 1st of last month (cashOpenFrom in src/services/finance.service.ts): cash there never changes,
+    // not even from the owner's browser (only the server can). Old-software money never was drawer
+    // cash: Finance looks after it on any date.
+    function istNow() { return request.time + duration.value(330, 'm'); }
+    function numOf(ts) { return ts.year() * 10000 + ts.month() * 100 + ts.day(); }
+    function todayNum() { return numOf(istNow()); }
+    function openFromNum() {
+      return istNow().month() == 1
+        ? (istNow().year() - 1) * 10000 + 1201
+        : istNow().year() * 10000 + (istNow().month() - 1) * 100 + 1;
+    }
+    function isDay(s) { return s is string && s.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}'); }
+    function dayNum(s) { return int(s.replace('-', '')); }
+    function isOld(d) { return d.get('oldSoftware', false) == true; }
+    // Cash facts of a payment: what the Day Book adds up.
+    function payOpen(d) { return isDay(d.paymentDate) && dayNum(d.paymentDate) >= openFromNum(); }
+    // A desk PC's clock may run a little ahead: tomorrow is the latest day drawer cash can be
+    // dated. (Old-software money brought over may sit on a plan's later start day.)
+    function payShapeOk(d) {
+      return d.amount is number && isDay(d.paymentDate)
+        && (isOld(d) || dayNum(d.paymentDate) <= numOf(istNow() + duration.value(1, 'd')))
+        && d.get('kind', 'initial') in ['initial', 'balance', 'refund'];
+    }
+    function typedToday() {
+      return resource.data.get('createdAt', null) is timestamp
+        && numOf(resource.data.createdAt + duration.value(330, 'm')) == todayNum();
+    }
+    // Billing may change today's money (dated today, or typed today); Finance any open-month money.
+    // Who typed it and when never change (the undo below relies on them).
+    function payEditOk() {
+      let a = resource.data;
+      let b = request.resource.data;
+      let keys = b.diff(a).affectedKeys();
+      return !keys.hasAny(['createdAt', 'createdByUid'])
+        && (!keys.hasAny(['amount', 'method', 'paymentDate', 'kind', 'oldSoftware'])
+          || (payShapeOk(b)
+            && (!keys.hasAny(['kind', 'oldSoftware']) || can('finance'))
+            && ((isOld(a) && isOld(b))
+              ? can('finance')
+              : payOpen(a) && payOpen(b) && !isOld(a) && !isOld(b)
+                && (b.amount >= 0 || can('finance'))
+                && (can('finance')
+                  || (can('billing') && (dayNum(a.paymentDate) == todayNum() || typedToday()))))));
+    }
+    match /payments/{id} {
+      allow read: if isStaff();
+      allow create: if isStaff() && payShapeOk(request.resource.data)
+        && (isOld(request.resource.data)
+          // Finance enters it; a member, plan or bin entry put back brings it back.
+          ? (can('finance') || can('deleteMembers') || can('deletePlans') || can('recycleBin'))
+          : payOpen(request.resource.data)
+            && (request.resource.data.amount >= 0 || can('finance')));
+      allow update: if isStaff() && payEditOk();
+      allow delete: if isStaff() && (
+        (isOld(resource.data) && (can('finance') || can('deleteMembers') || can('deletePlans')))
+        || (payOpen(resource.data) && !isOld(resource.data) && (
+          can('finance') || can('deleteBills') || can('deleteMembers') || can('deletePlans')
+          // Restore cancellation takes its refund back out (only ever adds cash back).
+          || (resource.data.amount < 0 && resource.data.get('kind', '') == 'refund'
+            && resource.data.get('cancelId', '') != '')
+          // Undo right after collecting a balance: your own, typed today (never a sale's payment).
+          || (resource.data.get('kind', '') == 'balance'
+            && resource.data.get('createdByUid', '') == request.auth.uid && typedToday())
+          // Edit payment joins a Cash + UPI pair back into one (same rights as editing it).
+          || (resource.data.get('splitId', '') != '' && can('billing')
+            && (dayNum(resource.data.paymentDate) == todayNum() || typedToday())))));
+    }
+    function billDeleter() {
+      return can('deleteBills') || can('deleteMembers') || can('deletePlans');
+    }
+    // Bills: the number, the secret link and the bill date are fixed once made.
+    match /invoices/{id} {
+      allow read: if isStaff();
+      allow create: if isStaff() && request.resource.data.get('invoiceNumber', '') is string;
+      allow update: if isStaff() && !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['invoiceNumber', 'publicToken', 'invoiceDate']);
+      allow delete: if billDeleter();
+    }
+    match /memberships/{id} {
+      allow read, create, update: if isStaff();
+      allow delete: if can('deletePlans') || can('deleteMembers');
+    }
+    match /ptAssignments/{id} {
+      allow read, create, update: if isStaff();
+      allow delete: if can('deletePlans') || can('deleteMembers');
+    }
+    match /enrollments/{id} {
+      allow read, create, update: if isStaff();
+      allow delete: if can('deletePlans') || can('deleteMembers') || can('deleteBills');
+    }
+
+    // Bill numbers: a desk may only take the next number (+1), in this year's or last year's
+    // series (a new series starts at 1).
+    function counterStepOk(a, b) {
+      let k1 = 'invoiceSeq' + string(istNow().year());
+      let k0 = 'invoiceSeq' + string(istNow().year() - 1);
+      let keys = b.diff(a).affectedKeys();
+      return keys.hasOnly([k1, k0, 'updatedAt'])
+        && (!keys.hasAny([k1]) || b[k1] == a.get(k1, 0) + 1)
+        && (!keys.hasAny([k0]) || b[k0] == a.get(k0, 0) + 1);
+    }
+    // Settings: the bill counter moves on every sale; the rest needs "Settings".
     match /settings/{id} {
       allow read: if isStaff();
-      allow write: if (id == 'counters' && isStaff()) || can('settings');
+      allow create: if can('settings')
+        || (id == 'counters' && isStaff() && counterStepOk({}, request.resource.data));
+      allow update: if can('settings')
+        || (id == 'counters' && isStaff() && counterStepOk(resource.data, request.resource.data));
+      allow delete: if can('settings');
     }
 
     match /packages/{id} {
@@ -334,7 +440,8 @@ service cloud.firestore {
     match /publicInvoices/{token} {
       allow get: if true;
       allow list: if isStaff();
-      allow create, update, delete: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if billDeleter();
     }
 
     // ------------------------------------------------------ member app and trainer app

@@ -22,7 +22,7 @@ import type {
   PaymentMethod,
 } from "@/types/models";
 import { staffDiscountOf } from "./bill-edit.service";
-import { allocatePayment } from "./finance.service";
+import { allocatePayment, cashOpenFrom } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
 import {
   findOldPartner,
@@ -360,6 +360,13 @@ export async function editMembership(input: PlanEditInput) {
       ? readOldRows("gym", m.id)
       : Promise.resolve([]),
   ]);
+  // A closed Day Book month's cash never changes (firestore.rules refuses it too).
+  const wrong = typedWrongId ? paysSnap?.docs.find((p) => p.id === typedWrongId)?.data() : null;
+  const wrongDay = String(wrong?.["paymentDate"] ?? "");
+  if (wrong && wrong["oldSoftware"] !== true && wrongDay < cashOpenFrom(today))
+    throw new Error(
+      `The payment typed wrong is dated ${formatDateISO(wrongDay)}, in a closed Day Book month: its amount can't be changed. Untick "typed wrong" to give the difference back as a refund instead.`,
+    );
   // New dates over another gym plan of the member: one would be a copy (both count their money).
   if (
     preview.status !== "cancelled" &&
