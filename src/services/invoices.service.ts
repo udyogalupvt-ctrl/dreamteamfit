@@ -190,6 +190,8 @@ export async function createInvoice(
     invoiceNumber = `${context.settings.invoicePrefix}-${year}-${String(next).padStart(6, "0")}`;
     const packageItem = data.items.find((i) => i.packageId);
     const pkg = packageItem ? context.packages.find((p) => p.id === packageItem.packageId) : null;
+    // No overlap check on this path: no screen uses it (Create bill always sends
+    // createMembership: false). Sell plans through the joining / renewal screens.
     if (data.createMembership && pkg) {
       const membershipRef = doc(col(COLLECTIONS.memberships));
       membershipId = membershipRef.id;

@@ -259,6 +259,15 @@ export async function enrollMember(input: EnrollmentInput) {
     input.existingClient.firstThumbRegistered !== false &&
     input.existingClient.biometricUserId;
   const needsBiometric = !existingBio;
+  // Two desks selling to the same member at once would both pass the overlap check below. Each
+  // sale moves the member's planSeq on by one; read it BEFORE their plans, and the sale is refused
+  // if another sale moved it in the meantime.
+  const planSeq0 = input.existingClient
+    ? Number(
+        (await getDoc(doc(db, COLLECTIONS.clients, input.existingClient.id))).data()?.["planSeq"] ??
+          0,
+      )
+    : 0;
   let prevActive: string[] = [];
   let memberPlans: { id: string; data: Record<string, unknown> }[] = [];
   if (input.existingClient && input.gymPackage) {
@@ -371,6 +380,13 @@ export async function enrollMember(input: EnrollmentInput) {
       : null;
 
   await runTransaction(db, async (tx) => {
+    if (input.existingClient) {
+      const fresh = await tx.get(clientRef);
+      if (Number(fresh.data()?.["planSeq"] ?? 0) !== planSeq0)
+        throw new Error(
+          "Another desk just changed this member's plans. Close and start the sale again.",
+        );
+    }
     const counter = await tx.get(counterRef);
     const inq = inquiryRef ? await tx.get(inquiryRef) : null;
     if (inq?.exists() && inq.data()["convertedToClient"])
@@ -419,6 +435,7 @@ export async function enrollMember(input: EnrollmentInput) {
         biometricStatus: "not_enrolled",
         firstThumbRegistered: false,
         enrollmentId: enrollmentRef.id,
+        planSeq: 1,
         whatsappOptIn: input.whatsappOptIn,
         whatsappPhone: phone,
         photoUploadToken: input.client.profilePhotoUrl ? "" : createPublicToken(),
@@ -671,7 +688,7 @@ export async function enrollMember(input: EnrollmentInput) {
       updatedAt: now,
     });
     if (input.existingClient) {
-      const clientPatch: Record<string, unknown> = { updatedAt: now };
+      const clientPatch: Record<string, unknown> = { planSeq: planSeq0 + 1, updatedAt: now };
       // Only a member still waiting for a thumb points at this enrollment, so the profile can resume it.
       if (needsBiometric) clientPatch["enrollmentId"] = enrollmentRef.id;
       // (An upgrade from a later date: the running plan, now ending the day before it.)

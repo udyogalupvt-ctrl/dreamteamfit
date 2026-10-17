@@ -43,6 +43,7 @@ const NOISE = new Set([
   "lastWhatsappMessageAt",
   "deliveredAt",
   "readAt",
+  "planSeq",
 ]);
 
 const s = (v: unknown) => (v === null || v === undefined ? "" : String(v));
