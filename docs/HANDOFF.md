@@ -1,6 +1,30 @@
 # Handoff
 
-Last updated: 2026-10-17 (AI gym SaaS plan: market research done; platform audit next)
+Last updated: 2026-10-17 (NEXT: live security + money hardening list from the aigym audit)
+
+## NEXT (2026-10-17): security + money hardening of the LIVE Rebuild app (founder: do this first)
+
+Source: platform audit of an identical copy, `../aigym/docs/audit/2026-10-17-platform-audit.md`
+(sections "Money correctness" M1-M12 and "Security" S1-S9, with file:line). Same code as this repo at fb2cb4c.
+Founder's order: fix Rebuild first, Aagami (aigym) after.
+
+| # | Fix (audit id) | Notes |
+|---|---|---|
+| 1 | S3: staff can write raw `biometricCommands` (e.g. CLEAR DATA wipes the machine) | Remove from the staff wildcard rule; staff create only typed requests; server builds the command |
+| 2 | S5: Recycle Bin restore launders rights (staff/staffPrivate/biometricCommands binnable) | Remove from binnable() or restore via server |
+| 3 | S1: owner = email only, dev email `admin@elevategym.com` on the owner list; test script holds its password | Remove dev email from rules + owners.ts (check the owner is not using it first), take the password out of `scripts/test/sheet_backup_browser.py`, add email_verified; confirm sign-up still OFF |
+| 4 | M1/S4: every money limit is browser-only; any staff login can write/delete payments, invoices, memberships, ptAssignments, enrollments, settings/counters | Biggest item. Option A (fast): per-collection rules with field + amount validation, closed-month check, delete only with feature, counters only +1. Option B (full): money writes via server endpoints, rules write:false. Decide in the plan; A first is acceptable if B is too big |
+| 5 | M4: Cancel plan saves stale values outside a transaction | runTransaction + re-read |
+| 6 | M5: Undo/delete rewrites closed Day Book months (restore cancellation deletes old refunds, binBill/binMember/restore/putBack) | Same closed-month guard as payment-remove.ts:104 |
+| 7 | M6: refund attached to the member's newest bill, deleting that bill drops the refund + paid payouts | Attach to the cancelled plan's own bill; refuse to bin refunds/paid payouts |
+| 8 | M7, M8, M9, M11 (overlap race, bill counter, payout paid with no cash line, multi-batch restore) | Medium; do if time allows |
+| 9 | S2: fingerprint API trusts the serial only | Per-device secret through the Cloudflare relay. RISK: the live machine controls the door — design so the machine keeps working during the switch (accept old + new for a while), test on emulator + relay before live |
+| 10 | S8/S9 small: lock /api/health, timingSafeEqual cron secret, CSP headers | Cheap |
+
+Rules: brainstorm/plan first (money + security = Extra high effort), emulator rules tests for every rule change,
+adversarial review before live. Live push AND production rules deploy need the founder's explicit OK each time
+(rules deploy recipe in memory: read_live_rules.mjs backup + diff, then deploy_rules.mjs). Never leave test data
+in production. Check `git branch --show-current` / `git log` first: other chats may work in this folder.
 
 ## 2026-10-17: AI gym software for all gyms (plan, research done, nothing built)
 
