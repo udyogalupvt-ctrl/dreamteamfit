@@ -1,6 +1,6 @@
 # Handoff
 
-Last updated: 2026-10-17 (sheet TOTAL BILL fix for ₹0-paid sales, local commit)
+Last updated: 2026-10-17 (sheet: old-software / deleted-member rows fixed, local commit)
 
 ## 2026-10-17: sheet month tab missed bills of sales made with ₹0 paid
 
@@ -16,8 +16,20 @@ Last updated: 2026-10-17 (sheet TOTAL BILL fix for ₹0-paid sales, local commit
 - Live preview (read-only, scratchpad c1567c47…/oct_preview.mjs): Oct rows 73→74, paid ₹2,67,398 still
   matches, TOTAL BILL ₹2,72,398 → ₹2,81,398, GYM FEE +₹9,000, DISCOUNT +₹6,000. Jyothi is the only live case.
 - Checks: tsc clean, unit 434/434 (2 new tests in month.test.ts).
-- **Next:** push main, then the owner presses "Sync now" on the Backup page (the live sheet is still
-  built by the deployed code until then; the nightly run rewrites the month tabs after deploy).
+- Pushed + synced by the owner the same day: Oct tab showed TOTAL BILL ₹2,81,398 as predicted.
+- **Similar problems (second local commit, after a live all-months sweep, scratchpad c1567c47…/sweep.mjs):**
+  - Old-software PT rows (no bill) left PT FEE blank: 19 rows, ₹2,25,500 (Jun–Sep). Now filled.
+  - Old-software plans paid in two parts (5: Dr.M Bharath, P. Satyam, P. Sai Ram, V. Hari Krishna,
+    K. Mothilal) split the bill over two rows (Balance row counted as a sale; a due would double).
+    Now the first row carries the whole bill (plan/PT `oldSoftwarePaid` + due), the Balance row none.
+  - Member deleted with "bills & payments kept" (B Vamsi ID 675, ₹2,500 on 30 Sep): GYM FEE blank and
+    phone blank. Now fees from the bill's own split, phone from `clientPhoneSnapshot`, note added.
+  - After: every month TOTAL BILL = GYM FEE + PT FEE, paid = app, no Balance row carries a bill.
+  - NOT sheet bugs (owner data questions): B.Karthikeya PT ₹12,000 (17 Sep, "paid in old software", no
+    amount recorded, so no money anywhere); 2 ₹0 old-software annual plans (23 Jan); B Vamsi ID 675 vs
+    ID 44 look like the same person — is the ₹2,500 on 30 Sep real money?
+- Checks: tsc clean, unit 437/437.
+- **Next:** push main, then "Sync now" on the Backup page.
 
 ## 2026-10-13: Google Sheet register backup (design talk, nothing built yet)
 

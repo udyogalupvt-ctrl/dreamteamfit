@@ -338,3 +338,66 @@ test("a sale still unpaid shows in its month with the due, counted once", () => 
   assert.equal(m.appTotal, 0);
   assert.equal(m.matches, true);
 });
+
+test("member deleted with bills kept: the fees still come from the bill, phone from the bill", () => {
+  // B Vamsi (ID 675): removed 7 Oct "bills & payments kept"; plan and member docs are gone.
+  const b = bill({ total: 2500, subtotal: 2500, membershipGross: 2500, clientId: "gone" });
+  b.clientPhoneSnapshot = "9550327206";
+  const p = pay({ amount: 2500, clientId: "gone", clientNameSnapshot: "B Vamsi" });
+  const m = buildMonth(input({ payments: [p], bills: [b], plans: [] }));
+  const r = m.rows[0]!;
+  assert.equal(r.name, "B Vamsi");
+  assert.equal(r.phone, "9550327206");
+  assert.equal(r.totalBill, 2500);
+  assert.equal(r.gymFee, 2500);
+  assert.equal(r.ptFee, "");
+  assert.ok(r.note.includes("member or plan deleted, bill kept"));
+});
+
+test("old-software plan paid in two parts: the first row carries the whole bill, the balance row none", () => {
+  // Dr.M Bharath: ₹7,000 + ₹6,000 balance in the old software, ₹13,000 in all, no bill in the app.
+  const p = plan({ priceSnapshot: 13000, paidInOldSoftware: true, oldSoftwarePaid: 13000 });
+  const first = pay({
+    id: "p1",
+    amount: 7000,
+    oldSoftware: true,
+    invoiceId: "",
+    method: "Not recorded",
+  });
+  const bal = pay({ id: "p2", amount: 6000, oldSoftware: true, invoiceId: "", kind: "balance" });
+  const m = buildMonth(input({ payments: [first, bal], bills: [], plans: [p] }));
+  const a = m.rows.find((r) => r.paid === 7000)!;
+  const b = m.rows.find((r) => r.paid === 6000)!;
+  assert.equal(a.totalBill, 13000);
+  assert.equal(a.gymFee, 13000);
+  assert.equal(b.kind, "Balance");
+  assert.equal(b.totalBill, "");
+  assert.equal(b.gymFee, "");
+  assert.equal(m.sheetTotal, 13000);
+});
+
+test("old-software PT with no bill: PT FEE is filled, like GYM FEE for a gym plan", () => {
+  const pt: PtIn = {
+    id: "t1",
+    clientId: "c1",
+    ptPackageNameSnapshot: "PERSONAL TRAINING DAILY",
+    trainerNameSnapshot: "Chandu",
+    startDate: "2026-06-08",
+    endDate: "2026-07-07",
+    status: "expired",
+    ptPrice: 8000,
+    paidInOldSoftware: true,
+    oldSoftwarePaid: 8000,
+  };
+  const p = pay({
+    amount: 8000,
+    oldSoftware: true,
+    invoiceId: "",
+    membershipId: null,
+    ptAssignmentId: "t1",
+  });
+  const r = buildMonth(input({ payments: [p], bills: [], plans: [], pts: [pt] })).rows[0]!;
+  assert.equal(r.totalBill, 8000);
+  assert.equal(r.ptFee, 8000);
+  assert.equal(r.gymFee, "");
+});

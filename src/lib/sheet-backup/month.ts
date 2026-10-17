@@ -214,7 +214,8 @@ export function buildMonth(input: MonthInput): {
     }
     const amount = round(ps.reduce((s, x) => s + x.amount, 0));
     // The sale row carries the fees; balance rows don't, so the columns add up without doubling.
-    const sale = p.kind === "initial" || (!!p.oldSoftware && !b);
+    // An old-software balance (no bill) is a Balance row: the first old-software row has the bill.
+    const sale = p.kind === "initial" || (!!p.oldSoftware && !b && p.kind !== "balance");
     const kind =
       p.kind === "refund"
         ? "Refund"
@@ -223,14 +224,27 @@ export function buildMonth(input: MonthInput): {
           : p.oldSoftware && !b
             ? "Old software"
             : saleKind(p.clientId, plan, pt, b);
-    const gym = sale && b && plan ? planMoney("gym", plan.priceSnapshot, b) : null;
-    const ptm = sale && b && pt ? planMoney("pt", pt.ptPrice, b) : null;
+    // A member deleted with "bills & payments kept" has no plan / PT doc: the bill has the split.
+    const gone = !!b && ((!!b.membershipId && !plan) || (!!b.ptAssignmentId && !pt));
+    const gym =
+      sale && b && (plan || (b.membershipId && b.membershipGross > 0))
+        ? planMoney("gym", plan?.priceSnapshot ?? b.membershipGross, b)
+        : null;
+    const ptm =
+      sale && b && (pt || (b.ptAssignmentId && b.ptGross > 0))
+        ? planMoney("pt", pt?.ptPrice ?? b.ptGross, b)
+        : null;
     const due = b ? Math.max(0, b.balanceDue) : p.oldSoftware ? plan?.oldSoftwareBalance || 0 : 0;
+    // No bill (sold in the old software): the plan keeps all it was paid there, over every part.
+    const oldBill = round(
+      Math.max(amount, (plan ? plan.oldSoftwarePaid : pt?.oldSoftwarePaid) ?? 0) + due,
+    );
     const cancelled = plan?.status === "cancelled" || pt?.status === "cancelled";
     const pkg = plan ? input.packages.get(plan.packageId) : undefined;
     const notes: string[] = [];
     if (zeroPaid.has(p)) notes.push("nothing paid on the sale day");
     else if (p.paymentDate < p.createdDay) notes.push("entered later, dated the day it was paid");
+    if (gone) notes.push("member or plan deleted, bill kept");
     if (p.kind === "balance" && amount > 0 && amount <= 10)
       notes.push(`₹${amount} top-up after price change`);
     rows.push({
@@ -247,7 +261,7 @@ export function buildMonth(input: MonthInput): {
         : pt
           ? "Personal training"
           : "",
-      phone: c?.phone ?? "",
+      phone: c?.phone ?? b?.clientPhoneSnapshot ?? "",
       start: plan?.startDate ?? pt?.startDate ?? "",
       end: plan?.endDate ?? pt?.endDate ?? "",
       pkg: plan?.packageNameSnapshot ?? pt?.ptPackageNameSnapshot ?? b?.items[0]?.name ?? "",
@@ -259,14 +273,14 @@ export function buildMonth(input: MonthInput): {
       old: m.old,
       paid: amount,
       due,
-      gymFee: gym ? gym.total : sale && !b && plan ? round(amount + due) : "",
-      totalBill: sale ? (b ? b.total : round(amount + due)) : "",
+      gymFee: gym ? gym.total : sale && !b && plan ? oldBill : "",
+      totalBill: sale ? (b ? b.total : oldBill) : "",
       discount:
         sale && b
           ? Math.max(0, (b.discount || 0) - (b.upgradeCredit || 0) - (b.oldSoftwareCredit || 0))
           : "",
       counsellor: p.counsellorName || b?.counsellorName || plan?.counsellorName || "",
-      ptFee: ptm ? ptm.total : "",
+      ptFee: ptm ? ptm.total : sale && !b && pt && !plan ? oldBill : "",
       trainer: pt?.trainerNameSnapshot ?? "",
       ptEnd: pt?.endDate ?? "",
       payBy: due > 0 && b ? b.dueDate : "",
@@ -296,7 +310,7 @@ export function buildMonth(input: MonthInput): {
       name: c?.fullName ?? b.clientNameSnapshot,
       kind: "Bill (no payment record)",
       type: "",
-      phone: c?.phone ?? "",
+      phone: c?.phone ?? b?.clientPhoneSnapshot ?? "",
       start: plan?.startDate ?? "",
       end: plan?.endDate ?? "",
       pkg: plan?.packageNameSnapshot ?? "",

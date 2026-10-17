@@ -204,6 +204,7 @@ const toBill = (d: Doc): BillIn => ({
   invoiceNumber: str(d["invoiceNumber"]),
   clientId: str(d["clientId"]),
   clientNameSnapshot: str(d["clientNameSnapshot"]),
+  clientPhoneSnapshot: str(d["clientPhoneSnapshot"]),
   membershipId: strOrNull(d["membershipId"]),
   ptAssignmentId: strOrNull(d["ptAssignmentId"]),
   items: Array.isArray(d["items"])

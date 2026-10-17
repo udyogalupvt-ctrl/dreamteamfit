@@ -31,6 +31,8 @@ export interface BillIn {
   invoiceNumber: string;
   clientId: string;
   clientNameSnapshot: string;
+  /** The member's phone when the bill was made (kept when the member is deleted). */
+  clientPhoneSnapshot?: string;
   membershipId: string | null;
   ptAssignmentId: string | null;
   items: { name: string }[];

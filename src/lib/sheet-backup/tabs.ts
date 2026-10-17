@@ -193,7 +193,7 @@ export function duesTab(input: {
     const c = input.clients.get(b.clientId);
     return {
       name: c?.fullName ?? b.clientNameSnapshot,
-      phone: c?.phone ?? "",
+      phone: c?.phone ?? b.clientPhoneSnapshot ?? "",
       billNo: b.invoiceNumber,
       billDate: b.invoiceDate,
       totalBill: b.total,
