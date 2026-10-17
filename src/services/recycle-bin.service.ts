@@ -191,6 +191,8 @@ const RESTORABLE = new Set<string>([
   "packages",
   "absenceNotifications",
   "paymentDueNotifications",
+  // A salary's pay record, binned with its expense.
+  "staffPayments",
 ]);
 const restorable = (it: Pick<BinItem, "path" | "collection" | "docId">) =>
   RESTORABLE.has(it.collection) &&
@@ -248,6 +250,9 @@ export async function restoreFromBin(
     formatDateISO,
   );
   if (problem) throw new Error(problem);
+  // Staff pay is Finance's (firestore.rules): a salary's pay record comes back only with Finance.
+  if (!viewer.finance && items.some((i) => i.collection === COLLECTIONS.staffPayments))
+    throw new Error("This salary's pay record needs Finance to put back.");
   // A plan removed as added by mistake: not when its money is now in a closed Day Book month.
   const plan = entry.extra["kind"] === "plan";
   if (plan) await checkPlanRestore(entry.extra, items);
@@ -608,7 +613,20 @@ export async function binExpense(e: Expense, by: Deleter) {
     label: `Expense: ${e.title}`,
     detail: `₹${e.amount.toLocaleString("en-IN")} · ${e.date}`,
     // A salary's pay record goes (and comes back) with it, so the staff page doesn't show it paid.
-    refs: [doc(db, COLLECTIONS.expenses, e.id), ...(await staffPaymentRefs(e))],
+    // Only what this login may read (staff pay is Finance's); without Finance the expense goes alone.
+    refs: [
+      doc(db, COLLECTIONS.expenses, e.id),
+      ...(
+        await Promise.all(
+          (await staffPaymentRefs(e)).map((r) =>
+            getDoc(r).then(
+              (s) => (s.exists() ? r : null),
+              () => null,
+            ),
+          ),
+        )
+      ).filter((r): r is DocumentReference => !!r),
+    ],
     by,
   });
 }

@@ -297,8 +297,11 @@ service cloud.firestore {
         || (c in ['memberships', 'ptAssignments', 'enrollments'] && (can('deleteMembers') || can('deletePlans')))
         || (c == 'clients' && can('deleteMembers'))
         || (c in ['trainers', 'packages'] && can('deletePackages'))
+        // A salary's pay record goes with its expense: staff pay is Finance's.
+        || (c == 'staffPayments' && can('finance'))
         || (!(c in ['staff', 'staffPrivate', 'payments', 'invoices', 'publicInvoices', 'trainerPayouts',
-            'memberships', 'ptAssignments', 'enrollments', 'clients', 'trainers', 'packages']) && isStaff());
+            'memberships', 'ptAssignments', 'enrollments', 'clients', 'trainers', 'packages',
+            'staffPayments']) && isStaff());
     }
     // Each bin entry's section needs that section's delete right (DELETE_FEATURE_OF in
     // src/constants/features.ts); "bills" also takes Finance (Remove payment). A restore acts on
@@ -325,7 +328,7 @@ service cloud.firestore {
     // restore: never a login, feature switch, setting or machine command (restoring runs with the
     // restorer's rights), and only from a login that may delete that kind of record (canBin).
     function binnable(d) {
-      return d.collection in ['attendance', 'automationActivities', 'birthdayNotifications', 'bookings', 'classEnrollments', 'clients', 'dietAssignments', 'enrollments', 'expenses', 'followups', 'inquiries', 'invoices', 'leadLogs', 'memberships', 'notifications', 'payments', 'ptAssignments', 'publicInvoices', 'renewalNotifications', 'staff', 'staffPrivate', 'trainerPayouts', 'trainers', 'whatsappMessages', 'workoutAssignments', 'packages', 'absenceNotifications', 'paymentDueNotifications']
+      return d.collection in ['attendance', 'automationActivities', 'birthdayNotifications', 'bookings', 'classEnrollments', 'clients', 'dietAssignments', 'enrollments', 'expenses', 'followups', 'inquiries', 'invoices', 'leadLogs', 'memberships', 'notifications', 'payments', 'ptAssignments', 'publicInvoices', 'renewalNotifications', 'staff', 'staffPrivate', 'trainerPayouts', 'trainers', 'whatsappMessages', 'workoutAssignments', 'packages', 'absenceNotifications', 'paymentDueNotifications', 'staffPayments']
         && d.docId is string && !d.docId.matches('.*/.*')
         && d.path == d.collection + '/' + d.docId;
     }

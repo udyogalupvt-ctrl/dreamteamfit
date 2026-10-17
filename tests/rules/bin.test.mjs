@@ -120,3 +120,14 @@ test("bin entries need that section's delete right", async () => {
   await assertSucceeds(putEntry("exp", "expenses"));
   await assertFails(staff(t, "desk").collection("recycleBin").doc().set(entry("other", "leads")));
 });
+
+test("a salary's pay record goes to the bin with its expense: Finance only", async () => {
+  await seed(t, {
+    "staffAccess/expfin": { active: true, admin: false, permissions: ["deleteExpenses", "finance"] },
+    "staffAccess/exponly": { active: true, admin: false, permissions: ["deleteExpenses"] },
+  });
+  await assertSucceeds(putItem("expfin", "staffPayments"));
+  await assertSucceeds(putItem("owner", "staffPayments", owner(t)));
+  await assertFails(putItem("exponly", "staffPayments"));
+  await assertFails(putItem("desk", "staffPayments"));
+});

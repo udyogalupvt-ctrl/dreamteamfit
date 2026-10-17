@@ -13,6 +13,7 @@ import { db } from "@/lib/firebase";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
 import { billTaxRate, calculateInvoiceTotals } from "@/lib/invoice-utils";
 import type { Invoice, Membership, MembershipEdit, PtAssignment } from "@/types/models";
+import { closedMoney } from "@/lib/closed-month";
 import { allocatePayment, cashOpenFrom } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
 import { oldPaymentData, readOldRows, type OldPayLink } from "./old-money.service";
@@ -633,6 +634,19 @@ export async function undoOldSoftwareMove(moveId: string, canFinance: boolean) {
     ])
   ).flat();
   const oldPayIds = [...new Set(oldPays.map((p) => p.id))];
+  // Money it would put back into a closed Day Book month: those days' cash was carried forward
+  // (firestore.rules refuses it too), so the move stays.
+  const shut = closedMoney(
+    many("payments").map((r) => ({
+      paymentDate: String(r.data?.["paymentDate"] ?? ""),
+      oldSoftware: r.data?.["oldSoftware"] === true,
+    })),
+    cashOpenFrom(),
+  )[0];
+  if (shut)
+    throw new Error(
+      `It would put back money dated ${formatDateISO(shut.paymentDate)}, in a closed Day Book month: it can't be undone any more.`,
+    );
   await runTransaction(db, async (tx) => {
     const fresh = await tx.get(ref);
     if (fresh.data()?.["undone"]) throw new Error("Already undone.");
