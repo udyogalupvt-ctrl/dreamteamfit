@@ -1,6 +1,23 @@
 # Handoff
 
-Last updated: 2026-10-14 (sheet backup paused: T6 restore WIP, then review + push)
+Last updated: 2026-10-17 (sheet TOTAL BILL fix for ₹0-paid sales, local commit)
+
+## 2026-10-17: sheet month tab missed bills of sales made with ₹0 paid
+
+- Report: Jyothi prasad (ID 685) paid ₹9,000 balance on 13 Oct, but Oct TOTAL BILL didn't include it.
+- Root cause: month tabs have one row per payment; only the "initial" payment row carries TOTAL BILL /
+  GYM FEE / PT FEE / DISCOUNT (Balance rows are blank so a bill isn't doubled). His bill RF-2026-000015
+  (2 Oct, ₹15,000 − ₹6,000 = ₹9,000) was sold with ₹0 paid, so no initial payment, so no row carried it.
+  Also an unpaid ₹0-upfront sale was missing from the month tab and its DUE NOW total.
+- Fix (`src/lib/sheet-backup/month.ts` `unpaidSales`, fed by `monthStep` in `src/server/sheet-backup.ts`):
+  each tracked bill dated in the month with total > 0 and no initial payment gets its own sale row on
+  the bill date (paid ₹0, note "nothing paid on the sale day", status "Not paid" while nothing is paid).
+  Money totals unchanged (still = dashboard). ₹0 old-software carry bills (7 live) are skipped.
+- Live preview (read-only, scratchpad c1567c47…/oct_preview.mjs): Oct rows 73→74, paid ₹2,67,398 still
+  matches, TOTAL BILL ₹2,72,398 → ₹2,81,398, GYM FEE +₹9,000, DISCOUNT +₹6,000. Jyothi is the only live case.
+- Checks: tsc clean, unit 434/434 (2 new tests in month.test.ts).
+- **Next:** push main, then the owner presses "Sync now" on the Backup page (the live sheet is still
+  built by the deployed code until then; the nightly run rewrites the month tabs after deploy).
 
 ## 2026-10-13: Google Sheet register backup (design talk, nothing built yet)
 

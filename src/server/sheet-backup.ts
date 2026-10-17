@@ -389,12 +389,26 @@ async function monthStep(ctx: Ctx, ym: string) {
   const legacyBills = docsOf(invSnap)
     .map(toBill)
     .filter((b) => !b.paymentsTracked && b.amountPaid > 0);
+  // Sales with ₹0 paid that day have no "initial" payment, so no payment row carries their bill.
+  const hasFirst = new Set(payments.filter((p) => p.kind === "initial").map((p) => p.invoiceId));
+  const maybeUnpaid = docsOf(invSnap)
+    .map(toBill)
+    .filter((b) => b.paymentsTracked && b.total > 0 && !hasFirst.has(b.id));
+  for (const p of (
+    await whereIn(
+      "payments",
+      "invoiceId",
+      maybeUnpaid.map((b) => b.id),
+    )
+  ).map(toPay))
+    if (p.kind === "initial") hasFirst.add(p.invoiceId);
+  const unpaidSales = maybeUnpaid.filter((b) => !hasFirst.has(b.id));
   const billDocs = await getMany(
     "invoices",
     payments.map((p) => p.invoiceId),
   );
   const bills = new Map([...billDocs].map(([id, d]) => [id, toBill(d)]));
-  for (const b of legacyBills) bills.set(b.id, b);
+  for (const b of [...legacyBills, ...unpaidSales]) bills.set(b.id, b);
   const planDocs = await getMany("memberships", [
     ...payments.map((p) => p.membershipId),
     ...[...bills.values()].map((b) => b.membershipId),
@@ -403,7 +417,10 @@ async function monthStep(ctx: Ctx, ym: string) {
     ...payments.map((p) => p.ptAssignmentId),
     ...[...bills.values()].map((b) => b.ptAssignmentId),
   ]);
-  const clientIds = [...payments.map((p) => p.clientId), ...legacyBills.map((b) => b.clientId)];
+  const clientIds = [
+    ...payments.map((p) => p.clientId),
+    ...[...legacyBills, ...unpaidSales].map((b) => b.clientId),
+  ];
   const clientDocs = await getMany("clients", clientIds);
   const theirPlans = (await whereIn("memberships", "clientId", clientIds)).map(toPlan);
 
@@ -412,6 +429,7 @@ async function monthStep(ctx: Ctx, ym: string) {
     to,
     payments,
     legacyBills,
+    unpaidSales,
     bills,
     plans: new Map([...planDocs].map(([id, d]) => [id, toPlan(d)])),
     pts: new Map([...ptDocs].map(([id, d]) => [id, toPt(d)])),

@@ -30,6 +30,12 @@ export interface MonthInput {
   payments: PayIn[];
   /** Bills dated in the month with paymentsTracked === false and amountPaid > 0. */
   legacyBills: BillIn[];
+  /**
+   * Bills dated in the month (total > 0) that have no "initial" payment: sold with ₹0 paid that day.
+   * Each gets its own sale row (paid ₹0) so its total bill, fees and discount are counted; the
+   * later payments stay Balance rows.
+   */
+  unpaidSales?: BillIn[];
   /** Every bill the payments / legacy bills point to, by id. */
   bills: Map<string, BillIn>;
   plans: Map<string, PlanIn>;
@@ -166,11 +172,35 @@ export function buildMonth(input: MonthInput): {
     const k = p.splitId ? `split:${p.splitId}` : p.id;
     groups.set(k, [...(groups.get(k) ?? []), p]);
   }
+  // A sale with ₹0 paid that day has no payment doc: a ₹0 stand-in gives it its sale row.
+  // It is not in `pays`, so the money totals (the dashboard's) don't change.
+  const zeroPaid = new Set<PayIn>();
+  const bills = new Map(input.bills);
+  for (const b of input.unpaidSales ?? []) {
+    if (b.invoiceDate < from || b.invoiceDate > to || !(b.total > 0)) continue;
+    const p: PayIn = {
+      id: `sale:${b.id}`,
+      clientId: b.clientId,
+      clientNameSnapshot: b.clientNameSnapshot,
+      invoiceId: b.id,
+      membershipId: b.membershipId,
+      ptAssignmentId: b.ptAssignmentId,
+      amount: 0,
+      method: "",
+      paymentDate: b.invoiceDate,
+      kind: "initial",
+      counsellorName: b.counsellorName,
+      createdDay: b.createdDay,
+    };
+    zeroPaid.add(p);
+    bills.set(b.id, b);
+    groups.set(p.id, [p]);
+  }
 
   const rows: MonthRow[] = [];
   for (const ps of groups.values()) {
     const p = ps[0]!;
-    const b = input.bills.get(p.invoiceId);
+    const b = bills.get(p.invoiceId);
     const plan = input.plans.get(p.membershipId ?? b?.membershipId ?? "");
     const pt = input.pts.get(p.ptAssignmentId ?? b?.ptAssignmentId ?? "");
     const c = input.clients.get(p.clientId);
@@ -199,7 +229,8 @@ export function buildMonth(input: MonthInput): {
     const cancelled = plan?.status === "cancelled" || pt?.status === "cancelled";
     const pkg = plan ? input.packages.get(plan.packageId) : undefined;
     const notes: string[] = [];
-    if (p.paymentDate < p.createdDay) notes.push("entered later, dated the day it was paid");
+    if (zeroPaid.has(p)) notes.push("nothing paid on the sale day");
+    else if (p.paymentDate < p.createdDay) notes.push("entered later, dated the day it was paid");
     if (p.kind === "balance" && amount > 0 && amount <= 10)
       notes.push(`₹${amount} top-up after price change`);
     rows.push({
@@ -244,7 +275,9 @@ export function buildMonth(input: MonthInput): {
         : p.kind === "refund"
           ? "Refunded"
           : due > 0
-            ? "Part paid"
+            ? b && b.amountPaid <= 0
+              ? "Not paid"
+              : "Part paid"
             : "Paid",
       note: notes.join(" · "),
     });

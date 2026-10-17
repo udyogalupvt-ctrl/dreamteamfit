@@ -285,3 +285,56 @@ test("helpers", () => {
   assert.equal(CATEGORY_LABEL["Strength Only"], "Strengthening");
   assert.equal(CATEGORY_LABEL["Cardio Only"], "Cardio");
 });
+
+test("a sale with ₹0 paid that day: its own row carries the bill, the later Balance row doesn't", () => {
+  // Jyothi prasad: sold 2 Oct, ₹15,000 − ₹6,000 = ₹9,000 bill, nothing paid; ₹9,000 cash on 13 Oct.
+  const b = bill({
+    subtotal: 15000,
+    discount: 6000,
+    total: 9000,
+    amountPaid: 9000,
+    membershipGross: 15000,
+    invoiceDate: "2026-10-02",
+    createdDay: "2026-10-02",
+  });
+  const p = plan({ priceSnapshot: 15000, startDate: "2026-10-02" });
+  const later = pay({ amount: 9000, kind: "balance", paymentDate: "2026-10-13" });
+  const m = buildMonth({
+    ...input({ payments: [later], bills: [b], plans: [p] }),
+    unpaidSales: [b],
+  });
+  assert.equal(m.rows.length, 2);
+  const [sale, bal] = m.rows;
+  assert.equal(sale!.date, "2026-10-02");
+  assert.equal(sale!.kind, "New");
+  assert.equal(sale!.paid, 0);
+  assert.equal(sale!.totalBill, 9000);
+  assert.equal(sale!.gymFee, 9000);
+  assert.equal(sale!.discount, 6000);
+  assert.ok(sale!.note.includes("nothing paid on the sale day"));
+  assert.equal(bal!.kind, "Balance");
+  assert.equal(bal!.totalBill, "");
+  // Money totals still equal the dashboard (payments only); the bill is counted once.
+  assert.equal(m.appTotal, 9000);
+  assert.equal(m.sheetTotal, 9000);
+  assert.equal(m.matches, true);
+  const sum = (k: "totalBill" | "gymFee") =>
+    m.rows.reduce((s, r) => s + (typeof r[k] === "number" ? (r[k] as number) : 0), 0);
+  assert.equal(sum("totalBill"), 9000);
+  assert.equal(sum("gymFee"), 9000);
+});
+
+test("a sale still unpaid shows in its month with the due, counted once", () => {
+  const b = bill({ amountPaid: 0, balanceDue: 2000, dueDate: "2026-10-20" });
+  const m = buildMonth({ ...input({ payments: [] }), unpaidSales: [b] });
+  assert.equal(m.rows.length, 1);
+  const r = m.rows[0]!;
+  assert.equal(r.paid, 0);
+  assert.equal(r.due, 2000);
+  assert.equal(r.totalBill, 2000);
+  assert.equal(r.status, "Not paid");
+  assert.equal(r.payBy, "2026-10-20");
+  assert.equal(m.dueOnBills, 2000);
+  assert.equal(m.appTotal, 0);
+  assert.equal(m.matches, true);
+});
