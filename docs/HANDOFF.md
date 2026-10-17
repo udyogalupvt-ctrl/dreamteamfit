@@ -1,8 +1,36 @@
 # Handoff
 
-Last updated: 2026-10-17 (hardening PLAN written; nothing built yet)
+Last updated: 2026-10-18 (hardening Tasks 1-10 BUILT on branch `live-hardening`, local only; not pushed, rules not deployed)
 
-## NEXT (2026-10-17): security + money hardening of the LIVE Rebuild app (founder: do this first)
+## NEXT (2026-10-18): finish + ship the live hardening (branch `live-hardening`)
+
+**State (2026-10-18, build chat):** Tasks 1-10 built and committed on `live-hardening` (8 commits on top of
+main 22383cd). NOT merged, NOT pushed, production rules NOT deployed.
+- Checks: `npm run test:rules` 35/35 (emulator 8780; tests/rules/*), `npm run test:cfo` 446/446, tsc clean.
+- Emulator regression (kit: scratchpad `13f12f45…/h`, ports 8780/9780/app 5899, owner = rebuildfitnesskkd@gmail.com
+  with made-up password; `bash regress.sh [--nobuild] suites…`): remove 39/39, undo_refund 43/43, moneyfix 21/21,
+  paidon_edit 13/13, paidon 15/15, plans_end 12/12, update 6/6, price 11/11, oldlock 11/11, NEW `hardening_local.py`
+  17/17 (desk collect+own undo, other desk no Undo, edit today's payment, thumb commands, Finance cancel refund on the
+  plan's own bill + restore, Edit plan 'typed wrong' closed-month refusal + refund instead, remove payment, Delete
+  bills open OK / closed refused, M4 cancel uses fresh due + same-moment race adds up, M7 two desks: one plan +
+  "Another desk just changed…"). Screenshots light/dark 390/1440 in `h/shots_hardening`.
+  journey, audit2, edits, renew_pt, latedates, asis fail on UI timeouts (no permission errors): baseline on main in
+  `13f12f45…/hm` (see "Baseline" line below when filled).
+- Deviations from the plan (on purpose): server commandOk also accepts the server's own ENROLL_BIO retry and door-restore
+  user records for old IDs (IIFM12); payments' createdAt/createdByUid can't change (else yesterday's money could be
+  "undone"); old-software money may be future-dated (migration) and Delete plans may remove/restore it; biometricCommands
+  never binnable; trainerPayouts readable by deleteBills/deleteMembers (they delete them); balance Undo only by the
+  login that collected it, same day (UI button too); Edit plan "typed wrong" refuses closed-month payments in words;
+  `/api/health` error text now "details in the server log".
+- Known, not fixed: undoOldSoftwareMove (legacy moves only) can't restore closed-month payments; binExpense of a salary
+  bins staffPayments, which `binnable` never allowed (pre-existing: deleting a salary expense fails).
+- Founder question open: keep the closed-month lock for the owner too (current), or add an owner-only server
+  correction (logged)?
+- Still to do: Task 0 output → Task 4 owner list (remove admin@elevategym.com from rules + owners.ts; email_verified
+  only if verified); "After the build" 1-5 (adversarial review needs ultracode; push + rules deploy need founder OK
+  each; app first, rules after); Task 11 (relay key).
+- Cleanup: scratchpad `13f12f45…/wt-main` is a git worktree with a node_modules JUNCTION: `cmd /c rmdir` the
+  junction BEFORE `git worktree remove`.
 
 **State (2026-10-17, planning chat):** plan written: `docs/superpowers/plans/2026-10-17-live-hardening.md`
 (Tasks 0-11, rules text, tests, decisions). No code changed yet. Main facts found:
