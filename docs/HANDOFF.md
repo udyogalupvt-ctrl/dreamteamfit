@@ -14,8 +14,8 @@ Last updated: 2026-10-17 (AI gym SaaS plan: market research done; platform audit
 - Market research: `docs/research/2026-10-17-gym-software-market.md` (global leaders, India prices,
   AI features, migration, costs, where we stand, proposed lane). Key: nobody sells a real AI CFO;
   no gym product reads register photos; Indian gap = fingerprint + official WhatsApp under Rs 10k/yr.
-- **Next:** detailed platform audit (money, security/multi-gym readiness, cost per gym, UX, tests,
-  migration) -> verdict "build on it / fix first" + priority list. Needs ultracode (~6 agents).
+- **Moved:** the product is now **Aagami** in `gym saas/aigym` (own handoff, decisions, audit). This
+  Rebuild app is NOT changed for it. The audit lists live Rebuild risks (aigym audit M1/S2/S3/S5).
   Audit note: Vercel Hobby is non-commercial only; a paid SaaS needs Vercel Pro or another host.
 
 ## 2026-10-17: sheet month tab missed bills of sales made with ₹0 paid
