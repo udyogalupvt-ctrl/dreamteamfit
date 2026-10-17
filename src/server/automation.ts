@@ -593,8 +593,11 @@ async function pruneOldCommands() {
 }
 
 /** Compares secrets in constant time (no timing hint about how much of a guess was right). */
-const sameText = (a: string, b: string) =>
-  a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const sameText = (a: string, b: string) => {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+};
 
 export async function handleCron(request: Request, url: URL) {
   const startedAt = Date.now();

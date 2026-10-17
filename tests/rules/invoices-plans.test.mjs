@@ -126,3 +126,17 @@ test("trainer payouts: whoever may delete them with a bill or member may read th
   await assertFails(q("desk"));
   await assertFails(staff(t, "desk").doc("trainerPayouts/o1").update({ status: "paid" }));
 });
+
+test("old untracked bills: only Finance lowers what was paid or untracks a bill", async () => {
+  await seed(t, {
+    "invoices/old1": bill({ amountPaid: 3000, balanceDue: 0, paymentStatus: "paid" }), // no paymentsTracked
+    "invoices/new1": bill({ paymentsTracked: true }),
+  });
+  const desk = staff(t, "desk");
+  await assertFails(desk.doc("invoices/old1").update({ amountPaid: 0 }));
+  await assertFails(desk.doc("invoices/new1").update({ paymentsTracked: false }));
+  await assertSucceeds(desk.doc("invoices/old1").update({ amountPaid: 3500, paymentsTracked: true })); // collect
+  await assertSucceeds(desk.doc("invoices/new1").update({ amountPaid: 0, balanceDue: 3000 })); // undo on a tracked bill
+  await seed(t, { "invoices/old2": bill({ amountPaid: 3000 }) });
+  await assertSucceeds(staff(t, "fin").doc("invoices/old2").update({ amountPaid: 2000 }));
+});

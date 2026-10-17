@@ -108,3 +108,8 @@ test("staff still read commands (live thumb panel)", async () => {
     staff(t, "desk").collection("biometricCommands").where("clientId", "==", "c1").get(),
   );
 });
+
+test("a door change can't be withdrawn from the app", async () => {
+  await seed(t, { "biometricCommands/door1": cmd({ type: "delete_user", door: true, command: "DATA DELETE USERINFO PIN=12" }) });
+  await assertFails(staff(t, "desk").doc("biometricCommands/door1").update({ status: "cancelled", updatedAt: new Date() }));
+});

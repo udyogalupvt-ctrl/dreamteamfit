@@ -131,12 +131,16 @@ export async function healthFor(request: Request) {
     detail["firestore"] === "ok";
   if (!ok) console.error("server health", detail);
   const token = (request.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  const user =
-    ok && token
-      ? await adminAuth()
-          .verifyIdToken(token)
-          .catch(() => null)
-      : null;
+  // (Checking a token needs the service account: when that is what's broken, the log has it.)
+  let user: { email?: string } | null = null;
+  if (token)
+    try {
+      user = await adminAuth()
+        .verifyIdToken(token)
+        .catch(() => null);
+    } catch {
+      user = null;
+    }
   return user && isOwnerEmail(user.email) ? { ok, ...detail } : { ok };
 }
 

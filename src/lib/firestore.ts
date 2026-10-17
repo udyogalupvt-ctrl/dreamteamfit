@@ -77,7 +77,10 @@ function sideWrites(ops: { op: Op; before: D | null }[], binned = false): Extra[
   const commands = fs.collection(db, "biometricCommands");
   const doorFor = new Set<string>();
   const now = fs.serverTimestamp();
-  const note = (type: string, clientId: string, pin = "", deviceId = "", staffId = "") =>
+  // A machine ID that isn't letters and digits can't be sent to a machine (firestore.rules refuses
+  // it, which would fail the whole save): the note goes without it, and the server skips the machine.
+  const note = (type: string, clientId: string, rawPin = "", deviceId = "", staffId = "") => {
+    const pin = /^[A-Za-z0-9]{1,24}$/.test(rawPin) ? rawPin : "";
     out.push({
       ref: fs.doc(commands),
       data: {
@@ -101,6 +104,7 @@ function sideWrites(ops: { op: Op; before: D | null }[], binned = false): Extra[
         updatedAt: now,
       },
     });
+  };
 
   for (const { op, before } of ops) {
     const col = collectionOf(op.ref);

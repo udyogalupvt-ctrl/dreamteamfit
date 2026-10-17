@@ -123,12 +123,23 @@ service cloud.firestore {
     function billDeleter() {
       return can('deleteBills') || can('deleteMembers') || can('deletePlans');
     }
-    // Bills: the number, the secret link and the bill date are fixed once made.
+    // Bills: the number, the secret link and the bill date are fixed once made. An old bill made
+    // before payments were recorded one by one (paymentsTracked not true) counts its amountPaid as
+    // income on its bill date: only Finance may lower that or mark a bill untracked.
+    function billEditOk() {
+      let a = resource.data;
+      let b = request.resource.data;
+      let keys = b.diff(a).affectedKeys();
+      return !keys.hasAny(['invoiceNumber', 'publicToken', 'invoiceDate'])
+        && (!keys.hasAny(['paymentsTracked']) || b.get('paymentsTracked', false) == true
+          || can('finance'))
+        && (a.get('paymentsTracked', false) == true || !keys.hasAny(['amountPaid'])
+          || b.get('amountPaid', 0) >= a.get('amountPaid', 0) || can('finance'));
+    }
     match /invoices/{id} {
       allow read: if isStaff();
       allow create: if isStaff() && request.resource.data.get('invoiceNumber', '') is string;
-      allow update: if isStaff() && !request.resource.data.diff(resource.data).affectedKeys()
-        .hasAny(['invoiceNumber', 'publicToken', 'invoiceDate']);
+      allow update: if isStaff() && billEditOk();
       allow delete: if billDeleter();
     }
     match /memberships/{id} {
@@ -196,8 +207,9 @@ service cloud.firestore {
     match /biometricCommands/{id} {
       allow read: if isStaff();
       allow create: if isStaff() && cmdCreateOk(request.resource.data);
-      // Withdrawing a registration still waiting for the machine is the only change.
-      allow update: if isStaff()
+      // Withdrawing a registration still waiting for the machine is the only change (never a door
+      // change: a lock-out must reach the machine).
+      allow update: if isStaff() && resource.data.get('door', false) != true
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
         && resource.data.status in ['pending', 'sent'] && request.resource.data.status == 'cancelled';
       allow delete: if can('deleteMembers') || can('devices');
