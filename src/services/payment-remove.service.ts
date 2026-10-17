@@ -21,7 +21,8 @@ import {
 import type { Payment } from "@/types/models";
 import { cashOpenFrom } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
-import type { Deleter } from "./recycle-bin.service";
+import type { BinViewer, Deleter } from "./recycle-bin.service";
+import { putBackProblem } from "@/lib/closed-month";
 
 /**
  * A payment entered by mistake, removed by the owner from the member's Payments list: kept in the
@@ -219,7 +220,7 @@ export async function removePayment(p: Payment, by: Deleter): Promise<string> {
  */
 export async function putBackPayment(
   binId: string,
-  viewer: { owner: boolean; uid: string },
+  viewer: BinViewer,
   byName: string,
 ) {
   const binRef = doc(db, COLLECTIONS.recycleBin, binId);
@@ -237,6 +238,20 @@ export async function putBackPayment(
   const payId = String(item.data()["docId"] ?? "");
   if (!payId || payId.includes("/")) throw new Error("It is no longer in the Recycle Bin.");
   const data = item.data()["data"] as DocumentData;
+  // Never into a closed Day Book month; money given back only by Finance.
+  const problem = putBackProblem(
+    [
+      {
+        paymentDate: String(data["paymentDate"] ?? ""),
+        amount: Number(data["amount"] ?? 0),
+        oldSoftware: data["oldSoftware"] === true,
+      },
+    ],
+    cashOpenFrom(),
+    viewer.finance === true,
+    formatDateISO,
+  );
+  if (problem) throw new Error(problem);
   // A cancellation's refund: only while that cancellation still stands (Restore undid it?).
   const cancelId = String(data["cancelId"] ?? "");
   if (cancelId) {

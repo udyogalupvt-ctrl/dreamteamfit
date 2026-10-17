@@ -120,8 +120,16 @@ export function CancelPlansDialog({
   }, [open]);
 
   const device = devices.data.find((d) => d.id === client.biometricDeviceId);
-  const latestBill =
-    [...invoices].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
+  // The refund goes on the cancelled plan's own bill; without one (paid in the old software), on
+  // the bill that names the plan, else the member's newest bill.
+  const fallbackBill =
+    invoices.find(
+      (i) =>
+        (!!plans[0] && i.membershipId === plans[0].id) ||
+        (!plans[0] && !!pts[0] && i.ptAssignmentId === pts[0].id),
+    ) ??
+    [...invoices].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ??
+    null;
   const count = plans.length + pts.length;
   const one = plans[0]?.packageNameSnapshot ?? pts[0]?.ptPackageNameSnapshot ?? "plan";
   const these = count > 1 ? "these plans" : "this plan";
@@ -175,8 +183,8 @@ export function CancelPlansDialog({
         client,
         plans,
         pts,
-        latestBill: latestBill
-          ? { id: latestBill.id, invoiceNumber: latestBill.invoiceNumber }
+        fallbackBill: fallbackBill
+          ? { id: fallbackBill.id, invoiceNumber: fallbackBill.invoiceNumber }
           : null,
         reason,
         refund: money ? amount : 0,

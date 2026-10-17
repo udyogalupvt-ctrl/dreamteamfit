@@ -115,3 +115,14 @@ test("bill counter: a missing counters record may be started at 1", async () => 
     desk.doc("settings/counters").set({ [K1]: 1, updatedAt: new Date() }, { merge: true }),
   );
 });
+
+test("trainer payouts: whoever may delete them with a bill or member may read them", async () => {
+  await seed(t, { "trainerPayouts/o1": { invoiceId: "i1", status: "pending", grossAmount: 1000 } });
+  const q = (uid) => staff(t, uid).collection("trainerPayouts").where("invoiceId", "==", "i1").get();
+  await assertSucceeds(q("bills"));
+  await assertSucceeds(q("delmem"));
+  await assertSucceeds(q("plans"));
+  await assertSucceeds(q("fin"));
+  await assertFails(q("desk"));
+  await assertFails(staff(t, "desk").doc("trainerPayouts/o1").update({ status: "paid" }));
+});

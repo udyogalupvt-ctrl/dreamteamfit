@@ -12,6 +12,8 @@ import {
   type DocumentSnapshot,
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
+import { closedMoney, putBackProblem } from "@/lib/closed-month";
+import { formatDateISO } from "@/lib/format";
 import type {
   Client,
   ClassEnrollment,
@@ -28,6 +30,7 @@ import type {
 import { updateEnrollmentStatus } from "./class-enrollments.service";
 import { memberIdDocRef } from "./clients.service";
 import { staffPaymentRefs } from "./expenses.service";
+import { cashOpenFrom } from "./finance.service";
 import { col, COLLECTIONS, toDate, type CollectionName } from "./firestore.service";
 import { memberAppAction, trainerAccess } from "./portal.service";
 import { mapBinEntry as mapEntry } from "./recycle-bin-list.service";
@@ -109,6 +112,16 @@ export async function moveToBin(input: {
   return binRef.id;
 }
 
+/**
+ * Who is restoring: `owner` = sees every entry (owner or the Recycle Bin page); `finance` = may put
+ * back money given back.
+ */
+export interface BinViewer {
+  owner: boolean;
+  uid: string;
+  finance?: boolean;
+}
+
 interface BinItem {
   ref: DocumentReference;
   path: string;
@@ -119,7 +132,7 @@ interface BinItem {
 }
 async function itemsOf(
   entry: Pick<RecycleBinEntry, "id">,
-  viewer: { owner: boolean; uid: string },
+  viewer: BinViewer,
 ) {
   const snap = await getDocs(
     viewer.owner
@@ -214,12 +227,27 @@ function doorCheck(b: ReturnType<typeof writeBatch>, clientId: string) {
 export async function restoreFromBin(
   entry: RecycleBinEntry,
   by: Deleter,
-  viewer: { owner: boolean; uid: string },
+  viewer: BinViewer,
 ) {
   // A payment removed by mistake: it comes back together with its bill's amounts.
   if (entry.extra["kind"] === "payment") return putBackPayment(entry.id, viewer, by.name);
   const all = await itemsOf(entry, viewer);
   const items = all.filter(restorable);
+  // Money comes back only into open Day Book months, and refunds only by Finance (checked before
+  // anything is written: a refused write half-way would leave half of it back).
+  const problem = putBackProblem(
+    items
+      .filter((i) => i.collection === COLLECTIONS.payments)
+      .map((i) => ({
+        paymentDate: String(i.data["paymentDate"] ?? ""),
+        amount: Number(i.data["amount"] ?? 0),
+        oldSoftware: i.data["oldSoftware"] === true,
+      })),
+    cashOpenFrom(),
+    viewer.finance === true,
+    formatDateISO,
+  );
+  if (problem) throw new Error(problem);
   // A plan removed as added by mistake: not when its money is now in a closed Day Book month.
   const plan = entry.extra["kind"] === "plan";
   if (plan) await checkPlanRestore(entry.extra, items);
@@ -296,7 +324,7 @@ export async function restoreFromBin(
 export async function restoreBinById(
   binId: string,
   by: Deleter,
-  viewer: { owner: boolean; uid: string },
+  viewer: BinViewer,
 ) {
   const snap = await getDoc(doc(db, COLLECTIONS.recycleBin, binId));
   if (!snap.exists()) throw new Error("It is no longer in the Recycle Bin.");
@@ -398,6 +426,24 @@ export async function binMember(client: Client, opts: { keepAccounts: boolean },
       );
   }
   if (client.portalActive) await memberAppAction(client.id, "off").catch(() => undefined);
+  // Money in a closed Day Book month never goes (its cash was carried forward): such a member is
+  // deleted with their bills and payments kept.
+  if (!opts.keepAccounts) {
+    const pays = await getDocs(
+      query(col(COLLECTIONS.payments), where("clientId", "==", client.id)),
+    );
+    const shut = closedMoney(
+      pays.docs.map((d) => ({
+        paymentDate: String(d.data()["paymentDate"] ?? ""),
+        oldSoftware: d.data()["oldSoftware"] === true,
+      })),
+      cashOpenFrom(),
+    )[0];
+    if (shut)
+      throw new Error(
+        `${client.fullName} has money dated ${formatDateISO(shut.paymentDate)}, in a closed Day Book month: tick "Keep their bills and payments" to delete the member.`,
+      );
+  }
   const refs: DocumentReference[] = [doc(db, COLLECTIONS.clients, client.id)];
   for (const name of MEMBER_RECORDS) refs.push(...(await byClient(name)));
   if (!opts.keepAccounts)
@@ -461,15 +507,37 @@ export async function binFollowUp(f: FollowUp, by: Deleter) {
  * public link and the trainer's share from it. The plans on it stay.
  */
 export async function binBill(inv: Invoice, by: Deleter) {
+  const [pays, payouts] = await Promise.all([
+    getDocs(query(col(COLLECTIONS.payments), where("invoiceId", "==", inv.id))),
+    getDocs(query(col(COLLECTIONS.trainerPayouts), where("invoiceId", "==", inv.id))),
+  ]);
+  const shut = closedMoney(
+    pays.docs.map((d) => ({
+      paymentDate: String(d.data()["paymentDate"] ?? ""),
+      oldSoftware: d.data()["oldSoftware"] === true,
+    })),
+    cashOpenFrom(),
+  )[0];
+  if (shut)
+    throw new Error(
+      `This bill has money dated ${formatDateISO(shut.paymentDate)}, in a closed Day Book month: it can't be deleted.`,
+    );
+  // A cancelled plan's refund noted on this bill would leave with it (money given back lost).
+  if (pays.docs.some((d) => Number(d.data()["amount"] ?? 0) < 0 && d.data()["cancelId"]))
+    throw new Error(
+      "This bill carries the refund of a cancelled plan: Restore that cancellation first.",
+    );
+  if (payouts.docs.some((d) => d.data()["status"] === "paid"))
+    throw new Error("The trainer was already paid for this bill: cancel the plan instead.");
   return moveToBin({
     section: "bills",
     label: `Bill ${inv.invoiceNumber} · ${inv.clientNameSnapshot}`,
     detail: `Total ₹${inv.total.toLocaleString("en-IN")} · paid ₹${inv.amountPaid.toLocaleString("en-IN")}`,
     refs: [
       doc(db, COLLECTIONS.invoices, inv.id),
-      ...(await where1(COLLECTIONS.payments, "invoiceId", inv.id)),
+      ...pays.docs.map((d) => d.ref),
       ...(inv.publicToken ? [doc(db, COLLECTIONS.publicInvoices, inv.publicToken)] : []),
-      ...(await where1(COLLECTIONS.trainerPayouts, "invoiceId", inv.id)),
+      ...payouts.docs.map((d) => d.ref),
     ],
     by,
   });

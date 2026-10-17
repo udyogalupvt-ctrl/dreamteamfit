@@ -17,7 +17,7 @@ export function useBin() {
     name: user?.displayName || user?.email || "Staff",
     role,
   };
-  const viewer = { owner: can("recycleBin"), uid: user?.uid ?? "" };
+  const viewer = { owner: can("recycleBin"), uid: user?.uid ?? "", finance: can("finance") };
   const remove = async (what: string, move: (by: Deleter) => Promise<string>) => {
     try {
       const binId = await move(by);

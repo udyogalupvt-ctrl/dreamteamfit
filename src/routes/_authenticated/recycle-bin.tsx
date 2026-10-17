@@ -52,7 +52,7 @@ function RecycleBinPage() {
   const { owner, role, can } = useAccess();
   // The owner, and logins given the Recycle Bin page, see and restore everything deleted.
   const all = can("recycleBin");
-  const viewer = { owner: all, uid: user?.uid ?? "" };
+  const viewer = { owner: all, uid: user?.uid ?? "", finance: can("finance") };
   const live = useLive<RecycleBinEntry[]>(
     user ? (ok, fail) => subscribeRecycleBin(viewer, ok, fail) : null,
     [],

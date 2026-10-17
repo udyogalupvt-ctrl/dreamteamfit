@@ -4,13 +4,15 @@ import {
   doc,
   getDocs,
   query,
+  runTransaction,
   serverTimestamp,
   where,
   writeBatch,
+  type DocumentSnapshot,
 } from "@/lib/firestore";
 import { billOwed, billStatus, cancelledDueOf, restorePart } from "@/lib/bill-cancel";
 import { db } from "@/lib/firebase";
-import { todayISO } from "@/lib/format";
+import { formatDateISO, todayISO } from "@/lib/format";
 import { currentRow, pickCurrent, sameCurrent } from "@/lib/current-plan";
 import { billSharePaid, type RefundPlan } from "@/lib/plan-money";
 import type {
@@ -21,7 +23,12 @@ import type {
   PtAssignment,
   TrainerPayout,
 } from "@/types/models";
+import { closedMoney } from "@/lib/closed-month";
+import { cashOpenFrom } from "./finance.service";
 import { col, COLLECTIONS } from "./firestore.service";
+import { mapInvoice } from "./invoices.service";
+import { mapMembership } from "./memberships.service";
+import { mapPtAssignment } from "./pt.service";
 
 /**
  * Cancelling plans (one gym plan, one PT plan, or "End all plans"), with an optional refund, and
@@ -162,8 +169,11 @@ export interface CancelInput {
   client: Pick<Client, "id" | "fullName" | "currentMembership">;
   plans: Membership[];
   pts: PtAssignment[];
-  /** The member's newest bill: the refund is noted against it. */
-  latestBill: Pick<Invoice, "id" | "invoiceNumber"> | null;
+  /**
+   * The refund is noted on the cancelled plan's own bill; this one only when that plan has no bill
+   * (paid in the old software): the plan's bill found on the screen, else the member's newest.
+   */
+  fallbackBill: Pick<Invoice, "id" | "invoiceNumber"> | null;
   reason: string;
   /** Money given back to the member (0 = none). Needs Finance (trainer payouts). */
   refund: number;
@@ -171,12 +181,22 @@ export interface CancelInput {
   /** What was paid for each plan (paidForPlans): how the refund is shared out. */
   paid?: Record<string, number>;
   /** Bills of these plans with money still due that is not asked for any more. */
-  closeBills?: Pick<Invoice, "id" | "balanceDue" | "paymentStatus" | "publicToken">[];
+  closeBills?: Pick<
+    Invoice,
+    "id" | "balanceDue" | "paymentStatus" | "publicToken" | "amountPaid" | "cancelledDue"
+  >[];
   /** Gym + PT bills whose other plan keeps running: stop asking for this plan's unpaid part. */
   lowerBills?: {
     bill: Pick<
       Invoice,
-      "id" | "publicToken" | "total" | "amountPaid" | "cancelledDue" | "cancelledParts"
+      | "id"
+      | "publicToken"
+      | "total"
+      | "amountPaid"
+      | "balanceDue"
+      | "paymentStatus"
+      | "cancelledDue"
+      | "cancelledParts"
     >;
     kind: "gym" | "pt";
     amount: number;
@@ -202,6 +222,18 @@ async function currentAfter(clientId: string, status: Map<string, string>, today
   ).summary;
 }
 
+/** What a bill looked like on the screen, compared with the bill read again at saving. */
+const billFacts = (b: Pick<Invoice, "amountPaid" | "balanceDue" | "paymentStatus" | "cancelledDue">) =>
+  [
+    Math.round(Number(b.amountPaid ?? 0) * 100),
+    Math.round(Number(b.balanceDue ?? 0) * 100),
+    String(b.paymentStatus ?? ""),
+    Math.round(Number(b.cancelledDue ?? 0) * 100),
+  ].join("|");
+
+const CHANGED =
+  "Something changed on this member since you opened Cancel (a payment or another change). Close and open Cancel again.";
+
 export async function cancelPlans(input: CancelInput) {
   const cancelId = newId();
   const today = todayISO();
@@ -210,8 +242,8 @@ export async function cancelPlans(input: CancelInput) {
   const parts = splitRefund(input.refund, input.plans, input.pts, input.paid);
   const refund = parts.reduce((n, p) => n + p.amount, 0);
 
-  // The trainers' payouts of refunded PT plans (read first: a batch can't read).
-  const payouts = new Map<string, { id: string; data: TrainerPayout }>();
+  // Found by queries first (a transaction can't query), then read again inside it.
+  const payoutsSeen = new Map<string, { id: string; data: TrainerPayout }>();
   for (const part of parts.filter((p) => p.kind === "pt" && p.trainerCut > 0)) {
     const snap = await getDocs(
       query(col(COLLECTIONS.trainerPayouts), where("ptAssignmentId", "==", part.id)),
@@ -219,152 +251,217 @@ export async function cancelPlans(input: CancelInput) {
     const found = snap.docs.find(
       (d) => d.data()["status"] !== "cancelled" && !d.data()["adjustment"],
     );
-    if (found) payouts.set(part.id, { id: found.id, data: found.data() as TrainerPayout });
+    if (found) payoutsSeen.set(part.id, { id: found.id, data: found.data() as TrainerPayout });
   }
+  const next = input.plans.length
+    ? await currentAfter(
+        input.client.id,
+        new Map(input.plans.map((m) => [m.id, "cancelled"])),
+        today,
+      )
+    : null;
+  // The refund is noted on the cancelled plan's own bill (so deleting another, newer bill never
+  // takes the refund with it); only a plan without a bill (paid in the old software) uses the
+  // fallback.
+  const ownBillId = input.plans[0]?.invoiceId || input.pts[0]?.invoiceId || "";
 
-  const batch = writeBatch(db);
-  const cancelled = {
-    status: "cancelled",
-    cancelledOn: today,
-    cancelReason: reason,
-    cancelId,
-    updatedAt: now,
-  };
-  for (const m of input.plans)
-    batch.update(doc(db, COLLECTIONS.memberships, m.id), {
-      ...cancelled,
-      statusBeforeCancel: m.status,
-    });
-  for (const p of input.pts)
-    batch.update(doc(db, COLLECTIONS.ptAssignments, p.id), {
-      ...cancelled,
-      statusBeforeCancel: p.status,
-    });
-  if (input.plans.length) {
-    const next = await currentAfter(
-      input.client.id,
-      new Map(input.plans.map((m) => [m.id, "cancelled"])),
-      today,
+  await runTransaction(db, async (tx) => {
+    // ---- reads (all before any write)
+    const planSnaps = await Promise.all(
+      input.plans.map((m) => tx.get(doc(db, COLLECTIONS.memberships, m.id))),
     );
-    if (!sameCurrent(input.client.currentMembership, next))
-      batch.update(doc(db, COLLECTIONS.clients, input.client.id), {
+    const ptSnaps = await Promise.all(
+      input.pts.map((p) => tx.get(doc(db, COLLECTIONS.ptAssignments, p.id))),
+    );
+    const closeSnaps = await Promise.all(
+      (input.closeBills ?? []).map((b) => tx.get(doc(db, COLLECTIONS.invoices, b.id))),
+    );
+    const lowerSnaps = await Promise.all(
+      (input.lowerBills ?? []).map((l) => tx.get(doc(db, COLLECTIONS.invoices, l.bill.id))),
+    );
+    const payoutSnaps = new Map<string, DocumentSnapshot>();
+    for (const [ptId, p] of payoutsSeen)
+      payoutSnaps.set(ptId, await tx.get(doc(db, COLLECTIONS.trainerPayouts, p.id)));
+    const ownBill =
+      refund > 0 && ownBillId ? await tx.get(doc(db, COLLECTIONS.invoices, ownBillId)) : null;
+    if (input.plans.length) await tx.get(doc(db, COLLECTIONS.clients, input.client.id));
+
+    // ---- anything another desk changed since the screen was opened: start again
+    const samePlan = (s: DocumentSnapshot, status: string, map: typeof mapMembership) =>
+      s.exists() && map(s.id, s.data()).status === status;
+    if (
+      input.plans.some((m, i) => !samePlan(planSnaps[i]!, m.status, mapMembership)) ||
+      input.pts.some(
+        (p, i) =>
+          !(ptSnaps[i]!.exists() && mapPtAssignment(p.id, ptSnaps[i]!.data()!).status === p.status),
+      )
+    )
+      throw new Error(CHANGED);
+    const freshBill = (s: DocumentSnapshot) => (s.exists() ? mapInvoice(s.id, s.data()) : null);
+    const closeFresh = closeSnaps.map(freshBill);
+    const lowerFresh = lowerSnaps.map(freshBill);
+    if (
+      (input.closeBills ?? []).some((b, i) => !closeFresh[i] || billFacts(closeFresh[i]!) !== billFacts(b)) ||
+      (input.lowerBills ?? []).some(
+        (l, i) => !lowerFresh[i] || billFacts(lowerFresh[i]!) !== billFacts(l.bill),
+      )
+    )
+      throw new Error(CHANGED);
+    for (const [ptId, seen] of payoutsSeen) {
+      const s = payoutSnaps.get(ptId)!;
+      const x = s.data();
+      if (
+        !x ||
+        x["status"] !== seen.data.status ||
+        Number(x["grossAmount"] ?? 0) !== Number(seen.data.grossAmount ?? 0)
+      )
+        throw new Error(CHANGED);
+    }
+
+    // ---- writes
+    const cancelled = {
+      status: "cancelled",
+      cancelledOn: today,
+      cancelReason: reason,
+      cancelId,
+      updatedAt: now,
+    };
+    for (const m of input.plans)
+      tx.update(doc(db, COLLECTIONS.memberships, m.id), {
+        ...cancelled,
+        statusBeforeCancel: m.status,
+      });
+    for (const p of input.pts)
+      tx.update(doc(db, COLLECTIONS.ptAssignments, p.id), {
+        ...cancelled,
+        statusBeforeCancel: p.status,
+      });
+    if (next && !sameCurrent(input.client.currentMembership, next))
+      tx.update(doc(db, COLLECTIONS.clients, input.client.id), {
         currentMembership: next,
         updatedAt: now,
       });
-  }
 
-  let trainerCut = 0;
-  for (const part of parts.filter((p) => p.kind === "pt" && p.trainerCut > 0)) {
-    const pt = input.pts.find((p) => p.id === part.id)!;
-    const payout = payouts.get(part.id);
-    if (!payout) continue;
-    trainerCut += part.trainerCut;
-    const gymCut = part.amount - part.trainerCut;
-    if (payout.data.status === "paid") {
-      // Already paid to the trainer: taken off their next payout.
-      batch.set(doc(col(COLLECTIONS.trainerPayouts)), {
-        trainerId: pt.trainerId,
-        trainerNameSnapshot: pt.trainerNameSnapshot,
+    let trainerCut = 0;
+    for (const part of parts.filter((p) => p.kind === "pt" && p.trainerCut > 0)) {
+      const pt = input.pts.find((p) => p.id === part.id)!;
+      const seen = payoutsSeen.get(part.id);
+      if (!seen) continue;
+      const payout = payoutSnaps.get(part.id)!.data() as TrainerPayout;
+      trainerCut += part.trainerCut;
+      const gymCut = part.amount - part.trainerCut;
+      if (payout.status === "paid") {
+        // Already paid to the trainer: taken off their next payout.
+        tx.set(doc(col(COLLECTIONS.trainerPayouts)), {
+          trainerId: pt.trainerId,
+          trainerNameSnapshot: pt.trainerNameSnapshot,
+          clientId: input.client.id,
+          clientNameSnapshot: input.client.fullName,
+          ptAssignmentId: pt.id,
+          ptPackageNameSnapshot: pt.ptPackageNameSnapshot,
+          invoiceId: payout.invoiceId ?? "",
+          grossAmount: -part.amount,
+          trainerShareAmount: -part.trainerCut,
+          gymShareAmount: -gymCut,
+          paymentDate: today,
+          status: "pending",
+          paidAt: null,
+          adjustment: true,
+          note: `PT cancelled, ₹${part.amount} refunded: taken off the next payout`,
+          cancelId,
+          createdAt: now,
+          updatedAt: now,
+        });
+      } else {
+        tx.update(doc(db, COLLECTIONS.trainerPayouts, seen.id), {
+          beforeCancel: {
+            grossAmount: payout.grossAmount,
+            trainerShareAmount: payout.trainerShareAmount,
+            gymShareAmount: payout.gymShareAmount,
+          },
+          grossAmount: payout.grossAmount - part.amount,
+          trainerShareAmount: payout.trainerShareAmount - part.trainerCut,
+          gymShareAmount: payout.gymShareAmount - gymCut,
+          cancelId,
+          updatedAt: now,
+        });
+      }
+    }
+
+    // Balance left on the bills: not asked for any more (the bill shows Closed); kept to put back.
+    closeFresh.forEach((b) => {
+      if (!b || !(b.balanceDue > 0)) return;
+      tx.update(doc(db, COLLECTIONS.invoices, b.id), {
+        beforeCancel: { balanceDue: b.balanceDue, paymentStatus: b.paymentStatus },
+        balanceDue: 0,
+        paymentStatus: "closed",
+        closedAmount: b.balanceDue,
+        cancelId,
+        updatedAt: now,
+      });
+      if (b.publicToken)
+        tx.update(doc(db, COLLECTIONS.publicInvoices, b.publicToken), {
+          balanceDue: 0,
+          paymentStatus: "closed",
+          updatedAt: now,
+        });
+    });
+
+    // Gym + PT bills: only the plan still running is asked for.
+    (input.lowerBills ?? []).forEach(({ kind, amount }, i) => {
+      const b = lowerFresh[i];
+      if (!b || !(amount > 0)) return;
+      const cancelledParts = {
+        ...(b.cancelledParts ?? {}),
+        [cancelId]: { kind, amount, paidThen: b.amountPaid },
+      };
+      const dropped = cancelledDueOf({ cancelledParts });
+      const patch = {
+        balanceDue: billOwed(b.total, b.amountPaid, dropped),
+        paymentStatus: billStatus(b.total, b.amountPaid, dropped),
+        cancelledDue: dropped,
+        updatedAt: now,
+      };
+      tx.update(doc(db, COLLECTIONS.invoices, b.id), { ...patch, cancelledParts });
+      if (b.publicToken) tx.update(doc(db, COLLECTIONS.publicInvoices, b.publicToken), patch);
+    });
+
+    if (refund > 0) {
+      const gym = parts.filter((p) => p.kind === "gym").reduce((n, p) => n + p.amount, 0);
+      const pt = refund - gym;
+      const bill = ownBill?.exists()
+        ? { id: ownBill.id, invoiceNumber: String(ownBill.data()["invoiceNumber"] ?? "") }
+        : input.fallbackBill;
+      tx.set(doc(col(COLLECTIONS.payments)), {
         clientId: input.client.id,
         clientNameSnapshot: input.client.fullName,
-        ptAssignmentId: pt.id,
-        ptPackageNameSnapshot: pt.ptPackageNameSnapshot,
-        invoiceId: payout.data.invoiceId ?? "",
-        grossAmount: -part.amount,
-        trainerShareAmount: -part.trainerCut,
-        gymShareAmount: -gymCut,
+        invoiceId: bill?.id ?? "",
+        invoiceNumber: bill?.invoiceNumber ?? "",
+        membershipId: input.plans[0]?.id ?? null,
+        ptAssignmentId: input.pts[0]?.id ?? null,
+        amount: -refund,
+        method: input.refundMethod,
         paymentDate: today,
-        status: "pending",
-        paidAt: null,
-        adjustment: true,
-        note: `PT cancelled, ₹${part.amount} refunded: taken off the next payout`,
+        kind: "refund",
+        note: reason,
+        trainerShareAmount: -trainerCut,
+        gymAmount: -(refund - trainerCut),
+        membershipGymAmount: -gym,
+        ptGymAmount: -(pt - trainerCut),
+        otherGymAmount: 0,
+        createdBy: input.by.name,
+        createdByUid: input.by.uid,
+        counsellorId: "",
+        counsellorName: "",
         cancelId,
         createdAt: now,
         updatedAt: now,
       });
-    } else {
-      batch.update(doc(db, COLLECTIONS.trainerPayouts, payout.id), {
-        beforeCancel: {
-          grossAmount: payout.data.grossAmount,
-          trainerShareAmount: payout.data.trainerShareAmount,
-          gymShareAmount: payout.data.gymShareAmount,
-        },
-        grossAmount: payout.data.grossAmount - part.amount,
-        trainerShareAmount: payout.data.trainerShareAmount - part.trainerCut,
-        gymShareAmount: payout.data.gymShareAmount - gymCut,
-        cancelId,
-        updatedAt: now,
-      });
     }
-  }
-
-  // Balance left on the bills: not asked for any more (the bill shows Closed); kept to put back.
-  for (const b of input.closeBills ?? []) {
-    if (!(b.balanceDue > 0)) continue;
-    batch.update(doc(db, COLLECTIONS.invoices, b.id), {
-      beforeCancel: { balanceDue: b.balanceDue, paymentStatus: b.paymentStatus },
-      balanceDue: 0,
-      paymentStatus: "closed",
-      closedAmount: b.balanceDue,
-      cancelId,
-      updatedAt: now,
-    });
-    if (b.publicToken)
-      batch.update(doc(db, COLLECTIONS.publicInvoices, b.publicToken), {
-        balanceDue: 0,
-        paymentStatus: "closed",
-        updatedAt: now,
-      });
-  }
-
-  // Gym + PT bills: only the plan still running is asked for.
-  for (const { bill: b, kind, amount } of input.lowerBills ?? []) {
-    if (!(amount > 0)) continue;
-    const cancelledParts = {
-      ...(b.cancelledParts ?? {}),
-      [cancelId]: { kind, amount, paidThen: b.amountPaid },
-    };
-    const dropped = cancelledDueOf({ cancelledParts });
-    const patch = {
-      balanceDue: billOwed(b.total, b.amountPaid, dropped),
-      paymentStatus: billStatus(b.total, b.amountPaid, dropped),
-      cancelledDue: dropped,
-      updatedAt: now,
-    };
-    batch.update(doc(db, COLLECTIONS.invoices, b.id), { ...patch, cancelledParts });
-    if (b.publicToken) batch.update(doc(db, COLLECTIONS.publicInvoices, b.publicToken), patch);
-  }
-
-  if (refund > 0) {
-    const gym = parts.filter((p) => p.kind === "gym").reduce((n, p) => n + p.amount, 0);
-    const pt = refund - gym;
-    batch.set(doc(col(COLLECTIONS.payments)), {
-      clientId: input.client.id,
-      clientNameSnapshot: input.client.fullName,
-      invoiceId: input.latestBill?.id ?? "",
-      invoiceNumber: input.latestBill?.invoiceNumber ?? "",
-      membershipId: input.plans[0]?.id ?? null,
-      ptAssignmentId: input.pts[0]?.id ?? null,
-      amount: -refund,
-      method: input.refundMethod,
-      paymentDate: today,
-      kind: "refund",
-      note: reason,
-      trainerShareAmount: -trainerCut,
-      gymAmount: -(refund - trainerCut),
-      membershipGymAmount: -gym,
-      ptGymAmount: -(pt - trainerCut),
-      otherGymAmount: 0,
-      createdBy: input.by.name,
-      createdByUid: input.by.uid,
-      counsellorId: "",
-      counsellorName: "",
-      cancelId,
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-  await batch.commit();
+  });
+  const trainerCut = parts
+    .filter((p) => p.kind === "pt" && payoutsSeen.has(p.id))
+    .reduce((n, p) => n + p.trainerCut, 0);
   return { cancelId, plans: input.plans.length + input.pts.length, refund, trainerCut };
 }
 
@@ -411,6 +508,17 @@ export async function restoreCancellation(
         endDate: String(d.data()["endDate"]),
       }),
     );
+    const shut = closedMoney(
+      pays.docs.map((d) => ({
+        paymentDate: String(d.data()["paymentDate"] ?? ""),
+        oldSoftware: d.data()["oldSoftware"] === true,
+      })),
+      cashOpenFrom(today),
+    );
+    if (shut.length)
+      throw new Error(
+        `The refund of this cancellation is dated ${formatDateISO(shut[0]!.paymentDate)}, in a closed Day Book month: it can't be undone. Sell the plan again instead.`,
+      );
     pays.docs.forEach((d) => batch.delete(d.ref));
     // Closed bills: the balance is asked for again.
     bills.docs.forEach((d) => {
