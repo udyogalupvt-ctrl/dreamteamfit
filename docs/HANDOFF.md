@@ -14,16 +14,26 @@ main 22383cd). NOT merged, NOT pushed, production rules NOT deployed.
   plan's own bill + restore, Edit plan 'typed wrong' closed-month refusal + refund instead, remove payment, Delete
   bills open OK / closed refused, M4 cancel uses fresh due + same-moment race adds up, M7 two desks: one plan +
   "Another desk just changed…"). Screenshots light/dark 390/1440 in `h/shots_hardening`.
-  journey, audit2, edits, renew_pt, latedates, asis fail on UI timeouts (no permission errors): baseline on main in
-  `13f12f45…/hm` (see "Baseline" line below when filled).
+  Baseline on main (kit `13f12f45…/hm`, worktree `wt-main` + copied .env): journey 14/15 on BOTH (owner "Gym details
+  saved" step stale); audit2 10/13, edits (crash), renew_pt 25/26, latedates 12/14, asis (crash) fail the SAME on
+  main = stale suites, not this work.
+- 2026-10-18 after review (1 reviewer agent): fixed old untracked bills' amountPaid (Finance only to lower/untrack),
+  door commands can't be withdrawn by the app, odd machine IDs no longer fail a member delete, health detail for
+  the owner when broken; salary-expense delete (staffPayments binnable, Finance) and undoOldSoftwareMove closed-month
+  message. Rules 38/38, unit 446/446, hardening 17/17, prod build OK, headers verified.
+  Reviewer notes left open: desk can create a bill with any invoiceNumber (duplicates); two Finance refunds at the
+  same moment can pass the screen's refund limit; door_check uses client biometricUserId that staff can edit
+  (pre-existing).
+- PUSH NOT DONE: auto mode blocked `git push` (and git reads after). The founder said "push to main". To ship:
+  `git branch -f main live-hardening` then `git push origin main` (fast-forward; main was 4 doc commits ahead of
+  origin). Then wait for /api/version = new commit and open tabs to reload; THEN rules deploy (separate founder OK).
+  Until the rules deploy, salary-expense delete and Delete-bills-only bin still fail (old rules).
 - Deviations from the plan (on purpose): server commandOk also accepts the server's own ENROLL_BIO retry and door-restore
   user records for old IDs (IIFM12); payments' createdAt/createdByUid can't change (else yesterday's money could be
   "undone"); old-software money may be future-dated (migration) and Delete plans may remove/restore it; biometricCommands
   never binnable; trainerPayouts readable by deleteBills/deleteMembers (they delete them); balance Undo only by the
   login that collected it, same day (UI button too); Edit plan "typed wrong" refuses closed-month payments in words;
   `/api/health` error text now "details in the server log".
-- Known, not fixed: undoOldSoftwareMove (legacy moves only) can't restore closed-month payments; binExpense of a salary
-  bins staffPayments, which `binnable` never allowed (pre-existing: deleting a salary expense fails).
 - Founder question open: keep the closed-month lock for the owner too (current), or add an owner-only server
   correction (logged)?
 - Still to do: Task 0 output → Task 4 owner list (remove admin@elevategym.com from rules + owners.ts; email_verified
