@@ -1,6 +1,6 @@
 # Handoff
 
-Last updated: 2026-10-18 (hardening Tasks 1-10 BUILT on branch `live-hardening`, local only; not pushed, rules not deployed)
+Last updated: 2026-10-18 (hardening Tasks 1-10 LIVE: main 12c8fac pushed, /api/version = 12c8fac213f1, production rules deployed)
 
 ## NEXT (2026-10-18): finish + ship the live hardening (branch `live-hardening`)
 
@@ -24,10 +24,11 @@ main 22383cd). NOT merged, NOT pushed, production rules NOT deployed.
   Reviewer notes left open: desk can create a bill with any invoiceNumber (duplicates); two Finance refunds at the
   same moment can pass the screen's refund limit; door_check uses client biometricUserId that staff can edit
   (pre-existing).
-- PUSH NOT DONE: auto mode blocked `git push` (and git reads after). The founder said "push to main". To ship:
-  `git branch -f main live-hardening` then `git push origin main` (fast-forward; main was 4 doc commits ahead of
-  origin). Then wait for /api/version = new commit and open tabs to reload; THEN rules deploy (separate founder OK).
-  Until the rules deploy, salary-expense delete and Delete-bills-only bin still fail (old rules).
+- SHIPPED 2026-10-18: main fast-forwarded to live-hardening and pushed (74bba1a..12c8fac); /api/version =
+  `12c8fac213f1`, /api/health 200. Production rules deployed with the founder's OK: ruleset d3ff71ad…, read back =
+  file. Backup of the previous live rules (= repo file at 74bba1a, ruleset 1e78f5b2… of 2026-10-09) + diff in scratchpad
+  `097e3934…/live_rules_backup_2026-10-18.txt`, `rules_diff.txt`; rollback = `node deploy_rules.mjs <backup file>`.
+  Not yet checked live by a person: salary-expense delete, Delete-bills bin, desk collect/undo, fingerprint enroll.
 - Deviations from the plan (on purpose): server commandOk also accepts the server's own ENROLL_BIO retry and door-restore
   user records for old IDs (IIFM12); payments' createdAt/createdByUid can't change (else yesterday's money could be
   "undone"); old-software money may be future-dated (migration) and Delete plans may remove/restore it; biometricCommands
