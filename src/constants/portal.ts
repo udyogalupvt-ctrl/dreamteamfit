@@ -7,7 +7,14 @@
  *   { portal: "member", clientId }  or  { portal: "trainer", trainerId }
  * Such a login is never staff: Firestore rules and the server check staffAccess / owner email.
  */
-import type { WorkoutDay, WorkoutGoal, DietGoal } from "@/types/models";
+import type {
+  DietGoal,
+  HealthAnswer,
+  HealthFormSummary,
+  HealthQuestion,
+  WorkoutDay,
+  WorkoutGoal,
+} from "@/types/models";
 
 export type PortalKind = "member" | "trainer";
 
@@ -165,6 +172,32 @@ export interface MemberPortalData {
   trainer: { id: string; name: string } | null;
   /** Plans from the gym's old software, once the front desk linked this member to their old record. */
   oldHistory: { memberId: string; joinedOn: string; plans: PortalOldPlan[] } | null;
+  /** Health form; null while the owner hasn't switched it on. */
+  health: PortalHealth | null;
+}
+
+/** The health form as the member app shows it (src/server/portal-health.ts). */
+export interface PortalHealth {
+  status: "done" | "pending";
+  form: {
+    version: number;
+    title: string;
+    intro: string;
+    questions: HealthQuestion[];
+    consent: string;
+  };
+  last: HealthFormSummary | null;
+}
+
+/** One acceptance, for "View my answers" (GET /api/portal/health-form). */
+export interface PortalHealthRecord {
+  version: number;
+  title: string;
+  signedOn: string;
+  signedName: string;
+  method: "app" | "paper";
+  answers: HealthAnswer[];
+  consent: string;
 }
 
 /** A plan from the old software, as the member sees it. */
@@ -290,6 +323,8 @@ export interface TrainerMemberDetail {
   workout: PortalWorkout | null;
   diet: PortalDiet | null;
   logs: PortalLog[];
+  /** Their last health form in short (Yes answers + notes); null = never filled. */
+  health: HealthFormSummary | null;
 }
 
 /** What a trainer sends to give a member a plan. */

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import {
+  AlertTriangle,
   ArrowLeft,
   Dumbbell,
   Loader2,
@@ -54,7 +55,13 @@ import {
 } from "@/constants/portal";
 import { portalCall, portalDb } from "@/lib/portal-firebase";
 import { cn } from "@/lib/utils";
-import { DIET_GOALS, WORKOUT_GOALS, type ChatThread, type WorkoutDay } from "@/types/models";
+import {
+  DIET_GOALS,
+  WORKOUT_GOALS,
+  type ChatThread,
+  type HealthFormSummary,
+  type WorkoutDay,
+} from "@/types/models";
 
 const VIEWS = ["members", "calls", "chats"] as const;
 type View = (typeof VIEWS)[number];
@@ -425,6 +432,7 @@ function MemberDetail({
         <PortalLoading />
       ) : tab === "plan" ? (
         <>
+          {detail.health?.flags.length ? <HealthFlags health={detail.health} /> : null}
           {(["workout", "diet"] as const).map((kind) => {
             const plan = kind === "workout" ? detail.workout : detail.diet;
             return (
@@ -540,6 +548,25 @@ function MemberDetail({
               <dd className="font-semibold">{day(detail.membership?.endDate)}</dd>
             </div>
           </dl>
+          {detail.health?.flags.length ? (
+            <HealthFlags health={detail.health} />
+          ) : (
+            <p className="text-sm">
+              <span className="text-meta">Health form: </span>
+              <b>
+                {detail.health
+                  ? `filled on ${day(detail.health.signedOn)}, no health problems ticked`
+                  : "not filled yet"}
+              </b>
+            </p>
+          )}
+          {detail.health?.notes.length ? (
+            <ul className="space-y-0.5 text-sm text-muted-foreground">
+              {detail.health.notes.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          ) : null}
           {detail.member.phone ? (
             <div className="flex flex-wrap gap-2">
               <Button asChild variant="outline">
@@ -555,6 +582,23 @@ function MemberDetail({
         </section>
       )}
     </>
+  );
+}
+
+/** What the member said Yes to on the health form: the trainer must see it before planning. */
+function HealthFlags({ health }: { health: HealthFormSummary }) {
+  return (
+    <div className="space-y-1 rounded-xl border border-warning/50 bg-warning/10 p-3">
+      <p className="flex items-center gap-1.5 text-sm font-semibold text-warning">
+        <AlertTriangle className="size-4" aria-hidden /> Health form ({day(health.signedOn)}): said
+        Yes to
+      </p>
+      <ul className="list-disc space-y-0.5 pl-5 text-sm">
+        {health.flags.map((f) => (
+          <li key={f}>{f}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

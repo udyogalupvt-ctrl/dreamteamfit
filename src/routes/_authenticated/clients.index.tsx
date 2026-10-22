@@ -20,8 +20,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useHealthForm } from "@/hooks/use-health-form";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, joinedOnOf, normalizePhone } from "@/lib/format";
+import { healthStatus } from "@/lib/health-form";
 import { daysLeftLabel, planByClient, plansForLists, type PlanSummary } from "@/lib/member-plans";
 import { memberIdLabel, subscribeClients } from "@/services/clients.service";
 import { subscribeQueuedPlans } from "@/services/memberships.service";
@@ -29,8 +31,9 @@ import { subscribeOpenPtAssignments } from "@/services/pt.service";
 import { isSetupPending } from "@/services/enrollment.service";
 import type { Client, Membership, PtAssignment } from "@/types/models";
 
-const FILTERS = ["all", "active", "pending", "expired", "none"] as const;
+const FILTERS = ["all", "active", "pending", "expired", "none", "health"] as const;
 type Filter = (typeof FILTERS)[number];
+type State = Exclude<Filter, "all" | "health">;
 
 export const Route = createFileRoute("/_authenticated/clients/")({
   validateSearch: z.object({ filter: z.enum(FILTERS).optional() }),
@@ -49,7 +52,7 @@ export const Route = createFileRoute("/_authenticated/clients/")({
 });
 
 /** One status a front-desk person understands at a glance. */
-function memberState(c: Client, plan: PlanSummary | undefined): Exclude<Filter, "all"> {
+function memberState(c: Client, plan: PlanSummary | undefined): State {
   if (isSetupPending(c)) return "pending";
   if (!plan) return "none";
   return plan.status === "active" || plan.status === "upcoming" ? "active" : "expired";
@@ -66,7 +69,7 @@ const PLAN_PILL: Record<
 };
 
 const STATE_PILL: Record<
-  Exclude<Filter, "all">,
+  State,
   { label: string; tone: "success" | "warning" | "danger" | "info" }
 > = {
   active: { label: "Active", tone: "success" },
@@ -117,6 +120,10 @@ function ClientsPage() {
     [data, queued.data, pts.data],
   );
   const stateOf = (c: Client) => memberState(c, plans.get(c.id));
+  const { form: healthForm } = useHealthForm();
+  // Members training now (a running plan) who still have to fill the health form.
+  const healthDue = (c: Client) =>
+    healthStatus(c.healthForm, healthForm) === "pending" && stateOf(c) !== "expired" && stateOf(c) !== "none";
   const [search, setSearch] = useState("");
   const initial = Route.useSearch().filter ?? "all";
   const [filter, setFilter] = useState<Filter>(initial);
@@ -126,7 +133,8 @@ function ClientsPage() {
     const q = search.trim().toLowerCase();
     const qPhone = normalizePhone(search);
     return data.filter((c) => {
-      if (filter !== "all" && stateOf(c) !== filter) return false;
+      if (filter === "health" ? !healthDue(c) : filter !== "all" && stateOf(c) !== filter)
+        return false;
       if (!q) return true;
       return (
         c.fullName.toLowerCase().includes(q) ||
@@ -136,7 +144,7 @@ function ClientsPage() {
       );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, search, filter, plans]);
+  }, [data, search, filter, plans, healthForm]);
 
   const open = (id: string) =>
     void navigate({ to: "/clients/$clientId", params: { clientId: id } });
@@ -183,6 +191,11 @@ function ClientsPage() {
             <TabsTrigger value="none">
               No plan <Count n={data.filter((c) => stateOf(c) === "none").length} />
             </TabsTrigger>
+            {healthForm.enabled || filter === "health" ? (
+              <TabsTrigger value="health">
+                Health form pending <Count n={data.filter(healthDue).length} />
+              </TabsTrigger>
+            ) : null}
           </TabsList>
         </Tabs>
       </div>

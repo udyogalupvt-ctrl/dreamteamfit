@@ -165,14 +165,36 @@ service cloud.firestore {
         && (!keys.hasAny([k1]) || b[k1] == a.get(k1, 0) + 1)
         && (!keys.hasAny([k0]) || b[k0] == a.get(k0, 0) + 1);
     }
-    // Settings: the bill counter moves on every sale; the rest needs "Settings".
+    // Settings: the bill counter moves on every sale; the rest needs "Settings". The health form
+    // (what members agree to) is the owner's own text.
+    function settingsWriter(id) {
+      return (id == 'healthForm' && isOwner()) || (id != 'healthForm' && can('settings'));
+    }
     match /settings/{id} {
       allow read: if isStaff();
-      allow create: if can('settings')
+      allow create: if settingsWriter(id)
         || (id == 'counters' && isStaff() && counterStepOk({}, request.resource.data));
-      allow update: if can('settings')
+      allow update: if settingsWriter(id)
         || (id == 'counters' && isStaff() && counterStepOk(resource.data, request.resource.data));
-      allow delete: if can('settings');
+      allow delete: if settingsWriter(id);
+    }
+
+    // Health forms members accepted (src/server/portal-health.ts writes the app ones). The desk
+    // can record one received on paper and take it back (Undo); nobody edits an acceptance.
+    match /healthForms/{id} {
+      allow read: if can('members');
+      allow create: if can('members')
+        && request.resource.data.keys().hasOnly(['clientId', 'clientName', 'version', 'title',
+          'answers', 'consent', 'signedName', 'method', 'by', 'note', 'signedOn', 'createdAt', 'updatedAt'])
+        && request.resource.data.method == 'paper'
+        && request.resource.data.clientId is string && request.resource.data.clientId.size() > 0
+        && request.resource.data.answers == []
+        && request.resource.data.version is int
+        && request.resource.data.note is string && request.resource.data.note.size() <= 500
+        && request.resource.data.signedOn is string
+        && request.resource.data.signedOn.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}');
+      allow update: if false;
+      allow delete: if can('members') && resource.data.method == 'paper';
     }
 
     match /packages/{id} {

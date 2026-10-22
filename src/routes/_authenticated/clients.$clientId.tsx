@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PhotoLinkButtons } from "@/components/clients/photo-link-button";
 import { MemberAppCard } from "@/components/clients/member-app-card";
+import { HealthCard, HealthPill } from "@/components/health/health-card";
 import { OldHistoryCard } from "@/components/clients/old-history-card";
 import { useAccess } from "@/hooks/use-access";
 import { createFileRoute, Link } from "@tanstack/react-router";
@@ -399,6 +400,7 @@ function ClientProfilePage() {
             ) : (
               <StatusPill tone="info">No active plan</StatusPill>
             )}
+            <HealthPill client={c} onOpen={() => setTab("overview")} />
           </div>
           <div className="mt-3 flex flex-col gap-1.5 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:gap-x-5">
             <a
@@ -485,6 +487,7 @@ function ClientProfilePage() {
         <TabsContent value="overview" className="grid gap-4 lg:grid-cols-2">
           <ClientBiometricCard client={c} />
           <MemberAppCard client={c} />
+          <HealthCard client={c} />
           <section className="surface-card p-5">
             <h2 className="text-section-title">Profile</h2>
             <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">

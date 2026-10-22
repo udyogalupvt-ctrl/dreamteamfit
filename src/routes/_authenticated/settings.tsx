@@ -15,6 +15,7 @@ import { DataImportWizard } from "@/components/settings/data-import-wizard";
 import { DataExportPanel } from "@/components/settings/data-export-panel";
 import { MemberAppBulkSend } from "@/components/settings/member-app-bulk";
 import { WhatsAppGatewaySection } from "@/components/settings/whatsapp-gateway-section";
+import { HealthFormEditor } from "@/components/health/health-form-editor";
 import { PageHeader } from "@/components/common/page-header";
 import { FormSection } from "@/components/common/form-section";
 import { InstallAppButton, useInstallApp } from "@/components/layout/install-app-button";
@@ -49,7 +50,7 @@ import {
 import { testWhatsAppConnection } from "@/services/whatsapp.service";
 import type { AutomationSettings, BusinessBillingSettings, WhatsAppSettings } from "@/types/models";
 
-const TABS = ["gym", "whatsapp", "reminders", "data", "appearance"] as const;
+const TABS = ["gym", "whatsapp", "reminders", "memberapp", "data", "appearance"] as const;
 type Tab = (typeof TABS)[number];
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -57,7 +58,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
     meta: [
       { title: "Settings — REBUILD FITNESS" },
-      { name: "description", content: "Gym details on bills, WhatsApp, reminders and data." },
+      { name: "description", content: "Gym details on bills, WhatsApp, reminders, member app and data." },
     ],
   }),
   component: SettingsPage,
@@ -83,6 +84,7 @@ function SettingsPage() {
             <TabsTrigger value="gym">Gym & bills</TabsTrigger>
             <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
             <TabsTrigger value="reminders">Reminders</TabsTrigger>
+            <TabsTrigger value="memberapp">Member app</TabsTrigger>
             <TabsTrigger value="data">Import / export</TabsTrigger>
             <TabsTrigger value="appearance">Appearance</TabsTrigger>
           </TabsList>
@@ -95,6 +97,9 @@ function SettingsPage() {
         </TabsContent>
         <TabsContent value="reminders">
           <ReminderSettings />
+        </TabsContent>
+        <TabsContent value="memberapp" className="space-y-4">
+          <HealthFormEditor />
         </TabsContent>
         <TabsContent value="data" className="space-y-4">
           <DataImportWizard />

@@ -7,6 +7,7 @@ import {
   CheckCheck,
   ChevronRight,
   Dumbbell,
+  HeartPulse,
   Home,
   Hourglass,
   MapPin,
@@ -40,6 +41,7 @@ import {
   usePortalData,
   type NavItem,
 } from "@/components/portal/portal-shell";
+import { HealthFormView } from "@/components/portal/health-form-view";
 import { VisitsCalendar, clock12, sessionOf } from "@/components/portal/visits-calendar";
 import { FormDialog } from "@/components/common/form-dialog";
 import { Button } from "@/components/ui/button";
@@ -55,7 +57,7 @@ import { cn } from "@/lib/utils";
 import type { StatTone } from "@/types";
 import type { ChatThread } from "@/types/models";
 
-const TABS = ["home", "workout", "visits", "payments", "chat"] as const;
+const TABS = ["home", "workout", "visits", "payments", "chat", "health"] as const;
 type Tab = (typeof TABS)[number];
 
 export const Route = createFileRoute("/m/$code")({
@@ -136,7 +138,8 @@ function MemberApp() {
         ]
       : []),
   ];
-  const current = tab === "chat" && !data.trainer ? "home" : tab;
+  const current =
+    (tab === "chat" && !data.trainer) || (tab === "health" && !data.health) ? "home" : tab;
   const first = data.member.name.split(" ")[0] || data.member.name;
   const live: MemberPortalData =
     todayLog === undefined
@@ -160,7 +163,9 @@ function MemberApp() {
                 ? "My visits"
                 : current === "payments"
                   ? "Packages & payments"
-                  : `Chat with ${data.trainer?.name ?? "trainer"}`
+                  : current === "health"
+                    ? "Health form"
+                    : `Chat with ${data.trainer?.name ?? "trainer"}`
         }
         onRefresh={() => void reload()}
         refreshing={loading}
@@ -170,6 +175,16 @@ function MemberApp() {
         {current === "workout" ? <WorkoutTab data={live} /> : null}
         {current === "visits" ? <VisitsTab data={data} /> : null}
         {current === "payments" ? <PaymentsTab data={data} /> : null}
+        {current === "health" && data.health ? (
+          <HealthFormView
+            health={data.health}
+            memberName={data.member.name}
+            onSaved={() => {
+              void reload();
+              go("home");
+            }}
+          />
+        ) : null}
         {current === "chat" && data.trainer ? (
           <ChatPanel
             clientId={data.member.id}
@@ -358,6 +373,25 @@ function HomeTab({ data, go }: { data: MemberPortalData; go: (t: Tab) => void })
         </div>
       </section>
 
+      {data.health?.status === "pending" ? (
+        <button
+          type="button"
+          onClick={() => go("health")}
+          className="surface-card flex w-full cursor-pointer items-center gap-3 border-warning/60 bg-warning/10 p-4 text-left"
+        >
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-warning text-warning-foreground">
+            <HeartPulse className="size-5" aria-hidden />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-bold">
+              {data.health.last ? "Please fill the updated health form" : "Please fill your health form"}
+            </span>
+            <span className="text-meta">Takes 2 minutes · before your next workout</span>
+          </span>
+          <ChevronRight className="size-5 text-muted-foreground" aria-hidden />
+        </button>
+      ) : null}
+
       {current ? (
         <CurrentPlan m={current} today={today} renewUrl={renewUrl} />
       ) : (
@@ -478,6 +512,19 @@ function HomeTab({ data, go }: { data: MemberPortalData; go: (t: Tab) => void })
           <Detail label="Address" value={member.address} wide />
           <Detail label="Emergency contact" value={member.emergencyContact} wide />
         </dl>
+        {data.health?.status === "done" ? (
+          <button
+            type="button"
+            onClick={() => go("health")}
+            className="mt-3 flex w-full cursor-pointer items-center gap-2 rounded-lg border border-border p-3 text-left text-sm hover:bg-accent"
+          >
+            <HeartPulse className="size-4 shrink-0 text-success" aria-hidden />
+            <span className="flex-1">
+              Health form filled on {day(data.health.last?.signedOn)}
+            </span>
+            <span className="font-semibold">View</span>
+          </button>
+        ) : null}
         <p className="text-meta mt-3">To change your details, please tell the front desk.</p>
       </section>
 

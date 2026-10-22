@@ -131,6 +131,77 @@ export interface Client extends BaseDoc {
   portalActive: boolean;
   /** When the member app link went out on WhatsApp (API or shared by hand). */
   portalSentAt: Date | null;
+  /** Last health form accepted (lib/health-form.ts); null = never. */
+  healthForm: HealthFormSummary | null;
+}
+
+// ------------------------------------------------------------------ health form (settings/healthForm)
+
+export type HealthQuestionKind = "yesno" | "text";
+
+export interface HealthQuestion {
+  /** Never reused after a question is removed (old answers keep their own copy of the text). */
+  id: string;
+  text: string;
+  kind: HealthQuestionKind;
+  /** Yes / No question: ask "please give details" when the answer is Yes. */
+  detailOnYes: boolean;
+}
+
+/** settings/healthForm: the owner's form (owner-only write). */
+export interface HealthFormSettings {
+  /** Off until the owner checked the text: members aren't asked and nothing shows as pending. */
+  enabled: boolean;
+  /** Goes up by one each time the text changes. */
+  version: number;
+  /** Acceptances below this version count as pending ("Ask everyone to accept again"). */
+  requiredVersion: number;
+  title: string;
+  intro: string;
+  questions: HealthQuestion[];
+  consent: string;
+  updatedBy: string;
+}
+
+export interface HealthAnswer {
+  id: string;
+  /** The question as the member saw it. */
+  text: string;
+  kind: HealthQuestionKind;
+  /** "" for written questions. */
+  answer: "yes" | "no" | "";
+  /** Details on Yes, or the written answer. */
+  detail: string;
+}
+
+/** healthForms/{id}: one acceptance, never edited (a paper one can be removed by Undo). */
+export interface HealthFormRecord extends BaseDoc {
+  clientId: string;
+  clientName: string;
+  version: number;
+  title: string;
+  /** Empty for a paper form (the answers are on the paper). */
+  answers: HealthAnswer[];
+  /** The consent text exactly as shown. */
+  consent: string;
+  signedName: string;
+  method: "app" | "paper";
+  /** Staff who ticked "Received on paper"; "" for the app. */
+  by: string;
+  /** Paper form: what it said Yes to, typed by staff ("" = nothing). */
+  note: string;
+  signedOn: string;
+}
+
+/** clients.healthForm: the latest acceptance in short. */
+export interface HealthFormSummary {
+  version: number;
+  signedOn: string;
+  method: "app" | "paper";
+  /** Each Yes answer (with details): staff and the trainer must notice these. */
+  flags: string[];
+  /** Written answers ("Anything else your trainer should know?"). */
+  notes: string[];
 }
 
 export const BIOMETRIC_STATUSES = ["not_enrolled", "active", "disabled"] as const;

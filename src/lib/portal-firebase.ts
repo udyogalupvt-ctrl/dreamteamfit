@@ -30,8 +30,11 @@ if (
   !(globalThis as { __rfPortalEmu?: boolean }).__rfPortalEmu
 ) {
   (globalThis as { __rfPortalEmu?: boolean }).__rfPortalEmu = true;
-  connectAuthEmulator(portalAuth, "http://127.0.0.1:9099", { disableWarnings: true });
-  connectFirestoreEmulator(portalDb, "127.0.0.1", 8080);
+  const env = import.meta.env as Record<string, string | undefined>;
+  const authPort = Number(env["VITE_EMU_AUTH_PORT"]) || 9099;
+  const firestorePort = Number(env["VITE_EMU_FIRESTORE_PORT"]) || 8080;
+  connectAuthEmulator(portalAuth, `http://127.0.0.1:${authPort}`, { disableWarnings: true });
+  connectFirestoreEmulator(portalDb, "127.0.0.1", firestorePort);
 }
 
 /** Signed in with this link (another link's login on the same phone doesn't count). */

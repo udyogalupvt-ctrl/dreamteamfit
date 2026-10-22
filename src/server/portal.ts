@@ -6,6 +6,7 @@
  *   GET  /api/portal/me                                 member / trainer login: what their app shows
  *   GET  /api/portal/trainer-member?clientId=…          trainer: one of their PT members
  *   POST /api/portal/trainer-assign                     trainer: give a PT member a personal plan
+ *   GET|POST /api/portal/health-form                    member: see / fill the health form (portal-health.ts)
  *   POST /api/portal/member-access { clientId, action } staff: ensure | reset | off | on | delete
  *   POST /api/portal/trainer-access { trainerId, action, password? }
  *                                                       owner: create | password | off | on | reveal
@@ -49,6 +50,8 @@ import { pickCurrent } from "@/lib/current-plan";
 import { planMoney } from "@/lib/plan-money";
 import { adminAuth, db, json, localDate, requireFeature } from "./admin";
 import { oldHistoryFor } from "./old-data";
+import { bodyOf } from "./portal-common";
+import { healthRecords, memberHealth, submitHealthForm } from "./portal-health";
 import { readPassword, savePassword } from "./vault";
 
 type D = DocumentData;
@@ -318,9 +321,10 @@ async function memberData(clientId: string): Promise<Response> {
   if (c["portalActive"] === false)
     return json({ error: "Your member app is switched off. Please contact the gym." }, 403);
   const today = localDate();
-  const [gym, memberships, invoices, payments, pts, visits, plans, logs, oldHistory] =
+  const gymP = gymInfo();
+  const [gym, memberships, invoices, payments, pts, visits, plans, logs, oldHistory, health] =
     await Promise.all([
-      gymInfo(),
+      gymP,
       byClient("memberships", clientId),
       byClient("invoices", clientId),
       byClient("payments", clientId),
@@ -329,6 +333,10 @@ async function memberData(clientId: string): Promise<Response> {
       currentPlans(clientId),
       recentLogs(clientId, today),
       oldHistoryFor(c).catch(() => null),
+      memberHealth(
+        c,
+        gymP.then((g) => g.name),
+      ),
     ]);
 
   // What the member pays for each plan (its bill, after discount), not the package price.
@@ -475,6 +483,7 @@ async function memberData(clientId: string): Promise<Response> {
           ),
         }
       : null,
+    health,
   };
   return json(data);
 }
@@ -628,6 +637,7 @@ async function trainerMember(trainerId: string, clientId: string): Promise<Respo
     workout: plans.workout,
     diet: plans.diet,
     logs,
+    health: c["healthForm"] && typeof c["healthForm"] === "object" ? c["healthForm"] : null,
   };
   return json(data);
 }
@@ -1273,6 +1283,10 @@ export async function handlePortal(request: Request, url: URL): Promise<Response
   if (!who) return json({ error: "Please sign in again." }, 401);
   if (request.method === "GET" && action === "me")
     return who.kind === "member" ? memberData(who.id) : trainerData(who.id);
+  if (who.kind === "member" && action === "health-form")
+    return request.method === "POST"
+      ? submitHealthForm(who.id, await bodyOf(request))
+      : healthRecords(who.id);
   if (who.kind !== "trainer") return json({ error: "Not allowed." }, 403);
   const trainer = (await db().doc(`trainers/${who.id}`).get()).data();
   if (!trainer || trainer["portalActive"] === false)
