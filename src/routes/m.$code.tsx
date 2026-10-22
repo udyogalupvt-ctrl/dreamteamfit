@@ -14,6 +14,7 @@ import {
   MessageCircle,
   Phone,
   ReceiptIndianRupee,
+  Ruler,
   UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -42,6 +43,8 @@ import {
   type NavItem,
 } from "@/components/portal/portal-shell";
 import { HealthFormView } from "@/components/portal/health-form-view";
+import { PortalProgress, useEdited } from "@/components/portal/portal-progress";
+import { Sparkline } from "@/components/progress/progress-panel";
 import { VisitsCalendar, clock12, sessionOf } from "@/components/portal/visits-calendar";
 import { FormDialog } from "@/components/common/form-dialog";
 import { Button } from "@/components/ui/button";
@@ -52,12 +55,20 @@ import {
   type PortalLog,
   type PortalMembership,
 } from "@/constants/portal";
+import {
+  formatChange,
+  formatMetric,
+  metricChange,
+  metricInfo,
+  metricsWithData,
+  progressSeries,
+} from "@/lib/body-progress";
 import { portalDb } from "@/lib/portal-firebase";
 import { cn } from "@/lib/utils";
 import type { StatTone } from "@/types";
-import type { ChatThread } from "@/types/models";
+import type { BodyEntry, ChatThread } from "@/types/models";
 
-const TABS = ["home", "workout", "visits", "payments", "chat", "health"] as const;
+const TABS = ["home", "workout", "visits", "payments", "chat", "health", "progress"] as const;
 type Tab = (typeof TABS)[number];
 
 export const Route = createFileRoute("/m/$code")({
@@ -110,6 +121,8 @@ function MemberApp() {
       () => undefined,
     );
   }, [memberId, today]);
+  // Body progress changes in place after a save (no /me reload); Home's card stays in step.
+  const [progress, setProgress] = useEdited(data?.progress ?? NO_ENTRIES);
 
   if (!data)
     return (
@@ -165,13 +178,15 @@ function MemberApp() {
                   ? "Packages & payments"
                   : current === "health"
                     ? "Health form"
-                    : `Chat with ${data.trainer?.name ?? "trainer"}`
+                    : current === "progress"
+                      ? "My progress"
+                      : `Chat with ${data.trainer?.name ?? "trainer"}`
         }
         onRefresh={() => void reload()}
         refreshing={loading}
       />
       <main className="mx-auto max-w-2xl space-y-4 px-4 py-4">
-        {current === "home" ? <HomeTab data={live} go={go} /> : null}
+        {current === "home" ? <HomeTab data={live} progress={progress} go={go} /> : null}
         {current === "workout" ? <WorkoutTab data={live} /> : null}
         {current === "visits" ? <VisitsTab data={data} /> : null}
         {current === "payments" ? <PaymentsTab data={data} /> : null}
@@ -183,6 +198,15 @@ function MemberApp() {
               void reload();
               go("home");
             }}
+          />
+        ) : null}
+        {current === "progress" ? (
+          <PortalProgress
+            entries={progress}
+            onChange={setProgress}
+            actor={{ kind: "member", id: data.member.id }}
+            today={data.today}
+            path="/api/portal/body-log"
           />
         ) : null}
         {current === "chat" && data.trainer ? (
@@ -322,7 +346,50 @@ const PLAN_STATUS: Record<string, { label: string; tone: StatTone }> = {
 };
 const statusOf = (s: string) => PLAN_STATUS[s] ?? { label: s, tone: "info" as StatTone };
 
-function HomeTab({ data, go }: { data: MemberPortalData; go: (t: Tab) => void }) {
+const NO_ENTRIES: BodyEntry[] = [];
+
+/** Home's way into body progress: the first number logged, its change and a tiny trend line. */
+function ProgressCard({ entries, onOpen }: { entries: BodyEntry[]; onOpen: () => void }) {
+  const metric = metricsWithData(entries)[0]?.key;
+  const change = metric ? metricChange(entries, metric) : null;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="surface-card flex w-full cursor-pointer items-center gap-3 p-4 text-left"
+    >
+      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-success text-success-foreground">
+        <Ruler className="size-5" aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-bold">My progress</span>
+        <span className="text-meta block truncate">
+          {metric && change
+            ? `${metricInfo(metric).label} ${formatMetric(change.latest.value, metric)}${
+                change.first.date === change.latest.date
+                  ? ""
+                  : ` · ${formatChange(change.change, metric)}`
+              }`
+            : entries.length
+              ? "See your photos and notes"
+              : "Track your weight and measurements"}
+        </span>
+      </span>
+      {metric ? <Sparkline values={progressSeries(entries, metric).map((p) => p.value)} /> : null}
+      <ChevronRight className="size-5 text-muted-foreground" aria-hidden />
+    </button>
+  );
+}
+
+function HomeTab({
+  data,
+  progress,
+  go,
+}: {
+  data: MemberPortalData;
+  progress: BodyEntry[];
+  go: (t: Tab) => void;
+}) {
   const { member, current, today } = data;
   const upcoming = data.memberships
     .filter((m) => m.status === "pending")
@@ -384,7 +451,9 @@ function HomeTab({ data, go }: { data: MemberPortalData; go: (t: Tab) => void })
           </span>
           <span className="min-w-0 flex-1">
             <span className="block font-bold">
-              {data.health.last ? "Please fill the updated health form" : "Please fill your health form"}
+              {data.health.last
+                ? "Please fill the updated health form"
+                : "Please fill your health form"}
             </span>
             <span className="text-meta">Takes 2 minutes · before your next workout</span>
           </span>
@@ -468,6 +537,8 @@ function HomeTab({ data, go }: { data: MemberPortalData; go: (t: Tab) => void })
         </button>
       ) : null}
 
+      <ProgressCard entries={progress} onOpen={() => go("progress")} />
+
       {data.trainer ? (
         <button
           type="button"
@@ -519,9 +590,7 @@ function HomeTab({ data, go }: { data: MemberPortalData; go: (t: Tab) => void })
             className="mt-3 flex w-full cursor-pointer items-center gap-2 rounded-lg border border-border p-3 text-left text-sm hover:bg-accent"
           >
             <HeartPulse className="size-4 shrink-0 text-success" aria-hidden />
-            <span className="flex-1">
-              Health form filled on {day(data.health.last?.signedOn)}
-            </span>
+            <span className="flex-1">Health form filled on {day(data.health.last?.signedOn)}</span>
             <span className="font-semibold">View</span>
           </button>
         ) : null}

@@ -19,6 +19,7 @@ import { Field, FormDialog } from "@/components/common/form-dialog";
 import { StatusPill } from "@/components/common/status-pill";
 import { AppSetupCard, NotificationToggle } from "@/components/portal/app-setup";
 import { ChatPanel, isUnread, mapThread } from "@/components/portal/chat-panel";
+import { PortalProgress, useEdited } from "@/components/portal/portal-progress";
 import { TrainerCalls } from "@/components/portal/trainer-calls";
 import { PlanContent, PlanHeading, WeekStrip } from "@/components/portal/plan-view";
 import {
@@ -58,6 +59,7 @@ import { cn } from "@/lib/utils";
 import {
   DIET_GOALS,
   WORKOUT_GOALS,
+  type BodyEntry,
   type ChatThread,
   type HealthFormSummary,
   type WorkoutDay,
@@ -352,6 +354,8 @@ function ChatList({
 
 // ------------------------------------------------------------------ one member
 
+const NO_ENTRIES: BodyEntry[] = [];
+
 function MemberDetail({
   row,
   data,
@@ -387,6 +391,7 @@ function MemberDetail({
   useEffect(() => {
     if (needsData) void load();
   }, [load, tab, needsData]);
+  const [progress, setProgress] = useEdited(detail?.progress ?? NO_ENTRIES);
 
   const tabs: [MemberTab, string][] = [
     ["plan", "Plan"],
@@ -485,6 +490,17 @@ function MemberDetail({
         </>
       ) : tab === "progress" ? (
         <>
+          <section className="space-y-2">
+            <h2 className="text-card-title">Body progress</h2>
+            <PortalProgress
+              entries={progress}
+              onChange={setProgress}
+              actor={{ kind: "trainer", id: data.trainer.id }}
+              today={detail.today}
+              path="/api/portal/trainer-body-log"
+              clientId={row.clientId}
+            />
+          </section>
           <section className="surface-card space-y-3 p-4">
             <h2 className="text-card-title">Last 14 days</h2>
             <WeekStrip

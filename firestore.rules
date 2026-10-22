@@ -197,6 +197,18 @@ service cloud.firestore {
       allow delete: if can('members') && resource.data.method == 'paper';
     }
 
+    // Body progress: all of one member's entries in one doc (src/lib/body-progress.ts). The member
+    // and trainer apps write through the server; staff write here, the whole list in one go.
+    match /bodyProgress/{clientId} {
+      allow read: if can('members');
+      allow create, update: if can('members')
+        && request.resource.data.keys().hasOnly(['clientId', 'entries', 'updatedAt'])
+        && request.resource.data.clientId == clientId
+        && request.resource.data.entries is list
+        && request.resource.data.entries.size() <= 400;
+      allow delete: if false;
+    }
+
     match /packages/{id} {
       allow read: if isStaff();
       allow write: if can('packages');

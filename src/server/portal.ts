@@ -7,6 +7,8 @@
  *   GET  /api/portal/trainer-member?clientId=…          trainer: one of their PT members
  *   POST /api/portal/trainer-assign                     trainer: give a PT member a personal plan
  *   GET|POST /api/portal/health-form                    member: see / fill the health form (portal-health.ts)
+ *   POST /api/portal/body-log                           member: log / change body progress (portal-progress.ts)
+ *   POST /api/portal/trainer-body-log                   trainer: the same for a PT member
  *   POST /api/portal/member-access { clientId, action } staff: ensure | reset | off | on | delete
  *   POST /api/portal/trainer-access { trainerId, action, password? }
  *                                                       owner: create | password | off | on | reveal
@@ -52,6 +54,7 @@ import { adminAuth, db, json, localDate, requireFeature } from "./admin";
 import { oldHistoryFor } from "./old-data";
 import { bodyOf } from "./portal-common";
 import { healthRecords, memberHealth, submitHealthForm } from "./portal-health";
+import { bodyEntries, changeBodyEntry } from "./portal-progress";
 import { readPassword, savePassword } from "./vault";
 
 type D = DocumentData;
@@ -322,7 +325,7 @@ async function memberData(clientId: string): Promise<Response> {
     return json({ error: "Your member app is switched off. Please contact the gym." }, 403);
   const today = localDate();
   const gymP = gymInfo();
-  const [gym, memberships, invoices, payments, pts, visits, plans, logs, oldHistory, health] =
+  const [gym, memberships, invoices, payments, pts, visits, plans, logs, oldHistory, health, progress] =
     await Promise.all([
       gymP,
       byClient("memberships", clientId),
@@ -337,6 +340,7 @@ async function memberData(clientId: string): Promise<Response> {
         c,
         gymP.then((g) => g.name),
       ),
+      bodyEntries(clientId),
     ]);
 
   // What the member pays for each plan (its bill, after discount), not the package price.
@@ -484,6 +488,7 @@ async function memberData(clientId: string): Promise<Response> {
         }
       : null,
     health,
+    progress,
   };
   return json(data);
 }
@@ -605,10 +610,11 @@ async function trainerMember(trainerId: string, clientId: string): Promise<Respo
   const pt = await ptWith(trainerId, clientId, today);
   if (!pt) return json({ error: "This member is not in your PT list." }, 403);
   const c = (await db().doc(`clients/${clientId}`).get()).data() ?? {};
-  const [visits, plans, logs] = await Promise.all([
+  const [visits, plans, logs, progress] = await Promise.all([
     visitDays(clientId, shiftDate(today, -60)),
     currentPlans(clientId),
     recentLogs(clientId, today),
+    bodyEntries(clientId),
   ]);
   const dob = s(c["dateOfBirth"]);
   const age = /^\d{4}-\d{2}-\d{2}$/.test(dob)
@@ -638,6 +644,7 @@ async function trainerMember(trainerId: string, clientId: string): Promise<Respo
     diet: plans.diet,
     logs,
     health: c["healthForm"] && typeof c["healthForm"] === "object" ? c["healthForm"] : null,
+    progress,
   };
   return json(data);
 }
@@ -1287,6 +1294,8 @@ export async function handlePortal(request: Request, url: URL): Promise<Response
     return request.method === "POST"
       ? submitHealthForm(who.id, await bodyOf(request))
       : healthRecords(who.id);
+  if (who.kind === "member" && request.method === "POST" && action === "body-log")
+    return changeBodyEntry({ kind: "member", id: who.id, name: "" }, who.id, await bodyOf(request));
   if (who.kind !== "trainer") return json({ error: "Not allowed." }, 403);
   const trainer = (await db().doc(`trainers/${who.id}`).get()).data();
   if (!trainer || trainer["portalActive"] === false)
@@ -1298,6 +1307,13 @@ export async function handlePortal(request: Request, url: URL): Promise<Response
       who.id,
       (await request.json().catch(() => ({}))) as Record<string, unknown>,
     );
+  if (request.method === "POST" && action === "trainer-body-log") {
+    const body = await bodyOf(request);
+    const clientId = s(body["clientId"]);
+    if (!(await ptWith(who.id, clientId, localDate())))
+      return json({ error: "This member is not in your PT list." }, 403);
+    return changeBodyEntry({ kind: "trainer", id: who.id, name: s(trainer["name"]) }, clientId, body);
+  }
   if (request.method === "GET" && action === "trainer-calls") return trainerCalls(trainer);
   if (request.method === "POST" && action === "trainer-call")
     return trainerCall(

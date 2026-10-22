@@ -8,6 +8,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { db, json } from "./admin";
 import { systemAudit } from "./audit";
 import { queueMemberPhoto } from "./biometric";
+import { isOurImage } from "./portal-common";
 
 async function memberFor(token: string) {
   if (!/^[a-f0-9]{24,64}$/i.test(token)) return null;
@@ -17,15 +18,6 @@ async function memberFor(token: string) {
     .limit(1)
     .get();
   return snap.docs[0] ?? null;
-}
-
-/** Only images from this gym's Cloudinary account are accepted. */
-function isOurImage(url: string) {
-  const cloud = (process.env["VITE_CLOUDINARY_CLOUD_NAME"] ?? "").trim();
-  const prefix = cloud
-    ? `https://res.cloudinary.com/${cloud}/image/upload/`
-    : "https://res.cloudinary.com/";
-  return url.startsWith(prefix) && url.length < 500 && !/[\s"'<>]/.test(url);
 }
 
 export async function handleMemberPhoto(request: Request, url: URL) {

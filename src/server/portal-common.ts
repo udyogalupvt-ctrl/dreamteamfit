@@ -54,3 +54,12 @@ export async function appLog(entry: {
     })
     .catch((e) => console.error("audit write failed", String(e)));
 }
+
+/** Only images from this gym's Cloudinary account are accepted. */
+export function isOurImage(url: string) {
+  const cloud = (process.env["VITE_CLOUDINARY_CLOUD_NAME"] ?? "").trim();
+  const prefix = cloud
+    ? `https://res.cloudinary.com/${cloud}/image/upload/`
+    : "https://res.cloudinary.com/";
+  return url.startsWith(prefix) && url.length < 500 && !/[\s"'<>]/.test(url);
+}

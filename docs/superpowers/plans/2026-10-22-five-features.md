@@ -79,6 +79,13 @@ Commit `feat(health): member health form with owner-editable questions`.
 
 ## Feature B: body progress
 
+> **As built (changed during B2):** one doc per member, `bodyProgress/{clientId}` with an `entries` array
+> (up to 400), instead of a `bodyLogs` collection: the member app and trainer app read it with the data
+> they already load (1 read, not 60), and the desk reads it only while the tab is open. Names became
+> `BodyEntry` / `validateBodyEntry` / `cleanBodyEntry`; the server route takes `action: save|delete`.
+> The desk can change every entry; the member and the trainer only their own. Desk Undo restores the same
+> entry; app Undo re-saves it.
+
 ### Task B1: logic + types
 **Files:** `src/lib/body-progress.ts` + test; models `BodyLog`, `BodyMeasurements`.
 **Produces:** `validateBodyLog(input): string`, `cleanBodyLog(input): BodyLogInput` (numbers rounded to 0.1,

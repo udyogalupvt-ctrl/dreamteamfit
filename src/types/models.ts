@@ -133,6 +133,49 @@ export interface Client extends BaseDoc {
   portalSentAt: Date | null;
   /** Last health form accepted (lib/health-form.ts); null = never. */
   healthForm: HealthFormSummary | null;
+  /** The Google review card (lib/review-prompt.ts); null = nothing yet. */
+  review: ClientReview | null;
+}
+
+/** clients.review: days (YYYY-MM-DD) the member app or the desk did something about the review. */
+export interface ClientReview {
+  /** The member tapped "Write a review" (the card never shows again). */
+  tappedAt?: string;
+  /** The member tapped "Not now" (the card comes back after 60 days). */
+  dismissedAt?: string;
+  /** The desk sent the link on WhatsApp. */
+  askedAt?: string;
+}
+
+// ------------------------------------------------------------------ member feedback (spec C)
+
+/** settings/memberApp: member-app options the owner sets (Settings → Member app). */
+export interface MemberAppSettings {
+  /** https link that opens the gym's Google review box; "" = the review card is off. */
+  googleReviewUrl: string;
+}
+
+export const FEEDBACK_KIND_KEYS = ["complaint", "idea", "praise"] as const;
+export type FeedbackKind = (typeof FEEDBACK_KIND_KEYS)[number];
+
+/** feedback/{id}: one message a member sent from the app (src/server/portal-feedback.ts). */
+export interface Feedback {
+  id: string;
+  clientId: string;
+  clientName: string;
+  memberCode: string;
+  phone: string;
+  kind: FeedbackKind;
+  message: string;
+  wantsCall: boolean;
+  status: "new" | "resolved";
+  /** The gym's answer; shows in the member app. */
+  reply: string;
+  repliedBy: string;
+  repliedAt: Date | null;
+  resolvedBy: string;
+  resolvedAt: Date | null;
+  createdAt: Date | null;
 }
 
 // ------------------------------------------------------------------ health form (settings/healthForm)
@@ -202,6 +245,40 @@ export interface HealthFormSummary {
   flags: string[];
   /** Written answers ("Anything else your trainer should know?"). */
   notes: string[];
+}
+
+/** Tape measurements in cm; 0 = not measured. */
+export interface BodyMeasurements {
+  chest: number;
+  waist: number;
+  hips: number;
+  arm: number;
+  thigh: number;
+}
+
+/** What one body progress entry holds; 0 = not measured. */
+export interface BodyEntryInput {
+  date: string;
+  weightKg: number;
+  bodyFatPct: number;
+  measurements: BodyMeasurements;
+  /** Up to 3 progress photos (this gym's Cloudinary). */
+  photos: string[];
+  note: string;
+}
+
+export interface BodyEntryAuthor {
+  kind: "member" | "trainer" | "staff";
+  id: string;
+  name: string;
+}
+
+/** One entry in bodyProgress/{clientId}.entries (src/lib/body-progress.ts). */
+export interface BodyEntry extends BodyEntryInput {
+  id: string;
+  by: BodyEntryAuthor;
+  /** When it was first saved (ms): orders entries made on the same day. */
+  at: number;
 }
 
 export const BIOMETRIC_STATUSES = ["not_enrolled", "active", "disabled"] as const;
@@ -1217,6 +1294,7 @@ export const STAFF_FEATURES = [
   "staff",
   "recycleBin",
   "backup",
+  "feedback",
   "deleteMembers",
   "deleteLeads",
   "deleteBills",

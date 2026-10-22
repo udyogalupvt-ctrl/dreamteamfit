@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PhotoLinkButtons } from "@/components/clients/photo-link-button";
 import { MemberAppCard } from "@/components/clients/member-app-card";
 import { HealthCard, HealthPill } from "@/components/health/health-card";
+import { ClientProgressSection } from "@/components/progress/client-progress-section";
 import { OldHistoryCard } from "@/components/clients/old-history-card";
 import { useAccess } from "@/hooks/use-access";
 import { createFileRoute, Link } from "@tanstack/react-router";
@@ -475,7 +476,7 @@ function ClientProfilePage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {MORE_TABS.map(([v, label]) => (
+              {MORE_TABS.filter(([v]) => v !== "progress" || can("members")).map(([v, label]) => (
                 <DropdownMenuItem key={v} onSelect={() => setTab(v)}>
                   {label}
                 </DropdownMenuItem>
@@ -584,6 +585,10 @@ function ClientProfilePage() {
               )
             }
           />
+        </TabsContent>
+
+        <TabsContent value="progress">
+          <ClientProgressSection clientId={c.id} />
         </TabsContent>
 
         <TabsContent value="bookings">
@@ -904,6 +909,7 @@ const MORE_TABS = [
   ["workout", "Workout plan"],
   ["diet", "Diet plan"],
   ["bookings", "Bookings"],
+  ["progress", "Body progress"],
 ] as const;
 
 function MembershipHero({

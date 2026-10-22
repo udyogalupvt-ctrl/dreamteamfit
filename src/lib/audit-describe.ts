@@ -290,6 +290,19 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
       if (action === "created") return "CFO settings saved";
       return parts.length ? `CFO settings changed: ${parts.join(", ")}` : null;
     }
+    case "bodyProgress": {
+      const byId = (x: D) =>
+        new Map((Array.isArray(x["entries"]) ? (x["entries"] as D[]) : []).map((e) => [s(e["id"]), e]));
+      const was = byId(b);
+      const now = byId(a);
+      const added = [...now.keys()].filter((k) => !was.has(k));
+      const gone = [...was.keys()].filter((k) => !now.has(k));
+      if (added.length === 1 && !gone.length)
+        return `Body progress logged for ${day(now.get(added[0]!)?.["date"])}`;
+      if (gone.length === 1 && !added.length)
+        return `Body progress entry removed (${day(was.get(gone[0]!)?.["date"])})`;
+      return "Body progress changed";
+    }
     case "recycleBin":
       if (action === "created") return `Moved to Recycle Bin: ${s(d["label"])}`;
       if (action === "deleted")

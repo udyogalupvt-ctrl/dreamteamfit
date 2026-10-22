@@ -88,6 +88,7 @@ export const mapClient = (id: string, d: DocumentData): Client => ({
   portalActive: d["portalActive"] !== false,
   portalSentAt: d["portalSentAt"] ? toDate(d["portalSentAt"]) : null,
   healthForm: d["healthForm"] && typeof d["healthForm"] === "object" ? d["healthForm"] : null,
+  review: d["review"] && typeof d["review"] === "object" ? d["review"] : null,
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });

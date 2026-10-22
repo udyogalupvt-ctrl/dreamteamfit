@@ -8,6 +8,7 @@
  * Such a login is never staff: Firestore rules and the server check staffAccess / owner email.
  */
 import type {
+  BodyEntry,
   DietGoal,
   HealthAnswer,
   HealthFormSummary,
@@ -174,6 +175,8 @@ export interface MemberPortalData {
   oldHistory: { memberId: string; joinedOn: string; plans: PortalOldPlan[] } | null;
   /** Health form; null while the owner hasn't switched it on. */
   health: PortalHealth | null;
+  /** Body progress entries, oldest first (bodyProgress/{clientId}). */
+  progress: BodyEntry[];
 }
 
 /** The health form as the member app shows it (src/server/portal-health.ts). */
@@ -325,6 +328,8 @@ export interface TrainerMemberDetail {
   logs: PortalLog[];
   /** Their last health form in short (Yes answers + notes); null = never filled. */
   health: HealthFormSummary | null;
+  /** Body progress entries, oldest first. */
+  progress: BodyEntry[];
 }
 
 /** What a trainer sends to give a member a plan. */
