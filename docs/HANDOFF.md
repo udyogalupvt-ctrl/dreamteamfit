@@ -4,8 +4,12 @@ Last updated: 2026-10-22 (5 new features chosen; nothing built yet. Old history:
 
 ## NEXT: 5 new features for Rebuild Fitness (founder picked 2026-10-22)
 
-**State:** chosen + 4 decisions taken. Nothing designed or built. Do: `brainstorming` → ONE screen mockup per
-feature → founder OK → `writing-plans` → build. Money feature (A) = Extra high effort + reviewer agent.
+**State:** chosen + 4 decisions taken. Nothing designed or built. **Founder 2026-10-22: no approval per step.**
+Decide the brainstorm answers and designs yourself (write them into the plan), then plan → build → test end to end
+(build, tests, emulator rules tests, light/dark 390/1440 screenshots). Ask the founder ONLY for: push to live,
+production rules deploy, real-money actions on the live app, paid spend, and facts only they have (gym UPI ID,
+Google review link: build with Settings fields so these can be filled later). Money feature (A) = reviewer agent.
+Suggested order: E, B, C, D, then A.
 Check `git branch --show-current` / `git log` first: other chats may work in this folder. Main = 12c8fac (+ local
 handoff commits).
 
