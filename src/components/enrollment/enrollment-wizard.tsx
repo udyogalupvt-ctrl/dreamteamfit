@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { format } from "date-fns";
 import { PhotoLinkButtons } from "@/components/clients/photo-link-button";
 import { MemberAppCard } from "@/components/clients/member-app-card";
 import { Link } from "@tanstack/react-router";
@@ -92,6 +93,7 @@ import { subscribeInvoice } from "@/services/invoices.service";
 import { downloadInvoicePdf } from "@/lib/invoice-download";
 import { markInvoiceShared, sendInvoiceWhatsApp } from "@/services/whatsapp.service";
 import { cashPartOf, PayModeField } from "@/components/billing/pay-mode-field";
+import { SawMoneyTick } from "@/components/billing/saw-money-tick";
 import { SPLIT_MODE, splitParts, splitProblem, type PayMode } from "@/lib/split-pay";
 import {
   DEFAULT_WHATSAPP_SETTINGS,
@@ -229,12 +231,16 @@ export function EnrollmentWizard({
   const { user } = useAuth();
   const existing = options.existingClient ?? null;
   const resuming = Boolean(options.resumeEnrollmentId);
+  // A member's online renewal: filled in from what they paid; any saved draft stays for later.
+  const link = options.payLink ?? null;
+  // Paid online: the desk ticks that the money is in the gym's account before confirming.
+  const [seen, setSeen] = useState(false);
   const draftKey = existing
     ? `client:${existing.id}`
     : options.inquiryId
       ? `inq:${options.inquiryId}`
       : "new";
-  const [restored] = useState<Draft | null>(() => (resuming ? null : readDraft(draftKey)));
+  const [restored] = useState<Draft | null>(() => (resuming || link ? null : readDraft(draftKey)));
 
   const firstStep = existing ? PACKAGE : DETAILS;
   const [step, setStep] = useState(() =>
@@ -246,7 +252,7 @@ export function EnrollmentWizard({
   const [whatsappOptIn, setWhatsappOptIn] = useState(
     () => restored?.whatsappOptIn ?? existing?.whatsappOptIn ?? true,
   );
-  const [packageId, setPackageId] = useState(restored?.packageId ?? "");
+  const [packageId, setPackageId] = useState(link?.packageId ?? restored?.packageId ?? "");
   const [ptOn, setPtOn] = useState(restored?.ptOn ?? false);
   const [ptPackageId, setPtPackageId] = useState(restored?.ptPackageId ?? "");
   const [trainerId, setTrainerId] = useState(restored?.trainerId ?? "");
@@ -263,17 +269,23 @@ export function EnrollmentWizard({
   const [ptDiscount, setPtDiscount] = useState(restored?.ptDiscount ?? 0);
   const [ptStartText, setPtStartText] = useState(restored?.ptStart ?? "");
   const [ptEndText, setPtEndText] = useState(restored?.ptEnd ?? "");
-  const [amountPaid, setAmountPaid] = useState<number | null>(restored?.amountPaid ?? null);
+  const [amountPaid, setAmountPaid] = useState<number | null>(
+    link ? link.memberAmount : (restored?.amountPaid ?? null),
+  );
   // The board price ends in 99 (₹1,999) but members hand over ₹2,000 and take no change, so the
   // bill is made for what was really handed over. The package keeps its board price.
   const [roundUp, setRoundUp] = useState(true);
   const [method, setMethod] = useState<PayMode>(restored?.method ?? "UPI");
   const [cashText, setCashText] = useState(restored?.cashPart ?? "");
   // "" = the default day (see paidOn below).
-  const [paidOnText, setPaidOnText] = useState(restored?.paidOn ?? "");
+  const [paidOnText, setPaidOnText] = useState(
+    link?.memberPaidAt ? format(link.memberPaidAt, "yyyy-MM-dd") : (restored?.paidOn ?? ""),
+  );
   // Staff picked the start date themselves: it no longer follows "Paid on".
   const [startTouched, setStartTouched] = useState(false);
-  const [notes, setNotes] = useState(restored?.notes ?? "");
+  const [notes, setNotes] = useState(
+    link ? (link.utr ? `UPI ref ${link.utr}` : "Paid online by UPI") : (restored?.notes ?? ""),
+  );
   const access = useAccess();
   const [counsellorId, setCounsellorId] = useState(
     () => restored?.counsellorId ?? options.counsellorId ?? "",
@@ -703,7 +715,7 @@ export function EnrollmentWizard({
 
   // Keep an unsaved draft so an accidental close never loses what staff typed.
   useEffect(() => {
-    if (confirmed || resuming) return;
+    if (confirmed || resuming || link) return;
     writeDraft(
       draftKey,
       hasEntry
@@ -738,6 +750,7 @@ export function EnrollmentWizard({
   }, [
     confirmed,
     resuming,
+    link,
     draftKey,
     hasEntry,
     step,
@@ -877,6 +890,7 @@ export function EnrollmentWizard({
         paidToday: paidOn === today && startDate < today,
         ...(!upgrading && paid > 0 ? { paidOn } : {}),
         notes,
+        ...(link ? { payLinkId: link.id } : {}),
         settings: settings.data,
         staff: { uid: user?.uid ?? "", name: user?.displayName || user?.email || "Staff" },
         counsellor: counsellor ? { id: counsellor.id, name: counsellor.name } : null,
@@ -1016,6 +1030,21 @@ export function EnrollmentWizard({
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+          {link && !confirmed && step <= PAYMENT ? (
+            <div className="mb-4 grid gap-2">
+              <p className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                <span className="font-semibold">
+                  Paid online: {formatPrice(link.memberAmount)} by UPI
+                  {link.utr ? ` · ref ${link.utr}` : ""}.
+                </span>{" "}
+                Check it is in the gym's account, then save. The package, amount and UPI are filled
+                in.
+              </p>
+              {step === PAYMENT ? (
+                <SawMoneyTick amount={link.memberAmount} checked={seen} onChange={setSeen} />
+              ) : null}
+            </div>
+          ) : null}
           {restored && !confirmed && step <= PAYMENT ? (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-info/40 bg-info/10 px-3 py-2 text-sm">
               <span>
@@ -1810,7 +1839,12 @@ export function EnrollmentWizard({
                   Next <ChevronRight aria-hidden />
                 </Button>
               ) : (
-                <Button size="lg" disabled={saving} onClick={() => confirm()} className="min-w-0">
+                <Button
+                  size="lg"
+                  disabled={saving || (!!link && !seen)}
+                  onClick={() => confirm()}
+                  className="min-w-0"
+                >
                   {saving ? (
                     <Loader2 className="animate-spin" aria-hidden />
                   ) : (

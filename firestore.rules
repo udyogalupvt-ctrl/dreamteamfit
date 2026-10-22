@@ -81,12 +81,13 @@ service cloud.firestore {
         && numOf(resource.data.createdAt + duration.value(330, 'm')) == todayNum();
     }
     // Billing may change today's money (dated today, or typed today); Finance any open-month money.
-    // Who typed it and when never change (the undo below relies on them).
+    // Who typed it and when never change (the undo below relies on them), nor the UPI pay link it
+    // confirmed (payLinks below trusts that tag).
     function payEditOk() {
       let a = resource.data;
       let b = request.resource.data;
       let keys = b.diff(a).affectedKeys();
-      return !keys.hasAny(['createdAt', 'createdByUid'])
+      return !keys.hasAny(['createdAt', 'createdByUid', 'payLinkId'])
         && (!keys.hasAny(['amount', 'method', 'paymentDate', 'kind', 'oldSoftware'])
           || (payShapeOk(b)
             && (!keys.hasAny(['kind', 'oldSoftware']) || can('finance'))
@@ -166,15 +167,24 @@ service cloud.firestore {
         && (!keys.hasAny([k0]) || b[k0] == a.get(k0, 0) + 1);
     }
     // Settings: the bill counter moves on every sale; the rest needs "Settings". The health form
-    // (what members agree to) is the owner's own text.
-    function settingsWriter(id) {
-      return (id == 'healthForm' && isOwner()) || (id != 'healthForm' && can('settings'));
+    // (what members agree to) and the UPI ID members pay to are the owner's own: a staff login
+    // could otherwise send members' money to its own UPI ID.
+    function ownerSetting(id) {
+      return id in ['healthForm', 'upi'];
     }
-    // The member app's Google review link (src/lib/review-prompt.ts checks it is Google's).
+    function settingsWriter(id) {
+      return (ownerSetting(id) && isOwner()) || (!ownerSetting(id) && can('settings'));
+    }
+    // The member app's Google review link (src/lib/review-prompt.ts checks it is Google's) and the
+    // UPI ID (src/lib/pay-links.ts validateUpiSettings; "" = online pay is off).
     function settingsShapeOk(id, d) {
-      return id != 'memberApp' || (d.keys().hasOnly(['googleReviewUrl', 'updatedAt', 'updatedBy'])
+      return (id != 'memberApp' || (d.keys().hasOnly(['googleReviewUrl', 'updatedAt', 'updatedBy'])
         && d.googleReviewUrl is string && d.googleReviewUrl.size() <= 500
-        && (d.googleReviewUrl == '' || d.googleReviewUrl.matches('https://[^ ]+')));
+        && (d.googleReviewUrl == '' || d.googleReviewUrl.matches('https://[^ ]+'))))
+        && (id != 'upi' || (d.keys().hasOnly(['upiId', 'payeeName', 'updatedAt', 'updatedBy'])
+          && d.upiId is string && d.payeeName is string && d.payeeName.size() <= 50
+          && (d.upiId == '' || (d.upiId.size() <= 100 && d.payeeName.size() > 0
+            && d.upiId.matches('[a-z0-9][a-z0-9._-]{1,98}@[a-z][a-z0-9]{1,63}')))));
     }
     match /settings/{id} {
       allow read: if isStaff();
@@ -256,6 +266,51 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['referrerId',
             'referrerName', 'referrerCode', 'newClientName', 'newClientCode', 'updatedAt'])));
       allow delete: if can('referrals') || (isStaff() && resource.data.status == 'due');
+    }
+
+    // UPI pay links (src/server/pay-links.ts makes them). Billing marks one "not received",
+    // confirms it with its payment written in the same go, or Undo of that payment puts it back.
+    function payLinkKeys(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+    function payLinkPayment(pid) {
+      return /databases/$(database)/documents/payments/$(pid);
+    }
+    // Money typed in this same go (not an old payment), tagged with this link, for its bill
+    // (balance) or its member (renewal).
+    function payLinkNewPay(linkId, pid) {
+      return !exists(payLinkPayment(pid)) && existsAfter(payLinkPayment(pid))
+        && getAfter(payLinkPayment(pid)).data.get('payLinkId', '') == linkId
+        && getAfter(payLinkPayment(pid)).data.amount > 0
+        && (resource.data.kind == 'balance'
+          ? getAfter(payLinkPayment(pid)).data.get('invoiceId', '') == resource.data.invoiceId
+          : getAfter(payLinkPayment(pid)).data.get('clientId', '') == resource.data.clientId);
+    }
+    match /payLinks/{id} {
+      allow read: if can('billing');
+      allow create, delete: if false;
+      allow update: if can('billing') && (
+        (resource.data.status == 'member_paid' && request.resource.data.status == 'open'
+          && payLinkKeys(['status', 'deskNote', 'utr', 'utrSeenBefore', 'memberAmount',
+            'memberPaidAt', 'checkedBy', 'checkedByUid', 'checkedAt', 'updatedAt'])
+          && request.resource.data.deskNote is string
+          && request.resource.data.deskNote.size() <= 200)
+        || (resource.data.status == 'member_paid' && request.resource.data.status == 'confirmed'
+          && payLinkKeys(['status', 'paymentIds', 'saleBillId', 'checkedBy', 'checkedByUid',
+            'checkedAt', 'updatedAt'])
+          && request.resource.data.paymentIds is list
+          && request.resource.data.paymentIds.size() > 0
+          && request.resource.data.paymentIds.size() <= 2
+          && payLinkNewPay(id, request.resource.data.paymentIds[0])
+          && (request.resource.data.paymentIds.size() < 2
+            || payLinkNewPay(id, request.resource.data.paymentIds[1])))
+        || (resource.data.status == 'confirmed' && request.resource.data.status == 'member_paid'
+          && payLinkKeys(['status', 'paymentIds', 'saleBillId', 'checkedBy', 'checkedByUid',
+            'checkedAt', 'updatedAt'])
+          && request.resource.data.paymentIds.size() == 0
+          && !existsAfter(payLinkPayment(resource.data.paymentIds[0]))
+          && (resource.data.paymentIds.size() < 2
+            || !existsAfter(payLinkPayment(resource.data.paymentIds[1])))));
     }
 
     match /packages/{id} {

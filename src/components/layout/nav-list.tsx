@@ -4,6 +4,7 @@ import { ChevronDown, MoreHorizontal } from "lucide-react";
 import { useNavItems } from "@/hooks/use-nav-items";
 import { useAttention } from "@/hooks/use-attention";
 import { useFeedbackBadge } from "@/hooks/use-feedback-badge";
+import { usePayLinksToConfirm } from "@/hooks/use-pay-links-badge";
 import { useReferralsBadge } from "@/hooks/use-referrals-badge";
 import { useRecycleBinBadge } from "@/hooks/use-recycle-bin-badge";
 import { useWhatsAppUnread } from "@/hooks/use-whatsapp-unread";
@@ -30,18 +31,21 @@ export function NavList({ collapsed = false, onNavigate }: NavListProps) {
   const waUnread = useWhatsAppUnread();
   const feedbackNew = useFeedbackBadge();
   const referralsDue = useReferralsBadge();
+  const paidOnline = usePayLinksToConfirm().data.length;
   const badgeFor = (item: NavItem) =>
-    item.to === "/leads"
-      ? attention.callsDue
-      : item.to === "/recycle-bin"
-        ? binNew
-        : item.to === "/whatsapp"
-          ? waUnread
-          : item.to === "/feedback"
-            ? feedbackNew
-            : item.to === "/referrals"
-              ? referralsDue
-              : 0;
+    item.to === "/billing"
+      ? paidOnline
+      : item.to === "/leads"
+        ? attention.callsDue
+        : item.to === "/recycle-bin"
+          ? binNew
+          : item.to === "/whatsapp"
+            ? waUnread
+            : item.to === "/feedback"
+              ? feedbackNew
+              : item.to === "/referrals"
+                ? referralsDue
+                : 0;
 
   const link = (item: NavItem, nested = false) => {
     const active = isActive(pathname, item.to);

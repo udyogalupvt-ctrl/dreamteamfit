@@ -50,6 +50,7 @@ import {
 } from "@/components/portal/portal-announcements";
 import { FeedbackLink, FeedbackView, ReviewCard } from "@/components/portal/portal-feedback";
 import { PortalProgress, useEdited } from "@/components/portal/portal-progress";
+import { BillPayOnline, RenewOnline } from "@/components/portal/portal-pay";
 import { BringFriendCard } from "@/components/portal/portal-referral";
 import { Sparkline } from "@/components/progress/progress-panel";
 import { VisitsCalendar, clock12, sessionOf } from "@/components/portal/visits-calendar";
@@ -326,6 +327,13 @@ function RenewalPopup({ data }: { data: MemberPortalData }) {
       }
       footer={
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+          {data.pay?.renewal ? (
+            <RenewOnline
+              renewal={data.pay.renewal}
+              onOpen={close}
+              className="grid [&_button]:w-full"
+            />
+          ) : null}
           {wa ? (
             <Button asChild className="bg-[#128C7E] text-white hover:bg-[#0e7266]">
               <a href={wa} target="_blank" rel="noreferrer" onClick={close}>
@@ -349,8 +357,9 @@ function RenewalPopup({ data }: { data: MemberPortalData }) {
       <div className="flex items-center gap-3 rounded-xl bg-warning/15 p-3">
         <Hourglass className="size-6 shrink-0 text-warning" aria-hidden />
         <p className="text-sm">
-          Renew at the front desk, or message the gym on WhatsApp and they will get it ready for
-          you.
+          {data.pay?.renewal
+            ? "Renew online by UPI, at the front desk, or message the gym on WhatsApp."
+            : "Renew at the front desk, or message the gym on WhatsApp and they will get it ready for you."}
         </p>
       </div>
     </FormDialog>
@@ -509,7 +518,12 @@ function HomeTab({
       ) : null}
 
       {current ? (
-        <CurrentPlan m={current} today={today} renewUrl={renewUrl} />
+        <CurrentPlan
+          m={current}
+          today={today}
+          renewUrl={renewUrl}
+          renewal={data.pay?.renewal ?? null}
+        />
       ) : (
         <section className="surface-card border-warning/50 bg-warning/10 p-4">
           <p className="font-bold">
@@ -524,12 +538,17 @@ function HomeTab({
               Visit the front desk to renew and keep training.
             </p>
           ) : null}
-          {!upcoming && renewUrl ? (
-            <Button asChild size="sm" variant="outline" className="mt-3">
-              <a href={renewUrl} target="_blank" rel="noreferrer">
-                <MessageCircle aria-hidden /> Renew on WhatsApp
-              </a>
-            </Button>
+          {!upcoming && (data.pay?.renewal || renewUrl) ? (
+            <div className="mt-3 flex flex-wrap items-start gap-2">
+              {data.pay?.renewal ? <RenewOnline renewal={data.pay.renewal} /> : null}
+              {renewUrl ? (
+                <Button asChild size="sm" variant="outline">
+                  <a href={renewUrl} target="_blank" rel="noreferrer">
+                    <MessageCircle aria-hidden /> Renew on WhatsApp
+                  </a>
+                </Button>
+              ) : null}
+            </div>
           ) : null}
         </section>
       )}
@@ -683,10 +702,12 @@ function CurrentPlan({
   m,
   today,
   renewUrl,
+  renewal,
 }: {
   m: PortalMembership;
   today: string;
   renewUrl: string;
+  renewal: NonNullable<MemberPortalData["pay"]>["renewal"];
 }) {
   const total = Math.max(1, daysBetween(m.startDate, m.endDate));
   const left = Math.max(0, daysBetween(today, m.endDate));
@@ -716,15 +737,18 @@ function CurrentPlan({
       {left <= 7 ? (
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold text-warning-foreground dark:text-warning">
-            Ending soon. Renew at the front desk to keep going.
+            Ending soon. Renew to keep going.
           </p>
-          {renewUrl ? (
-            <Button asChild size="sm" variant="outline">
-              <a href={renewUrl} target="_blank" rel="noreferrer">
-                <MessageCircle aria-hidden /> Renew on WhatsApp
-              </a>
-            </Button>
-          ) : null}
+          <div className="flex flex-wrap items-start gap-2">
+            {renewal ? <RenewOnline renewal={renewal} /> : null}
+            {renewUrl ? (
+              <Button asChild size="sm" variant="outline">
+                <a href={renewUrl} target="_blank" rel="noreferrer">
+                  <MessageCircle aria-hidden /> Renew on WhatsApp
+                </a>
+              </Button>
+            ) : null}
+          </div>
         </div>
       ) : null}
       {m.pausedDays ? <p className="text-meta mt-2">Includes {m.pausedDays} paused days.</p> : null}
@@ -1002,13 +1026,27 @@ function UsualTime({ times }: { times: string[] }) {
 // ------------------------------------------------------------------ packages & payments
 
 function PaymentsTab({ data }: { data: MemberPortalData }) {
+  const due = data.bills.filter((b) => b.balance > 0);
+  // Every balance already paid by UPI: only the gym's check is left.
+  const waiting =
+    !!data.pay &&
+    due.length > 0 &&
+    due.every((b) => b.token && data.pay?.bills[b.token]?.status === "member_paid");
+  const canUpi = !!data.pay && due.some((b) => b.token);
+  const by = data.nextDueDate ? `Please pay by ${day(data.nextDueDate)}` : "Please pay";
   return (
     <>
       {data.balanceDue > 0 ? (
         <section className="surface-card border-warning/60 bg-warning/10 p-4">
           <p className="font-bold">{rupees(data.balanceDue)} left to pay</p>
           <p className="text-meta">
-            {data.nextDueDate ? `Please pay by ${day(data.nextDueDate)} at the front desk.` : ""}
+            {waiting
+              ? "You paid by UPI. It counts once the gym confirms it."
+              : canUpi
+                ? `${by}: by UPI on your bill below, or at the front desk.`
+                : data.nextDueDate
+                  ? `${by} at the front desk.`
+                  : ""}
           </p>
         </section>
       ) : null}
@@ -1134,6 +1172,13 @@ function PaymentsTab({ data }: { data: MemberPortalData }) {
                   <p className="text-sm font-semibold text-warning-foreground dark:text-warning">
                     Next payment by {day(b.dueDate)}
                   </p>
+                ) : null}
+                {b.balance > 0 && b.token && data.pay ? (
+                  <BillPayOnline
+                    bill={b.token}
+                    amount={b.balance}
+                    link={data.pay.bills[b.token] ?? null}
+                  />
                 ) : null}
                 {b.token ? (
                   <Button asChild size="sm" variant="outline">

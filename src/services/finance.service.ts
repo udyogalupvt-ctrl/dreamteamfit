@@ -314,10 +314,15 @@ export async function recordBalancePayment(
      * `method` is then ignored.
      */
     cash?: number | null;
+    /** Kept on the payment (Edit payment shows and changes it). */
+    note?: string;
+    /** A UPI pay link the member says they paid: confirmed with this payment, in one go. */
+    payLinkId?: string;
   } = {},
 ) {
   const today = todayISO();
   const paidOn = opts.paymentDate || today;
+  const note = (opts.note ?? "").trim().slice(0, 200);
   const split = opts.cash !== undefined && opts.cash !== null;
   if (split) {
     const bad = splitProblem(amount, Number(opts.cash));
@@ -331,10 +336,19 @@ export async function recordBalancePayment(
   const ref = doc(db, COLLECTIONS.invoices, invoice.id);
   const payRef = doc(col(COLLECTIONS.payments));
   const cashRef = split ? doc(col(COLLECTIONS.payments)) : null;
+  const linkRef = opts.payLinkId ? doc(db, COLLECTIONS.payLinks, opts.payLinkId) : null;
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists()) throw new Error("Invoice not found.");
     const d = snap.data();
+    if (linkRef) {
+      const link = await tx.get(linkRef);
+      const l = link.data();
+      if (!l || l["status"] !== "member_paid")
+        throw new Error("This online payment was already dealt with. Open the list again.");
+      if (l["kind"] !== "balance" || l["invoiceId"] !== invoice.id)
+        throw new Error("This online payment is for another bill.");
+    }
     // A plan on a gym + PT bill was cancelled: its unpaid part is not asked for (bill-cancel.ts).
     const cancelledParts = (d["cancelledParts"] as Invoice["cancelledParts"]) ?? null;
     const dropped = cancelledDueOf({
@@ -345,6 +359,10 @@ export async function recordBalancePayment(
       paid = Number(d["amountPaid"] ?? 0),
       balance = billOwed(total, paid, dropped);
     if (amount <= 0) throw new Error("Enter an amount greater than zero.");
+    if (linkRef && balance <= 0)
+      throw new Error(
+        "This bill has nothing left to pay. If the member's UPI money came in, give it back, or mark it Not received.",
+      );
     if (amount > balance) throw new Error(`Amount cannot exceed the remaining balance.`);
     const newPaid = round(paid + amount),
       newBalance = billOwed(total, newPaid, dropped),
@@ -387,6 +405,8 @@ export async function recordBalancePayment(
         paymentDate: paidOn,
         kind: "balance",
         ...(cashRef ? { splitId: payRef.id } : {}),
+        ...(note ? { note } : {}),
+        ...(opts.payLinkId ? { payLinkId: opts.payLinkId } : {}),
         ...part.alloc,
         createdBy: staffName,
         createdByUid: opts.staffUid ?? "",
@@ -404,6 +424,16 @@ export async function recordBalancePayment(
     };
     tx.update(ref, { ...patch, paymentsTracked: true });
     if (d["publicToken"]) tx.update(doc(db, COLLECTIONS.publicInvoices, d["publicToken"]), patch);
+    // firestore.rules: confirmed only together with a payment that names this link.
+    if (linkRef)
+      tx.update(linkRef, {
+        status: "confirmed",
+        paymentIds: parts.map((x) => x.ref.id),
+        checkedBy: staffName,
+        checkedByUid: opts.staffUid ?? "",
+        checkedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
   });
   return { paymentId: payRef.id };
 }
@@ -465,6 +495,10 @@ export async function undoBalancePayment(paymentId: string, byUid: string) {
     const inv = await tx.get(invRef);
     if (!inv.exists()) throw new Error("Its bill was not found.");
     const d = inv.data();
+    // Confirmed from a UPI pay link: the link goes back to "waiting for the desk".
+    const linkId = String(p["payLinkId"] ?? "");
+    const linkRef = linkId ? doc(db, COLLECTIONS.payLinks, linkId) : null;
+    const link = linkRef ? await tx.get(linkRef) : null;
     const total = Number(d["total"] ?? 0);
     const paid = round(Math.max(0, Number(d["amountPaid"] ?? 0) - amount));
     const cancelledParts = (d["cancelledParts"] as Invoice["cancelledParts"]) ?? null;
@@ -491,6 +525,16 @@ export async function undoBalancePayment(paymentId: string, byUid: string) {
     tx.update(invRef, patch);
     if (d["publicToken"]) tx.update(doc(db, COLLECTIONS.publicInvoices, d["publicToken"]), patch);
     payRefs.forEach((r) => tx.delete(r));
+    if (linkRef && link?.data()?.["status"] === "confirmed")
+      tx.update(linkRef, {
+        status: "member_paid",
+        paymentIds: [],
+        saleBillId: "",
+        checkedBy: "",
+        checkedByUid: "",
+        checkedAt: null,
+        updatedAt: serverTimestamp(),
+      });
   });
 }
 

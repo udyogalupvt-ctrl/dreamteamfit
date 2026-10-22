@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Bell, ChevronDown, CreditCard, Fingerprint, Phone, RefreshCcw } from "lucide-react";
+import {
+  Bell,
+  ChevronDown,
+  CreditCard,
+  Fingerprint,
+  Phone,
+  RefreshCcw,
+  Smartphone,
+} from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { GlobalSearch } from "@/components/layout/global-search";
 import { InstallAppButton } from "@/components/layout/install-app-button";
@@ -19,13 +27,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAttention } from "@/hooks/use-attention";
+import { usePayLinksToConfirm } from "@/hooks/use-pay-links-badge";
 import { formatPrice } from "@/lib/format";
 
 export function Topbar() {
   const navigate = useNavigate();
   const actions = useQuickActions();
   const a = useAttention();
+  const paidOnline = usePayLinksToConfirm().data.length;
   const alerts = [
+    {
+      id: "paidOnline",
+      n: paidOnline,
+      label: `${paidOnline} online payment${paidOnline === 1 ? "" : "s"} to check and confirm`,
+      icon: Smartphone,
+      go: () => navigate({ to: "/billing" }),
+    },
     {
       id: "thumbPending",
       n: a.thumbPending,

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { format } from "date-fns";
 import {
   Copy,
   Download,
@@ -31,7 +32,7 @@ import { getInvoicePublicUrl } from "@/lib/invoice-utils";
 import { manualWhatsAppUrl } from "@/lib/invoice-share";
 import { formatDateISO, formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { Invoice } from "@/types/models";
+import type { Invoice, PayLink } from "@/types/models";
 import { cashPartOf, PayModeField } from "@/components/billing/pay-mode-field";
 import { SPLIT_MODE, splitParts, splitProblem, type PayMode } from "@/lib/split-pay";
 import { autoSendBill, markInvoiceShared, sendInvoiceWhatsApp } from "@/services/whatsapp.service";
@@ -54,6 +55,7 @@ import { useLive } from "@/hooks/use-live-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useAccess } from "@/hooks/use-access";
 import { EditBillDialog } from "@/components/billing/edit-bill-dialog";
+import { SawMoneyTick } from "@/components/billing/saw-money-tick";
 
 export function InvoiceActions({
   invoice,
@@ -204,31 +206,46 @@ export function InvoiceActions({
   );
 }
 
-function BalancePaymentDialog({
+/** What a member paid online (Billing → Paid online): amount, day and UPI reference filled in. */
+const linkAmount = (invoice: Invoice, link: PayLink | null | undefined) =>
+  link ? Math.min(link.memberAmount, invoice.balanceDue) : invoice.balanceDue;
+const linkDay = (link: PayLink | null | undefined) =>
+  link?.memberPaidAt ? format(link.memberPaidAt, "yyyy-MM-dd") : todayISO();
+const linkNote = (link: PayLink | null | undefined) =>
+  link ? (link.utr ? `UPI ref ${link.utr}` : "Paid online by UPI") : "";
+
+export function BalancePaymentDialog({
   invoice,
   open,
   onOpenChange,
+  fromLink,
 }: {
   invoice: Invoice;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  fromLink?: PayLink | null;
 }) {
   const { user } = useAuth();
-  const [amount, setAmount] = useState(invoice.balanceDue);
+  const [amount, setAmount] = useState(() => linkAmount(invoice, fromLink));
   const [method, setMethod] = useState<PayMode>("UPI");
   const [cashText, setCashText] = useState("");
   const [nextDate, setNextDate] = useState("");
   // The day it was paid: today, or an earlier day when it is typed in later.
-  const [paidOn, setPaidOn] = useState(todayISO());
+  const [paidOn, setPaidOn] = useState(() => linkDay(fromLink));
+  const [note, setNote] = useState(() => linkNote(fromLink));
   const [saving, setSaving] = useState(false);
+  const [seen, setSeen] = useState(false);
   const [lastOpen, setLastOpen] = useState(false);
   if (open !== lastOpen) {
     setLastOpen(open);
     if (open) {
-      setAmount(invoice.balanceDue);
+      setSeen(false);
+      setAmount(linkAmount(invoice, fromLink));
       setNextDate("");
-      setPaidOn(todayISO());
+      setPaidOn(linkDay(fromLink));
       setCashText("");
+      setMethod("UPI");
+      setNote(linkNote(fromLink));
     }
   }
   const today = todayISO();
@@ -257,6 +274,8 @@ function BalancePaymentDialog({
           nextPaymentDate: restLeft ? nextDate : null,
           paymentDate: paidOn,
           cash: split ? cashPartOf(cashText) : null,
+          note,
+          ...(fromLink ? { payLinkId: fromLink.id } : {}),
         },
       );
       const parts = split ? splitParts(amount, cashPartOf(cashText)) : null;
@@ -293,7 +312,8 @@ function BalancePaymentDialog({
               amount > invoice.balanceDue ||
               (restLeft && !nextDate) ||
               !!dateProblem ||
-              !!splitBad
+              !!splitBad ||
+              (!!fromLink && !seen)
             }
             onClick={() => save()}
           >
@@ -304,6 +324,20 @@ function BalancePaymentDialog({
       }
     >
       <div className="grid gap-4">
+        {fromLink ? (
+          <p className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+            <span className="font-semibold">
+              Paid online: {formatPrice(fromLink.memberAmount)} by UPI
+              {fromLink.utr ? ` · ref ${fromLink.utr}` : ""}.
+            </span>{" "}
+            {fromLink.memberAmount > invoice.balanceDue
+              ? `Only ${formatPrice(invoice.balanceDue)} is due now: record that and give the extra ${formatPrice(fromLink.memberAmount - invoice.balanceDue)} back to the member.`
+              : "Check it is in the gym's account, then record it."}
+          </p>
+        ) : null}
+        {fromLink ? (
+          <SawMoneyTick amount={fromLink.memberAmount} checked={seen} onChange={setSeen} />
+        ) : null}
         <Field
           label="Amount received ₹"
           htmlFor="bal-amt"
@@ -359,14 +393,25 @@ function BalancePaymentDialog({
             className="max-w-48"
           />
         </Field>
-        <PayModeField
-          id="bal-method"
-          mode={method}
-          onMode={setMethod}
-          cash={cashText}
-          onCash={setCashText}
-          total={amount || 0}
-        />
+        {fromLink ? null : (
+          <PayModeField
+            id="bal-method"
+            mode={method}
+            onMode={setMethod}
+            cash={cashText}
+            onCash={setCashText}
+            total={amount || 0}
+          />
+        )}
+        <Field label="Note" htmlFor="bal-note" hint="Optional. Saved with this payment.">
+          <Input
+            id="bal-note"
+            value={note}
+            maxLength={200}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. UPI ref 412345678901"
+          />
+        </Field>
       </div>
     </FormDialog>
   );

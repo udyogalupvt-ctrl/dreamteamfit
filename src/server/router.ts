@@ -10,6 +10,7 @@ import { handleDeviceUsers } from "./device-import";
 import { handleMemberPhoto } from "./member-photo";
 import { handleOldData } from "./old-data";
 import { handleOldMigrate } from "./old-migrate";
+import { handlePay } from "./pay-links";
 import { handlePortal } from "./portal";
 import { handlePush } from "./push";
 import { handleSheetBackup } from "./sheet-backup";
@@ -35,6 +36,7 @@ export async function handleServerRoute(request: Request): Promise<Response> {
     if (path.startsWith("/api/devices/")) return await handleDeviceUsers(request, url);
     if (path === "/api/member-photo") return await handleMemberPhoto(request, url);
     if (path.startsWith("/api/portal/")) return await handlePortal(request, url);
+    if (path.startsWith("/api/pay/")) return await handlePay(request, url);
     if (path.startsWith("/api/push/")) return await handlePush(request, url);
     if (path.startsWith("/api/backup/sheet/")) return await handleSheetBackup(request, url);
     if (path.startsWith("/api/old-data/")) return await handleOldData(request, url);

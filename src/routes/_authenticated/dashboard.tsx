@@ -12,6 +12,7 @@ import {
   MessageCircle,
   Phone,
   RefreshCcw,
+  Smartphone,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -28,6 +29,7 @@ import { StatusPill } from "@/components/common/status-pill";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useAttention } from "@/hooks/use-attention";
+import { usePayLinksToConfirm } from "@/hooks/use-pay-links-badge";
 import { useDashboardMetrics } from "@/hooks/use-dashboard-metrics";
 import { useLive } from "@/hooks/use-live-query";
 import { formatPrice } from "@/lib/format";
@@ -56,6 +58,7 @@ function DashboardPage() {
   const navigate = useNavigate();
   const { can, owner } = useAccess();
   const { openEnrollment } = useEnrollment();
+  const paidOnline = usePayLinksToConfirm().data.length;
   const actions = useQuickActions();
   const attention = useAttention();
   const { period, picker } = usePeriodPicker();
@@ -137,6 +140,23 @@ function DashboardPage() {
         <h2 id="attention-title" className="text-card-title">
           Needs attention
         </h2>
+        {paidOnline ? (
+          <Link
+            to="/billing"
+            className="surface-card flex items-center gap-3 border-primary/40 bg-primary/5 p-4 transition-colors hover:bg-accent"
+          >
+            <Smartphone className="size-5 shrink-0 text-primary" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">
+                {paidOnline} member{paidOnline === 1 ? "" : "s"} paid online
+              </span>
+              <span className="text-meta">
+                Check the money came in, then confirm it in Billing.
+              </span>
+            </span>
+            <ChevronRight className="size-5 text-muted-foreground" aria-hidden />
+          </Link>
+        ) : null}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {tiles.map((t) => {
             const Icon = t.icon;

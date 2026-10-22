@@ -9,8 +9,11 @@ export const s = (v: unknown) => (v === null || v === undefined ? "" : String(v)
 export const n = (v: unknown) => Number(v ?? 0) || 0;
 
 /** Reads the body of a POST as an object ({} when it isn't JSON). */
-export const bodyOf = async (request: Request) =>
-  (await request.json().catch(() => ({}))) as Record<string, unknown>;
+export const bodyOf = async (request: Request) => {
+  const b: unknown = await request.json().catch(() => ({}));
+  // `null`, a list or a bare value is no body (it would crash `body["x"]`).
+  return (b && typeof b === "object" && !Array.isArray(b) ? b : {}) as Record<string, unknown>;
+};
 
 /** The member's record, or the error response when it is gone or their app is switched off. */
 export async function liveMember(

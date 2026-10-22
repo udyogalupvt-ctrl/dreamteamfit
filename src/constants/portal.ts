@@ -183,6 +183,48 @@ export interface MemberPortalData {
   announcement: PortalAnnouncement | null;
   /** "Bring a friend": friends who joined through them and the rewards decided so far. */
   referrals: PortalReferrals;
+  /** Pay by UPI from the app; null while the gym has no UPI ID in Settings. */
+  pay: PortalPay | null;
+}
+
+/** A UPI pay link the member already opened (src/server/pay-links.ts). */
+export interface PortalPayLinkState {
+  token: string;
+  /** member_paid = waiting for the gym to confirm. */
+  status: "open" | "member_paid";
+  /** "Not received" note from the gym. */
+  deskNote: string;
+  memberAmount: number;
+}
+
+export interface PortalPay {
+  /** By bill token: the link already made for that bill's balance. */
+  bills: Record<string, PortalPayLinkState>;
+  /** Renew online with the same package; null = renew at the gym. */
+  renewal: { packageName: string; amount: number; link: PortalPayLinkState | null } | null;
+}
+
+/** GET /api/pay/<token>: the public pay page (src/routes/pay.$token.tsx). */
+export interface PublicPayLink {
+  status: "open" | "member_paid" | "confirmed" | "cancelled";
+  kind: "balance" | "renewal";
+  /** false = the gym switched online pay off. */
+  on: boolean;
+  amount: number;
+  gymName: string;
+  /** First name only. */
+  memberName: string;
+  invoiceNumber: string;
+  billToken: string;
+  packageName: string;
+  upiId: string;
+  payeeName: string;
+  /** upi://pay link; "" unless the link is open and online pay is on. */
+  uri: string;
+  utr: string;
+  deskNote: string;
+  /** Why the link closed, for the member. */
+  closedText: string;
 }
 
 /** src/server/portal-referral.ts: only given and promised rewards are listed. */

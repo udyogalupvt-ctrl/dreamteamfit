@@ -343,6 +343,20 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
       if (f.includes("reward")) return `Referral reward for ${who} changed to ${reward}`;
       return null;
     }
+    case "payLinks": {
+      const what =
+        s(d["kind"]) === "renewal"
+          ? `renewal (${s(d["packageName"])})`
+          : `balance on ${s(d["invoiceNumber"])}`;
+      const paid = `₹${Number(b["memberAmount"] ?? a["memberAmount"] ?? 0)}`;
+      if (became(f, b, a, "status", "confirmed"))
+        return `Online UPI payment confirmed: ${paid} for ${what}`;
+      if (became(f, b, a, "status", "open"))
+        return `Online UPI payment marked not received: ${paid} for ${what}`;
+      if (became(f, b, a, "status", "member_paid"))
+        return `Online UPI payment back to "to confirm" (payment undone): ${what}`;
+      return null;
+    }
     case "recycleBin":
       if (action === "created") return `Moved to Recycle Bin: ${s(d["label"])}`;
       if (action === "deleted")
@@ -368,9 +382,13 @@ export function auditLine(col: string, docId: string, before: D | null, after: D
       ? s(after?.["googleReviewUrl"])
         ? "Google review link saved"
         : "Google review link removed"
-      : col === "settings"
-        ? `Settings changed (${docId}): ${f.join(", ") || action}`
-        : describe(col, action, dated(before), dated(after), f);
+      : col === "settings" && docId === "upi"
+        ? s(after?.["upiId"])
+          ? `Gym UPI ID set to ${s(after?.["upiId"])}`
+          : "Online payment (UPI) switched off"
+        : col === "settings"
+          ? `Settings changed (${docId}): ${f.join(", ") || action}`
+          : describe(col, action, dated(before), dated(after), f);
   if (!summary) return null;
   const doc = (after ?? before ?? {}) as D;
   return {
@@ -381,7 +399,11 @@ export function auditLine(col: string, docId: string, before: D | null, after: D
     clientId: col === "clients" ? docId : s(doc["clientId"]),
     clientName: s(
       doc["clientNameSnapshot"] ??
-        (col === "clients" ? doc["fullName"] : col === "feedback" ? doc["clientName"] : ""),
+        (col === "clients"
+          ? doc["fullName"]
+          : col === "feedback" || col === "payLinks"
+            ? doc["clientName"]
+            : ""),
     ),
     changes:
       // CFO settings hold the gym's money: the log says what changed, not the values.

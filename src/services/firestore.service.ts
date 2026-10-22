@@ -72,6 +72,8 @@ export const COLLECTIONS = {
   recycleBinItems: "recycleBinItems",
   /** "Paid in the old software" corrections: what each changed, kept for Undo. */
   oldSoftwareMoves: "oldSoftwareMoves",
+  /** UPI pay links (src/server/pay-links.ts): the desk confirms the ones members say they paid. */
+  payLinks: "payLinks",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];

@@ -130,6 +130,11 @@ export interface EnrollmentInput {
    * a normal joining / renewal (a renewal simply starts after the running plan).
    */
   upgrade: UpgradeInput | null;
+  /**
+   * A UPI renewal link the member says they paid (Billing → Paid online): confirmed with this
+   * sale's payment in the same go. Refused if the member's plans changed after they paid.
+   */
+  payLinkId?: string;
 }
 
 export interface UpgradeInput {
@@ -298,6 +303,9 @@ export async function enrollMember(input: EnrollmentInput) {
   const token = createPublicToken();
   const counterRef = doc(db, COLLECTIONS.settings, "counters");
   const inquiryRef = input.inquiryId ? doc(db, COLLECTIONS.inquiries, input.inquiryId) : null;
+  const linkRef = input.payLinkId ? doc(db, COLLECTIONS.payLinks, input.payLinkId) : null;
+  if (linkRef && (!paymentRef || !input.existingClient))
+    throw new Error("Enter the amount the member paid online.");
   const today = todayISO();
   // A plan typed in after it started: its money counts on the plan's first day (see late-sales.ts).
   const ruleDay = saleMoneyDay({
@@ -408,6 +416,17 @@ export async function enrollMember(input: EnrollmentInput) {
       throw new Error("The plan being upgraded has already ended. Refresh and try again.");
     if (upgraded && String(upgraded.data()!["endDate"] ?? "") < input.startDate)
       throw new Error("The upgrade date is after the current plan ends. Use Renew instead.");
+    if (linkRef) {
+      const l = (await tx.get(linkRef)).data();
+      if (!l || l["status"] !== "member_paid")
+        throw new Error("This online payment was already dealt with. Open the list again.");
+      if (l["kind"] !== "renewal" || l["clientId"] !== input.existingClient?.id)
+        throw new Error("This online payment is for another member.");
+      if (Number(l["planSeq"] ?? 0) !== planSeq0)
+        throw new Error(
+          "This member's plans changed after they paid online. Check their plans and bills before confirming.",
+        );
+    }
     const c = counter.data() ?? {};
     const year = new Date(`${today}T00:00:00`).getFullYear();
     const invKey = `invoiceSeq${year}`;
@@ -666,12 +685,24 @@ export async function enrollMember(input: EnrollmentInput) {
           ...(input.paidToday && input.startDate < today ? { paidToday: true } : {}),
           ...(paidOn ? { paidOnChosen: true } : {}),
           ...(cashPartRef ? { splitId: paymentRef.id } : {}),
+          ...(input.payLinkId ? { payLinkId: input.payLinkId } : {}),
           kind: "initial",
           ...alloc,
           ...counsellor,
           createdBy: input.staff.name,
           createdByUid: input.staff.uid,
           createdAt: now,
+          updatedAt: now,
+        });
+      // firestore.rules: confirmed only together with a payment that names this link.
+      if (linkRef)
+        tx.update(linkRef, {
+          status: "confirmed",
+          paymentIds: parts.map((x) => x.ref.id),
+          saleBillId: invoiceRef.id,
+          checkedBy: input.staff.name,
+          checkedByUid: input.staff.uid,
+          checkedAt: now,
           updatedAt: now,
         });
     }

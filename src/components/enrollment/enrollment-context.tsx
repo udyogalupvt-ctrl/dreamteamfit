@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
-import type { Client } from "@/types/models";
+import type { Client, PayLink } from "@/types/models";
 import type { ClientInput } from "@/services/clients.service";
 import { ensureEnrollmentForClient } from "@/services/enrollment.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
@@ -21,6 +21,8 @@ export interface EnrollmentOpenOptions {
   resumeEnrollmentId?: string | null;
   /** Counsellor already handling this person (from the lead). */
   counsellorId?: string | null;
+  /** Confirming a member's online renewal (Billing → Paid online): package, amount and UPI filled in. */
+  payLink?: PayLink | null;
 }
 
 interface EnrollmentApi {

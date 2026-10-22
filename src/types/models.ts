@@ -203,6 +203,53 @@ export interface ClientReview {
 
 // ------------------------------------------------------------------ member feedback (spec C)
 
+/** settings/upi: the gym's UPI ID members pay to (owner only; "" = online pay is off). */
+export interface UpiSettings {
+  upiId: string;
+  /** The name members see on the pay page. */
+  payeeName: string;
+  updatedBy: string;
+}
+
+/**
+ * payLinks/{token}: a member's UPI payment for a bill's balance or a renewal (lib/pay-links.ts).
+ * Made by the server; the desk confirms it with the normal Collect / Renew, or says not received.
+ */
+export interface PayLink {
+  id: string;
+  clientId: string;
+  clientName: string;
+  memberCode: string;
+  kind: "balance" | "renewal";
+  /** Balance: the bill (its public token opens it). */
+  invoiceId: string;
+  invoiceNumber: string;
+  invoiceToken: string;
+  /** Renewal: the package and the member's plan count when the link was made. */
+  packageId: string;
+  packageName: string;
+  planSeq: number;
+  /** What the link asks for now (the server works it out again on every visit). */
+  amount: number;
+  status: "open" | "member_paid" | "confirmed" | "cancelled";
+  closedReason: string;
+  /** The UPI reference the member typed ("" = none). */
+  utr: string;
+  /** The same reference is on another link: check it before confirming. */
+  utrSeenBefore: boolean;
+  /** The amount the member saw when they tapped "I've paid". */
+  memberAmount: number;
+  memberPaidAt: Date | null;
+  /** "Not received" note the member sees. */
+  deskNote: string;
+  paymentIds: string[];
+  /** Renewal: the sale's bill. */
+  saleBillId: string;
+  checkedBy: string;
+  checkedAt: Date | null;
+  createdAt: Date | null;
+}
+
 /** settings/memberApp: member-app options the owner sets (Settings → Member app). */
 export interface MemberAppSettings {
   /** https link that opens the gym's Google review box; "" = the review card is off. */
@@ -1207,6 +1254,8 @@ export interface Payment extends BaseDoc {
    * as one payment (Edit payment); lib/split-pay.ts.
    */
   splitId?: string;
+  /** The member's UPI pay link this payment confirmed (payLinks/{token}, lib/pay-links.ts). */
+  payLinkId?: string;
   /** Corrections made later (wrong mode, amount, date), oldest first. */
   edits: RecordEdit[];
 }

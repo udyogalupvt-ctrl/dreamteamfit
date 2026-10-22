@@ -14,6 +14,7 @@ import { billModesLabel } from "@/lib/split-pay";
 import { usePeriodPicker } from "@/components/common/period-picker";
 import { choicesWith } from "@/lib/periods";
 import { InvoiceActions } from "@/components/billing/invoice-actions";
+import { PayLinksToConfirm } from "@/components/billing/pay-links-to-confirm";
 import { EmptyState } from "@/components/common/empty-state";
 import { ErrorState } from "@/components/common/error-state";
 import { LoadingRows } from "@/components/common/loading-state";
@@ -176,6 +177,7 @@ function BillingPage() {
         }
       />
       {error ? <ErrorState error={error} title="Couldn't load billing data" /> : null}
+      <PayLinksToConfirm />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-section-title">Numbers · {period.label}</h2>
         {picker}

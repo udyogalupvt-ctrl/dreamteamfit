@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Download, Printer, ReceiptIndianRupee } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
+import { BillPayOnline } from "@/components/pay/bill-pay-online";
 import { Button } from "@/components/ui/button";
 import { useLive } from "@/hooks/use-live-query";
 import { formatPrice } from "@/lib/format";
@@ -155,6 +156,9 @@ function PublicInvoicePage() {
               </Button>
             </div>
           </div>
+          {i.balanceDue > 0 && i.paymentStatus !== "refunded" ? (
+            <BillPayOnline billToken={token} />
+          ) : null}
         </section>
         <footer className="border-t border-slate-200 p-5 text-center text-sm text-slate-500 sm:p-8">
           Thank you for choosing {b.businessName || "REBUILD FITNESS"}.

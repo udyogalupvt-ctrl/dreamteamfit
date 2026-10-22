@@ -57,6 +57,7 @@ import { adminAuth, db, json, localDate, requireFeature } from "./admin";
 import { oldHistoryFor } from "./old-data";
 import { latestAnnouncement, memberAnnouncements } from "./portal-announcements";
 import { memberReferrals } from "./portal-referral";
+import { memberPay, memberPayLink, planRow } from "./pay-links";
 import { bodyOf } from "./portal-common";
 import { healthRecords, memberHealth, submitHealthForm } from "./portal-health";
 import { bodyEntries, changeBodyEntry } from "./portal-progress";
@@ -429,6 +430,10 @@ async function memberData(clientId: string): Promise<Response> {
     }))
     .sort((a, b) => b.date.localeCompare(a.date) || b.number.localeCompare(a.number));
   const open = bills.filter((b) => b.balance > 0 && b.status !== "refunded");
+  const pay = await memberPay(clientId, c, {
+    plans: memberships.docs.map((d) => planRow(d.data())),
+    openBills: open,
+  }).catch(() => null);
 
   const ptList = pts.docs
     .map((d) => d.data())
@@ -524,6 +529,7 @@ async function memberData(clientId: string): Promise<Response> {
     review: memberReview(c, { url: reviewUrl, today, joinedOn, current, plans: plansList }),
     announcement,
     referrals,
+    pay,
   };
   return json(data);
 }
@@ -1331,6 +1337,8 @@ export async function handlePortal(request: Request, url: URL): Promise<Response
       : healthRecords(who.id);
   if (who.kind === "member" && request.method === "POST" && action === "body-log")
     return changeBodyEntry({ kind: "member", id: who.id, name: "" }, who.id, await bodyOf(request));
+  if (who.kind === "member" && request.method === "POST" && action === "pay-link")
+    return memberPayLink(who.id, await bodyOf(request));
   if (who.kind === "member" && request.method === "POST" && action === "review")
     return reviewAnswer(who.id, await bodyOf(request));
   if (who.kind === "member" && action === "feedback")

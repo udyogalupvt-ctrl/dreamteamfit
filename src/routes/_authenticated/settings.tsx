@@ -15,6 +15,7 @@ import { DataImportWizard } from "@/components/settings/data-import-wizard";
 import { DataExportPanel } from "@/components/settings/data-export-panel";
 import { GoogleReviewSection } from "@/components/settings/google-review-section";
 import { MemberAppBulkSend } from "@/components/settings/member-app-bulk";
+import { UpiSection } from "@/components/settings/upi-section";
 import { WhatsAppGatewaySection } from "@/components/settings/whatsapp-gateway-section";
 import { HealthFormEditor } from "@/components/health/health-form-editor";
 import { PageHeader } from "@/components/common/page-header";
@@ -93,8 +94,9 @@ function SettingsPage() {
             <TabsTrigger value="appearance">Appearance</TabsTrigger>
           </TabsList>
         </div>
-        <TabsContent value="gym">
+        <TabsContent value="gym" className="space-y-4">
           <GymSettings />
+          <UpiSection />
         </TabsContent>
         <TabsContent value="whatsapp">
           <WhatsAppSettingsPanel />
