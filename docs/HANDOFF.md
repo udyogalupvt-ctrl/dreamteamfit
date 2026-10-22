@@ -28,7 +28,7 @@ main 22383cd). NOT merged, NOT pushed, production rules NOT deployed.
   `12c8fac213f1`, /api/health 200. Production rules deployed with the founder's OK: ruleset d3ff71ad…, read back =
   file. Backup of the previous live rules (= repo file at 74bba1a, ruleset 1e78f5b2… of 2026-10-09) + diff in scratchpad
   `097e3934…/live_rules_backup_2026-10-18.txt`, `rules_diff.txt`; rollback = `node deploy_rules.mjs <backup file>`.
-  Not yet checked live by a person: salary-expense delete, Delete-bills bin, desk collect/undo, fingerprint enroll.
+  Live browser check 2026-10-22: PASSED salary-expense delete (owner paid V.Bobby ₹1 → deleted → Delete forever; bin back to 39, no leftover expense) and staff login keerthi M (12 features: dashboard, members, billing, day book, expenses, fingerprint all load with no errors; /staff /settings /recycle-bin /backup show "You don't have access"). Still NOT checked live: Delete-bills bin, desk collect/undo (money write; covered by emulator suite 17/17), fingerprint enroll (sends a real command to the door machine).
 - Deviations from the plan (on purpose): server commandOk also accepts the server's own ENROLL_BIO retry and door-restore
   user records for old IDs (IIFM12); payments' createdAt/createdByUid can't change (else yesterday's money could be
   "undone"); old-software money may be future-dated (migration) and Delete plans may remove/restore it; biometricCommands
