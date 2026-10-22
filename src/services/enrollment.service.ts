@@ -34,6 +34,7 @@ import type {
 import type { ClientInput } from "./clients.service";
 import { claimMemberId, mapClient } from "./clients.service";
 import { allocatePayment, cashOpenFrom } from "./finance.service";
+import { writeNewReferral } from "./referrals.service";
 import { saleMoneyDay } from "@/lib/late-sales";
 import { currentRow, pickCurrent } from "@/lib/current-plan";
 import { conflictMessage, overlapConflict, overlapPlan } from "@/lib/plan-overlap";
@@ -444,6 +445,11 @@ export async function enrollMember(input: EnrollmentInput) {
         createdAt: now,
         updatedAt: now,
       });
+      writeNewReferral(
+        tx,
+        { id: clientRef.id, fullName, clientCode: idClaim.id, joinedOn: input.client.joinedOn },
+        input.client.referredBy,
+      );
     }
     tx.set(counterRef, counterPatch, { merge: true });
 

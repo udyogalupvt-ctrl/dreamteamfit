@@ -228,6 +228,36 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ---- Referral rewards (src/lib/referrals.ts): one doc per referred member, id = their id.
+    // Any login that adds members writes it (reward due) and may move it while still due;
+    // deciding the reward needs "Referral rewards".
+    function referralShape(id) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['referrerId', 'referrerName', 'referrerCode', 'newClientId',
+          'newClientName', 'newClientCode', 'joinedOn', 'status', 'reward', 'reason', 'decidedBy',
+          'decidedAt', 'givenOn', 'createdAt', 'updatedAt'])
+        && d.newClientId == id
+        && d.referrerId is string && d.referrerId.size() > 0 && d.referrerId != id
+        && d.status in ['due', 'promised', 'given', 'skipped']
+        && (d.reward == null || (d.reward is map && d.reward.keys().hasOnly(['kind', 'days', 'amount', 'note'])
+          && d.reward.kind in ['free_days', 'discount', 'gift', 'other']
+          && d.reward.days is number && d.reward.amount is number
+          && d.reward.note is string && d.reward.note.size() <= 200))
+        && d.reason is string && d.reason.size() <= 200;
+    }
+    match /referrals/{id} {
+      allow read: if can('members') || can('referrals');
+      allow create: if isStaff() && referralShape(id)
+        && request.resource.data.status == 'due' && request.resource.data.reward == null;
+      allow update: if referralShape(id) && (
+        (can('referrals') && (resource.data.status == 'due'
+          || request.resource.data.referrerId == resource.data.referrerId))
+        || (isStaff() && resource.data.status == 'due' && request.resource.data.status == 'due'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['referrerId',
+            'referrerName', 'referrerCode', 'newClientName', 'newClientCode', 'updatedAt'])));
+      allow delete: if can('referrals') || (isStaff() && resource.data.status == 'due');
+    }
+
     match /packages/{id} {
       allow read: if isStaff();
       allow write: if can('packages');

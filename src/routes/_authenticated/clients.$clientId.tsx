@@ -4,6 +4,7 @@ import { MemberAppCard } from "@/components/clients/member-app-card";
 import { ReviewFeedbackCard } from "@/components/feedback/review-feedback-card";
 import { HealthCard, HealthPill } from "@/components/health/health-card";
 import { ClientProgressSection } from "@/components/progress/client-progress-section";
+import { MemberReferralsCard, ReferralPill } from "@/components/referrals/member-referrals-card";
 import { OldHistoryCard } from "@/components/clients/old-history-card";
 import { useAccess } from "@/hooks/use-access";
 import { createFileRoute, Link } from "@tanstack/react-router";
@@ -403,6 +404,7 @@ function ClientProfilePage() {
               <StatusPill tone="info">No active plan</StatusPill>
             )}
             <HealthPill client={c} onOpen={() => setTab("overview")} />
+            <ReferralPill client={c} onOpen={() => setTab("overview")} />
           </div>
           <div className="mt-3 flex flex-col gap-1.5 text-sm text-muted-foreground sm:flex-row sm:flex-wrap sm:gap-x-5">
             <a
@@ -491,6 +493,7 @@ function ClientProfilePage() {
           <MemberAppCard client={c} />
           <HealthCard client={c} />
           <ReviewFeedbackCard client={c} />
+          <MemberReferralsCard client={c} />
           <section className="surface-card p-5">
             <h2 className="text-section-title">Profile</h2>
             <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">
@@ -503,7 +506,14 @@ function ClientProfilePage() {
                   c.gender === "unspecified" ? "—" : c.gender[0]!.toUpperCase() + c.gender.slice(1)
                 }
               />
-              <Detail label="Source" value={SOURCE_LABELS[c.source]} />
+              <Detail
+                label="Source"
+                value={
+                  c.referredBy
+                    ? `${SOURCE_LABELS[c.source]} · ${c.referredBy.name || "a member"}`
+                    : SOURCE_LABELS[c.source]
+                }
+              />
               <Detail
                 label="Origin"
                 value={

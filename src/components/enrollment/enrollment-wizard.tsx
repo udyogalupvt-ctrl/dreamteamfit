@@ -126,6 +126,8 @@ import { calculateEndDate } from "@/services/memberships.service";
 import { OldMemberPanel } from "./old-member-panel";
 import { subscribeClientMemberships } from "@/services/memberships.service";
 import type { EnrollmentOpenOptions } from "./enrollment-context";
+import { ReferredByField } from "@/components/referrals/referrer-picker";
+import { PromisedRewardsNote } from "@/components/referrals/member-referrals-card";
 import { lookupOldMembers } from "@/services/old-data.service";
 
 const STEPS = ["Details", "Package", "Payment", "Share bill", "Thumb", "Done"] as const;
@@ -157,6 +159,7 @@ const EMPTY: ClientInput = {
   status: "active",
   joinedOn: "",
   oldMemberId: "",
+  referredBy: null,
 };
 
 // ---------------------------------------------------------------- draft (before payment)
@@ -363,6 +366,7 @@ export function EnrollmentWizard({
       status: m.status,
       joinedOn: m.joinedOn,
       oldMemberId: m.oldMemberId,
+      referredBy: m.referredBy,
     });
     setWhatsappOptIn(m.whatsappOptIn);
   }, [resuming, member.data]);
@@ -971,6 +975,7 @@ export function EnrollmentWizard({
           <DialogDescription className="max-sm:sr-only">
             Details → package → payment → bill on WhatsApp → thumb. Nothing is lost if you close.
           </DialogDescription>
+          {existing && !resuming ? <PromisedRewardsNote clientId={existing.id} /> : null}
           <ol
             className="no-scrollbar -mx-4 mt-2 flex gap-1 overflow-x-auto px-4 sm:mx-0 sm:px-0"
             aria-label="Progress"
@@ -2069,6 +2074,14 @@ function DetailsStep({
           </SelectContent>
         </Select>
       </Field>
+      <ReferredByField
+        id="e-referrer"
+        source={client.source}
+        value={client.referredBy}
+        onChange={(v) =>
+          setClient({ ...client, referredBy: v, ...(v ? { source: "referral" as const } : {}) })
+        }
+      />
       {more ? (
         <>
           <Field label="Email" htmlFor="e-email" error={errors["email"]}>

@@ -10,6 +10,7 @@ import {
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
 import { normalizePhone } from "@/lib/format";
+import { toReferredBy } from "@/lib/referrals";
 import type { Inquiry } from "@/types/models";
 import { col, COLLECTIONS, subscribeCollection, toDate } from "./firestore.service";
 
@@ -20,7 +21,12 @@ export type InquiryInput = Pick<
   Partial<
     Pick<
       Inquiry,
-      "lastContactDate" | "expectedJoinDate" | "expectedVisitDate" | "assignedTo" | "counsellorId"
+      | "lastContactDate"
+      | "expectedJoinDate"
+      | "expectedVisitDate"
+      | "assignedTo"
+      | "counsellorId"
+      | "referredBy"
     >
   >;
 
@@ -42,6 +48,7 @@ export const mapInquiry = (id: string, d: DocumentData): Inquiry => ({
   counsellorId: d["counsellorId"] ?? "",
   convertedToClient: Boolean(d["convertedToClient"]),
   clientId: d["clientId"] ?? null,
+  referredBy: toReferredBy(d["referredBy"]),
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });

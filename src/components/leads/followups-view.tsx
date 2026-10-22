@@ -104,6 +104,7 @@ export function FollowUpsView() {
         phone: x.phoneSnapshot,
         email: lead?.email ?? "",
         source: lead?.source ?? "walk_in",
+        referredBy: lead?.referredBy ?? null,
       },
     });
   };

@@ -35,6 +35,7 @@ import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authen
 import { Route as AuthenticatedPackagesRouteImport } from './routes/_authenticated/packages'
 import { Route as AuthenticatedPtSessionsRouteImport } from './routes/_authenticated/pt-sessions'
 import { Route as AuthenticatedRecycleBinRouteImport } from './routes/_authenticated/recycle-bin'
+import { Route as AuthenticatedReferralsRouteImport } from './routes/_authenticated/referrals'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedStaffRouteImport } from './routes/_authenticated/staff'
@@ -184,6 +185,11 @@ const AuthenticatedRecycleBinRoute = AuthenticatedRecycleBinRouteImport.update({
   path: '/recycle-bin',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedReferralsRoute = AuthenticatedReferralsRouteImport.update({
+  id: '/referrals',
+  path: '/referrals',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
@@ -281,6 +287,7 @@ export interface FileRoutesByFullPath {
   '/packages': typeof AuthenticatedPackagesRoute
   '/pt-sessions': typeof AuthenticatedPtSessionsRoute
   '/recycle-bin': typeof AuthenticatedRecycleBinRoute
+  '/referrals': typeof AuthenticatedReferralsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/staff': typeof AuthenticatedStaffRoute
@@ -321,6 +328,7 @@ export interface FileRoutesByTo {
   '/packages': typeof AuthenticatedPackagesRoute
   '/pt-sessions': typeof AuthenticatedPtSessionsRoute
   '/recycle-bin': typeof AuthenticatedRecycleBinRoute
+  '/referrals': typeof AuthenticatedReferralsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/staff': typeof AuthenticatedStaffRoute
@@ -363,6 +371,7 @@ export interface FileRoutesById {
   '/_authenticated/packages': typeof AuthenticatedPackagesRoute
   '/_authenticated/pt-sessions': typeof AuthenticatedPtSessionsRoute
   '/_authenticated/recycle-bin': typeof AuthenticatedRecycleBinRoute
+  '/_authenticated/referrals': typeof AuthenticatedReferralsRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/staff': typeof AuthenticatedStaffRoute
@@ -405,6 +414,7 @@ export interface FileRouteTypes {
     | '/packages'
     | '/pt-sessions'
     | '/recycle-bin'
+    | '/referrals'
     | '/reports'
     | '/settings'
     | '/staff'
@@ -445,6 +455,7 @@ export interface FileRouteTypes {
     | '/packages'
     | '/pt-sessions'
     | '/recycle-bin'
+    | '/referrals'
     | '/reports'
     | '/settings'
     | '/staff'
@@ -486,6 +497,7 @@ export interface FileRouteTypes {
     | '/_authenticated/packages'
     | '/_authenticated/pt-sessions'
     | '/_authenticated/recycle-bin'
+    | '/_authenticated/referrals'
     | '/_authenticated/reports'
     | '/_authenticated/settings'
     | '/_authenticated/staff'
@@ -695,6 +707,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRecycleBinRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/referrals': {
+      id: '/_authenticated/referrals'
+      path: '/referrals'
+      fullPath: '/referrals'
+      preLoaderRoute: typeof AuthenticatedReferralsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/reports': {
       id: '/_authenticated/reports'
       path: '/reports'
@@ -813,6 +832,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPackagesRoute: typeof AuthenticatedPackagesRoute
   AuthenticatedPtSessionsRoute: typeof AuthenticatedPtSessionsRoute
   AuthenticatedRecycleBinRoute: typeof AuthenticatedRecycleBinRoute
+  AuthenticatedReferralsRoute: typeof AuthenticatedReferralsRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedStaffRoute: typeof AuthenticatedStaffRoute
@@ -848,6 +868,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPackagesRoute: AuthenticatedPackagesRoute,
   AuthenticatedPtSessionsRoute: AuthenticatedPtSessionsRoute,
   AuthenticatedRecycleBinRoute: AuthenticatedRecycleBinRoute,
+  AuthenticatedReferralsRoute: AuthenticatedReferralsRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedStaffRoute: AuthenticatedStaffRoute,

@@ -50,6 +50,7 @@ import {
 } from "@/components/portal/portal-announcements";
 import { FeedbackLink, FeedbackView, ReviewCard } from "@/components/portal/portal-feedback";
 import { PortalProgress, useEdited } from "@/components/portal/portal-progress";
+import { BringFriendCard } from "@/components/portal/portal-referral";
 import { Sparkline } from "@/components/progress/progress-panel";
 import { VisitsCalendar, clock12, sessionOf } from "@/components/portal/visits-calendar";
 import { FormDialog } from "@/components/common/form-dialog";
@@ -609,6 +610,15 @@ function HomeTab({
 
       {review ? (
         <ReviewCard review={review} gymName={data.gym.name} onDone={onReviewAnswered} />
+      ) : null}
+
+      {current || data.referrals?.count ? (
+        <BringFriendCard
+          referrals={data.referrals ?? { count: 0, rewards: [] }}
+          gymName={data.gym.name}
+          name={data.member.name}
+          memberId={data.member.memberId}
+        />
       ) : null}
 
       <section className="surface-card p-4">

@@ -1,5 +1,6 @@
 import {
   doc,
+  documentId,
   getDoc,
   getDocs,
   onSnapshot,
@@ -16,8 +17,10 @@ import {
 import { db } from "@/lib/firebase";
 import { normalizePhone } from "@/lib/format";
 import { createPublicToken } from "@/lib/invoice-utils";
+import { toReferredBy } from "@/lib/referrals";
 import type { Client } from "@/types/models";
 import { col, COLLECTIONS, subscribeCollection, toDate } from "./firestore.service";
+import { setReferredBy, writeNewReferral } from "./referrals.service";
 
 export type ClientInput = Pick<
   Client,
@@ -34,6 +37,7 @@ export type ClientInput = Pick<
   | "status"
   | "joinedOn"
   | "oldMemberId"
+  | "referredBy"
 >;
 export type ClientUpdateInput = Partial<
   ClientInput &
@@ -89,6 +93,7 @@ export const mapClient = (id: string, d: DocumentData): Client => ({
   portalSentAt: d["portalSentAt"] ? toDate(d["portalSentAt"]) : null,
   healthForm: d["healthForm"] && typeof d["healthForm"] === "object" ? d["healthForm"] : null,
   review: d["review"] && typeof d["review"] === "object" ? d["review"] : null,
+  referredBy: toReferredBy(d["referredBy"]),
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
@@ -123,6 +128,17 @@ export async function findClientsByPhone(phone: string, excludeId?: string) {
     query(col(COLLECTIONS.clients), where("phoneNormalized", "==", normalized)),
   );
   return snap.docs.map((d) => mapClient(d.id, d.data())).filter((c) => c.id !== excludeId);
+}
+
+/** A few members by id, 30 per read (lists that only hold ids, like Referrals). */
+export async function getClientsByIds(ids: string[]) {
+  const unique = [...new Set(ids.filter(Boolean))];
+  const chunks: string[][] = [];
+  for (let i = 0; i < unique.length; i += 30) chunks.push(unique.slice(i, i + 30));
+  const snaps = await Promise.all(
+    chunks.map((c) => getDocs(query(col(COLLECTIONS.clients), where(documentId(), "in", c)))),
+  );
+  return snaps.flatMap((s) => s.docs.map((d) => mapClient(d.id, d.data())));
 }
 
 // ------------------------------------------------------------------ member ID
@@ -251,6 +267,11 @@ export async function createClient(input: ClientInput, inquiryId: string | null 
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+    writeNewReferral(
+      tx,
+      { id: ref.id, fullName: input.fullName.trim(), clientCode, joinedOn: input.joinedOn },
+      input.referredBy,
+    );
     if (inquiryRef) {
       tx.update(inquiryRef, {
         status: "converted",
@@ -270,7 +291,10 @@ export async function createClient(input: ClientInput, inquiryId: string | null 
  */
 export async function updateClient(id: string, input: ClientUpdateInput) {
   const ref = doc(db, COLLECTIONS.clients, id);
-  const patch: Record<string, unknown> = { ...input, updatedAt: serverTimestamp() };
+  // Who referred them moves with their referral doc (and stops once its reward is decided).
+  const { referredBy, ...rest } = input;
+  if (referredBy !== undefined) await setReferredBy(id, referredBy);
+  const patch: Record<string, unknown> = { ...rest, updatedAt: serverTimestamp() };
   const nameIn = input.fullName?.trim();
   const phoneIn = input.phone?.trim();
   if (!nameIn && !phoneIn) return updateDoc(ref, patch);

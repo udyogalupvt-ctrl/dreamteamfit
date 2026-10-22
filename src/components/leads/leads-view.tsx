@@ -109,6 +109,7 @@ export function LeadsView({
         phone: i.phone,
         email: i.email,
         source: i.source,
+        referredBy: i.referredBy,
         notes: [i.fitnessGoal && `Goal: ${i.fitnessGoal}`, i.notes].filter(Boolean).join("\n"),
       },
     });
@@ -350,7 +351,10 @@ export function LeadsView({
                   >
                     <TableCell className="max-w-48 truncate font-semibold">{i.name}</TableCell>
                     <TableCell className="whitespace-nowrap tabular-nums">{i.phone}</TableCell>
-                    <TableCell className="whitespace-nowrap">{SOURCE_LABELS[i.source]}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {SOURCE_LABELS[i.source]}
+                      {i.referredBy ? ` · ${i.referredBy.name}` : ""}
+                    </TableCell>
                     <TableCell className="hidden max-w-40 truncate xl:table-cell">
                       {i.fitnessGoal || "—"}
                     </TableCell>
@@ -398,6 +402,7 @@ export function LeadsView({
                     <p className="truncate font-semibold">{i.name}</p>
                     <p className="text-meta mt-0.5 tabular-nums">
                       {i.phone} · {SOURCE_LABELS[i.source]}
+                      {i.referredBy ? ` · ${i.referredBy.name}` : ""}
                     </p>
                   </button>
                   {rowActions(i)}
@@ -542,7 +547,10 @@ function InquiryDetailSheet({
             </SheetHeader>
 
             <div className="grid grid-cols-2 gap-3 px-4">
-              <Info label="Source" value={SOURCE_LABELS[inquiry.source]} />
+              <Info
+                label="Source"
+                value={`${SOURCE_LABELS[inquiry.source]}${inquiry.referredBy ? ` · ${inquiry.referredBy.name}` : ""}`}
+              />
               <Info label="Goal" value={inquiry.fitnessGoal || "—"} />
             </div>
 

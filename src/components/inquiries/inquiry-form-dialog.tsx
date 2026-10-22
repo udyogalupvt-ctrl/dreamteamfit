@@ -27,6 +27,7 @@ import {
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { createInquiry, updateInquiry, type InquiryInput } from "@/services/inquiries.service";
+import { ReferredByField } from "@/components/referrals/referrer-picker";
 import { findClientsByPhone } from "@/services/clients.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { INQUIRY_STATUSES, LEAD_SOURCES, type Inquiry } from "@/types/models";
@@ -56,6 +57,7 @@ const emptyInquiry = (): InquiryInput => ({
   notes: "",
   status: "new",
   nextFollowUpDate: addDaysISO(todayISO(), 1),
+  referredBy: null,
 });
 
 export function InquiryFormDialog({
@@ -202,6 +204,14 @@ export function InquiryFormDialog({
             </SelectContent>
           </Select>
         </Field>
+        <ReferredByField
+          id="i-referrer"
+          source={form.source}
+          value={form.referredBy ?? null}
+          onChange={(v) =>
+            setForm((f) => ({ ...f, referredBy: v, ...(v ? { source: "referral" as const } : {}) }))
+          }
+        />
         {inquiry ? (
           <Field label="Status" htmlFor="i-status">
             <Select

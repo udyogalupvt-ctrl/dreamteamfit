@@ -48,6 +48,10 @@ export const FEATURE_META: Record<StaffFeature, { label: string; hint: string }>
     label: "Member feedback",
     hint: "Read and answer the complaints, ideas and praise members send from the app",
   },
+  referrals: {
+    label: "Referral rewards",
+    hint: "Decide and record the reward for members who bring a friend (seeing who referred whom only needs Members)",
+  },
   deleteMembers: { label: "Members", hint: "Members with their plans, bills and visits" },
   deleteLeads: { label: "Leads & follow-ups", hint: "Leads, their calls and follow-ups" },
   deleteBills: { label: "Bills", hint: "Bills with their payments" },
@@ -96,6 +100,7 @@ export const DEFAULT_STAFF_FEATURES: StaffFeature[] = [
 /** Which feature a page belongs to. "owner" = owners only. Pages not listed are open to all staff. */
 const PAGE_FEATURES: [prefix: string, feature: StaffFeature | "owner"][] = [
   ["/clients", "members"],
+  ["/referrals", "members"],
   ["/birthdays", "members"],
   ["/notifications", "members"],
   ["/leads", "leads"],

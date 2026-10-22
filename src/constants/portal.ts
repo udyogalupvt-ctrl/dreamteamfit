@@ -181,6 +181,14 @@ export interface MemberPortalData {
   review: PortalReview | null;
   /** The newest announcement for this member (Home shows it for 14 days); null = none. */
   announcement: PortalAnnouncement | null;
+  /** "Bring a friend": friends who joined through them and the rewards decided so far. */
+  referrals: PortalReferrals;
+}
+
+/** src/server/portal-referral.ts: only given and promised rewards are listed. */
+export interface PortalReferrals {
+  count: number;
+  rewards: { friend: string; label: string; status: "given" | "promised"; givenOn: string }[];
 }
 
 /** News from the gym in the member app (src/server/portal-announcements.ts). */

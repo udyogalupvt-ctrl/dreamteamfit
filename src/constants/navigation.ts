@@ -9,6 +9,7 @@ import {
   CreditCard,
   Dumbbell,
   Fingerprint,
+  Gift,
   History,
   LayoutDashboard,
   LineChart,
@@ -42,6 +43,7 @@ export const CLOUDINARY_BRAND_FOLDER = "rebuild-fitness/branding";
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, group: "Workspace" },
   { label: "Members", to: "/clients", icon: Users, feature: "members", group: "Workspace" },
+  { label: "Referrals", to: "/referrals", icon: Gift, feature: "members", group: "Workspace" },
   {
     label: "Leads & Follow-ups",
     to: "/leads",

@@ -56,6 +56,7 @@ import { planMoney } from "@/lib/plan-money";
 import { adminAuth, db, json, localDate, requireFeature } from "./admin";
 import { oldHistoryFor } from "./old-data";
 import { latestAnnouncement, memberAnnouncements } from "./portal-announcements";
+import { memberReferrals } from "./portal-referral";
 import { bodyOf } from "./portal-common";
 import { healthRecords, memberHealth, submitHealthForm } from "./portal-health";
 import { bodyEntries, changeBodyEntry } from "./portal-progress";
@@ -350,6 +351,7 @@ async function memberData(clientId: string): Promise<Response> {
     progress,
     reviewUrl,
     announcement,
+    referrals,
   ] = await Promise.all([
     gymP,
     byClient("memberships", clientId),
@@ -367,6 +369,7 @@ async function memberData(clientId: string): Promise<Response> {
     bodyEntries(clientId),
     reviewLink().catch(() => ""),
     latestAnnouncement(clientId).catch(() => null),
+    memberReferrals(clientId).catch(() => ({ count: 0, rewards: [] })),
   ]);
 
   // What the member pays for each plan (its bill, after discount), not the package price.
@@ -520,6 +523,7 @@ async function memberData(clientId: string): Promise<Response> {
     progress,
     review: memberReview(c, { url: reviewUrl, today, joinedOn, current, plans: plansList }),
     announcement,
+    referrals,
   };
   return json(data);
 }

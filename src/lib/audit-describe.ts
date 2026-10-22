@@ -1,4 +1,6 @@
 /** Human wording for the activity log. One sentence per change, or null when not worth logging. */
+import { rewardLabel } from "./referrals";
+import type { ReferralReward } from "../types/models";
 
 type D = Record<string, unknown>;
 export type AuditAction = "created" | "updated" | "deleted";
@@ -323,6 +325,23 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
       if (became(f, b, a, "status", "resolved")) return `Feedback marked resolved (${what})`;
       if (became(f, b, a, "status", "new")) return `Feedback opened again (${what})`;
       return f.includes("reply") ? "Feedback reply removed" : null;
+    }
+    case "referrals": {
+      const who = s(d["referrerName"]) || "a member";
+      const friend = s(d["newClientName"]) || "a member";
+      if (action === "created") return `Referral noted: ${who} brought ${friend}`;
+      if (action === "deleted")
+        return `Referral removed: ${who} no longer the referrer of ${friend}`;
+      if (f.includes("referrerId")) return `Referrer of ${friend} changed to ${who}`;
+      const reward = rewardLabel((a["reward"] ?? null) as ReferralReward | null);
+      if (became(f, b, a, "status", "given")) return `Referral reward given to ${who}: ${reward}`;
+      if (became(f, b, a, "status", "promised"))
+        return `Referral reward promised to ${who}: ${reward}`;
+      if (became(f, b, a, "status", "skipped"))
+        return `No referral reward for ${who} (${s(a["reason"])})`;
+      if (became(f, b, a, "status", "due")) return `Referral reward for ${who} reopened`;
+      if (f.includes("reward")) return `Referral reward for ${who} changed to ${reward}`;
+      return null;
     }
     case "recycleBin":
       if (action === "created") return `Moved to Recycle Bin: ${s(d["label"])}`;

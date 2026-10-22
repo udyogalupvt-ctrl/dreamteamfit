@@ -66,6 +66,8 @@ export interface Inquiry extends BaseDoc {
   counsellorId: string;
   convertedToClient: boolean;
   clientId: string | null;
+  /** The member who sent them (source "Referral"); carried over when they join. */
+  referredBy: ReferredBy | null;
 }
 
 export const CLIENT_STATUSES = ["active", "inactive"] as const;
@@ -135,6 +137,58 @@ export interface Client extends BaseDoc {
   healthForm: HealthFormSummary | null;
   /** The Google review card (lib/review-prompt.ts); null = nothing yet. */
   review: ClientReview | null;
+  /** The member who brought them (their reward is in referrals/{this member's id}). */
+  referredBy: ReferredBy | null;
+}
+
+// ------------------------------------------------------------------ referral rewards (spec D)
+
+/** Who brought a member or a lead: the referring member at the time it was set. */
+export interface ReferredBy {
+  clientId: string;
+  name: string;
+  memberCode: string;
+}
+
+export const REFERRAL_STATUSES = ["due", "promised", "given", "skipped"] as const;
+/** due = not decided yet · promised = at their next renewal · skipped = "No reward". */
+export type ReferralStatus = (typeof REFERRAL_STATUSES)[number];
+export const REWARD_KIND_KEYS = ["free_days", "discount", "gift", "other"] as const;
+export type RewardKind = (typeof REWARD_KIND_KEYS)[number];
+
+/** What the referrer gets. Free days are recorded here and added to the plan by Edit plan. */
+export interface ReferralReward {
+  kind: RewardKind;
+  /** free_days only. */
+  days: number;
+  /** discount only: rupees off. */
+  amount: number;
+  note: string;
+}
+
+/** referrals/{newClientId}: one per referred member (src/lib/referrals.ts). */
+export interface Referral {
+  /** Same as newClientId. */
+  id: string;
+  referrerId: string;
+  referrerName: string;
+  referrerCode: string;
+  newClientId: string;
+  newClientName: string;
+  newClientCode: string;
+  /** Day the friend joined (YYYY-MM-DD). */
+  joinedOn: string;
+  status: ReferralStatus;
+  reward: ReferralReward | null;
+  /** "No reward": why. */
+  reason: string;
+  /** Who decided the reward (staff name) and when. */
+  decidedBy: string;
+  decidedAt: Date | null;
+  /** Day the reward was given (YYYY-MM-DD); "" until then. */
+  givenOn: string;
+  createdAt: Date | null;
+  updatedAt: Date | null;
 }
 
 /** clients.review: days (YYYY-MM-DD) the member app or the desk did something about the review. */
@@ -1295,6 +1349,7 @@ export const STAFF_FEATURES = [
   "recycleBin",
   "backup",
   "feedback",
+  "referrals",
   "deleteMembers",
   "deleteLeads",
   "deleteBills",

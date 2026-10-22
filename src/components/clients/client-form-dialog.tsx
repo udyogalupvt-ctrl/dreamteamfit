@@ -24,7 +24,11 @@ import {
 } from "@/services/clients.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { memberAppAction } from "@/services/portal.service";
-import { GENDERS, LEAD_SOURCES, type Client } from "@/types/models";
+import { GENDERS, LEAD_SOURCES, type Client, type Referral } from "@/types/models";
+import { ReferredByField } from "@/components/referrals/referrer-picker";
+import { useLive } from "@/hooks/use-live-query";
+import { canChangeReferrer } from "@/lib/referrals";
+import { subscribeReferral } from "@/services/referrals.service";
 import { CLOUDINARY_CLIENT_FOLDER } from "@/constants/navigation";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -69,6 +73,7 @@ const EMPTY: ClientInput = {
   status: "active",
   joinedOn: "",
   oldMemberId: "",
+  referredBy: null,
 };
 
 interface Props {
@@ -122,6 +127,17 @@ export function ClientFormDialog({
 
   const set = <K extends keyof ClientInput>(key: K, value: ClientInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+  // Once the referrer's reward is decided, who referred them stays put (reopen it on Referrals).
+  const clientId = open && client ? client.id : "";
+  const referral = useLive<Referral | null>(
+    clientId ? (ok, fail) => subscribeReferral(clientId, ok, fail) : null,
+    null,
+    [clientId],
+  ).data;
+  const referrerLocked =
+    referral && !canChangeReferrer(referral)
+      ? "Their reward is already decided. To change who referred them, reopen it on Referrals."
+      : "";
 
   const activeDuplicate = duplicates.find((d) => d.status === "active");
 
@@ -354,6 +370,16 @@ export function ClientFormDialog({
               </SelectContent>
             </Select>
           </Field>
+          <ReferredByField
+            id="c-referrer"
+            source={form.source}
+            value={form.referredBy}
+            onChange={(v) =>
+              setForm((f) => ({ ...f, referredBy: v, ...(v ? { source: "referral" as const } : {}) }))
+            }
+            locked={referrerLocked}
+            {...(client ? { excludeId: client.id } : {})}
+          />
           <Field label="Emergency contact" htmlFor="c-emergency" error={errors["emergencyContact"]}>
             <Input
               id="c-emergency"
