@@ -1,6 +1,6 @@
 # Handoff
 
-Last updated: 2026-10-23 (whole-branch review done on `five-features`, local only. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
+Last updated: 2026-10-23 (member delete clean-up done on `five-features`, local only. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
 
 ## State: 6 features + review fixes on `five-features` (not merged, not pushed)
 
@@ -12,19 +12,25 @@ E2E kit: `C:/Users/chala/AppData/Local/Temp/claude/c--Users-chala-OneDrive-Deskt
 (`bash regress.sh <suite>.py`; suites health/progress/feedback/announce/referral/upi `_local.py`). Main = 12c8fac.
 Check `git branch --show-current` first: other chats use this folder.
 
+Member delete clean-up (2026-10-23, done): health forms, body progress, feedback and referral rewards (theirs + the
+ones they earned) now go to the Recycle Bin with the member (`HELD` in `recycle-bin.service.ts`). Their bin copy sits
+at the fixed id `recycleBinItems/<collection>_<docId>`; rules let the record leave only with that copy and come back
+only as that copy (batches of 8: rules lookup limit). A held record that exists again (friend given a new referrer)
+keeps its newer version. Also fixed: restoring a member who signed a health form failed (clients create blocked
+`healthForm`; now allowed for Recycle Bin / Delete members logins). Checks: rules 72/72, unit 500/500, tsc OK,
+E2E binheld 14 + referral 68 + health 40 + feedback 78 + progress 33 all pass. Known, by choice: friends keep
+`referredBy` on their profile after their referrer is deleted; Delete forever does not erase Cloudinary progress
+photos. Production needs the rules deploy (founder OK).
+
 ## Next steps
 
-1. **Merge blocker: member delete clean-up.** "Delete forever" leaves `healthForms`, `bodyProgress`, `feedback`,
-   `referrals` behind (medical data outlives delete; a deleted member's due referral still counts). Add them to the
-   recycle-bin `MEMBER_RECORDS` + restore rules (`src/services/recycle-bin.service.ts` ~388, `binMember`), with
-   rules tests and an E2E bin/restore/delete run.
-2. **Push blocker (founder):** run the owner check (Still open, Task 0→4). `isOwner()` trusts the email only, and
+1. **Push blocker (founder):** run the owner check (Still open, Task 0→4). `isOwner()` trusts the email only, and
    the owner sets the UPI ID members pay to.
-3. **Founder decisions:** (a) member doc keeps only `{version, signedOn, method, flagCount}` of the health form
+2. **Founder decisions:** (a) member doc keeps only `{version, signedOn, method, flagCount}` of the health form
    (now flags/notes are readable by every staff login)? (b) UPI ID + payee name, ₹1 test QR; (c) Google review link;
-   (d) health form text `[NEED: owner approval]`; (e) OK to merge + push; (f) OK to deploy production rules.
-4. Feature: "Paid online, waiting to confirm" banner + "Use it" in Collect (`invoice-actions.tsx`) and Renew wizard.
-5. Low items: see run-3 REPORT "Not fixed" 5 and A's notes (two taps → two open links; renewal amount fixed at
+   (d) health form text `[NEED: owner approval]`; (e) OK to merge + push; (f) OK to deploy production rules (now also needed for the delete clean-up below).
+3. Feature: "Paid online, waiting to confirm" banner + "Use it" in Collect (`invoice-actions.tsx`) and Renew wizard.
+4. Low items: see run-3 REPORT "Not fixed" 5 and A's notes (two taps → two open links; renewal amount fixed at
    "I've paid"; Undo without Billing fails on the link; no per-IP limit on GET `/api/pay/<token>`).
 
 ## Live state (2026-10-22)

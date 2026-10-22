@@ -54,13 +54,34 @@ export interface Deleter {
 }
 
 const CHUNK = 400;
-async function inChunks<T>(list: T[], write: (b: ReturnType<typeof writeBatch>, x: T) => void) {
-  for (let i = 0; i < list.length; i += CHUNK) {
+async function inChunks<T>(
+  list: T[],
+  write: (b: ReturnType<typeof writeBatch>, x: T) => void,
+  size = CHUNK,
+) {
+  for (let i = 0; i < list.length; i += size) {
     const batch = writeBatch(db);
-    list.slice(i, i + CHUNK).forEach((x) => write(batch, x));
+    list.slice(i, i + size).forEach((x) => write(batch, x));
     await batch.commit();
   }
 }
+
+/**
+ * Records the app never deletes or writes back by itself (member app health forms and feedback,
+ * body progress, decided rewards). Their bin copy has a fixed id, and firestore.rules lets the
+ * record leave or come back only through that copy. Each one costs the rules a lookup (20 per
+ * batch at most), so they go a few at a time.
+ */
+const HELD = new Set<string>([
+  COLLECTIONS.healthForms,
+  COLLECTIONS.bodyProgress,
+  COLLECTIONS.feedback,
+  COLLECTIONS.referrals,
+]);
+const HELD_CHUNK = 8;
+const isHeld = (r: DocumentReference) => HELD.has(r.parent.id);
+const heldCopyRef = (collection: string, docId: string) =>
+  doc(db, COLLECTIONS.recycleBinItems, `${collection}_${docId}`);
 
 /** Moves records to the bin. The thing itself first in `refs`, then what belongs to it. */
 export async function moveToBin(input: {
@@ -77,10 +98,13 @@ export async function moveToBin(input: {
   const binRef = doc(col(COLLECTIONS.recycleBin));
   const now = serverTimestamp();
   // 1. The copies first: nothing is lost even if a later step fails.
-  await inChunks(
-    found.map((s, n) => ({ s, n })),
-    (b, { s, n }) =>
-      b.set(doc(col(COLLECTIONS.recycleBinItems)), {
+  const copies = found.map((s, n) => ({ s, n }));
+  const copy = (b: ReturnType<typeof writeBatch>, { s, n }: (typeof copies)[number]) =>
+    b.set(
+      isHeld(s.ref)
+        ? heldCopyRef(s.ref.parent.id, s.id)
+        : doc(col(COLLECTIONS.recycleBinItems)),
+      {
         binId: binRef.id,
         n,
         path: s.ref.path,
@@ -89,10 +113,13 @@ export async function moveToBin(input: {
         data: s.data() ?? {},
         deletedByUid: input.by.uid,
         createdAt: now,
-      }),
-  );
+      },
+    );
+  await inChunks(copies.filter((x) => !isHeld(x.s.ref)), copy);
+  await inChunks(copies.filter((x) => isHeld(x.s.ref)), copy, HELD_CHUNK);
   // 2. The bin entry together with the thing itself (and as many records as fit), then the rest.
-  const [first, ...rest] = found as [DocumentSnapshot, ...DocumentSnapshot[]];
+  const [first, ...others] = found as [DocumentSnapshot, ...DocumentSnapshot[]];
+  const rest = others.filter((s) => !isHeld(s.ref));
   const batch = writeBatch(db);
   batch.set(binRef, {
     section: input.section,
@@ -109,6 +136,11 @@ export async function moveToBin(input: {
   rest.slice(0, CHUNK - 2).forEach((s) => batch.delete(s.ref));
   await batch.commit();
   await inChunks(rest.slice(CHUNK - 2), (b, s) => b.delete(s.ref));
+  await inChunks(
+    others.filter((s) => isHeld(s.ref)),
+    (b, s) => b.delete(s.ref),
+    HELD_CHUNK,
+  );
   return binRef.id;
 }
 
@@ -193,6 +225,8 @@ const RESTORABLE = new Set<string>([
   "paymentDueNotifications",
   // A salary's pay record, binned with its expense.
   "staffPayments",
+  // A member's own records (HELD: written back only through their bin copy).
+  ...HELD,
 ]);
 const restorable = (it: Pick<BinItem, "path" | "collection" | "docId">) =>
   RESTORABLE.has(it.collection) &&
@@ -260,9 +294,31 @@ export async function restoreFromBin(
   // comes back in this entry.
   const back = (collection: string, id: unknown) =>
     typeof id === "string" && items.some((i) => i.collection === collection && i.docId === id);
+  // A held record that exists again (a friend given a new referrer) keeps its newer version, and a
+  // friend's referral comes back only while both members are there.
+  const live = (collection: string, id: unknown) =>
+    typeof id === "string" && !!id
+      ? getDoc(doc(db, collection, id)).then(
+          (s) => s.exists(),
+          () => false,
+        )
+      : Promise.resolve(false);
+  const member = async (id: unknown) => back(COLLECTIONS.clients, id) || (await live(COLLECTIONS.clients, id));
+  const heldBack = async (it: BinItem) =>
+    !(await live(it.collection, it.docId)) &&
+    (it.collection !== COLLECTIONS.referrals ||
+      ((await member(it.data["referrerId"])) && (await member(it.data["newClientId"]))));
+  const held = items.filter((i) => HELD.has(i.collection));
+  const heldOk = await Promise.all(held.map(heldBack));
+  const heldIn = held.filter((_, k) => heldOk[k]);
   // Marked first, so the activity log says "Restored" (not "deleted forever").
   await updateDoc(doc(db, COLLECTIONS.recycleBin, entry.id), { restoredBy: by.name });
-  await inChunks(items, (b, it) => {
+  const writeBack = (b: ReturnType<typeof writeBatch>, it: BinItem) => {
+    b.set(doc(db, it.collection, it.docId), it.data);
+    b.delete(it.ref);
+  };
+  await inChunks(heldIn, writeBack, HELD_CHUNK);
+  await inChunks(items.filter((i) => !HELD.has(i.collection)), (b, it) => {
     const data = { ...it.data };
     // A member taken off the fingerprint machine when deleted: the door check puts them back.
     if (
@@ -274,9 +330,10 @@ export async function restoreFromBin(
     b.set(doc(db, it.collection, it.docId), data);
     b.delete(it.ref);
   });
-  // Planted items (not restorable) are dropped with the entry, never written.
+  // Planted items (not restorable) and held records kept as they are now are dropped with the
+  // entry, never written.
   await inChunks(
-    all.filter((it) => !restorable(it)),
+    all.filter((it) => !restorable(it) || (HELD.has(it.collection) && !heldIn.includes(it))),
     (b, it) => b.delete(it.ref),
   );
   const x = entry.extra;
@@ -322,7 +379,7 @@ export async function restoreFromBin(
     if (x["trainerLoginOn"] === true && back(COLLECTIONS.trainers, x["trainerId"]))
       await trainerAccess(String(x["trainerId"]), "on").catch(() => undefined);
   }
-  return items.length;
+  return items.length - held.length + heldIn.length;
 }
 
 /** "Undo" right after deleting: puts back what that delete moved to the bin. */
@@ -401,6 +458,8 @@ const MEMBER_RECORDS: CollectionName[] = [
   COLLECTIONS.renewalNotifications,
   COLLECTIONS.birthdayNotifications,
   COLLECTIONS.automationActivities,
+  COLLECTIONS.healthForms,
+  COLLECTIONS.feedback,
 ];
 const ACCOUNT_RECORDS: CollectionName[] = [
   COLLECTIONS.invoices,
@@ -451,6 +510,13 @@ export async function binMember(client: Client, opts: { keepAccounts: boolean },
   }
   const refs: DocumentReference[] = [doc(db, COLLECTIONS.clients, client.id)];
   for (const name of MEMBER_RECORDS) refs.push(...(await byClient(name)));
+  // Their body progress, the reward for bringing them, and the rewards due to them for friends
+  // they brought (those friends keep "Referred by" on their own profile).
+  refs.push(
+    doc(db, COLLECTIONS.bodyProgress, client.id),
+    doc(db, COLLECTIONS.referrals, client.id),
+    ...(await where1(COLLECTIONS.referrals, "referrerId", client.id)),
+  );
   if (!opts.keepAccounts)
     for (const name of ACCOUNT_RECORDS) {
       const found = await byClient(name);

@@ -47,10 +47,12 @@ service cloud.firestore {
     }
 
     // Members: everyone adds and edits; deleting needs "Delete members". Their health form summary
-    // (what the trainer and lists show) changes only with "Members" (paper form / Undo).
+    // (what the trainer and lists show) changes only with "Members" (paper form / Undo), and comes
+    // back with its member out of the Recycle Bin.
     match /clients/{id} {
       allow read: if isStaff();
-      allow create: if isStaff() && !request.resource.data.keys().hasAny(['healthForm']);
+      allow create: if isStaff() && (can('recycleBin') || can('deleteMembers')
+        || !request.resource.data.keys().hasAny(['healthForm']));
       allow update: if isStaff() && (can('members')
         || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['healthForm']));
       allow delete: if can('deleteMembers');
@@ -199,6 +201,29 @@ service cloud.firestore {
       allow delete: if settingsWriter(id);
     }
 
+    // A member's held records (health forms, body progress, feedback, referral rewards) are never
+    // deleted or written here by hand. They go to the Recycle Bin with their member: the copy sits
+    // at recycleBinItems/<collection>_<id> (src/services/recycle-bin.service.ts HELD), and only
+    // that copy lets the record leave, or come back exactly as it was.
+    function heldKind(c) {
+      return c in ['healthForms', 'bodyProgress', 'feedback', 'referrals'];
+    }
+    function heldCopy(c, id) {
+      return /databases/$(database)/documents/recycleBinItems/$(c + '_' + id);
+    }
+    // Leaving: its copy is already in the bin, filed by this login (Delete members).
+    function heldBinning(c, id) {
+      return can('deleteMembers') && exists(heldCopy(c, id))
+        && get(heldCopy(c, id)).data.deletedByUid == request.auth.uid;
+    }
+    // Coming back: written exactly as its copy, which leaves the bin in the same go, by a login
+    // that may restore that copy.
+    function heldRestore(c, id) {
+      return isStaff() && exists(heldCopy(c, id)) && !existsAfter(heldCopy(c, id))
+        && get(heldCopy(c, id)).data.data == request.resource.data
+        && (can('recycleBin') || get(heldCopy(c, id)).data.deletedByUid == request.auth.uid);
+    }
+
     // Health forms members accepted (src/server/portal-health.ts writes the app ones). The desk
     // can record one received on paper and take it back (Undo); nobody edits an acceptance.
     match /healthForms/{id} {
@@ -213,8 +238,10 @@ service cloud.firestore {
         && request.resource.data.note is string && request.resource.data.note.size() <= 500
         && request.resource.data.signedOn is string
         && request.resource.data.signedOn.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}');
+      allow create: if heldRestore('healthForms', id);
       allow update: if false;
-      allow delete: if can('members') && resource.data.method == 'paper';
+      allow delete: if (can('members') && resource.data.method == 'paper')
+        || heldBinning('healthForms', id);
     }
 
     // Body progress: all of one member's entries in one doc (src/lib/body-progress.ts). The member
@@ -226,20 +253,22 @@ service cloud.firestore {
         && request.resource.data.clientId == clientId
         && request.resource.data.entries is list
         && request.resource.data.entries.size() <= 400;
-      allow delete: if false;
+      allow create: if heldRestore('bodyProgress', clientId);
+      allow delete: if heldBinning('bodyProgress', clientId);
     }
 
     // Member feedback (src/server/portal-feedback.ts writes it from the member app). Logins with
     // "Member feedback" reply and resolve; what the member wrote never changes.
+    // A login that deletes members reads it too: it goes to the Recycle Bin with its member.
     match /feedback/{id} {
-      allow read: if can('feedback');
-      allow create: if false;
+      allow read: if can('feedback') || can('deleteMembers');
+      allow create: if heldRestore('feedback', id);
       allow update: if can('feedback')
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reply',
           'repliedBy', 'repliedAt', 'resolvedBy', 'resolvedAt', 'updatedAt'])
         && request.resource.data.status in ['new', 'resolved']
         && request.resource.data.reply is string && request.resource.data.reply.size() <= 1000;
-      allow delete: if false;
+      allow delete: if heldBinning('feedback', id);
     }
 
     // ---- Referral rewards (src/lib/referrals.ts): one doc per referred member, id = their id.
@@ -269,8 +298,10 @@ service cloud.firestore {
         || (isStaff() && resource.data.status == 'due' && request.resource.data.status == 'due'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['referrerId',
             'referrerName', 'referrerCode', 'newClientName', 'newClientCode', 'updatedAt'])));
-      // Only while nothing is decided: a promised or given reward stays on record.
-      allow delete: if isStaff() && resource.data.status == 'due';
+      allow create: if heldRestore('referrals', id);
+      // Only while nothing is decided: a promised or given reward stays on record (or goes to the
+      // Recycle Bin with a deleted member).
+      allow delete: if (isStaff() && resource.data.status == 'due') || heldBinning('referrals', id);
     }
 
     // UPI pay links (src/server/pay-links.ts makes them). Billing marks one "not received",
@@ -457,9 +488,10 @@ service cloud.firestore {
         || (c in ['trainers', 'packages'] && can('deletePackages'))
         // A salary's pay record goes with its expense: staff pay is Finance's.
         || (c == 'staffPayments' && can('finance'))
+        || (heldKind(c) && can('deleteMembers'))
         || (!(c in ['staff', 'staffPrivate', 'payments', 'invoices', 'publicInvoices', 'trainerPayouts',
             'memberships', 'ptAssignments', 'enrollments', 'clients', 'trainers', 'packages',
-            'staffPayments']) && isStaff());
+            'staffPayments']) && !heldKind(c) && isStaff());
     }
     // Each bin entry's section needs that section's delete right (DELETE_FEATURE_OF in
     // src/constants/features.ts); "bills" also takes Finance (Remove payment). A restore acts on
@@ -486,13 +518,26 @@ service cloud.firestore {
     // restore: never a login, feature switch, setting or machine command (restoring runs with the
     // restorer's rights), and only from a login that may delete that kind of record (canBin).
     function binnable(d) {
-      return d.collection in ['attendance', 'automationActivities', 'birthdayNotifications', 'bookings', 'classEnrollments', 'clients', 'dietAssignments', 'enrollments', 'expenses', 'followups', 'inquiries', 'invoices', 'leadLogs', 'memberships', 'notifications', 'payments', 'ptAssignments', 'publicInvoices', 'renewalNotifications', 'staff', 'staffPrivate', 'trainerPayouts', 'trainers', 'whatsappMessages', 'workoutAssignments', 'packages', 'absenceNotifications', 'paymentDueNotifications', 'staffPayments']
+      return d.collection in ['attendance', 'automationActivities', 'birthdayNotifications', 'bookings', 'classEnrollments', 'clients', 'dietAssignments', 'enrollments', 'expenses', 'followups', 'inquiries', 'invoices', 'leadLogs', 'memberships', 'notifications', 'payments', 'ptAssignments', 'publicInvoices', 'renewalNotifications', 'staff', 'staffPrivate', 'trainerPayouts', 'trainers', 'whatsappMessages', 'workoutAssignments', 'packages', 'absenceNotifications', 'paymentDueNotifications', 'staffPayments', 'healthForms', 'bodyProgress', 'feedback', 'referrals']
         && d.docId is string && !d.docId.matches('.*/.*')
         && d.path == d.collection + '/' + d.docId;
     }
+    // A held record's copy (heldKind): at its fixed id, and exactly the record as it is now.
+    function heldItemOk(id, d) {
+      return !heldKind(d.collection) || (id == d.collection + '_' + d.docId
+        && exists(/databases/$(database)/documents/$(d.collection)/$(d.docId))
+        && get(/databases/$(database)/documents/$(d.collection)/$(d.docId)).data == d.data);
+    }
+    function binItemOk(id) {
+      return isStaff() && request.resource.data.deletedByUid == request.auth.uid
+        && binnable(request.resource.data) && canBin(request.resource.data.collection)
+        && heldItemOk(id, request.resource.data);
+    }
     match /recycleBinItems/{id} {
-      allow create: if isStaff() && request.resource.data.deletedByUid == request.auth.uid
-        && binnable(request.resource.data) && canBin(request.resource.data.collection);
+      allow create: if binItemOk(id);
+      // An older copy of a held record that came back some other way since (a friend given a new
+      // referrer) is replaced by the new copy.
+      allow update: if heldKind(resource.data.collection) && binItemOk(id);
       allow read: if can('recycleBin')
         || (isStaff() && (resource == null || resource.data.deletedByUid == request.auth.uid));
       allow delete: if can('recycleBin')

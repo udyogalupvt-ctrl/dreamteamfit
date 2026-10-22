@@ -63,7 +63,10 @@ export function DeleteMemberDialog({
     >
       <div className="space-y-4 text-sm">
         <ul className="list-disc space-y-1 pl-5">
-          <li>Profile, plans, PT, visits, calls, bookings and messages leave every list.</li>
+          <li>
+            Profile, plans, PT, visits, calls, bookings, messages, health form, body progress,
+            feedback and referral rewards leave every list.
+          </li>
           <li>Their thumb stops opening the door; their member app stops working.</li>
           <li>Restore brings everything back, and their thumb works again without a new scan.</li>
         </ul>

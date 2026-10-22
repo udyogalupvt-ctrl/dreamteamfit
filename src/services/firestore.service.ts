@@ -74,6 +74,11 @@ export const COLLECTIONS = {
   oldSoftwareMoves: "oldSoftwareMoves",
   /** UPI pay links (src/server/pay-links.ts): the desk confirms the ones members say they paid. */
   payLinks: "payLinks",
+  /** A member's health forms, body progress, feedback and referral rewards (spec 2026-10-22). */
+  healthForms: "healthForms",
+  bodyProgress: "bodyProgress",
+  feedback: "feedback",
+  referrals: "referrals",
 } as const;
 
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];
