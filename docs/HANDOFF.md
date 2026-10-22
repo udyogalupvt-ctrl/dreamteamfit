@@ -1,30 +1,41 @@
 # Handoff
 
-Last updated: 2026-10-22 (E, B, C, F, D built on branch `five-features`; A next. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
+Last updated: 2026-10-22 (all 6 features built on branch `five-features`, local only. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
 
-## NEXT: 5 new features for Rebuild Fitness (founder picked 2026-10-22)
+## State: 6 new features DONE on `five-features` (not merged, not pushed)
 
-**State (branch `five-features`, local only):** spec `docs/superpowers/specs/2026-10-22-five-features-design.md`, plan
-`docs/superpowers/plans/2026-10-22-five-features.md`. DONE: E health form (b63bd80), B body progress (8d9cf46),
-C review + feedback (949c355), F app-only announcements (45ae50b, founder's extra ask), D referrals (9e6c106, E2E 68/68).
-E2E suites live in the session scratchpad kit `k/` (`bash regress.sh <suite>.py`; rebuild needed after a production build).
-**NEXT = A (UPI pay link):** write its detailed plan first, build, reviewer agent (money), E2E, screenshots.
-Rules for healthForms/bodyProgress/feedback/memberApp/referrals NOT deployed to production.
-**Founder 2026-10-22: no approval per step.** Ask ONLY for: push to live, production rules deploy, real-money
-actions, paid spend, facts only they have (gym UPI ID + payee name, Google review link: Settings fields exist).
-Check `git branch --show-current` / `git log` first: other chats may work in this folder. Main = 12c8fac.
+Spec `docs/superpowers/specs/2026-10-22-five-features-design.md`, plans `docs/superpowers/plans/2026-10-22-five-features.md`
+and `docs/superpowers/plans/2026-10-22-upi-pay-link.md`. E health form (b63bd80), B body progress (8d9cf46), C review +
+feedback (949c355), F app-only announcements (45ae50b), D referrals (9e6c106), **A UPI pay link (see git log)**.
+Checks at A: rules 62/62, unit 500/500, E2E `upi_local.py` 81/81. E2E suites: session scratchpad kit `k/`
+(`bash regress.sh <suite>.py`). Main = 12c8fac. Check `git branch --show-current` first: other chats use this folder.
 
-| # | Feature | Founder's decision / notes |
+**A in one line:** member taps Pay (app Payments / Home renew / bill page) → `/pay/<token>` (UPI app link, QR, UPI ID)
+→ "I've paid" (+ optional UTR) → Billing "Paid online" card + bell + dashboard → desk finds the money, ticks
+"I found this ₹X", confirms through normal Collect / Renew (one transaction, Undo works) or "Not received" + note.
+Rules: confirm only with a NEW payment for that bill/member tagged with the link; `payLinkId` can't be edited.
+
+## Next steps
+
+1. **Whole-branch review before merge** (6 features, new public endpoints `/api/pay/*`, member-app endpoints):
+   `requesting-code-review` + Cloudflare `security-audit` quick profile on the branch diff vs main. Fix confirmed items.
+2. **Founder asks (only they can):** (a) gym UPI ID + payee name in Settings → Gym & bills, then scan the ₹1 test QR to
+   see the bank name; (b) Google review link (Settings); (c) approve the health form text (`[NEED: owner approval]`);
+   (d) OK to merge + push live; (e) OK to deploy production rules (healthForms, bodyProgress, feedback, memberApp
+   setting, referrals, payLinks, settings/upi; recipe below). Optional: `gym_payment_due` text mentioning UPI.
+3. A's lower-priority reviewer notes (not fixed): two taps at the same moment can make two open links (both work, the
+   desk sees one card each); a renewal amount is fixed when the member taps "I've paid" (desk sees the price change in
+   the wizard); Undo by a login without Billing fails on the link (Finance can remove instead); no per-IP limit on the
+   public GET `/api/pay/<token>` (token is 24 random chars); a Finance Remove of a confirmed payment leaves the link
+   confirmed (deliberate, plan decision 7).
+
+| # | Feature | Founder notes |
 |---|---|---|
-| A | **Online payment by UPI link** | An ADD-ON (founder 2026-10-22): desk payment stays exactly as it is; this is one extra way to pay. Founder OK'd the manual desk Confirm. NO gateway (no Razorpay). Gym's UPI ID in Settings. Renewal reminder (WhatsApp) + member app `/m` show "Pay ₹X" → hosted page (`/pay/<token>`: QR + `upi://pay?pa=…&am=…&tn=<bill no>` button; WhatsApp buttons need https). Member taps "I've paid" (+ optional UTR). Desk gets a "Payments to confirm" list, checks the bank app, Confirm = normal collect path (same rules, closed months, undo). Nothing auto-marks paid. |
-| B | Body progress | DONE |
-| C | Google review + feedback | DONE |
-| D | Referral rewards | DONE |
-| E | Health form / waiver | DONE (starting text marked `[NEED: owner approval]`) |
+| A | UPI pay link | ADD-ON: desk payment unchanged; manual desk confirm OK'd; no gateway |
+| E | Health form | starting text `[NEED: owner approval]` |
 
-Every feature: finish the whole flow (edit later, shown on profile, filters, staff permission in
-`constants/features.ts`, Firestore rules + emulator rules tests, light/dark 390/1440 screenshots). Rules change ⇒
-production rules deploy needs the founder's OK (recipe below).
+Every feature followed: edit later, shown on profile, filters, permission in `constants/features.ts`, rules + emulator
+tests, light/dark 390/1440 screenshots.
 
 ## Live state (2026-10-22)
 
