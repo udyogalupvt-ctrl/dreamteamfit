@@ -1,30 +1,26 @@
 # Handoff
 
-Last updated: 2026-10-22 (E + B built on branch `five-features`; C in progress. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
+Last updated: 2026-10-22 (E, B, C, F, D built on branch `five-features`; A next. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
 
 ## NEXT: 5 new features for Rebuild Fitness (founder picked 2026-10-22)
 
 **State (branch `five-features`, local only):** spec `docs/superpowers/specs/2026-10-22-five-features-design.md`, plan
-`docs/superpowers/plans/2026-10-22-five-features.md`. E DONE (b63bd80). B DONE (8d9cf46, E2E 33/33; kit suite
-`progress_local.py`). C: core logic + tests committed (`src/lib/review-prompt.ts`, `src/lib/feedback.ts`); next = server
-`src/server/portal-feedback.ts`, rules (`settings/memberApp`, `feedback`), /feedback inbox page, Settings review link,
-member-app review card + feedback tab, E2E. Then D, then A. Rules for healthForms/bodyProgress NOT deployed.
-**Founder 2026-10-22: no approval per step.**
-Decide the brainstorm answers and designs yourself (write them into the plan), then plan → build → test end to end
-(build, tests, emulator rules tests, light/dark 390/1440 screenshots). Ask the founder ONLY for: push to live,
-production rules deploy, real-money actions on the live app, paid spend, and facts only they have (gym UPI ID,
-Google review link: build with Settings fields so these can be filled later). Money feature (A) = reviewer agent.
-Suggested order: E, B, C, D, then A.
-Check `git branch --show-current` / `git log` first: other chats may work in this folder. Main = 12c8fac (+ local
-handoff commits).
+`docs/superpowers/plans/2026-10-22-five-features.md`. DONE: E health form (b63bd80), B body progress (8d9cf46),
+C review + feedback (949c355), F app-only announcements (45ae50b, founder's extra ask), D referrals (9e6c106, E2E 68/68).
+E2E suites live in the session scratchpad kit `k/` (`bash regress.sh <suite>.py`; rebuild needed after a production build).
+**NEXT = A (UPI pay link):** write its detailed plan first, build, reviewer agent (money), E2E, screenshots.
+Rules for healthForms/bodyProgress/feedback/memberApp/referrals NOT deployed to production.
+**Founder 2026-10-22: no approval per step.** Ask ONLY for: push to live, production rules deploy, real-money
+actions, paid spend, facts only they have (gym UPI ID + payee name, Google review link: Settings fields exist).
+Check `git branch --show-current` / `git log` first: other chats may work in this folder. Main = 12c8fac.
 
 | # | Feature | Founder's decision / notes |
 |---|---|---|
 | A | **Online payment by UPI link** | An ADD-ON (founder 2026-10-22): desk payment stays exactly as it is; this is one extra way to pay. Founder OK'd the manual desk Confirm. NO gateway (no Razorpay). Gym's UPI ID in Settings. Renewal reminder (WhatsApp) + member app `/m` show "Pay ₹X" → hosted page (`/pay/<token>`: QR + `upi://pay?pa=…&am=…&tn=<bill no>` button; WhatsApp buttons need https). Member taps "I've paid" (+ optional UTR). Desk gets a "Payments to confirm" list, checks the bank app, Confirm = normal collect path (same rules, closed months, undo). Nothing auto-marks paid. |
-| B | **Body progress tracking** | Weight, body fat, measurements, progress photos; logged by trainer (`/t`), desk, or member (`/m`); chart in member app. |
-| C | **Google review requests + feedback** | Google review link in Settings; ask at a good moment (after first month / at renewal). Watch WhatsApp cost (founder cares): prefer member-app prompt + reuse existing templates; new templates need Meta approval. Feedback/complaint box in `/m` → owner inbox. |
-| D | **Referral rewards** | "Referred by" member at enrollment/inquiry. Owner decides the reward each time: app shows "Reward due" list; owner records what was given (free days / discount / gift + note). |
-| E | **Health form / waiver** | In the member app: member fills it on their own phone (PAR-Q style questions + consent), once. Profile + desk show "Health form: done (date) / pending". Founder 2026-10-22: Claude writes the best possible starting form (questions + consent text), and the OWNER can edit it in Settings (add/remove/reword questions, edit the consent text), save, and the app uses the saved version from then on. Each acceptance stores the form version + answers + date, so old answers stay readable after edits; the owner can choose "ask everyone to accept again" after a big change. Mark the starting draft `[NEED: owner approval]`, never present it as legal text. |
+| B | Body progress | DONE |
+| C | Google review + feedback | DONE |
+| D | Referral rewards | DONE |
+| E | Health form / waiver | DONE (starting text marked `[NEED: owner approval]`) |
 
 Every feature: finish the whole flow (edit later, shown on profile, filters, staff permission in
 `constants/features.ts`, Firestore rules + emulator rules tests, light/dark 390/1440 screenshots). Rules change ⇒
