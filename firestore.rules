@@ -170,11 +170,17 @@ service cloud.firestore {
     function settingsWriter(id) {
       return (id == 'healthForm' && isOwner()) || (id != 'healthForm' && can('settings'));
     }
+    // The member app's Google review link (src/lib/review-prompt.ts checks it is Google's).
+    function settingsShapeOk(id, d) {
+      return id != 'memberApp' || (d.keys().hasOnly(['googleReviewUrl', 'updatedAt', 'updatedBy'])
+        && d.googleReviewUrl is string && d.googleReviewUrl.size() <= 500
+        && (d.googleReviewUrl == '' || d.googleReviewUrl.matches('https://[^ ]+')));
+    }
     match /settings/{id} {
       allow read: if isStaff();
-      allow create: if settingsWriter(id)
+      allow create: if (settingsWriter(id) && settingsShapeOk(id, request.resource.data))
         || (id == 'counters' && isStaff() && counterStepOk({}, request.resource.data));
-      allow update: if settingsWriter(id)
+      allow update: if (settingsWriter(id) && settingsShapeOk(id, request.resource.data))
         || (id == 'counters' && isStaff() && counterStepOk(resource.data, request.resource.data));
       allow delete: if settingsWriter(id);
     }
@@ -206,6 +212,19 @@ service cloud.firestore {
         && request.resource.data.clientId == clientId
         && request.resource.data.entries is list
         && request.resource.data.entries.size() <= 400;
+      allow delete: if false;
+    }
+
+    // Member feedback (src/server/portal-feedback.ts writes it from the member app). Logins with
+    // "Member feedback" reply and resolve; what the member wrote never changes.
+    match /feedback/{id} {
+      allow read: if can('feedback');
+      allow create: if false;
+      allow update: if can('feedback')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reply',
+          'repliedBy', 'repliedAt', 'resolvedBy', 'resolvedAt', 'updatedAt'])
+        && request.resource.data.status in ['new', 'resolved']
+        && request.resource.data.reply is string && request.resource.data.reply.size() <= 1000;
       allow delete: if false;
     }
 

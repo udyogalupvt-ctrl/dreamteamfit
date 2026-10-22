@@ -177,6 +177,27 @@ export interface MemberPortalData {
   health: PortalHealth | null;
   /** Body progress entries, oldest first (bodyProgress/{clientId}). */
   progress: BodyEntry[];
+  /** The Google review card; null while the gym has no review link in Settings. */
+  review: PortalReview | null;
+}
+
+/** `show` = the card is on Home today (src/lib/review-prompt.ts); the link is always in Feedback. */
+export interface PortalReview {
+  url: string;
+  show: boolean;
+}
+
+/** One message the member sent to the gym (src/server/portal-feedback.ts). */
+export interface PortalFeedback {
+  id: string;
+  kind: string;
+  message: string;
+  wantsCall: boolean;
+  status: "new" | "resolved";
+  reply: string;
+  /** YYYY-MM-DD, "" before the gym replied. */
+  repliedOn: string;
+  sentOn: string;
 }
 
 /** The health form as the member app shows it (src/server/portal-health.ts). */

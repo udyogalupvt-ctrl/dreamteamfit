@@ -9,6 +9,8 @@
  *   GET|POST /api/portal/health-form                    member: see / fill the health form (portal-health.ts)
  *   POST /api/portal/body-log                           member: log / change body progress (portal-progress.ts)
  *   POST /api/portal/trainer-body-log                   trainer: the same for a PT member
+ *   POST /api/portal/review                             member: Google review card (portal-feedback.ts)
+ *   GET|POST /api/portal/feedback                       member: their messages / send one to the gym
  *   POST /api/portal/member-access { clientId, action } staff: ensure | reset | off | on | delete
  *   POST /api/portal/trainer-access { trainerId, action, password? }
  *                                                       owner: create | password | off | on | reveal
@@ -55,6 +57,13 @@ import { oldHistoryFor } from "./old-data";
 import { bodyOf } from "./portal-common";
 import { healthRecords, memberHealth, submitHealthForm } from "./portal-health";
 import { bodyEntries, changeBodyEntry } from "./portal-progress";
+import {
+  memberFeedback,
+  memberReview,
+  reviewAnswer,
+  reviewLink,
+  sendFeedback,
+} from "./portal-feedback";
 import { readPassword, savePassword } from "./vault";
 
 type D = DocumentData;
@@ -325,23 +334,36 @@ async function memberData(clientId: string): Promise<Response> {
     return json({ error: "Your member app is switched off. Please contact the gym." }, 403);
   const today = localDate();
   const gymP = gymInfo();
-  const [gym, memberships, invoices, payments, pts, visits, plans, logs, oldHistory, health, progress] =
-    await Promise.all([
-      gymP,
-      byClient("memberships", clientId),
-      byClient("invoices", clientId),
-      byClient("payments", clientId),
-      byClient("ptAssignments", clientId),
-      visitDays(clientId),
-      currentPlans(clientId),
-      recentLogs(clientId, today),
-      oldHistoryFor(c).catch(() => null),
-      memberHealth(
-        c,
-        gymP.then((g) => g.name),
-      ),
-      bodyEntries(clientId),
-    ]);
+  const [
+    gym,
+    memberships,
+    invoices,
+    payments,
+    pts,
+    visits,
+    plans,
+    logs,
+    oldHistory,
+    health,
+    progress,
+    reviewUrl,
+  ] = await Promise.all([
+    gymP,
+    byClient("memberships", clientId),
+    byClient("invoices", clientId),
+    byClient("payments", clientId),
+    byClient("ptAssignments", clientId),
+    visitDays(clientId),
+    currentPlans(clientId),
+    recentLogs(clientId, today),
+    oldHistoryFor(c).catch(() => null),
+    memberHealth(
+      c,
+      gymP.then((g) => g.name),
+    ),
+    bodyEntries(clientId),
+    reviewLink().catch(() => ""),
+  ]);
 
   // What the member pays for each plan (its bill, after discount), not the package price.
   const billOf = (planId: string, billId: string) =>
@@ -418,6 +440,21 @@ async function memberData(clientId: string): Promise<Response> {
   if (livePt?.trainerId)
     await ensureChat(clientId, s(c["fullName"]), livePt.trainerId, livePt.trainerName);
 
+  const joinedOn =
+    (typeof c["joinedOn"] === "string" && c["joinedOn"]) ||
+    (() => {
+      const at = (c["createdAt"] as { toDate?: () => Date } | undefined)?.toDate?.();
+      return at ? localDate(at) : "";
+    })();
+  // The plan running today, by the one rule the app uses (current-plan.ts).
+  const current = (() => {
+    const { summary, active } = pickCurrent(
+      plansList.map((m) => ({ ...m, name: m.packageName })),
+      today,
+    );
+    return active ? (plansList.find((m) => m.id === summary?.membershipId) ?? null) : null;
+  })();
+
   const data: MemberPortalData = {
     kind: "member",
     gym,
@@ -432,22 +469,10 @@ async function memberData(clientId: string): Promise<Response> {
       gender: s(c["gender"]),
       address: s(c["address"]),
       emergencyContact: s(c["emergencyContact"]),
-      joinedOn:
-        (typeof c["joinedOn"] === "string" && c["joinedOn"]) ||
-        (() => {
-          const at = (c["createdAt"] as { toDate?: () => Date } | undefined)?.toDate?.();
-          return at ? localDate(at) : "";
-        })(),
+      joinedOn,
     },
     today,
-    // The plan running today, by the one rule the app uses (current-plan.ts).
-    current: (() => {
-      const { summary, active } = pickCurrent(
-        plansList.map((m) => ({ ...m, name: m.packageName })),
-        today,
-      );
-      return active ? (plansList.find((m) => m.id === summary?.membershipId) ?? null) : null;
-    })(),
+    current,
     memberships: plansList,
     pt: ptList.map(({ trainerId: _t, ...p }) => p),
     bills,
@@ -489,6 +514,7 @@ async function memberData(clientId: string): Promise<Response> {
       : null,
     health,
     progress,
+    review: memberReview(c, { url: reviewUrl, today, joinedOn, current, plans: plansList }),
   };
   return json(data);
 }
@@ -1296,6 +1322,12 @@ export async function handlePortal(request: Request, url: URL): Promise<Response
       : healthRecords(who.id);
   if (who.kind === "member" && request.method === "POST" && action === "body-log")
     return changeBodyEntry({ kind: "member", id: who.id, name: "" }, who.id, await bodyOf(request));
+  if (who.kind === "member" && request.method === "POST" && action === "review")
+    return reviewAnswer(who.id, await bodyOf(request));
+  if (who.kind === "member" && action === "feedback")
+    return request.method === "POST"
+      ? sendFeedback(who.id, await bodyOf(request))
+      : memberFeedback(who.id);
   if (who.kind !== "trainer") return json({ error: "Not allowed." }, 403);
   const trainer = (await db().doc(`trainers/${who.id}`).get()).data();
   if (!trainer || trainer["portalActive"] === false)
@@ -1312,7 +1344,11 @@ export async function handlePortal(request: Request, url: URL): Promise<Response
     const clientId = s(body["clientId"]);
     if (!(await ptWith(who.id, clientId, localDate())))
       return json({ error: "This member is not in your PT list." }, 403);
-    return changeBodyEntry({ kind: "trainer", id: who.id, name: s(trainer["name"]) }, clientId, body);
+    return changeBodyEntry(
+      { kind: "trainer", id: who.id, name: s(trainer["name"]) },
+      clientId,
+      body,
+    );
   }
   if (request.method === "GET" && action === "trainer-calls") return trainerCalls(trainer);
   if (request.method === "POST" && action === "trainer-call")

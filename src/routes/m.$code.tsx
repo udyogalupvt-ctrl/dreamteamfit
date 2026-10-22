@@ -43,6 +43,7 @@ import {
   type NavItem,
 } from "@/components/portal/portal-shell";
 import { HealthFormView } from "@/components/portal/health-form-view";
+import { FeedbackLink, FeedbackView, ReviewCard } from "@/components/portal/portal-feedback";
 import { PortalProgress, useEdited } from "@/components/portal/portal-progress";
 import { Sparkline } from "@/components/progress/progress-panel";
 import { VisitsCalendar, clock12, sessionOf } from "@/components/portal/visits-calendar";
@@ -54,6 +55,7 @@ import {
   type MemberPortalData,
   type PortalLog,
   type PortalMembership,
+  type PortalReview,
 } from "@/constants/portal";
 import {
   formatChange,
@@ -68,7 +70,16 @@ import { cn } from "@/lib/utils";
 import type { StatTone } from "@/types";
 import type { BodyEntry, ChatThread } from "@/types/models";
 
-const TABS = ["home", "workout", "visits", "payments", "chat", "health", "progress"] as const;
+const TABS = [
+  "home",
+  "workout",
+  "visits",
+  "payments",
+  "chat",
+  "health",
+  "progress",
+  "feedback",
+] as const;
 type Tab = (typeof TABS)[number];
 
 export const Route = createFileRoute("/m/$code")({
@@ -123,6 +134,8 @@ function MemberApp() {
   }, [memberId, today]);
   // Body progress changes in place after a save (no /me reload); Home's card stays in step.
   const [progress, setProgress] = useEdited(data?.progress ?? NO_ENTRIES);
+  // Answering the review card hides it at once; the next /me load agrees.
+  const [reviewAnswered, setReviewAnswered] = useState(false);
 
   if (!data)
     return (
@@ -180,13 +193,24 @@ function MemberApp() {
                     ? "Health form"
                     : current === "progress"
                       ? "My progress"
-                      : `Chat with ${data.trainer?.name ?? "trainer"}`
+                      : current === "feedback"
+                        ? "Feedback"
+                        : `Chat with ${data.trainer?.name ?? "trainer"}`
         }
         onRefresh={() => void reload()}
         refreshing={loading}
       />
       <main className="mx-auto max-w-2xl space-y-4 px-4 py-4">
-        {current === "home" ? <HomeTab data={live} progress={progress} go={go} /> : null}
+        {current === "home" ? (
+          <HomeTab
+            data={live}
+            progress={progress}
+            go={go}
+            review={data.review?.show && !reviewAnswered ? data.review : null}
+            onReviewAnswered={() => setReviewAnswered(true)}
+          />
+        ) : null}
+        {current === "feedback" ? <FeedbackView review={data.review} /> : null}
         {current === "workout" ? <WorkoutTab data={live} /> : null}
         {current === "visits" ? <VisitsTab data={data} /> : null}
         {current === "payments" ? <PaymentsTab data={data} /> : null}
@@ -385,10 +409,14 @@ function HomeTab({
   data,
   progress,
   go,
+  review,
+  onReviewAnswered,
 }: {
   data: MemberPortalData;
   progress: BodyEntry[];
   go: (t: Tab) => void;
+  review: PortalReview | null;
+  onReviewAnswered: () => void;
 }) {
   const { member, current, today } = data;
   const upcoming = data.memberships
@@ -561,6 +589,10 @@ function HomeTab({
         </button>
       ) : null}
 
+      {review ? (
+        <ReviewCard review={review} gymName={data.gym.name} onDone={onReviewAnswered} />
+      ) : null}
+
       <section className="surface-card p-4">
         <h2 className="text-card-title flex items-center gap-2">
           <UserRound className="size-4" aria-hidden /> My details
@@ -611,6 +643,7 @@ function HomeTab({
             </a>
           </Button>
         ) : null}
+        <FeedbackLink onOpen={() => go("feedback")} />
         <NotificationToggle kind="member" className="border-t border-border pt-3" />
       </section>
     </>

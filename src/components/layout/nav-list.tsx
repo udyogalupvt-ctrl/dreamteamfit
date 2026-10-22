@@ -3,6 +3,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { ChevronDown, MoreHorizontal } from "lucide-react";
 import { useNavItems } from "@/hooks/use-nav-items";
 import { useAttention } from "@/hooks/use-attention";
+import { useFeedbackBadge } from "@/hooks/use-feedback-badge";
 import { useRecycleBinBadge } from "@/hooks/use-recycle-bin-badge";
 import { useWhatsAppUnread } from "@/hooks/use-whatsapp-unread";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ export function NavList({ collapsed = false, onNavigate }: NavListProps) {
 
   const binNew = useRecycleBinBadge();
   const waUnread = useWhatsAppUnread();
+  const feedbackNew = useFeedbackBadge();
   const badgeFor = (item: NavItem) =>
     item.to === "/leads"
       ? attention.callsDue
@@ -33,7 +35,9 @@ export function NavList({ collapsed = false, onNavigate }: NavListProps) {
         ? binNew
         : item.to === "/whatsapp"
           ? waUnread
-          : 0;
+          : item.to === "/feedback"
+            ? feedbackNew
+            : 0;
 
   const link = (item: NavItem, nested = false) => {
     const active = isActive(pathname, item.to);

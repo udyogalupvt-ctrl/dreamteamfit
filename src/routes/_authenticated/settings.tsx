@@ -13,6 +13,7 @@ import { z } from "zod";
 import { ColorThemeSection } from "@/components/settings/color-theme-section";
 import { DataImportWizard } from "@/components/settings/data-import-wizard";
 import { DataExportPanel } from "@/components/settings/data-export-panel";
+import { GoogleReviewSection } from "@/components/settings/google-review-section";
 import { MemberAppBulkSend } from "@/components/settings/member-app-bulk";
 import { WhatsAppGatewaySection } from "@/components/settings/whatsapp-gateway-section";
 import { HealthFormEditor } from "@/components/health/health-form-editor";
@@ -58,7 +59,10 @@ export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
     meta: [
       { title: "Settings — REBUILD FITNESS" },
-      { name: "description", content: "Gym details on bills, WhatsApp, reminders, member app and data." },
+      {
+        name: "description",
+        content: "Gym details on bills, WhatsApp, reminders, member app and data.",
+      },
     ],
   }),
   component: SettingsPage,
@@ -100,6 +104,7 @@ function SettingsPage() {
         </TabsContent>
         <TabsContent value="memberapp" className="space-y-4">
           <HealthFormEditor />
+          <GoogleReviewSection />
         </TabsContent>
         <TabsContent value="data" className="space-y-4">
           <DataImportWizard />

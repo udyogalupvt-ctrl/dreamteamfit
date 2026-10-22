@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PhotoLinkButtons } from "@/components/clients/photo-link-button";
 import { MemberAppCard } from "@/components/clients/member-app-card";
+import { ReviewFeedbackCard } from "@/components/feedback/review-feedback-card";
 import { HealthCard, HealthPill } from "@/components/health/health-card";
 import { ClientProgressSection } from "@/components/progress/client-progress-section";
 import { OldHistoryCard } from "@/components/clients/old-history-card";
@@ -489,6 +490,7 @@ function ClientProfilePage() {
           <ClientBiometricCard client={c} />
           <MemberAppCard client={c} />
           <HealthCard client={c} />
+          <ReviewFeedbackCard client={c} />
           <section className="surface-card p-5">
             <h2 className="text-section-title">Profile</h2>
             <dl className="mt-4 grid grid-cols-2 gap-4 text-sm">

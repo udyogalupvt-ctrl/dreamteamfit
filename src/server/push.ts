@@ -6,6 +6,7 @@
  *   POST /api/push/unsubscribe  member / trainer app: { endpoint } this phone stops getting them
  *   POST /api/push/chat         member / trainer app: { clientId } right after sending a chat message
  *   POST /api/push/members      staff: { clientIds, title, body } (announcements)
+ *   POST /api/push/feedback     staff: { id } right after replying to a member's feedback
  *
  * The keys are made once by the server and kept in serverSecrets/webPush (server only), so there
  * is nothing to set up on Vercel. Each phone is one pushSubscriptions doc; a phone that removed the
@@ -352,6 +353,30 @@ async function members(request: Request) {
   return json({ sent });
 }
 
+/** Staff just replied to a member's feedback: tell the member's phones (one per 20 seconds). */
+async function feedbackReply(request: Request) {
+  if (!(await requireFeature(request, "feedback")))
+    return json({ error: "Only logins with Member feedback can reply." }, 403);
+  const body = (await request.json().catch(() => ({}))) as { id?: unknown };
+  const id = s(body.id);
+  if (!id || id.includes("/")) return json({ error: "id is required." }, 400);
+  const ref = db().doc(`feedback/${id}`);
+  const f = (await ref.get()).data();
+  const reply = s(f?.["reply"]).trim();
+  if (!f || !reply) return json({ sent: 0 });
+  const millis = (v: unknown) => (v as { toMillis?: () => number } | null)?.toMillis?.() ?? 0;
+  if (Date.now() - millis(f["pushedAt"]) < 20_000) return json({ sent: 0 });
+  await ref.update({ pushedAt: FieldValue.serverTimestamp() });
+  const gym = s((await db().doc("settings/business").get()).data()?.["businessName"]);
+  const sent = await pushTo([memberOwner(s(f["clientId"]))], {
+    title: gym ? `Reply from ${gym}` : "Reply from your gym",
+    body: reply.length > 180 ? `${reply.slice(0, 177)}...` : reply,
+    path: "?tab=feedback",
+    tag: `feedback-${id}`,
+  });
+  return json({ sent });
+}
+
 export async function handlePush(request: Request, url: URL): Promise<Response> {
   const action = url.pathname.replace(/^\/api\/push\/?/, "").replace(/\/+$/, "");
   if (request.method === "GET" && action === "key")
@@ -361,5 +386,6 @@ export async function handlePush(request: Request, url: URL): Promise<Response> 
   if (action === "unsubscribe") return unsubscribe(request);
   if (action === "chat") return chat(request);
   if (action === "members") return members(request);
+  if (action === "feedback") return feedbackReply(request);
   return json({ error: "Not found" }, 404);
 }

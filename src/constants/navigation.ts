@@ -1,4 +1,5 @@
 import {
+  MessageSquareHeart,
   BarChart3,
   BookOpenCheck,
   Bell,
@@ -68,6 +69,13 @@ export const NAV_ITEMS: NavItem[] = [
     to: "/announcements",
     icon: Megaphone,
     feature: "announcements",
+    group: "Workspace",
+  },
+  {
+    label: "Member feedback",
+    to: "/feedback",
+    icon: MessageSquareHeart,
+    feature: "feedback",
     group: "Workspace",
   },
   {

@@ -100,6 +100,7 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
       if (b["biometricStatus"] === "disabled" && became(f, b, a, "biometricStatus", "active"))
         return "Entry allowed again";
       if (f.length === 1 && f[0] === "portalSentAt") return "Member app link sent to the member";
+      if (f.length === 1 && f[0] === "review") return "Asked for a Google review on WhatsApp";
       if (
         f.every((k) =>
           [
@@ -292,7 +293,9 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
     }
     case "bodyProgress": {
       const byId = (x: D) =>
-        new Map((Array.isArray(x["entries"]) ? (x["entries"] as D[]) : []).map((e) => [s(e["id"]), e]));
+        new Map(
+          (Array.isArray(x["entries"]) ? (x["entries"] as D[]) : []).map((e) => [s(e["id"]), e]),
+        );
       const was = byId(b);
       const now = byId(a);
       const added = [...now.keys()].filter((k) => !was.has(k));
@@ -302,6 +305,15 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
       if (gone.length === 1 && !added.length)
         return `Body progress entry removed (${day(was.get(gone[0]!)?.["date"])})`;
       return "Body progress changed";
+    }
+    case "feedback": {
+      const what =
+        s(d["kind"]) === "praise" ? "praise" : s(d["kind"]) === "complaint" ? "complaint" : "idea";
+      if (f.includes("reply") && s(a["reply"]).trim())
+        return `Replied to a ${what} from ${s(d["clientName"])}`;
+      if (became(f, b, a, "status", "resolved")) return `Feedback marked resolved (${what})`;
+      if (became(f, b, a, "status", "new")) return `Feedback opened again (${what})`;
+      return f.includes("reply") ? "Feedback reply removed" : null;
     }
     case "recycleBin":
       if (action === "created") return `Moved to Recycle Bin: ${s(d["label"])}`;
@@ -324,9 +336,13 @@ export function auditLine(col: string, docId: string, before: D | null, after: D
   // Cash days are keyed by their date: the wording needs it.
   const dated = (x: D | null) => (col === "cashDays" ? { ...(x ?? {}), __date: docId } : (x ?? {}));
   const summary =
-    col === "settings"
-      ? `Settings changed (${docId}): ${f.join(", ") || action}`
-      : describe(col, action, dated(before), dated(after), f);
+    col === "settings" && docId === "memberApp"
+      ? s(after?.["googleReviewUrl"])
+        ? "Google review link saved"
+        : "Google review link removed"
+      : col === "settings"
+        ? `Settings changed (${docId}): ${f.join(", ") || action}`
+        : describe(col, action, dated(before), dated(after), f);
   if (!summary) return null;
   const doc = (after ?? before ?? {}) as D;
   return {
@@ -335,7 +351,10 @@ export function auditLine(col: string, docId: string, before: D | null, after: D
     action,
     summary,
     clientId: col === "clients" ? docId : s(doc["clientId"]),
-    clientName: s(doc["clientNameSnapshot"] ?? (col === "clients" ? doc["fullName"] : "")),
+    clientName: s(
+      doc["clientNameSnapshot"] ??
+        (col === "clients" ? doc["fullName"] : col === "feedback" ? doc["clientName"] : ""),
+    ),
     changes:
       // CFO settings hold the gym's money: the log says what changed, not the values.
       action === "updated" && col !== "cfoSettings"
