@@ -25,10 +25,17 @@ export async function healthFormSettings(gymName: string): Promise<HealthFormSet
   return normalizeHealthForm((await db().doc("settings/healthForm").get()).data(), gymName);
 }
 
-const summaryOf = (c: DocumentData) =>
-  c["healthForm"] && typeof c["healthForm"] === "object"
-    ? (c["healthForm"] as HealthFormSummary)
-    : null;
+/** The short copy on the member, with its lists always present (older or hand-made docs). */
+export const summaryOf = (c: DocumentData): HealthFormSummary | null => {
+  const h = c["healthForm"];
+  if (!h || typeof h !== "object") return null;
+  const r = h as Partial<HealthFormSummary>;
+  return {
+    ...(r as HealthFormSummary),
+    flags: Array.isArray(r.flags) ? r.flags : [],
+    notes: Array.isArray(r.notes) ? r.notes : [],
+  };
+};
 
 /** The health form part of /me; null while the owner hasn't switched it on. */
 export async function memberHealth(
@@ -78,10 +85,9 @@ export async function submitHealthForm(
     return json({ error: "The gym just updated the form. Please open it again." }, 409);
 
   const today = localDate();
-  const last = summaryOf(c);
-  // Filled in already today: one acceptance a day is plenty (a double tap must not add two).
-  if (last && last.signedOn === today && last.version >= form.version)
-    return json({ error: "Your health form is already saved for today." }, 409);
+  // The app only offers the form while it is pending; once done, only the desk changes it.
+  if (healthStatus(summaryOf(c), form) === "done")
+    return json({ error: "Your health form is already saved." }, 409);
 
   const input = (
     body["answers"] && typeof body["answers"] === "object" ? body["answers"] : {}
@@ -93,27 +99,30 @@ export async function submitHealthForm(
 
   const summary = healthSummary(answers, form.version, today, "app");
   const ref = db().collection("healthForms").doc();
-  const batch = db().batch();
-  batch.set(ref, {
-    clientId,
-    clientName: s(c["fullName"]),
-    version: form.version,
-    title: form.title,
-    answers,
-    consent: form.consent,
-    signedName,
-    method: "app",
-    by: "",
-    note: "",
-    signedOn: today,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
+  const clientRef = db().doc(`clients/${clientId}`);
+  // Read and write together, so a double tap (two requests at once) saves one acceptance.
+  const saved = await db().runTransaction(async (tx) => {
+    const now = (await tx.get(clientRef)).data();
+    if (!now || healthStatus(summaryOf(now), form) === "done") return false;
+    tx.set(ref, {
+      clientId,
+      clientName: s(c["fullName"]),
+      version: form.version,
+      title: form.title,
+      answers,
+      consent: form.consent,
+      signedName,
+      method: "app",
+      by: "",
+      note: "",
+      signedOn: today,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    tx.update(clientRef, { healthForm: summary, updatedAt: FieldValue.serverTimestamp() });
+    return true;
   });
-  batch.update(db().doc(`clients/${clientId}`), {
-    healthForm: summary,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-  await batch.commit();
+  if (!saved) return json({ error: "Your health form is already saved." }, 409);
   await appLog({
     collection: "healthForms",
     docId: ref.id,

@@ -142,7 +142,8 @@ function PayCard({
           </Notice>
         ) : (
           <Notice tone="muted" title="This link is closed">
-            {link.closedText}
+            {link.closedText} Already paid by UPI? Show the gym the payment reference from your UPI
+            app.
           </Notice>
         )}
         {link.billToken ? (

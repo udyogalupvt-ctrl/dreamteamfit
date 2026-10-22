@@ -22,6 +22,8 @@ test("review link: https from Google only", () => {
   assert.match(reviewUrlProblem("g.page/r/x/review"), /full link/);
   assert.match(reviewUrlProblem("https://example.com/review"), /Google Business Profile/);
   assert.match(reviewUrlProblem("https://notgoogle.com/x"), /Google Business Profile/);
+  assert.match(reviewUrlProblem("https://google.evil.com/x"), /Google Business Profile/);
+  assert.match(reviewUrlProblem("https://x.google.attacker.io/x"), /Google Business Profile/);
   assert.match(reviewUrlProblem("javascript:alert(1)"), /https/);
 });
 

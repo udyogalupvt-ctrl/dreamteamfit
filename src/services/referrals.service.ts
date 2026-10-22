@@ -7,6 +7,7 @@ import {
   collection,
   doc,
   limit,
+  orderBy,
   onSnapshot,
   query,
   runTransaction,
@@ -109,7 +110,8 @@ function subscribeBetween(
   // "Given" with no dates still needs the field set: given rewards carry a day, others "".
   if (field === "givenOn" && !range.length) range.push(where("givenOn", ">", ""));
   return subscribeQuery(
-    query(col(), ...range, limit(1000)),
+    // Newest first before the limit, so a busy period drops the oldest, not the newest.
+    query(col(), ...range, orderBy(field, "desc"), limit(1000)),
     toReferral,
     (items) => onData(newestFirst(field)(items)),
     onError,
@@ -167,7 +169,8 @@ export async function recordReward(r: Referral, d: RewardDecision) {
     reason: d.reason,
     decidedBy: who(),
     decidedAt: serverTimestamp(),
-    givenOn: d.status === "given" ? todayISO() : "",
+    // Fixing a given reward's note or amount keeps the day it was handed over.
+    givenOn: d.status === "given" ? (r.status === "given" && r.givenOn) || todayISO() : "",
     updatedAt: serverTimestamp(),
   });
 }

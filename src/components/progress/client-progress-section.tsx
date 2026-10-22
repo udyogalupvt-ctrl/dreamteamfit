@@ -23,6 +23,9 @@ export function ClientProgressSection({ clientId }: { clientId: string }) {
   const [error, setError] = useState<Error | null>(null);
   useEffect(() => {
     if (!allowed) return;
+    // Another member's profile: don't show the previous member's entries while loading.
+    setEntries(null);
+    setError(null);
     return subscribeBodyProgress(clientId, setEntries, setError);
   }, [clientId, allowed]);
 

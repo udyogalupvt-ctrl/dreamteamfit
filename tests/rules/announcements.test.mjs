@@ -40,6 +40,7 @@ before(async () => {
     ...LOGINS,
     "staffAccess/ann": { active: true, admin: false, permissions: ["announcements"] },
     "announcements/a1": post,
+    "announcements/p1": { ...post, pushed: { sent: 2 }, pushedAt: new Date() },
   });
 });
 after(() => t.cleanup());
@@ -73,4 +74,11 @@ test("logins without Announcements (even with Members), switched off or none see
   await assertFails(
     nobody(t).collection("announcements").where("appClientIds", "array-contains", "c1").get(),
   );
+});
+
+test("nobody rewrites when or whether an app post was pushed", async () => {
+  const ann = staff(t, "ann");
+  await assertFails(ann.doc("announcements/p1").update({ pushedAt: null }));
+  await assertFails(owner(t).doc("announcements/p1").update({ pushed: null }));
+  await assertSucceeds(ann.doc("announcements/p1").update({ message: "Edited", editedAt: new Date() }));
 });

@@ -14,7 +14,8 @@ import {
   type DocumentData,
 } from "@/lib/firestore";
 import { auth, db } from "@/lib/firebase";
-import { PAY_LIMITS, validateUpiSettings } from "@/lib/pay-links";
+import { todayISO } from "@/lib/format";
+import { addDaysIso, PAY_LIMITS, validateUpiSettings } from "@/lib/pay-links";
 import { col, COLLECTIONS, subscribeQuery, toDate } from "./firestore.service";
 import type { PayLink, UpiSettings } from "@/types/models";
 
@@ -106,6 +107,8 @@ export async function markNotReceived(
   await updateDoc(doc(db, COLLECTIONS.payLinks, link.id), {
     status: "open",
     deskNote,
+    // A fresh 30 days, so an old link doesn't expire before the member reads the note.
+    expiresOn: addDaysIso(todayISO(), PAY_LIMITS.openDays),
     utr: "",
     utrSeenBefore: false,
     memberAmount: 0,

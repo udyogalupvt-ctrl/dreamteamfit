@@ -58,8 +58,8 @@ import { oldHistoryFor } from "./old-data";
 import { latestAnnouncement, memberAnnouncements } from "./portal-announcements";
 import { memberReferrals } from "./portal-referral";
 import { memberPay, memberPayLink, planRow } from "./pay-links";
-import { bodyOf } from "./portal-common";
-import { healthRecords, memberHealth, submitHealthForm } from "./portal-health";
+import { bodyOf, liveMember } from "./portal-common";
+import { healthRecords, memberHealth, submitHealthForm, summaryOf } from "./portal-health";
 import { bodyEntries, changeBodyEntry } from "./portal-progress";
 import {
   memberFeedback,
@@ -366,8 +366,8 @@ async function memberData(clientId: string): Promise<Response> {
     memberHealth(
       c,
       gymP.then((g) => g.name),
-    ),
-    bodyEntries(clientId),
+    ).catch(() => null),
+    bodyEntries(clientId).catch(() => []),
     reviewLink().catch(() => ""),
     latestAnnouncement(clientId).catch(() => null),
     memberReferrals(clientId).catch(() => ({ count: 0, rewards: [] })),
@@ -684,7 +684,7 @@ async function trainerMember(trainerId: string, clientId: string): Promise<Respo
     workout: plans.workout,
     diet: plans.diet,
     logs,
-    health: c["healthForm"] && typeof c["healthForm"] === "object" ? c["healthForm"] : null,
+    health: summaryOf(c),
     progress,
   };
   return json(data);
@@ -1345,8 +1345,10 @@ export async function handlePortal(request: Request, url: URL): Promise<Response
     return request.method === "POST"
       ? sendFeedback(who.id, await bodyOf(request))
       : memberFeedback(who.id);
-  if (who.kind === "member" && request.method === "GET" && action === "announcements")
-    return memberAnnouncements(who.id);
+  if (who.kind === "member" && request.method === "GET" && action === "announcements") {
+    const member = await liveMember(who.id);
+    return member.ok ? memberAnnouncements(who.id) : member.response;
+  }
   if (who.kind !== "trainer") return json({ error: "Not allowed." }, 403);
   const trainer = (await db().doc(`trainers/${who.id}`).get()).data();
   if (!trainer || trainer["portalActive"] === false)

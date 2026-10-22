@@ -273,8 +273,9 @@ function AnnouncementsPage() {
       <section className="surface-card space-y-4 p-4 sm:p-5">
         <h2 className="text-section-title">1. How it goes out</h2>
         <div role="radiogroup" aria-label="How it goes out" className="grid gap-2 sm:grid-cols-2">
+          {/* Lit by what will really happen: WhatsApp only once its settings say it is live. */}
           <ChannelCard
-            on={channel === "app"}
+            on={!viaWhatsApp}
             onPick={() => setChannel("app")}
             icon={Smartphone}
             title="Member app only"
@@ -282,8 +283,8 @@ function AnnouncementsPage() {
             hint="Shows in Announcements in their app, with a notification on phones that turned them on."
           />
           <ChannelCard
-            on={channel === "whatsapp"}
-            disabled={!wa.loading && !live}
+            on={viaWhatsApp}
+            disabled={!live}
             onPick={() => setChannel("whatsapp")}
             icon={MessageCircle}
             title="WhatsApp + member app"

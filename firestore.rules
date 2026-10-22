@@ -46,9 +46,13 @@ service cloud.firestore {
       ];
     }
 
-    // Members: everyone adds and edits; deleting needs "Delete members".
+    // Members: everyone adds and edits; deleting needs "Delete members". Their health form summary
+    // (what the trainer and lists show) changes only with "Members" (paper form / Undo).
     match /clients/{id} {
-      allow read, create, update: if isStaff();
+      allow read: if isStaff();
+      allow create: if isStaff() && !request.resource.data.keys().hasAny(['healthForm']);
+      allow update: if isStaff() && (can('members')
+        || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['healthForm']));
       allow delete: if can('deleteMembers');
     }
 
@@ -265,7 +269,8 @@ service cloud.firestore {
         || (isStaff() && resource.data.status == 'due' && request.resource.data.status == 'due'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['referrerId',
             'referrerName', 'referrerCode', 'newClientName', 'newClientCode', 'updatedAt'])));
-      allow delete: if can('referrals') || (isStaff() && resource.data.status == 'due');
+      // Only while nothing is decided: a promised or given reward stays on record.
+      allow delete: if isStaff() && resource.data.status == 'due';
     }
 
     // UPI pay links (src/server/pay-links.ts makes them). Billing marks one "not received",
@@ -291,8 +296,11 @@ service cloud.firestore {
       allow create, delete: if false;
       allow update: if can('billing') && (
         (resource.data.status == 'member_paid' && request.resource.data.status == 'open'
-          && payLinkKeys(['status', 'deskNote', 'utr', 'utrSeenBefore', 'memberAmount',
-            'memberPaidAt', 'checkedBy', 'checkedByUid', 'checkedAt', 'updatedAt'])
+          && payLinkKeys(['status', 'deskNote', 'expiresOn', 'utr', 'utrSeenBefore',
+            'memberAmount', 'memberPaidAt', 'checkedBy', 'checkedByUid', 'checkedAt', 'updatedAt'])
+          && request.resource.data.expiresOn is string
+          && request.resource.data.expiresOn.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && request.resource.data.utr == ''
           && request.resource.data.deskNote is string
           && request.resource.data.deskNote.size() <= 200)
         || (resource.data.status == 'member_paid' && request.resource.data.status == 'confirmed'
@@ -566,8 +574,12 @@ service cloud.firestore {
 
     // Announcements (member app posts; WhatsApp ones cost money): only logins with that switch.
     // Members read theirs through the server (src/server/portal-announcements.ts).
+    // pushedAt / pushed are the server's "phones already told" mark: a login can't clear them to
+    // notify every member again.
     match /announcements/{id} {
-      allow read, write: if can('announcements');
+      allow read, create, delete: if can('announcements');
+      allow update: if can('announcements')
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['pushedAt', 'pushed']);
     }
 
     // "Paid in the old software" corrections (money moved out of this app's collections) and

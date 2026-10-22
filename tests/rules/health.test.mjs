@@ -25,6 +25,7 @@ before(async () => {
     "settings/healthForm": form,
     "healthForms/app1": paper({ method: "app", answers: [{ id: "q1", answer: "no" }] }),
     "healthForms/paper1": paper(),
+    "clients/c1": { fullName: "Ravi", healthForm: null },
   });
 });
 after(() => t.cleanup());
@@ -60,4 +61,12 @@ test("a login without Members, or no login, sees no health forms", async () => {
   await assertFails(staff(t, "off").doc("healthForms/paper1").get());
   await assertFails(nobody(t).doc("healthForms/paper1").get());
   await assertFails(nobody(t).doc("settings/healthForm").get());
+});
+
+test("only Members changes a member's health summary; nobody fakes one on a new member", async () => {
+  const summary = { version: 2, signedOn: "2026-10-22", method: "paper", flags: [], notes: [] };
+  await assertFails(staff(t, "sett").doc("clients/c1").update({ healthForm: summary }));
+  await assertSucceeds(staff(t, "sett").doc("clients/c1").update({ fullName: "Ravi K" }));
+  await assertSucceeds(staff(t, "desk").doc("clients/c1").update({ healthForm: summary }));
+  await assertFails(staff(t, "desk").doc("clients/c9").set({ fullName: "X", healthForm: summary }));
 });

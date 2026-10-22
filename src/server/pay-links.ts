@@ -347,6 +347,7 @@ async function markPaid(token: string, body: Record<string, unknown>): Promise<R
   const snap = await ref.get();
   if (!snap.exists) return json({ error: "This payment link doesn't exist." }, 404);
   const l = await refresh(token, snap.data() ?? {}, localDate());
+  if (status(l) === "cancelled") return paidAfterClose(token, l, utr);
   if (status(l) !== "open") return linkView(token);
   const now = Date.now();
   const times = (Array.isArray(l["paidTimes"]) ? (l["paidTimes"] as unknown[]) : []).map(Number);
@@ -376,6 +377,30 @@ async function markPaid(token: string, body: Record<string, unknown>): Promise<R
       collection: "payLinks",
       docId: token,
       summary: `Said they paid ${formatPrice(amount)} by UPI for ${whatFor(l)}${utr ? ` (ref ${utr})` : ""}`,
+      actorName: s(l["clientName"]) || "Member",
+      clientId: s(l["clientId"]),
+      clientName: s(l["clientName"]),
+    });
+  return linkView(token);
+}
+
+/**
+ * "I've paid" on a link that closed while the member was in their UPI app (settled or renewed at
+ * the desk, or expired): the money may still have been sent, so the desk hears about it once in the
+ * Activity log; the page asks the member to show the gym their reference.
+ */
+async function paidAfterClose(token: string, l: D, utr: string): Promise<Response> {
+  const first = await db().runTransaction(async (tx) => {
+    const ref = links().doc(token);
+    if ((await tx.get(ref)).data()?.["lateClaimAt"]) return false;
+    tx.update(ref, { lateClaimAt: FieldValue.serverTimestamp(), lateClaimUtr: utr });
+    return true;
+  });
+  if (first)
+    await appLog({
+      collection: "payLinks",
+      docId: token,
+      summary: `Said they paid ${formatPrice(n(l["amount"]))} by UPI for ${whatFor(l)}${utr ? ` (ref ${utr})` : ""}, but the link had already closed: check the account`,
       actorName: s(l["clientName"]) || "Member",
       clientId: s(l["clientId"]),
       clientName: s(l["clientName"]),

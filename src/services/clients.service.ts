@@ -91,7 +91,14 @@ export const mapClient = (id: string, d: DocumentData): Client => ({
   portalCode: d["portalCode"] ?? "",
   portalActive: d["portalActive"] !== false,
   portalSentAt: d["portalSentAt"] ? toDate(d["portalSentAt"]) : null,
-  healthForm: d["healthForm"] && typeof d["healthForm"] === "object" ? d["healthForm"] : null,
+  healthForm:
+    d["healthForm"] && typeof d["healthForm"] === "object"
+      ? {
+          ...d["healthForm"],
+          flags: Array.isArray(d["healthForm"].flags) ? d["healthForm"].flags : [],
+          notes: Array.isArray(d["healthForm"].notes) ? d["healthForm"].notes : [],
+        }
+      : null,
   review: d["review"] && typeof d["review"] === "object" ? d["review"] : null,
   referredBy: toReferredBy(d["referredBy"]),
   createdAt: toDate(d["createdAt"]),

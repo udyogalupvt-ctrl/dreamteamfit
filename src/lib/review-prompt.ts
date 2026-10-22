@@ -16,7 +16,8 @@ export const REVIEW_AFTER_DAYS = 30;
 /** ...or in the first days of a renewed plan (a happy moment). */
 export const REVIEW_RENEWAL_DAYS = 14;
 
-const GOOGLE_HOSTS = /(^|\.)(google\.[a-z.]+|g\.page|goo\.gl)$/;
+// Only Google's own domains: "google.evil.com" must not pass.
+const GOOGLE_HOSTS = /(^|\.)(google\.(com|co\.in)|g\.page|goo\.gl)$/;
 
 /** The owner's review link: https, from Google (g.page/r/…/review, search.google.com, maps.app.goo.gl). */
 export function reviewUrlProblem(url: string): string {

@@ -307,7 +307,11 @@ function ReplyDialog({
     try {
       await replyToFeedback(item, text, keepOpen);
       toast.success(`Reply sent to ${item.clientName}`, {
-        description: keepOpen ? "Still in New." : "Moved to Resolved.",
+        description: !keepOpen
+          ? "Moved to Resolved."
+          : item.status === "resolved"
+            ? "Still in Resolved."
+            : "Still in New.",
       });
       onOpenChange(false);
     } catch (e) {

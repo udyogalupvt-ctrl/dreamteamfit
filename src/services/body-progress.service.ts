@@ -6,7 +6,13 @@
 import { collection, doc, onSnapshot, runTransaction, serverTimestamp } from "@/lib/firestore";
 import { auth, db } from "@/lib/firebase";
 import { todayISO } from "@/lib/format";
-import { cleanBodyEntry, putEntry, readEntries, validateBodyEntry } from "@/lib/body-progress";
+import {
+  BODY_LIMITS,
+  cleanBodyEntry,
+  putEntry,
+  readEntries,
+  validateBodyEntry,
+} from "@/lib/body-progress";
 import type { BodyEntry, BodyEntryAuthor, BodyEntryInput } from "@/types/models";
 
 const ref = (clientId: string) => doc(db, "bodyProgress", clientId);
@@ -42,6 +48,8 @@ export async function saveBodyEntry(clientId: string, input: BodyEntryInput, id?
   await change(clientId, (entries) => {
     if (id && !entries.some((e) => e.id === id))
       throw new Error("This entry was removed. Refresh to see the latest list.");
+    if (!id && entries.length >= BODY_LIMITS.entries)
+      throw new Error(`This member already has ${BODY_LIMITS.entries} entries. Remove an old one first.`);
     return putEntry(entries, { ...entry, id: entryId, by: deskAuthor(), at: Date.now() });
   });
   return entryId;

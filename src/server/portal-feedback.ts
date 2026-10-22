@@ -10,7 +10,7 @@
  */
 import { FieldValue, type DocumentData } from "firebase-admin/firestore";
 import type { PortalFeedback, PortalReview } from "@/constants/portal";
-import { cleanFeedback, feedbackKindLabel, feedbackRateOk, validateFeedback } from "@/lib/feedback";
+import { cleanFeedback, feedbackKindLabel, nextFeedbackRate, validateFeedback } from "@/lib/feedback";
 import { reviewEligible, reviewUrlProblem } from "@/lib/review-prompt";
 import { db, json, localDate } from "./admin";
 import { appLog, liveMember, s } from "./portal-common";
@@ -55,6 +55,8 @@ export async function reviewAnswer(clientId: string, body: Record<string, unknow
   if (action !== "tapped" && action !== "later") return json({ error: "Unknown answer." }, 400);
   const member = await liveMember(clientId);
   if (!member.ok) return member.response;
+  const review = member.data["review"] as { tappedAt?: string } | undefined;
+  if (action === "tapped" && review?.tappedAt) return json({ ok: true, today: review.tappedAt });
   const today = localDate();
   await db()
     .doc(`clients/${clientId}`)
@@ -95,6 +97,8 @@ const toPortal = (id: string, f: DocumentData): PortalFeedback => ({
 });
 
 export async function memberFeedback(clientId: string) {
+  const member = await liveMember(clientId);
+  if (!member.ok) return member.response;
   const docs = await messagesOf(clientId);
   return json({ items: docs.slice(0, 20).map((d) => toPortal(d.id, d.data())) });
 }
@@ -105,15 +109,6 @@ export async function sendFeedback(clientId: string, body: Record<string, unknow
   if (problem) return json({ error: problem }, 400);
   const member = await liveMember(clientId);
   if (!member.ok) return member.response;
-  const now = Date.now();
-  const earlier = await messagesOf(clientId);
-  if (
-    !feedbackRateOk(
-      earlier.map((d) => millis(d.data()["createdAt"]) || now),
-      now,
-    )
-  )
-    return json({ error: "You have sent 5 messages today. Please try again tomorrow." }, 429);
   const c = member.data;
   const ref = db().collection("feedback").doc();
   const doc = {
@@ -130,7 +125,18 @@ export async function sendFeedback(clientId: string, body: Record<string, unknow
     resolvedAt: null,
     createdAt: FieldValue.serverTimestamp(),
   };
-  await ref.set(doc);
+  // The day's counter and the message are written together, so parallel sends can't pass 5.
+  const rateRef = db().doc(`feedbackRate/${clientId}`);
+  const today = localDate();
+  const sent = await db().runTransaction(async (tx) => {
+    const next = nextFeedbackRate((await tx.get(rateRef)).data(), today);
+    if (!next) return false;
+    tx.set(rateRef, next);
+    tx.set(ref, doc);
+    return true;
+  });
+  if (!sent)
+    return json({ error: "You have sent 5 messages today. Please try again tomorrow." }, 429);
   await appLog({
     collection: "feedback",
     docId: ref.id,
@@ -140,7 +146,6 @@ export async function sendFeedback(clientId: string, body: Record<string, unknow
     clientId,
     clientName: s(c["fullName"]),
   });
-  const today = localDate();
   return json({
     item: { ...toPortal(ref.id, { ...doc, createdAt: null }), sentOn: today },
   });

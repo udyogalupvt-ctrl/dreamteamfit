@@ -4,7 +4,7 @@ import {
   FEEDBACK_LIMITS,
   cleanFeedback,
   feedbackKindLabel,
-  feedbackRateOk,
+  nextFeedbackRate,
   validateFeedback,
   validateReply,
 } from "./feedback.ts";
@@ -32,13 +32,21 @@ test("validate: a few words, under 1000 characters", () => {
   assert.match(validateReply("y".repeat(1001)), /1000/);
 });
 
-test("rate: 5 in any 24 hours", () => {
-  const now = 1_800_000_000_000;
-  const h = 3_600_000;
-  assert.equal(feedbackRateOk([], now), true);
-  assert.equal(feedbackRateOk([now - h, now - 2 * h, now - 3 * h, now - 4 * h], now), true);
-  assert.equal(feedbackRateOk([now - h, now - 2 * h, now - 3 * h, now - 4 * h, now - 5 * h], now), false);
-  assert.equal(feedbackRateOk([now - 25 * h, now - 26 * h, now - 27 * h, now - 28 * h, now - 29 * h], now), true);
+test("rate: 5 a day, counted per day", () => {
+  assert.deepEqual(nextFeedbackRate(undefined, "2026-10-22"), { day: "2026-10-22", count: 1 });
+  assert.deepEqual(nextFeedbackRate({ day: "2026-10-22", count: 4 }, "2026-10-22"), {
+    day: "2026-10-22",
+    count: 5,
+  });
+  assert.equal(nextFeedbackRate({ day: "2026-10-22", count: 5 }, "2026-10-22"), null);
+  assert.deepEqual(nextFeedbackRate({ day: "2026-10-21", count: 5 }, "2026-10-22"), {
+    day: "2026-10-22",
+    count: 1,
+  });
+  assert.deepEqual(nextFeedbackRate({ day: "2026-10-22", count: "junk" }, "2026-10-22"), {
+    day: "2026-10-22",
+    count: 1,
+  });
 });
 
 test("kind labels", () => {

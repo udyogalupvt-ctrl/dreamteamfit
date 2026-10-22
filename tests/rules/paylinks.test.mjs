@@ -108,6 +108,7 @@ test("not received: back to open with the desk's note, nothing else", async () =
   const back = {
     status: "open",
     deskNote: "Not in our account",
+    expiresOn: day(30),
     utr: "",
     utrSeenBefore: false,
     memberAmount: 0,
@@ -116,6 +117,8 @@ test("not received: back to open with the desk's note, nothing else", async () =
   };
   await assertFails(desk.doc("payLinks/waiting1").update({ ...back, deskNote: "x".repeat(201) }));
   await assertFails(desk.doc("payLinks/waiting1").update({ ...back, amount: 1 }));
+  await assertFails(desk.doc("payLinks/waiting1").update({ ...back, expiresOn: "soon" }));
+  await assertFails(desk.doc("payLinks/waiting1").update({ ...back, utr: "123456789012" }));
   await assertFails(staff(t, "sett").doc("payLinks/waiting1").update(back));
   await assertSucceeds(desk.doc("payLinks/waiting1").update(back));
   // An open link can't be confirmed or put back.

@@ -44,7 +44,12 @@ export function validateReply(reply: string): string {
   return "";
 }
 
-/** At most 5 messages in any 24 hours per member (`times` = when earlier ones were sent, ms). */
-export function feedbackRateOk(times: number[], now: number) {
-  return times.filter((t) => now - t < 86_400_000).length < FEEDBACK_LIMITS.perDay;
+/**
+ * At most 5 messages a day per member. `rate` = the member's counter doc ({ day, count });
+ * returns the counter to save, or null when today's 5 are used up.
+ */
+export function nextFeedbackRate(rate: unknown, today: string): { day: string; count: number } | null {
+  const r = (rate && typeof rate === "object" ? rate : {}) as { day?: unknown; count?: unknown };
+  const used = r.day === today ? Number(r.count) || 0 : 0;
+  return used >= FEEDBACK_LIMITS.perDay ? null : { day: today, count: used + 1 };
 }

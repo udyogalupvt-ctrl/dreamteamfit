@@ -7,6 +7,7 @@ import {
   collection,
   doc,
   limit,
+  orderBy,
   onSnapshot,
   query,
   serverTimestamp,
@@ -77,7 +78,8 @@ export function subscribeFeedbackBetween(
     ...(to < "9000" ? [where("createdAt", "<", end)] : []),
   ];
   return subscribeQuery(
-    query(col(), ...range, limit(500)),
+    // Newest first before the limit, so a busy period drops the oldest, not the newest.
+    query(col(), ...range, orderBy("createdAt", "desc"), limit(500)),
     toFeedback,
     (items) => onData(newestFirst(items)),
     onError,
@@ -156,6 +158,7 @@ export async function saveGoogleReviewUrl(url: string) {
 /** The desk sent the review link on WhatsApp from its own phone: noted on the member. */
 export async function markReviewAsked(client: Client) {
   await updateDoc(doc(db, "clients", client.id), {
-    review: { ...(client.review ?? {}), askedAt: todayISO() },
+    // One field only: the member's own tap ("review.tappedAt") may land at the same moment.
+    "review.askedAt": todayISO(),
   });
 }

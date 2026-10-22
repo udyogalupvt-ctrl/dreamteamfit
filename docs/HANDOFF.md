@@ -1,41 +1,31 @@
 # Handoff
 
-Last updated: 2026-10-22 (all 6 features built on branch `five-features`, local only. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
+Last updated: 2026-10-23 (whole-branch review done on `five-features`, local only. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
 
-## State: 6 new features DONE on `five-features` (not merged, not pushed)
+## State: 6 features + review fixes on `five-features` (not merged, not pushed)
 
-Spec `docs/superpowers/specs/2026-10-22-five-features-design.md`, plans `docs/superpowers/plans/2026-10-22-five-features.md`
-and `docs/superpowers/plans/2026-10-22-upi-pay-link.md`. E health form (b63bd80), B body progress (8d9cf46), C review +
-feedback (949c355), F app-only announcements (45ae50b), D referrals (9e6c106), **A UPI pay link (see git log)**.
-Checks at A: rules 62/62, unit 500/500, E2E `upi_local.py` 81/81. E2E suites: session scratchpad kit `k/`
-(`bash regress.sh <suite>.py`). Main = 12c8fac. Check `git branch --show-current` first: other chats use this folder.
-
-**A in one line:** member taps Pay (app Payments / Home renew / bill page) → `/pay/<token>` (UPI app link, QR, UPI ID)
-→ "I've paid" (+ optional UTR) → Billing "Paid online" card + bell + dashboard → desk finds the money, ticks
-"I found this ₹X", confirms through normal Collect / Renew (one transaction, Undo works) or "Not received" + note.
-Rules: confirm only with a NEW payment for that bill/member tagged with the link; `payLinkId` can't be edited.
+Spec `docs/superpowers/specs/2026-10-22-five-features-design.md`, plans `docs/superpowers/plans/2026-10-22-*.md`.
+Features: E health form, B body progress, C review + feedback, F app announcements, D referrals, A UPI pay link.
+Review 2026-10-23 (4 Opus reviewers, every finding checked): report `~/security-audit-skill/dreamteamfit/run-3/REPORT.md`
+(fixed list + not-fixed list). Checks after fixes: rules 64/64, unit 500/500, tsc + build OK, E2E 371/371 (health 40, progress 33, feedback 78, announce 68, referral 68, upi 84).
+E2E kit: `C:/Users/chala/AppData/Local/Temp/claude/c--Users-chala-OneDrive-Desktop-gym-saas/9c17ca11-50d0-492f-802b-de2297dc0339/scratchpad/k/`
+(`bash regress.sh <suite>.py`; suites health/progress/feedback/announce/referral/upi `_local.py`). Main = 12c8fac.
+Check `git branch --show-current` first: other chats use this folder.
 
 ## Next steps
 
-1. **Whole-branch review before merge** (6 features, new public endpoints `/api/pay/*`, member-app endpoints):
-   `requesting-code-review` + Cloudflare `security-audit` quick profile on the branch diff vs main. Fix confirmed items.
-2. **Founder asks (only they can):** (a) gym UPI ID + payee name in Settings → Gym & bills, then scan the ₹1 test QR to
-   see the bank name; (b) Google review link (Settings); (c) approve the health form text (`[NEED: owner approval]`);
-   (d) OK to merge + push live; (e) OK to deploy production rules (healthForms, bodyProgress, feedback, memberApp
-   setting, referrals, payLinks, settings/upi; recipe below). Optional: `gym_payment_due` text mentioning UPI.
-3. A's lower-priority reviewer notes (not fixed): two taps at the same moment can make two open links (both work, the
-   desk sees one card each); a renewal amount is fixed when the member taps "I've paid" (desk sees the price change in
-   the wizard); Undo by a login without Billing fails on the link (Finance can remove instead); no per-IP limit on the
-   public GET `/api/pay/<token>` (token is 24 random chars); a Finance Remove of a confirmed payment leaves the link
-   confirmed (deliberate, plan decision 7).
-
-| # | Feature | Founder notes |
-|---|---|---|
-| A | UPI pay link | ADD-ON: desk payment unchanged; manual desk confirm OK'd; no gateway |
-| E | Health form | starting text `[NEED: owner approval]` |
-
-Every feature followed: edit later, shown on profile, filters, permission in `constants/features.ts`, rules + emulator
-tests, light/dark 390/1440 screenshots.
+1. **Merge blocker: member delete clean-up.** "Delete forever" leaves `healthForms`, `bodyProgress`, `feedback`,
+   `referrals` behind (medical data outlives delete; a deleted member's due referral still counts). Add them to the
+   recycle-bin `MEMBER_RECORDS` + restore rules (`src/services/recycle-bin.service.ts` ~388, `binMember`), with
+   rules tests and an E2E bin/restore/delete run.
+2. **Push blocker (founder):** run the owner check (Still open, Task 0→4). `isOwner()` trusts the email only, and
+   the owner sets the UPI ID members pay to.
+3. **Founder decisions:** (a) member doc keeps only `{version, signedOn, method, flagCount}` of the health form
+   (now flags/notes are readable by every staff login)? (b) UPI ID + payee name, ₹1 test QR; (c) Google review link;
+   (d) health form text `[NEED: owner approval]`; (e) OK to merge + push; (f) OK to deploy production rules.
+4. Feature: "Paid online, waiting to confirm" banner + "Use it" in Collect (`invoice-actions.tsx`) and Renew wizard.
+5. Low items: see run-3 REPORT "Not fixed" 5 and A's notes (two taps → two open links; renewal amount fixed at
+   "I've paid"; Undo without Billing fails on the link; no per-IP limit on GET `/api/pay/<token>`).
 
 ## Live state (2026-10-22)
 

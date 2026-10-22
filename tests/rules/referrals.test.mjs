@@ -46,6 +46,7 @@ before(async () => {
     "referrals/n1": due,
     "referrals/n2": given,
     "referrals/n3": { ...due, newClientId: "n3" },
+    "referrals/n4": { ...due, newClientId: "n4", status: "promised", reward },
   });
 });
 after(() => t.cleanup());
@@ -69,6 +70,8 @@ test("the desk can't decide rewards, touch decided ones or write odd shapes", as
   );
   await assertFails(desk.doc("referrals/n2").update({ referrerId: "r2" }));
   await assertFails(desk.doc("referrals/n2").delete());
+  await assertFails(desk.doc("referrals/n4").delete());
+  await assertFails(owner(t).doc("referrals/n4").delete());
   await assertFails(
     desk.doc("referrals/n8").set({ ...due, newClientId: "n8", status: "given", reward }),
   );

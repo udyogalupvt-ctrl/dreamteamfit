@@ -63,7 +63,9 @@ export function BodyEntryDialog({
       setForm(formOf(entry, today));
       setError("");
     }
-  }, [open, entry, today]);
+    // By id: a fresh snapshot of the same entry must not wipe what is being typed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, entry?.id, today]);
 
   const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
   const numberInput = (key: string, value: string, onChange: (v: string) => void) => {

@@ -64,5 +64,6 @@ export function isOurImage(url: string) {
   const prefix = cloud
     ? `https://res.cloudinary.com/${cloud}/image/upload/`
     : "https://res.cloudinary.com/";
-  return url.startsWith(prefix) && url.length < 500 && !/[\s"'<>]/.test(url);
+  // Upload links are ~120 chars; 300 keeps a full progress doc (400 entries) under 1 MB.
+  return url.startsWith(prefix) && url.length <= 300 && !/[\s"'<>]/.test(url);
 }
