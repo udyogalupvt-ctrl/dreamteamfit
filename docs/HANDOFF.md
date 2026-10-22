@@ -1,10 +1,15 @@
 # Handoff
 
-Last updated: 2026-10-22 (5 new features chosen; nothing built yet. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
+Last updated: 2026-10-22 (E + B built on branch `five-features`; C in progress. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
 
 ## NEXT: 5 new features for Rebuild Fitness (founder picked 2026-10-22)
 
-**State:** chosen + 4 decisions taken. Nothing designed or built. **Founder 2026-10-22: no approval per step.**
+**State (branch `five-features`, local only):** spec `docs/superpowers/specs/2026-10-22-five-features-design.md`, plan
+`docs/superpowers/plans/2026-10-22-five-features.md`. E DONE (b63bd80). B DONE (8d9cf46, E2E 33/33; kit suite
+`progress_local.py`). C: core logic + tests committed (`src/lib/review-prompt.ts`, `src/lib/feedback.ts`); next = server
+`src/server/portal-feedback.ts`, rules (`settings/memberApp`, `feedback`), /feedback inbox page, Settings review link,
+member-app review card + feedback tab, E2E. Then D, then A. Rules for healthForms/bodyProgress NOT deployed.
+**Founder 2026-10-22: no approval per step.**
 Decide the brainstorm answers and designs yourself (write them into the plan), then plan → build → test end to end
 (build, tests, emulator rules tests, light/dark 390/1440 screenshots). Ask the founder ONLY for: push to live,
 production rules deploy, real-money actions on the live app, paid spend, and facts only they have (gym UPI ID,
