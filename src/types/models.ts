@@ -1412,8 +1412,16 @@ export interface AnnouncementRecipient {
   phone: string;
 }
 
-/** One WhatsApp announcement (Announcements page). Each number gets it once. */
+/** "app" = member app only (free); "whatsapp" = WhatsApp + member app. */
+export type AnnouncementChannel = "app" | "whatsapp";
+
+/**
+ * One announcement (Announcements page). WhatsApp: each number gets it once. Member app: shows in
+ * the app of each member in `appClientIds` (src/lib/app-announcement.ts).
+ */
 export interface Announcement extends BaseDoc {
+  /** "whatsappOnly" = sent before the member app copy existed. */
+  channel: AnnouncementChannel | "whatsappOnly";
   message: string;
   groups: AnnouncementGroup[];
   typedNumbers: number;
@@ -1426,4 +1434,15 @@ export interface Announcement extends BaseDoc {
   status: "sending" | "done";
   createdByUid: string;
   createdByName: string;
+  /** Members who see it in their app; [] once taken off the app. */
+  appClientIds: string[];
+  /** Phones the notification reached (members who turned notifications on); null = not yet. */
+  pushed: number | null;
+  /** Taken off the members' apps; "Show again" puts these members back. */
+  removedClientIds: string[];
+  removedAt: Date | null;
+  removedByName: string;
+  /** Member app only: the text was changed after posting (no new notification). */
+  editedAt: Date | null;
+  editedByName: string;
 }

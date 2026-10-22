@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDocs,
+  limit,
   orderBy,
   query,
   serverTimestamp,
@@ -10,9 +11,21 @@ import {
   where,
   type DocumentData,
 } from "@/lib/firestore";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { announcementText, cleanMessage, firstName } from "@/lib/announcement";
-import type { Announcement, AnnouncementGroup, AnnouncementRecipient } from "@/types/models";
+import {
+  announcementId,
+  appMessageProblem,
+  channelOf,
+  cleanAppMessage,
+} from "@/lib/app-announcement";
+import { callServer } from "@/lib/server-api";
+import type {
+  Announcement,
+  AnnouncementChannel,
+  AnnouncementGroup,
+  AnnouncementRecipient,
+} from "@/types/models";
 import { getBusinessSettings } from "./business-settings.service";
 import { COLLECTIONS, subscribeCollection, toDate } from "./firestore.service";
 import { sendWhatsAppMessage } from "./whatsapp.service";
@@ -22,8 +35,12 @@ import {
   sendsFromPhone,
 } from "./whatsapp-settings.service";
 
+const ids = (v: unknown) => (Array.isArray(v) ? v.map(String).filter(Boolean) : []);
+const who = () => auth.currentUser?.displayName || auth.currentUser?.email || "Staff";
+
 export const mapAnnouncement = (id: string, d: DocumentData): Announcement => ({
   id,
+  channel: channelOf(d["channel"]),
   message: d["message"] ?? "",
   groups: d["groups"] ?? [],
   typedNumbers: Number(d["typedNumbers"] ?? 0),
@@ -35,9 +52,19 @@ export const mapAnnouncement = (id: string, d: DocumentData): Announcement => ({
   status: d["status"] === "done" ? "done" : "sending",
   createdByUid: d["createdByUid"] ?? "",
   createdByName: d["createdByName"] ?? "",
+  appClientIds: ids(d["appClientIds"]),
+  pushed: typeof d["pushed"] === "number" ? d["pushed"] : null,
+  removedClientIds: ids(d["removedClientIds"]),
+  removedAt: d["removedAt"] ? toDate(d["removedAt"]) : null,
+  removedByName: d["removedByName"] ?? "",
+  editedAt: d["editedAt"] ? toDate(d["editedAt"]) : null,
+  editedByName: d["editedByName"] ?? "",
   createdAt: toDate(d["createdAt"]),
   updatedAt: toDate(d["updatedAt"]),
 });
+
+/** Announcements page history: the newest ones (app posts are free, so there can be many). */
+export const HISTORY_MAX = 50;
 
 export const subscribeAnnouncements = (ok: (x: Announcement[]) => void, fail: (e: Error) => void) =>
   subscribeCollection(
@@ -46,32 +73,99 @@ export const subscribeAnnouncements = (ok: (x: Announcement[]) => void, fail: (e
     ok,
     fail,
     orderBy("createdAt", "desc"),
+    limit(HISTORY_MAX),
   );
 
+/**
+ * Saves the announcement. "app": shows in the members' apps at once (free, nothing more to send).
+ * "whatsapp": also in their apps, and runAnnouncement then sends the WhatsApp messages.
+ */
 export async function createAnnouncement(
   input: {
+    channel: AnnouncementChannel;
     message: string;
     groups: AnnouncementGroup[];
     typedNumbers: number;
     recipients: AnnouncementRecipient[];
     skipped: number;
+    appClientIds: string[];
   },
   by: { uid: string; name: string },
 ) {
-  const ref = doc(collection(db, COLLECTIONS.announcements));
+  const app = input.channel === "app";
+  const message = app ? cleanAppMessage(input.message) : cleanMessage(input.message);
+  const problem = appMessageProblem(message);
+  if (problem) throw new Error(problem);
+  const ref = doc(db, COLLECTIONS.announcements, announcementId());
   await setDoc(ref, {
     ...input,
-    message: cleanMessage(input.message),
-    total: input.recipients.length,
+    message,
+    recipients: app ? [] : input.recipients,
+    typedNumbers: app ? 0 : input.typedNumbers,
+    skipped: app ? 0 : input.skipped,
+    total: app ? input.appClientIds.length : input.recipients.length,
     sent: 0,
     failed: 0,
-    status: "sending",
+    status: app ? "done" : "sending",
+    pushed: null,
+    removedClientIds: [],
+    removedAt: null,
+    removedByName: "",
+    editedAt: null,
+    editedByName: "",
     createdByUid: by.uid,
     createdByName: by.name,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
   return ref.id;
+}
+
+/**
+ * The free phone notification for the app copy (members who turned notifications on). The server
+ * sends it once per announcement; returns how many phones it reached.
+ */
+export async function notifyAnnouncement(id: string) {
+  const r = await callServer<{ sent: number }>("/api/push/announcement", { id });
+  return r.sent;
+}
+
+/** Fix a member app announcement after posting. No new notification goes out. */
+export async function editAppAnnouncement(a: Announcement, message: string) {
+  const text = cleanAppMessage(message);
+  const problem = appMessageProblem(text);
+  if (problem) throw new Error(problem);
+  if (a.channel !== "app") throw new Error("Only member app announcements can be changed.");
+  await updateDoc(doc(db, COLLECTIONS.announcements, a.id), {
+    message: text,
+    editedAt: serverTimestamp(),
+    editedByName: who(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Takes it off the members' apps (WhatsApp messages already sent stay sent). */
+export async function removeFromApp(a: Announcement) {
+  if (!a.appClientIds.length) return;
+  await updateDoc(doc(db, COLLECTIONS.announcements, a.id), {
+    appClientIds: [],
+    removedClientIds: a.appClientIds,
+    removedAt: serverTimestamp(),
+    removedByName: who(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/** Undo of removeFromApp: the same members see it again (no new notification). */
+export async function showInAppAgain(a: Pick<Announcement, "id" | "removedClientIds">) {
+  if (!a.removedClientIds.length) return;
+  await updateDoc(doc(db, COLLECTIONS.announcements, a.id), {
+    appClientIds: a.removedClientIds,
+    removedClientIds: [],
+    removedAt: null,
+    removedByName: "",
+    updatedAt: serverTimestamp(),
+  });
 }
 
 const SENT = new Set(["sent", "delivered", "read"]);

@@ -229,10 +229,19 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
           ? `WhatsApp ${WA_KIND[s(d["type"])] ?? s(d["type"])} to ${s(d["clientNameSnapshot"]) || s(d["normalizedPhone"])}`
           : `WhatsApp ${WA_KIND[s(d["type"])] ?? s(d["type"])} ${a["status"] === "sent" ? "sent" : "not sent"}${d["errorMessage"] ? `: ${s(d["errorMessage"])}` : ""}`;
       return null;
-    case "announcements":
-      return action === "created"
-        ? `WhatsApp announcement to ${s(d["total"])} people: ${s(d["message"])}`
-        : null;
+    case "announcements": {
+      const inApp = (x: D) => (Array.isArray(x["appClientIds"]) ? x["appClientIds"].length : 0);
+      if (action === "created")
+        return d["channel"] === "app"
+          ? `Member app announcement to ${inApp(d)} member${inApp(d) === 1 ? "" : "s"}: ${s(d["message"])}`
+          : `WhatsApp announcement to ${s(d["total"])} people: ${s(d["message"])}`;
+      if (f.includes("message")) return `Changed the member app announcement: ${s(a["message"])}`;
+      if (f.includes("appClientIds"))
+        return inApp(a)
+          ? `Showed the announcement in the member app again: ${s(d["message"])}`
+          : `Removed the announcement from the member app: ${s(d["message"])}`;
+      return null;
+    }
     case "memberCalls":
       return `Call · ${s(d["clientNameSnapshot"])} (${s(d["segment"])}): ${s(d["status"]).replace(/_/g, " ")}${d["notes"] ? ` — ${s(d["notes"])}` : ""}`;
     case "expenses":

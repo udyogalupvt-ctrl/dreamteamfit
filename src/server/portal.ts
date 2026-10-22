@@ -11,6 +11,7 @@
  *   POST /api/portal/trainer-body-log                   trainer: the same for a PT member
  *   POST /api/portal/review                             member: Google review card (portal-feedback.ts)
  *   GET|POST /api/portal/feedback                       member: their messages / send one to the gym
+ *   GET  /api/portal/announcements                      member: news from the gym (portal-announcements.ts)
  *   POST /api/portal/member-access { clientId, action } staff: ensure | reset | off | on | delete
  *   POST /api/portal/trainer-access { trainerId, action, password? }
  *                                                       owner: create | password | off | on | reveal
@@ -54,6 +55,7 @@ import { pickCurrent } from "@/lib/current-plan";
 import { planMoney } from "@/lib/plan-money";
 import { adminAuth, db, json, localDate, requireFeature } from "./admin";
 import { oldHistoryFor } from "./old-data";
+import { latestAnnouncement, memberAnnouncements } from "./portal-announcements";
 import { bodyOf } from "./portal-common";
 import { healthRecords, memberHealth, submitHealthForm } from "./portal-health";
 import { bodyEntries, changeBodyEntry } from "./portal-progress";
@@ -347,6 +349,7 @@ async function memberData(clientId: string): Promise<Response> {
     health,
     progress,
     reviewUrl,
+    announcement,
   ] = await Promise.all([
     gymP,
     byClient("memberships", clientId),
@@ -363,6 +366,7 @@ async function memberData(clientId: string): Promise<Response> {
     ),
     bodyEntries(clientId),
     reviewLink().catch(() => ""),
+    latestAnnouncement(clientId).catch(() => null),
   ]);
 
   // What the member pays for each plan (its bill, after discount), not the package price.
@@ -515,6 +519,7 @@ async function memberData(clientId: string): Promise<Response> {
     health,
     progress,
     review: memberReview(c, { url: reviewUrl, today, joinedOn, current, plans: plansList }),
+    announcement,
   };
   return json(data);
 }
@@ -1328,6 +1333,8 @@ export async function handlePortal(request: Request, url: URL): Promise<Response
     return request.method === "POST"
       ? sendFeedback(who.id, await bodyOf(request))
       : memberFeedback(who.id);
+  if (who.kind === "member" && request.method === "GET" && action === "announcements")
+    return memberAnnouncements(who.id);
   if (who.kind !== "trainer") return json({ error: "Not allowed." }, 403);
   const trainer = (await db().doc(`trainers/${who.id}`).get()).data();
   if (!trainer || trainer["portalActive"] === false)

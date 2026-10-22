@@ -16,8 +16,8 @@ export const FEATURE_META: Record<StaffFeature, { label: string; hint: string }>
     hint: "Read and reply to messages members send to the gym's WhatsApp number",
   },
   announcements: {
-    label: "WhatsApp announcements",
-    hint: "Send a message to active, inactive or not-renewed members, or any number (Meta charges each)",
+    label: "Announcements",
+    hint: "Post news in the member app (free), or also on WhatsApp to members or any number (Meta charges each)",
   },
   finance: {
     label: "Income & expenses",

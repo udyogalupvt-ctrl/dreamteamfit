@@ -43,6 +43,11 @@ import {
   type NavItem,
 } from "@/components/portal/portal-shell";
 import { HealthFormView } from "@/components/portal/health-form-view";
+import {
+  AnnouncementCard,
+  AnnouncementsLink,
+  AnnouncementsView,
+} from "@/components/portal/portal-announcements";
 import { FeedbackLink, FeedbackView, ReviewCard } from "@/components/portal/portal-feedback";
 import { PortalProgress, useEdited } from "@/components/portal/portal-progress";
 import { Sparkline } from "@/components/progress/progress-panel";
@@ -65,6 +70,7 @@ import {
   metricsWithData,
   progressSeries,
 } from "@/lib/body-progress";
+import { onHome } from "@/lib/app-announcement";
 import { portalDb } from "@/lib/portal-firebase";
 import { cn } from "@/lib/utils";
 import type { StatTone } from "@/types";
@@ -79,6 +85,7 @@ const TABS = [
   "health",
   "progress",
   "feedback",
+  "announcements",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -195,7 +202,9 @@ function MemberApp() {
                       ? "My progress"
                       : current === "feedback"
                         ? "Feedback"
-                        : `Chat with ${data.trainer?.name ?? "trainer"}`
+                        : current === "announcements"
+                          ? "Announcements"
+                          : `Chat with ${data.trainer?.name ?? "trainer"}`
         }
         onRefresh={() => void reload()}
         refreshing={loading}
@@ -211,6 +220,7 @@ function MemberApp() {
           />
         ) : null}
         {current === "feedback" ? <FeedbackView review={data.review} /> : null}
+        {current === "announcements" ? <AnnouncementsView gymName={data.gym.name} /> : null}
         {current === "workout" ? <WorkoutTab data={live} /> : null}
         {current === "visits" ? <VisitsTab data={data} /> : null}
         {current === "payments" ? <PaymentsTab data={data} /> : null}
@@ -468,6 +478,14 @@ function HomeTab({
         </div>
       </section>
 
+      {data.announcement && onHome(data.announcement.sentOn, today) ? (
+        <AnnouncementCard
+          a={data.announcement}
+          gymName={data.gym.name}
+          onOpen={() => go("announcements")}
+        />
+      ) : null}
+
       {data.health?.status === "pending" ? (
         <button
           type="button"
@@ -643,6 +661,7 @@ function HomeTab({
             </a>
           </Button>
         ) : null}
+        <AnnouncementsLink onOpen={() => go("announcements")} />
         <FeedbackLink onOpen={() => go("feedback")} />
         <NotificationToggle kind="member" className="border-t border-border pt-3" />
       </section>

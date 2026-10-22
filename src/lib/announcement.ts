@@ -2,8 +2,7 @@ import type { Segment, SegmentMember } from "@/lib/member-segments";
 import { normalizeWhatsAppPhone } from "@/lib/whatsapp-phone";
 import type { AnnouncementGroup, AnnouncementRecipient, Client } from "@/types/models";
 
-/** Longest message staff can type (the whole WhatsApp text must stay under 1024 letters). */
-export const ANNOUNCEMENT_MAX = 500;
+export { ANNOUNCEMENT_MAX } from "./app-announcement";
 
 export type LeftOut = { name: string; phone: string; reason: string };
 

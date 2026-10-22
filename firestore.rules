@@ -479,7 +479,8 @@ service cloud.firestore {
       allow delete: if can('deleteMembers');
     }
 
-    // WhatsApp announcements cost money (Marketing): only logins with that switch.
+    // Announcements (member app posts; WhatsApp ones cost money): only logins with that switch.
+    // Members read theirs through the server (src/server/portal-announcements.ts).
     match /announcements/{id} {
       allow read, write: if can('announcements');
     }

@@ -179,6 +179,18 @@ export interface MemberPortalData {
   progress: BodyEntry[];
   /** The Google review card; null while the gym has no review link in Settings. */
   review: PortalReview | null;
+  /** The newest announcement for this member (Home shows it for 14 days); null = none. */
+  announcement: PortalAnnouncement | null;
+}
+
+/** News from the gym in the member app (src/server/portal-announcements.ts). */
+export interface PortalAnnouncement {
+  id: string;
+  message: string;
+  /** YYYY-MM-DD, India time. */
+  sentOn: string;
+  /** The gym changed the text after posting it. */
+  edited: boolean;
 }
 
 /** `show` = the card is on Home today (src/lib/review-prompt.ts); the link is always in Feedback. */

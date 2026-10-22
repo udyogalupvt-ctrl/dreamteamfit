@@ -5,7 +5,7 @@
  *   POST /api/push/subscribe    member / trainer app: { subscription } this phone gets notifications
  *   POST /api/push/unsubscribe  member / trainer app: { endpoint } this phone stops getting them
  *   POST /api/push/chat         member / trainer app: { clientId } right after sending a chat message
- *   POST /api/push/members      staff: { clientIds, title, body } (announcements)
+ *   POST /api/push/announcement staff: { id } right after posting an announcement to the member app
  *   POST /api/push/feedback     staff: { id } right after replying to a member's feedback
  *
  * The keys are made once by the server and kept in serverSecrets/webPush (server only), so there
@@ -335,21 +335,34 @@ async function chat(request: Request) {
   return json({ sent });
 }
 
-async function members(request: Request) {
-  // The Announcements page's push to members: only logins given that page (like its WhatsApp).
+/**
+ * A new announcement in the member app: tell its members' phones. Only once per announcement (the
+ * text and the members come from the saved doc), and only logins with Announcements.
+ */
+async function announcement(request: Request) {
   if (!(await requireFeature(request, "announcements")))
     return json({ error: "Only logins with Announcements can send to members." }, 403);
-  const body = (await request.json().catch(() => ({}))) as {
-    clientIds?: unknown;
-    title?: unknown;
-    body?: unknown;
-  };
-  const ids = Array.isArray(body.clientIds) ? body.clientIds.map(s).filter(Boolean) : [];
-  const title = s(body.title).trim();
-  const text = s(body.body).trim();
-  if (!ids.length || ids.length > 5000 || !title || !text)
-    return json({ error: "Who and what to send are required." }, 400);
-  const sent = await pushTo(ids.map(memberOwner), { title, body: text, tag: "announcement" });
+  const body = (await request.json().catch(() => ({}))) as { id?: unknown };
+  const id = s(body.id);
+  if (!id || id.includes("/")) return json({ error: "id is required." }, 400);
+  const ref = db().doc(`announcements/${id}`);
+  const claimed = await db().runTransaction(async (tx) => {
+    const a = (await tx.get(ref)).data();
+    if (!a || a["pushedAt"]) return null;
+    tx.update(ref, { pushedAt: FieldValue.serverTimestamp() });
+    return a;
+  });
+  const ids = Array.isArray(claimed?.["appClientIds"]) ? claimed["appClientIds"].map(s) : [];
+  const text = s(claimed?.["message"]).trim();
+  if (!claimed || !ids.length || !text) return json({ sent: 0 });
+  const gym = s((await db().doc("settings/business").get()).data()?.["businessName"]);
+  const sent = await pushTo(ids.filter(Boolean).map(memberOwner), {
+    title: gym || "Your gym",
+    body: text.length > 180 ? `${text.slice(0, 177)}...` : text,
+    path: "?tab=announcements",
+    tag: "announcement",
+  });
+  await ref.update({ pushed: sent });
   return json({ sent });
 }
 
@@ -385,7 +398,7 @@ export async function handlePush(request: Request, url: URL): Promise<Response> 
   if (action === "subscribe") return subscribe(request);
   if (action === "unsubscribe") return unsubscribe(request);
   if (action === "chat") return chat(request);
-  if (action === "members") return members(request);
+  if (action === "announcement") return announcement(request);
   if (action === "feedback") return feedbackReply(request);
   return json({ error: "Not found" }, 404);
 }
