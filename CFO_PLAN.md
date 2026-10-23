@@ -15,7 +15,7 @@ Firestore ──(single-field queries, getAll)──> src/server/cfo-data.ts ─
 src/server/ai.ts: Gemini | OpenAI | Claude | off (plain fetch, keys in headers, deadline-bound)
 Page /cfo reads 3 docs on open (+1 per list tab opened). Refresh → POST /api/cfo/refresh; new summary → POST /api/cfo/brief.
 Morning cron: last step, own try/catch, only if ≥30 s left.
-```
+```  
 
 Hard rules for the code:
 - **Every Firestore query uses one field only** (one equality OR one range) — the live project has
