@@ -1,6 +1,6 @@
 # Handoff
 
-Last updated: 2026-10-23 (member delete clean-up done on `five-features`, local only. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
+Last updated: 2026-10-23 (carry fix + leads "Came back" 5eba9ee; member delete clean-up done on `five-features`, local only. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
 
 ## State: 6 features + review fixes on `five-features` (not merged, not pushed)
 
@@ -21,6 +21,16 @@ keeps its newer version. Also fixed: restoring a member who signed a health form
 E2E binheld 14 + referral 68 + health 40 + feedback 78 + progress 33 all pass. Known, by choice: friends keep
 `referredBy` on their profile after their referrer is deleted; Delete forever does not erase Cloudinary progress
 photos. Production needs the rules deploy (founder OK).
+
+Carry fix + leads come back (2026-10-23, 5eba9ee, same branch). Member 46 "Could not carry the old plan": the carried
+plan had been cancelled here later (likely End all plans); the banner ignored cancelled plans, the server refused with
+a generic line. Now: banner shows Restore for that plan; carry from a member page/sale sends `clientId` (carries onto
+THAT member only, refuses an old plan that belongs to someone else); `noCarryReason` (lib/old-migrate.ts) gives the
+real reason; `oldPlanKey` on plans (old-data.ts `asIsKey`/`oldPlanInApp`). Leads: "Not interested" lead → Came back
+(Interested, call today, Undo) on row/card/menu/detail; search spans all leads; new-lead form spots a repeat phone →
+Open that lead; top search opens `/leads?lead=<id>`. Checks: unit 502/502, tsc + build OK, local E2E 24/24
+(scratchpad a8c5924e…/leads_back_local.py). Member banner not E2E'd (needs old-software data locally).
+Prod check for member 46: scratchpad a8c5924e…/prod_member46.mjs (read-only; the user runs it).
 
 ## Next steps
 
