@@ -9,6 +9,7 @@ import {
   asIsPt,
   daysIncl,
   matchClient,
+  noCarryReason,
   oldPlanKind,
   planMigration,
   endedOnPurpose,
@@ -175,6 +176,37 @@ test("case 3: already carried (oldPlanKey) → no change at all", () => {
     }),
   );
   assert.equal(r.members.length, 0);
+});
+
+test("pressed on a member's page: carries onto THAT member, never a name guess or a new member", () => {
+  const p = plan({});
+  const m = person({ name: "B Karthikeya", plans: [p] });
+  // Same phone: a family member whose name fits better, and the member the staff opened.
+  const dad = row("c1", { fullName: "B Karthikeya Reddy" });
+  const here = row("c2", { fullName: "Karthik B" });
+  const r = planMigration(base({ oldMembers: [m], clients: [dad, here], forClientId: "c2" }));
+  assert.equal(r.members.length, 1);
+  assert.equal(r.members[0]!.clientId, "c2");
+  assert.equal(r.members[0]!.client, null);
+  assert.equal(r.members[0]!.carries.length, 1);
+  // A member id that isn't among the clients: nothing at all (no new member drafted).
+  const none = planMigration(base({ oldMembers: [m], clients: [dad], forClientId: "zz" }));
+  assert.equal(none.members.length, 0);
+});
+
+test("why nothing was carried: cancelled here → Restore; on another member → their name", () => {
+  const key = asIsKey("77", plan({}));
+  const clients = [
+    row("c1", { fullName: "Ravi Kumar", memberCode: "46" }),
+    row("c2", { fullName: "Ravi K", memberCode: "90" }),
+  ];
+  const cancelled = row("m1", { clientId: "c1", oldPlanKey: key, status: "cancelled" });
+  const live = row("m2", { clientId: "c2", oldPlanKey: key, status: "active" });
+  assert.match(noCarryReason([cancelled], [], clients, "c1"), /cancelled here.*Restore/);
+  assert.match(noCarryReason([live], [], clients, "c1"), /Ravi K \(ID 90\)/);
+  assert.match(noCarryReason([cancelled, live], [], clients, "c2"), /already in the app/);
+  assert.match(noCarryReason([], ["clear that first (owner decides)"], clients), /^Not added: clear/);
+  assert.match(noCarryReason([], [], clients), /Nothing to add/);
 });
 
 test("case 4: hand-entered wrong package/dates/amount → fixed in place, exact payment replaces the old rows", () => {

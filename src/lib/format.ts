@@ -71,7 +71,7 @@ export const INQUIRY_STATUS_META: Record<InquiryStatus, { label: string; tone: S
   follow_up: { label: "Follow-up", tone: "warning" },
   expected_to_join: { label: "Expected to join", tone: "success" },
   converted: { label: "Converted", tone: "success" },
-  lost: { label: "Lost", tone: "danger" },
+  lost: { label: "Not interested", tone: "danger" },
 };
 
 export const MEMBERSHIP_STATUS_META: Record<MembershipStatus, { label: string; tone: StatTone }> = {

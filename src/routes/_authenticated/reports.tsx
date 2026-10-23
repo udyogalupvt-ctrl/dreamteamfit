@@ -188,7 +188,7 @@ function ReportsPage() {
             ["Interested", report.inquiries.counts["interested"] ?? 0],
             ["Follow-up", report.inquiries.counts["follow_up"] ?? 0],
             ["Converted", report.inquiries.counts["converted"] ?? 0],
-            ["Lost", report.inquiries.counts["lost"] ?? 0],
+            ["Not interested", report.inquiries.counts["lost"] ?? 0],
             [
               "Conversion Rate",
               report.inquiries.conversionRate === null

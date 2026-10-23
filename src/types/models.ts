@@ -552,6 +552,8 @@ export interface Membership extends BaseDoc {
   /** Balance still to pay on it in the old software (₹), when there was one. */
   oldSoftwareBalance?: number;
   oldSoftwareBillNo?: string;
+  /** Carried as-is from the old software: which old plan (`asIsKey`), carried once. */
+  oldPlanKey?: string;
   /** Set when the owner moved this plan's money out ("Paid in the old software?"): Undo uses it. */
   oldSoftwareMoveId?: string;
   /** The bill this plan was sold on. */
@@ -1207,6 +1209,8 @@ export interface PtAssignment extends BaseDoc, ShareSnapshot {
   /** What the member paid in the old software for this plan (₹, kept for reference). */
   oldSoftwarePaid?: number;
   oldSoftwareBillNo?: string;
+  /** Carried as-is from the old software: which old plan (`asIsKey`), carried once. */
+  oldPlanKey?: string;
   /** Set when cancelled: the day, why, and the id shared by everything that cancellation did. */
   cancelledOn?: string;
   cancelReason?: string;

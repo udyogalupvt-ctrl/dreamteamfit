@@ -116,6 +116,7 @@ import {
 } from "@/types/models";
 import { daysBetween } from "@/lib/member-plans";
 import {
+  asIsKey,
   isOldPtPlanName,
   matchStaffName,
   oldCounsellorOf,
@@ -1518,7 +1519,12 @@ export function EnrollmentWizard({
                         variant="outline"
                         className="justify-self-start sm:ml-6.5"
                         onClick={() =>
-                          carryOldPlan(oldPhone, oldId).then(
+                          carryOldPlan(
+                            oldPhone,
+                            oldId,
+                            asIsKey(oldId, oldToCarry),
+                            existing?.id ?? "",
+                          ).then(
                             (r) =>
                               toast.success("Old plan carried over as it is", {
                                 description: r.summary,

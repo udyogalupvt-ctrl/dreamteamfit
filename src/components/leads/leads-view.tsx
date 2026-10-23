@@ -8,6 +8,7 @@ import {
   Pencil,
   Phone,
   Plus,
+  RotateCcw,
   Trash2,
   UserCheck,
   UserPlus,
@@ -68,7 +69,8 @@ import {
   normalizePhone,
   todayISO,
 } from "@/lib/format";
-import { subscribeInquiries, updateInquiry } from "@/services/inquiries.service";
+import { useAuth } from "@/hooks/use-auth";
+import { reopenInquiry, subscribeInquiries, updateInquiry } from "@/services/inquiries.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import { INQUIRY_STATUSES, LEAD_SOURCES, type Inquiry, type InquiryStatus } from "@/types/models";
 
@@ -83,11 +85,17 @@ type DateFilter = keyof typeof DATE_FILTERS;
 export function LeadsView({
   autoCreate = false,
   onAutoCreateHandled,
+  openLeadId = "",
+  onOpenLeadHandled,
 }: {
   autoCreate?: boolean;
   onAutoCreateHandled?: () => void;
+  /** Opens this lead's details (from the top search). */
+  openLeadId?: string;
+  onOpenLeadHandled?: () => void;
 }) {
   const { data, loading, error } = useLive<Inquiry[]>(subscribeInquiries, [], []);
+  const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | "due" | "open" | InquiryStatus>("open");
   const [source, setSource] = useState<string>("all");
@@ -114,7 +122,28 @@ export function LeadsView({
       },
     });
 
+  // Not interested, then came back: open again (Interested, call today), with Undo.
+  const reopen = async (i: Inquiry) => {
+    try {
+      const undo = await reopenInquiry(i, user?.displayName ?? "");
+      toast.success(`${i.name} is back on the list`, {
+        description: "Interested, call today. Press Join now when they pay.",
+        action: {
+          label: "Undo",
+          onClick: () => void undo().catch((e: unknown) => toast.error(firestoreErrorMessage(e))),
+        },
+      });
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    }
+  };
+
   const viewing = data.find((i) => i.id === viewingId) ?? null;
+  useEffect(() => {
+    if (!openLeadId) return;
+    setViewingId(openLeadId);
+    onOpenLeadHandled?.();
+  }, [openLeadId, onOpenLeadHandled]);
   useEffect(() => {
     if (!autoCreate) return;
     setEditing(null);
@@ -134,8 +163,11 @@ export function LeadsView({
           : dateFilter === "30d"
             ? subDays(new Date(), 30)
             : null;
+    // Typing a name or phone looks through every lead (joined and not interested too), so
+    // someone who comes back is always found: the status chips apply only without a search.
+    const chip = q ? "all" : status;
     return data.filter((i) => {
-      if (status === "due") {
+      if (chip === "due") {
         if (
           !i.nextFollowUpDate ||
           i.nextFollowUpDate > today ||
@@ -143,9 +175,9 @@ export function LeadsView({
           i.status === "lost"
         )
           return false;
-      } else if (status === "open") {
+      } else if (chip === "open") {
         if (i.status === "converted" || i.status === "lost") return false;
-      } else if (status !== "all" && i.status !== status) return false;
+      } else if (chip !== "all" && i.status !== chip) return false;
       if (source !== "all" && i.source !== source) return false;
       if (since && i.createdAt < since) return false;
       if (!q) return true;
@@ -178,6 +210,11 @@ export function LeadsView({
         <DropdownMenuItem onSelect={() => setViewingId(i.id)}>
           <Eye aria-hidden /> View
         </DropdownMenuItem>
+        {i.status === "lost" ? (
+          <DropdownMenuItem onSelect={() => void reopen(i)}>
+            <RotateCcw aria-hidden /> Came back
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem onSelect={() => setRecording(i)}>
           <Phone aria-hidden /> Record follow-up
         </DropdownMenuItem>
@@ -225,7 +262,7 @@ export function LeadsView({
             ["interested", "Interested"],
             ["new", "New"],
             ["converted", "Joined"],
-            ["lost", "Lost"],
+            ["lost", "Not interested"],
             ["all", "All"],
           ] as const
         ).map(([v, l]) => {
@@ -270,6 +307,11 @@ export function LeadsView({
           label="Search inquiries"
           containerClassName="sm:col-span-2 lg:col-span-1"
         />
+        {search.trim() && status !== "all" ? (
+          <p className="text-meta sm:col-span-2 lg:col-span-4 lg:row-start-2">
+            Searching all leads, including joined and not interested.
+          </p>
+        ) : null}
         <Button onClick={openCreate} className="h-10 max-sm:order-first">
           <Plus aria-hidden /> New inquiry
         </Button>
@@ -375,11 +417,15 @@ export function LeadsView({
 
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
-                        {!i.convertedToClient && i.status !== "lost" ? (
+                        {i.convertedToClient ? null : i.status === "lost" ? (
+                          <Button size="sm" variant="outline" onClick={() => void reopen(i)}>
+                            <RotateCcw aria-hidden /> Came back
+                          </Button>
+                        ) : (
                           <Button size="sm" variant="outline" onClick={() => setRecording(i)}>
                             <Phone aria-hidden /> Record call
                           </Button>
-                        ) : null}
+                        )}
                         {rowActions(i)}
                       </div>
                     </TableCell>
@@ -417,9 +463,15 @@ export function LeadsView({
                 </div>
                 {!i.convertedToClient ? (
                   <div className="mt-3 grid grid-cols-2 gap-2">
-                    <Button className="h-11" onClick={() => setRecording(i)}>
-                      <Phone aria-hidden /> Record call
-                    </Button>
+                    {i.status === "lost" ? (
+                      <Button className="h-11" onClick={() => void reopen(i)}>
+                        <RotateCcw aria-hidden /> Came back
+                      </Button>
+                    ) : (
+                      <Button className="h-11" onClick={() => setRecording(i)}>
+                        <Phone aria-hidden /> Record call
+                      </Button>
+                    )}
                     <Button variant="outline" className="h-11" onClick={() => setConverting(i)}>
                       <UserPlus aria-hidden /> Join now
                     </Button>
@@ -431,7 +483,15 @@ export function LeadsView({
         </>
       )}
 
-      <InquiryFormDialog open={formOpen} onOpenChange={setFormOpen} inquiry={editing} />
+      <InquiryFormDialog
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        inquiry={editing}
+        onOpenLead={(id) => {
+          setFormOpen(false);
+          setViewingId(id);
+        }}
+      />
 
       <InquiryDetailSheet
         inquiry={viewing}
@@ -439,6 +499,7 @@ export function LeadsView({
         onEdit={(i) => openEdit(i)}
         onConvert={(i) => setConverting(i)}
         onRecord={(i) => setRecording(i)}
+        onReopen={(i) => void reopen(i)}
       />
 
       <RecordFollowUpDialog
@@ -493,12 +554,14 @@ function InquiryDetailSheet({
   onEdit,
   onConvert,
   onRecord,
+  onReopen,
 }: {
   inquiry: Inquiry | null;
   onClose: () => void;
   onEdit: (i: Inquiry) => void;
   onConvert: (i: Inquiry) => void;
   onRecord: (i: Inquiry) => void;
+  onReopen: (i: Inquiry) => void;
 }) {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
@@ -545,6 +608,23 @@ function InquiryDetailSheet({
                 {inquiry.email ? <span>· {inquiry.email}</span> : null}
               </SheetDescription>
             </SheetHeader>
+
+            {inquiry.status === "lost" ? (
+              <div className="mx-4 rounded-2xl border border-warning/50 bg-warning/10 p-4">
+                <p className="text-sm font-semibold">Marked not interested</p>
+                <p className="text-meta mt-0.5">
+                  Came back? Put them back on the call list, or join them straight away.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => onReopen(inquiry)}>
+                    <RotateCcw aria-hidden /> Came back
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => onConvert(inquiry)}>
+                    <UserPlus aria-hidden /> Join now
+                  </Button>
+                </div>
+              </div>
+            ) : null}
 
             <div className="grid grid-cols-2 gap-3 px-4">
               <Info

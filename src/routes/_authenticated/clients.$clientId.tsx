@@ -95,7 +95,14 @@ import { EditPlanDialog, PlanEdits } from "@/components/clients/edit-plan-dialog
 import { undoOldSoftwareMove } from "@/services/old-software.service";
 import { carryOldPlan } from "@/services/old-migrate.service";
 import { lookupOldMembers } from "@/services/old-data.service";
-import { isOldPtPlanName, matchingOldPlan, runningOldPlan, type OldMember } from "@/lib/old-data";
+import {
+  asIsKey,
+  isOldPtPlanName,
+  matchingOldPlan,
+  oldPlanInApp,
+  runningOldPlan,
+  type OldMember,
+} from "@/lib/old-data";
 import { billOfPlan } from "@/services/plan-edit.service";
 import { isOldBalanceBill } from "@/lib/old-money";
 import { PlanPriceAmount, PlanPriceLine } from "@/components/clients/plan-price";
@@ -268,8 +275,15 @@ function ClientProfilePage() {
   const todayDay = new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10);
   const oldRun = oldPerson ? runningOldPlan(oldPerson, todayDay) : null;
   const liveHere = [...withStatus, ...ptPlans.data].filter((m) => m.status !== "cancelled");
+  // The same check the server makes: this exact old plan carried here, running or cancelled.
+  const oldRunKey = oldRun && oldPerson ? asIsKey(oldPerson.memberId, oldRun) : "";
+  const oldRunHere = oldPlanInApp<Membership | PtAssignment>(
+    oldRunKey ? [...withStatus, ...ptPlans.data] : [],
+    oldRunKey,
+  );
   const missingOldRun =
     oldRun &&
+    !oldRunHere.live &&
     can("members") &&
     !memberships.loading &&
     !ptPlans.loading &&
@@ -625,29 +639,50 @@ function ClientProfilePage() {
             >
               <div className="text-sm">
                 <p className="font-semibold">
-                  Still running in the old software, but not in this app: the door stays shut
+                  {oldRunHere.cancelled
+                    ? "Still running in the old software, but cancelled in this app: the door stays shut"
+                    : "Still running in the old software, but not in this app: the door stays shut"}
                 </p>
                 <p className="text-meta tabular-nums">
                   {missingOldRun.name} · {formatDateISO(missingOldRun.start)} →{" "}
                   {formatDateISO(missingOldRun.end)} · paid{" "}
                   {formatPrice(Math.max(0, missingOldRun.amount - missingOldRun.balance))}
                 </p>
+                {oldRunHere.cancelled ? (
+                  <p className="text-meta mt-1">
+                    It was added here before and then cancelled
+                    {oldRunHere.cancelled.cancelledOn
+                      ? ` on ${formatDateISO(oldRunHere.cancelled.cancelledOn)}`
+                      : ""}
+                    . Restore puts that same plan back.
+                  </p>
+                ) : null}
               </div>
-              <Button
-                className="shrink-0"
-                onClick={() =>
-                  carryOldPlan(c.phone, oldPerson?.memberId ?? c.oldMemberId ?? "").then(
-                    (r) =>
-                      toast.success("Old plan carried over as it is", { description: r.summary }),
-                    (e: unknown) =>
-                      toast.error("Could not carry the old plan", {
-                        description: e instanceof Error ? e.message : String(e),
-                      }),
-                  )
-                }
-              >
-                Add it here, as it is
-              </Button>
+              {oldRunHere.cancelled ? (
+                <div className="shrink-0">
+                  <RestorePlanButton
+                    client={c}
+                    kind={"packageNameSnapshot" in oldRunHere.cancelled ? "gym" : "pt"}
+                    plan={oldRunHere.cancelled}
+                  />
+                </div>
+              ) : (
+                <Button
+                  className="shrink-0"
+                  onClick={() =>
+                    carryOldPlan(c.phone, oldPerson?.memberId ?? c.oldMemberId ?? "", oldRunKey, c.id).then(
+                      (r) =>
+                        toast.success("Old plan carried over as it is", { description: r.summary }),
+                      (e: unknown) =>
+                        toast.error("Could not carry the old plan", {
+                          description: e instanceof Error ? e.message : String(e),
+                        }),
+                    )
+                  }
+                >
+                  Add it here, as it is
+                </Button>
+              )}
             </section>
           ) : null}
           {memberships.loading ? (

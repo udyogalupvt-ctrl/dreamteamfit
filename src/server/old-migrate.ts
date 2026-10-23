@@ -25,6 +25,7 @@ import { isOwnerEmail } from "@/constants/owners";
 import { oldPhoneKey, type OldDirectoryEntry, type OldMember } from "@/lib/old-data";
 import {
   planMigration,
+  noCarryReason,
   NOT_RECORDED,
   type CarryPlan,
   type FixPlan,
@@ -268,6 +269,8 @@ async function applyMember(
   by: Actor,
   onlyPlanKey = "",
   knownClientIds: string[] = [],
+  /** forClientId: carry onto this member only. why: filled with the reason when nothing is done. */
+  opts: { forClientId?: string; why?: { reason: string } } = {},
 ): Promise<{ moveId: string; clientId: string; summary: string } | null> {
   const firestore = db();
   const today = localDate();
@@ -322,6 +325,7 @@ async function applyMember(
       payments,
       scope,
       onlyOldMemberId: oldMemberId,
+      ...(opts.forClientId ? { forClientId: opts.forClientId } : {}),
     });
     let result = fresh.members.find((m) => m.old.memberId === oldMemberId) ?? null;
     if (result && onlyPlanKey) {
@@ -329,8 +333,22 @@ async function applyMember(
       const fixes = result.fixes.filter((c) => c.key === onlyPlanKey);
       result = carries.length || fixes.length ? { ...result, carries, fixes, recycles: [] } : null;
     }
-    if (!result || (!result.carries.length && !result.fixes.length && !result.recycles.length))
+    if (!result || (!result.carries.length && !result.fixes.length && !result.recycles.length)) {
+      if (opts.why)
+        opts.why.reason = noCarryReason(
+          [...memberships, ...ptAssignments].filter((r) =>
+            onlyPlanKey
+              ? r.data["oldPlanKey"] === onlyPlanKey
+              : String(r.data["oldPlanKey"] ?? "").startsWith(`${oldMemberId}|`),
+          ),
+          fresh.skips
+            .filter((s) => s.who === oldMembers.find((m) => m.memberId === oldMemberId)?.name)
+            .map((s) => s.reason),
+          clients,
+          opts.forClientId ?? "",
+        );
       return null;
+    }
 
     const counterRef = firestore.doc("settings/counters");
     const billsNeeded =
@@ -1266,6 +1284,7 @@ async function apply(request: Request) {
       ...(state.byPhone.get(key) ?? []).map((c) => c.id),
       state.byOldId.get(m.oldMemberId)?.id ?? "",
     ].filter(Boolean);
+    const why = { reason: "" };
     try {
       const r = await applyMember(
         state,
@@ -1277,11 +1296,12 @@ async function apply(request: Request) {
         by,
         "",
         known,
+        { why },
       );
       if (r) {
         applied.push({ ...m, ...r });
         await audit(by, r.clientId, "", `Old software migration: ${r.summary}`);
-      } else skipped.push({ ...m, reason: "nothing left to do (already carried)" });
+      } else skipped.push({ ...m, reason: why.reason || "nothing left to do (already carried)" });
     } catch (e) {
       errors.push({ ...m, error: e instanceof Error ? e.message : String(e) });
     }
@@ -1296,9 +1316,12 @@ async function carry(request: Request) {
     phone?: string;
     oldMemberId?: string;
     planKey?: string;
+    /** Pressed on this member's page: carry onto them only, never guess by name. */
+    clientId?: string;
   };
   const key = oldPhoneKey(String(body.phone ?? ""));
   const oldMemberId = String(body.oldMemberId ?? "");
+  const clientId = String(body.clientId ?? "");
   if (key.length < 6 || !oldMemberId)
     return json({ error: "Phone and old member are needed." }, 400);
   const snap = await db().doc(`oldMembers/${key}`).get();
@@ -1306,7 +1329,26 @@ async function carry(request: Request) {
   if (!oldMembers.some((m) => m.memberId === oldMemberId))
     return json({ error: "The old software has no such member on this phone." }, 404);
   const state = await loadAppState();
+  if (clientId) {
+    const here = await db().doc(`clients/${clientId}`).get();
+    if (!here.exists) return json({ error: "This member is no longer in the app." }, 404);
+    const linkedTo = String(here.data()?.["oldMemberId"] ?? "");
+    if (linkedTo && linkedTo !== oldMemberId)
+      return json(
+        { error: `This member is linked to old member ${linkedTo}, not ${oldMemberId}.` },
+        409,
+      );
+    const owner = state.byOldId.get(oldMemberId);
+    if (owner && owner.id !== clientId)
+      return json(
+        {
+          error: `This old plan belongs to ${String(owner.data["fullName"] ?? "another member")} (ID ${String(owner.data["memberCode"] ?? "-")}). Open that member.`,
+        },
+        409,
+      );
+  }
   const by = actorOf(user);
+  const why = { reason: "" };
   try {
     const r = await applyMember(
       state,
@@ -1317,12 +1359,15 @@ async function carry(request: Request) {
       `carry-${localDate()}`,
       by,
       String(body.planKey ?? ""),
-      [
-        ...(state.byPhone.get(key) ?? []).map((c) => c.id),
-        state.byOldId.get(oldMemberId)?.id ?? "",
-      ].filter(Boolean),
+      clientId
+        ? [clientId]
+        : [
+            ...(state.byPhone.get(key) ?? []).map((c) => c.id),
+            state.byOldId.get(oldMemberId)?.id ?? "",
+          ].filter(Boolean),
+      { ...(clientId ? { forClientId: clientId } : {}), why },
     );
-    if (!r) return json({ error: "Their old plan is already in the app." }, 409);
+    if (!r) return json({ error: why.reason || "Their old plan is already in the app." }, 409);
     await audit(by, r.clientId, "", `Old software carry: ${r.summary}`);
     return json({ moveId: r.moveId, clientId: r.clientId, summary: r.summary });
   } catch (e) {

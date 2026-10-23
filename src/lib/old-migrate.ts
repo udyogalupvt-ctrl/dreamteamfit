@@ -14,7 +14,9 @@
 import {
   type OldMember,
   type OldPlan,
+  asIsKey,
   isOldPtPlanName,
+  normPlanName,
   oldJoinedOn,
   tidyName,
 } from "./old-data.ts";
@@ -32,11 +34,7 @@ export function oldPlanKind(name: string): PlanKind {
   return /floor|\bgym\b/i.test(name) ? "pair" : "pt";
 }
 
-export const normPlanName = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
-
-/** One old plan can be carried once: this key marks the app plan that carries it. */
-export const asIsKey = (oldMemberId: string, p: Pick<OldPlan, "name" | "start" | "end">) =>
-  `${oldMemberId}|${p.start}|${p.end}|${normPlanName(p.name)}`;
+export { asIsKey, normPlanName };
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const ms = (d: string) => Date.parse(`${d}T00:00:00Z`);
@@ -302,6 +300,8 @@ export interface MigrateInput {
   scope: "running" | "latest";
   /** Only this old member (single-member carry), "" = all on the phone. */
   onlyOldMemberId?: string;
+  /** Carry onto THIS app member (pressed on their page): no name guessing, never a new member. */
+  forClientId?: string;
 }
 
 export interface MigrateResult {
@@ -310,6 +310,30 @@ export interface MigrateResult {
 }
 
 const isCancelled = (d: D) => String(d["status"]) === "cancelled" || !!d["cancelId"];
+
+/**
+ * Why "Add it here, as it is" did nothing, in the staff's words. `carried`: the app's plans that
+ * hold this old plan (same oldPlanKey), on any member; `skipReasons`: planMigration's skips for
+ * this old member; `clients`: names for "it is on another member".
+ */
+export function noCarryReason(
+  carried: Row[],
+  skipReasons: string[],
+  clients: Row[],
+  forClientId = "",
+): string {
+  const mine = carried.filter((r) => !forClientId || r.data["clientId"] === forClientId);
+  if (mine.some((r) => !isCancelled(r.data))) return "Their old plan is already in the app.";
+  if (mine.length)
+    return "This old plan was added before and then cancelled here. Press Restore on it in Plans & payments.";
+  const other = carried.find((r) => !isCancelled(r.data));
+  if (other) {
+    const c = clients.find((x) => x.id === other.data["clientId"])?.data;
+    return `This old plan is already on ${c ? `${String(c["fullName"] ?? "another member")} (ID ${String(c["memberCode"] ?? "-")})` : "another member"}. Open that member.`;
+  }
+  if (skipReasons.length) return `Not added: ${skipReasons[0]}.`;
+  return "Nothing to add: the old plan has ended or is already here.";
+}
 const money = (v: unknown) => Number(v ?? 0) || 0;
 const tsMs = (v: unknown) =>
   v && typeof (v as { toMillis?: () => number }).toMillis === "function"
@@ -463,10 +487,13 @@ export function planMigration(input: MigrateInput): MigrateResult {
   const claimedClients = new Set<string>();
 
   for (const m of olds) {
-    const client = matchClient(
-      input.clients.filter((c) => !claimedClients.has(c.id)),
-      m,
-    );
+    const client = input.forClientId
+      ? (input.clients.find((c) => c.id === input.forClientId) ?? null)
+      : matchClient(
+          input.clients.filter((c) => !claimedClients.has(c.id)),
+          m,
+        );
+    if (input.forClientId && !client) continue;
     if (client) claimedClients.add(client.id);
     const my = (rows: Row[]) => rows.filter((r) => r.data["clientId"] === client?.id);
     const myMs = client ? my(input.memberships) : [];

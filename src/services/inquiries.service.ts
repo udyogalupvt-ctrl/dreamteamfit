@@ -1,4 +1,6 @@
 import {
+  getDocs,
+  query,
   where,
   writeBatch,
   doc,
@@ -9,7 +11,7 @@ import {
   type DocumentData,
 } from "@/lib/firestore";
 import { db } from "@/lib/firebase";
-import { normalizePhone } from "@/lib/format";
+import { formatDateISO, normalizePhone, todayISO } from "@/lib/format";
 import { toReferredBy } from "@/lib/referrals";
 import type { Inquiry } from "@/types/models";
 import { col, COLLECTIONS, subscribeCollection, toDate } from "./firestore.service";
@@ -129,6 +131,33 @@ export async function updateInquiry(id: string, input: Partial<InquiryInput>) {
     const { syncInquiryFollowUp } = await import("./followups.service");
     await syncInquiryFollowUp(id);
   }
+}
+
+/**
+ * A lead marked Not interested (or wrong number) came back: open again as Interested with a call
+ * today, and a dated line in the notes so the history shows it. Returns the undo.
+ */
+export async function reopenInquiry(i: Inquiry, by: string) {
+  const today = todayISO();
+  const line = `[${formatDateISO(today)}] Came back after "Not interested"${by ? ` (${by})` : ""}`;
+  await updateInquiry(i.id, {
+    status: "interested",
+    nextFollowUpDate: today,
+    notes: i.notes ? `${i.notes}
+${line}` : line,
+  });
+  return () =>
+    updateInquiry(i.id, { status: i.status, nextFollowUpDate: i.nextFollowUpDate, notes: i.notes });
+}
+
+/** Leads already saved with this phone (a new inquiry from a known number reopens the old one). */
+export async function findInquiriesByPhone(phone: string) {
+  const key = normalizePhone(phone);
+  if (key.length < 10) return [];
+  const snap = await getDocs(
+    query(col(COLLECTIONS.inquiries), where("phoneNormalized", "==", key)),
+  );
+  return snap.docs.map((d) => mapInquiry(d.id, d.data()));
 }
 
 /** Leads still being worked on (not converted, not lost). */

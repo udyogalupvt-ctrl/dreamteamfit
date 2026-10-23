@@ -39,6 +39,7 @@ export const mapMembership = (id: string, d: DocumentData): Membership => ({
     ? { oldSoftwareBalance: Number(d["oldSoftwareBalance"]) }
     : {}),
   ...(d["oldSoftwareBillNo"] ? { oldSoftwareBillNo: String(d["oldSoftwareBillNo"]) } : {}),
+  ...(d["oldPlanKey"] ? { oldPlanKey: String(d["oldPlanKey"]) } : {}),
   ...(d["oldSoftwareMoveId"] ? { oldSoftwareMoveId: String(d["oldSoftwareMoveId"]) } : {}),
   ...(d["invoiceId"] ? { invoiceId: String(d["invoiceId"]) } : {}),
   ...(d["upgradedTo"] ? { upgradedTo: String(d["upgradedTo"]) } : {}),

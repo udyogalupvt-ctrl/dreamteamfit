@@ -6,12 +6,13 @@ import { LeadsView } from "@/components/leads/leads-view";
 import { FollowUpsView } from "@/components/leads/followups-view";
 import { useNavigationCounts } from "@/hooks/use-navigation-counts";
 
-type Search = { tab?: "leads" | "followups"; new?: true };
+type Search = { tab?: "leads" | "followups"; new?: true; lead?: string };
 
 export const Route = createFileRoute("/_authenticated/leads")({
   validateSearch: (s: Record<string, unknown>): Search => ({
     ...(s["tab"] === "followups" ? { tab: "followups" as const } : {}),
     ...(s["new"] === true || s["new"] === "1" || s["new"] === 1 ? { new: true as const } : {}),
+    ...(typeof s["lead"] === "string" && s["lead"] ? { lead: s["lead"] } : {}),
   }),
   head: () => ({
     meta: [
@@ -33,7 +34,7 @@ export const Route = createFileRoute("/_authenticated/leads")({
 });
 
 function LeadsPage() {
-  const { tab = "leads", new: createNew } = Route.useSearch();
+  const { tab = "leads", new: createNew, lead } = Route.useSearch();
   const navigate = useNavigate({ from: "/leads" });
   const counts = useNavigationCounts();
   const clearNew = useCallback(
@@ -70,7 +71,12 @@ function LeadsPage() {
       {tab === "followups" ? (
         <FollowUpsView />
       ) : (
-        <LeadsView autoCreate={Boolean(createNew)} onAutoCreateHandled={clearNew} />
+        <LeadsView
+          autoCreate={Boolean(createNew)}
+          onAutoCreateHandled={clearNew}
+          openLeadId={lead ?? ""}
+          onOpenLeadHandled={clearNew}
+        />
       )}
     </div>
   );

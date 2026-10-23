@@ -496,3 +496,24 @@ export interface OldNotInRecords {
   /** Why it is listed: no old record for the phone, or the plans that record has. */
   reason: string;
 }
+
+export const normPlanName = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+
+/** One old plan can be carried once: this key marks the app plan that carries it. */
+export const asIsKey = (oldMemberId: string, p: Pick<OldPlan, "name" | "start" | "end">) =>
+  `${oldMemberId}|${p.start}|${p.end}|${normPlanName(p.name)}`;
+
+/**
+ * This old plan in the app (carried as-is, same key): `live` when it is there, `cancelled` when it
+ * was carried and later cancelled here (Restore brings it back; carrying again is refused).
+ */
+export function oldPlanInApp<T extends { oldPlanKey?: string; status: string }>(
+  plans: T[],
+  key: string,
+) {
+  const all = plans.filter((p) => p.oldPlanKey === key);
+  return {
+    live: all.find((p) => p.status !== "cancelled") ?? null,
+    cancelled: all.find((p) => p.status === "cancelled") ?? null,
+  };
+}

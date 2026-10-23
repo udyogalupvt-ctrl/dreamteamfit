@@ -26,7 +26,12 @@ import {
   todayISO,
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { createInquiry, updateInquiry, type InquiryInput } from "@/services/inquiries.service";
+import {
+  createInquiry,
+  findInquiriesByPhone,
+  updateInquiry,
+  type InquiryInput,
+} from "@/services/inquiries.service";
 import { ReferredByField } from "@/components/referrals/referrer-picker";
 import { findClientsByPhone } from "@/services/clients.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
@@ -64,10 +69,13 @@ export function InquiryFormDialog({
   open,
   onOpenChange,
   inquiry,
+  onOpenLead,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   inquiry?: Inquiry | null;
+  /** This phone is already a lead: open that lead instead of saving a second one. */
+  onOpenLead?: (id: string) => void;
 }) {
   const [form, setForm] = useState<InquiryInput>(emptyInquiry);
   const staffList = useLive<Staff[]>(subscribeStaff, [], []);
@@ -79,12 +87,14 @@ export function InquiryFormDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [memberHint, setMemberHint] = useState("");
+  const [knownLead, setKnownLead] = useState<Inquiry | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setForm(inquiry ? { ...emptyInquiry(), ...inquiry } : emptyInquiry());
     setErrors({});
     setMemberHint("");
+    setKnownLead(null);
   }, [open, inquiry]);
 
   const set = <K extends keyof InquiryInput>(k: K, v: InquiryInput[K]) =>
@@ -92,9 +102,18 @@ export function InquiryFormDialog({
 
   const checkPhone = async () => {
     if (inquiry || normalizePhone(form.phone).length < 10) return;
-    const found = await findClientsByPhone(form.phone).catch(() => []);
+    const [found, leads] = await Promise.all([
+      findClientsByPhone(form.phone).catch(() => []),
+      findInquiriesByPhone(form.phone).catch(() => []),
+    ]);
     setMemberHint(
       found[0] ? `${found[0].fullName} is already a member (${found[0].clientCode}).` : "",
+    );
+    // The newest lead not yet joined (a "Not interested" one who came back, or a repeat call).
+    setKnownLead(
+      leads
+        .filter((l) => l.status !== "converted")
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null,
     );
   };
 
@@ -187,6 +206,25 @@ export function InquiryFormDialog({
             aria-invalid={!!errors["phone"]}
           />
         </Field>
+        {knownLead && onOpenLead ? (
+          <div
+            role="status"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/50 bg-warning/10 p-3 text-sm sm:col-span-2"
+          >
+            <span className="min-w-0">
+              <b>{knownLead.name}</b> is already a lead with this number (
+              {INQUIRY_STATUS_META[knownLead.status].label}).
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => onOpenLead(knownLead.id)}
+            >
+              Open that lead
+            </Button>
+          </div>
+        ) : null}
         <Field label="Came through" htmlFor="i-source">
           <Select
             value={form.source}

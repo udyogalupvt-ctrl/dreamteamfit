@@ -354,7 +354,11 @@ export function GlobalSearch({ compact = false }: { compact?: boolean }) {
                 <CommandItem
                   key={item.id}
                   value={`inquiry ${item.name} ${item.phone}`}
-                  onSelect={() => go("/leads")}
+                  onSelect={() => {
+                    setOpen(false);
+                    setQuery("");
+                    void navigate({ to: "/leads", search: { lead: item.id } });
+                  }}
                 >
                   <UserPlus aria-hidden />
                   <span className="min-w-0 truncate">{item.name}</span>
