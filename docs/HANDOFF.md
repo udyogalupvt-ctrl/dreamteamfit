@@ -1,8 +1,19 @@
 # Handoff
 
-Last updated: 2026-10-23 (carry fix + leads "Came back" 5eba9ee; member delete clean-up done on `five-features`, local only. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
+Last updated: 2026-10-23 late (main = 2ff2498 locally, NOT pushed: no GitHub login on this PC; prod rules DEPLOYED. Earlier: carry fix + leads "Came back" 5eba9ee; member delete clean-up done on `five-features`, local only. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
 
-## State: 6 features + review fixes on `five-features` (not merged, not pushed)
+## State: merged into local `main` (2ff2498), push waiting on a GitHub login
+
+- 2026-10-23: founder OK'd merge + push + deploy and chose to drop the dev owner login: `admin@elevategym.com`
+  removed from `firestore.rules` + `owners.ts` (2ff2498). Checks: tsc OK, unit 502/502, rules 72/72, build OK.
+- Local `main` fast-forwarded to `five-features` (2ff2498). `git push` FAILED: `gh` logged out, no GitHub
+  credential stored. origin/main still 12c8fac (live app = old code).
+- Production rules DEPLOYED 2026-10-23: ruleset 9d846f06 (read back, matches file). Rollback = previous live
+  rules backup `C:/Users/chala/AppData/Local/Temp/claude/c--Users-chala-OneDrive-Desktop-gym-saas/e0dbd847-18c9-4aa3-9551-cd18e501b39c/scratchpad/live_rules_backup_2026-10-23.txt`
+  via `node deploy_rules.mjs <file>` (097e3934 scratchpad below). New rules are safe with the old live app.
+- Not done: `email_verified` in `isOwner()` (unknown if the owner's email is verified; lockout risk).
+
+## Earlier state: 6 features + review fixes on `five-features`
 
 Spec `docs/superpowers/specs/2026-10-22-five-features-design.md`, plans `docs/superpowers/plans/2026-10-22-*.md`.
 Features: E health form, B body progress, C review + feedback, F app announcements, D referrals, A UPI pay link.
@@ -34,11 +45,12 @@ Prod check for member 46: scratchpad a8c5924e…/prod_member46.mjs (read-only; t
 
 ## Next steps
 
-1. **Push blocker (founder):** run the owner check (Still open, Task 0→4). `isOwner()` trusts the email only, and
-   the owner sets the UPI ID members pay to.
+1. **Push:** founder logs GitHub in (`gh auth login` + `gh auth setup-git`, account with access to
+   udyogalupvt-ctrl/dreamteamfit), then `git push origin main five-features`; check `/api/version` = 2ff2498…
+   and a quick live look (owner login, Settings → UPI, member app).
 2. **Founder decisions:** (a) member doc keeps only `{version, signedOn, method, flagCount}` of the health form
    (now flags/notes are readable by every staff login)? (b) UPI ID + payee name, ₹1 test QR; (c) Google review link;
-   (d) health form text `[NEED: owner approval]`; (e) OK to merge + push; (f) OK to deploy production rules (now also needed for the delete clean-up below).
+   (d) health form text `[NEED: owner approval]`; (e)/(f) DONE 2026-10-23 (merge local, rules deployed).
 3. Feature: "Paid online, waiting to confirm" banner + "Use it" in Collect (`invoice-actions.tsx`) and Renew wizard.
 4. Low items: see run-3 REPORT "Not fixed" 5 and A's notes (two taps → two open links; renewal amount fixed at
    "I've paid"; Undo without Billing fails on the link; no per-IP limit on GET `/api/pay/<token>`).
@@ -55,9 +67,8 @@ Prod check for member 46: scratchpad a8c5924e…/prod_member46.mjs (read-only; t
 
 ## Still open (older)
 
-- Task 0 → Task 4: founder runs the read-only owner check and pastes output:
-  `node "C:/Users/chala/AppData/Local/Temp/claude/c--Users-chala-OneDrive-Desktop-gym-saas/11359acb-2cda-47fc-98e8-3aa1650a7110/scratchpad/prod_owner_check.mjs" "C:/Users/chala/OneDrive/Desktop/gym saas/dreamteamfit"`
-  Then remove `admin@elevategym.com` from rules + `owners.ts`; email_verified only if verified.
+- Task 4 left: add email_verified to `isOwner()` only if the owner's email is verified. Read-only check (founder runs,
+  auto mode blocks it): `node "C:/Users/chala/AppData/Local/Temp/claude/c--Users-chala-OneDrive-Desktop-gym-saas/e0dbd847-18c9-4aa3-9551-cd18e501b39c/scratchpad/owner_check.mjs" "C:/Users/chala/OneDrive/Desktop/gym saas/dreamteamfit"`
 - Adversarial security review of the hardening (needs ultracode). Task 11 (relay key).
 - Reviewer notes: desk can create a bill with any invoiceNumber (duplicates); two Finance refunds at the same
   moment can pass the refund limit; door_check uses a staff-editable biometricUserId.
