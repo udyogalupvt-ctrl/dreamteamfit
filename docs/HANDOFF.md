@@ -1,13 +1,13 @@
 # Handoff
 
-Last updated: 2026-10-23 late (main = 2ff2498 locally, NOT pushed: no GitHub login on this PC; prod rules DEPLOYED. Earlier: carry fix + leads "Came back" 5eba9ee; member delete clean-up done on `five-features`, local only. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
+Last updated: 2026-10-23 late (SHIPPED: main b18c1a0 pushed, live `/api/version` = b18c1a040f2a; prod rules 9d846f06 DEPLOYED. Earlier: carry fix + leads "Came back" 5eba9ee; member delete clean-up done on `five-features`, local only. Old history: `docs/archive/HANDOFF-history-to-2026-10-22.md`)
 
-## State: merged into local `main` (2ff2498), push waiting on a GitHub login
+## State: six features LIVE (main b18c1a0, 2026-10-23)
 
 - 2026-10-23: founder OK'd merge + push + deploy and chose to drop the dev owner login: `admin@elevategym.com`
   removed from `firestore.rules` + `owners.ts` (2ff2498). Checks: tsc OK, unit 502/502, rules 72/72, build OK.
-- Local `main` fast-forwarded to `five-features` (2ff2498). `git push` FAILED: `gh` logged out, no GitHub
-  credential stored. origin/main still 12c8fac (live app = old code).
+- Pushed main + five-features = b18c1a0 (gh logged in as udyogalupvt-ctrl via device code, `gh auth setup-git`).
+  Vercel serves b18c1a040f2a; /, /login, /m, /t load. Not yet checked logged in (owner, Settings → UPI, member app).
 - Production rules DEPLOYED 2026-10-23: ruleset 9d846f06 (read back, matches file). Rollback = previous live
   rules backup `C:/Users/chala/AppData/Local/Temp/claude/c--Users-chala-OneDrive-Desktop-gym-saas/e0dbd847-18c9-4aa3-9551-cd18e501b39c/scratchpad/live_rules_backup_2026-10-23.txt`
   via `node deploy_rules.mjs <file>` (097e3934 scratchpad below). New rules are safe with the old live app.
@@ -45,9 +45,8 @@ Prod check for member 46: scratchpad a8c5924e…/prod_member46.mjs (read-only; t
 
 ## Next steps
 
-1. **Push:** founder logs GitHub in (`gh auth login` + `gh auth setup-git`, account with access to
-   udyogalupvt-ctrl/dreamteamfit), then `git push origin main five-features`; check `/api/version` = 2ff2498…
-   and a quick live look (owner login, Settings → UPI, member app).
+1. **Live look (founder or Claude in the "gym" Chrome):** owner login, Settings → UPI section, member app health
+   form / progress / feedback. Then founder decisions in 2.
 2. **Founder decisions:** (a) member doc keeps only `{version, signedOn, method, flagCount}` of the health form
    (now flags/notes are readable by every staff login)? (b) UPI ID + payee name, ₹1 test QR; (c) Google review link;
    (d) health form text `[NEED: owner approval]`; (e)/(f) DONE 2026-10-23 (merge local, rules deployed).
