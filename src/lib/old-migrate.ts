@@ -709,11 +709,12 @@ export function planMigration(input: MigrateInput): MigrateResult {
       if (fixed || blocked) continue;
 
       // An old-marked hand-entry that fits NO old plan (October's mistake): carrying this plan
-      // beside it could count the same old money twice, so the owner clears it first.
+      // beside it could count the same old money twice, so the owner clears it first. Only a row
+      // of the same kind can be that copy: a PT entry is never a hand-typed old gym plan (member 46).
       const doubtful = units.filter(
         (u) =>
           !consumed.has(u) &&
-          [u.membership, u.pt].some(
+          [kind !== "pt" ? u.membership : null, kind !== "gym" ? u.pt : null].some(
             (r) =>
               r &&
               r.data["paidInOldSoftware"] === true &&

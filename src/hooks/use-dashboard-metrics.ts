@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { plansForLists, type PlanRow } from "@/lib/member-plans";
+import { oldMoneyOnDay } from "@/lib/periods";
 import { addDays, format, formatDistanceToNow, startOfMonth } from "date-fns";
 import {
   BadgeIndianRupee,
@@ -319,7 +320,10 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
     const statExpenses = period.isToday ? monthExpenses : periodExpenses;
     const statLabel = period.isToday ? "this month" : period.label;
     const totalCollected = allTime;
-    const todayCollected = periodMoney.gross;
+    // Paid in the old software (dated by its plan's start, not taken at this desk): kept out of
+    // a one-day card like the Day Book does; month cards and reports still count it.
+    const periodOld = oldMoneyOnDay(payments.data, period.from, period.to);
+    const todayCollected = periodMoney.gross - periodOld;
     const monthCollected = monthMoney.gross;
     const outstanding = openInvoices.data
       .filter((item) => item.paymentStatus !== "refunded")
@@ -397,9 +401,11 @@ export function useDashboardMetrics(period: DashboardPeriod = TODAY_PERIOD()) {
         label: period.isToday ? "Collected today" : `Collected · ${period.label}`,
         value: formatPrice(todayCollected),
         hint:
-          (period.isToday
-            ? "all payments received today"
-            : `gym income ${formatPrice(periodMoney.gymIncome)}`) + refundedNote(periodMoney),
+          (periodOld
+            ? `+ ${formatPrice(periodOld)} paid in the old software`
+            : period.isToday
+              ? "all payments received today"
+              : `gym income ${formatPrice(periodMoney.gymIncome)}`) + refundedNote(periodMoney),
         icon: BadgeIndianRupee,
         tone: "success",
       },

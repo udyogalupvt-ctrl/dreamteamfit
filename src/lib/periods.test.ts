@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DAY_CHOICES, choiceText, choicesWith, dayText, periodFor, periodSpan } from "./periods.ts";
+import {
+  DAY_CHOICES,
+  choiceText,
+  choicesWith,
+  dayText,
+  oldMoneyOnDay,
+  periodFor,
+  periodSpan,
+} from "./periods.ts";
 
 // Tuesday.
 const T = "2026-10-13";
@@ -168,4 +176,15 @@ test("option names", () => {
   assert.equal(choiceText("all", T), "All dates");
   assert.equal(choiceText("date", T), "Pick a date…");
   assert.equal(choiceText("range", T), "From – to…");
+});
+
+test("oldMoneyOnDay: only a one-day period leaves old-software money out", () => {
+  const pays = [
+    { oldSoftware: true, paymentDate: "2026-10-24", amount: 5000 },
+    { oldSoftware: false, paymentDate: "2026-10-24", amount: 800 },
+    { paymentDate: "2026-10-24", amount: 200 },
+    { oldSoftware: true, paymentDate: "2026-10-23", amount: 2500 },
+  ];
+  assert.equal(oldMoneyOnDay(pays, "2026-10-24", "2026-10-24"), 5000);
+  assert.equal(oldMoneyOnDay(pays, "2026-10-01", "2026-10-31"), 0);
 });

@@ -146,3 +146,19 @@ export function periodSpan(p: Period, today: string): string {
     ? dayText(p.from, today)
     : `${dayText(p.from, today)} – ${dayText(p.to, today)}`;
 }
+
+/**
+ * Money paid in the old software that lands on a ONE-day period. Its date is the old plan's start
+ * (the old software keeps no payment date), so a day's "Collected" leaves it out like the Day Book
+ * does; a longer period (a month) still counts it. 0 for multi-day periods.
+ */
+export function oldMoneyOnDay(
+  payments: { oldSoftware?: boolean | undefined; paymentDate: string; amount: number }[],
+  from: string,
+  to: string,
+): number {
+  if (from !== to) return 0;
+  return payments
+    .filter((p) => p.oldSoftware && p.paymentDate === from)
+    .reduce((n, p) => n + p.amount, 0);
+}

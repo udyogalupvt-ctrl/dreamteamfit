@@ -857,3 +857,47 @@ test("review fixes: a subscription row duplicated in the export is carried ONCE"
   assert.equal(r.members.length, 1);
   assert.equal(r.members[0]!.carries.length, 1);
 });
+
+test("member 46: a doubtful old-marked PT plan does not block carrying an old GYM plan", () => {
+  const annual = plan({ name: "Annual Package for CARDIO + STRENGTH", start: d2(-300), end: d2(50), amount: 12000, price: 12000 });
+  const m = person({ plans: [annual] });
+  const r = planMigration(
+    base({
+      oldMembers: [m],
+      clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
+      ptAssignments: [
+        row("ptDoubt", {
+          clientId: "c1",
+          packageNameSnapshot: "Monthly PT (Daily)",
+          startDate: d2(-23),
+          endDate: d2(6),
+          status: "active",
+          paidInOldSoftware: true,
+        }),
+      ],
+    }),
+  );
+  assert.ok(!r.skips.some((s) => s.reason.includes("clear that first")));
+  assert.equal(r.members[0]?.carries[0]?.kind, "gym");
+});
+
+test("member 46: a doubtful old-marked PT plan still blocks carrying an old PT plan", () => {
+  const pt = plan({ name: "PERSONAL TRAINING DAILY", start: d2(-5), end: d2(25) });
+  const m = person({ plans: [pt] });
+  const r = planMigration(
+    base({
+      oldMembers: [m],
+      clients: [row("c1", { fullName: "Ravi Kumar", oldMemberId: "77" })],
+      ptAssignments: [
+        row("ptDoubt", {
+          clientId: "c1",
+          startDate: d2(-90),
+          endDate: d2(-60),
+          status: "expired",
+          paidInOldSoftware: true,
+        }),
+      ],
+    }),
+  );
+  assert.ok(r.skips.some((s) => s.reason.includes("clear that first")));
+});

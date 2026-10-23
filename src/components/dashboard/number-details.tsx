@@ -81,6 +81,7 @@ export function NumberDetails({
             title={title}
             rows={card === "today-collection" ? lists.period : lists.month}
             oneDay={card === "today-collection" && period.from === period.to}
+            oldApart={card === "today-collection" && period.from === period.to}
             goTo={goTo}
           />
         ) : card === "active" ? (
@@ -148,15 +149,24 @@ const modeOf = (r: MoneyRow) => r.method || (r.kind === "old" ? "Not recorded" :
 /** Collected (today / a period / this month): every payment, with totals by how it was paid. */
 function MoneyList({
   title,
-  rows,
+  rows: allRows,
   oneDay,
+  oldApart = false,
   goTo,
 }: {
   title: string;
   rows: MoneyRow[];
   oneDay: boolean;
+  /** The period card: old-software money is listed apart, outside the total (like the Day Book). */
+  oldApart?: boolean;
   goTo: (clientId: string) => void;
 }) {
+  const rows = useMemo(
+    () => (oldApart ? allRows.filter((r) => r.kind !== "old") : allRows),
+    [allRows, oldApart],
+  );
+  const oldRows = oldApart ? allRows.filter((r) => r.kind === "old") : [];
+  const oldTotal = oldRows.reduce((n, r) => n + r.amount, 0);
   const total = rows.reduce((n, r) => n + r.amount, 0);
   // A payment and the refund that gave it back (same member, amount and mode) cancel out: folded
   // under a "show" line so the list is the money that really came in. Totals stay the same.
@@ -282,9 +292,29 @@ function MoneyList({
           </ul>
         ) : (
           <Empty
-            text={modes.length ? "No payments by these modes." : "No payments in this period."}
+            text={
+              modes.length
+                ? "No payments by these modes."
+                : oldRows.length
+                  ? "No payments taken here in this period."
+                  : "No payments in this period."
+            }
           />
         )}
+        {oldRows.length ? (
+          <section aria-label="Paid in the old software" className="border-t border-border">
+            <div className="bg-muted/40 px-4 py-3 sm:px-5">
+              <h3 className="font-semibold">
+                Paid in the old software · <span className="tabular-nums">{money(oldTotal)}</span>
+              </h3>
+              <p className="text-meta mt-0.5">
+                Not taken at this desk, so not in the total above. Dated by the plan&rsquo;s start
+                (the old software keeps no payment date); counted in the month&rsquo;s total.
+              </p>
+            </div>
+            <ul className="divide-y divide-border">{oldRows.map((r) => line(r, true))}</ul>
+          </section>
+        ) : null}
       </div>
     </>
   );

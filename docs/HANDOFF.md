@@ -47,6 +47,13 @@ Prod check for member 46: scratchpad a8c5924e…/prod_member46.mjs (read-only; t
 
 1. **Live look (founder or Claude in the "gym" Chrome):** owner login, Settings → UPI section, member app health
    form / progress / feedback. Then founder decisions in 2.
+   2026-10-23 partial (Claude, "DREAM TEAM SERVICES" Chrome, logged in as staff keerthi M): live build c379405483e1
+   (= b18c1a0 code + handoff). Referrals page and Announcements page load, no console errors; /settings correctly
+   blocked for staff; bare /m is a 404 by design (links are /m/<code>). Owner (rebuildfitnesskkd, founder signed in)
+   PASSED read-only: Settings → "Online payment (UPI)" card shows (UPI ID + Name members see empty, so Pay buttons are
+   off); Settings → Member app tab: Health form (switch off, 10 draft questions, Version 1) + Google review link
+   (empty); /feedback page loads ("All caught up"); new sidebar items Referrals, Announcements, Member feedback;
+   no console errors. STILL TO DO: member app screens need a real member's code + DOB → founder checks on their phone.
 2. **Founder decisions:** (a) member doc keeps only `{version, signedOn, method, flagCount}` of the health form
    (now flags/notes are readable by every staff login)? (b) UPI ID + payee name, ₹1 test QR; (c) Google review link;
    (d) health form text `[NEED: owner approval]`; (e)/(f) DONE 2026-10-23 (merge local, rules deployed).

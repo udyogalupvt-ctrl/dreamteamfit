@@ -12,7 +12,7 @@ import { z } from "zod";
 import { CreateBillDialog } from "@/components/billing/create-bill-dialog";
 import { billModesLabel } from "@/lib/split-pay";
 import { usePeriodPicker } from "@/components/common/period-picker";
-import { choicesWith } from "@/lib/periods";
+import { choicesWith, oldMoneyOnDay } from "@/lib/periods";
 import { InvoiceActions } from "@/components/billing/invoice-actions";
 import { PayLinksToConfirm } from "@/components/billing/pay-links-to-confirm";
 import { EmptyState } from "@/components/common/empty-state";
@@ -125,6 +125,7 @@ function BillingPage() {
 
   // Same sums as the Dashboard (payments by the day they were received).
   const money = buildFinanceSummary(payments.data, invoices.data, [], [], period.from, period.to);
+  const oldOnDay = oldMoneyOnDay(payments.data, period.from, period.to);
   const billsInPeriod = invoices.data.filter(
     (i) => i.invoiceDate >= period.from && i.invoiceDate <= period.to,
   );
@@ -137,8 +138,10 @@ function BillingPage() {
     {
       id: "collected",
       label: `Collected · ${period.label}`,
-      value: formatPrice(money.gross),
-      hint: money.refunded
+      value: formatPrice(money.gross - oldOnDay),
+      hint: oldOnDay
+        ? `+ ${formatPrice(oldOnDay)} paid in the old software (not taken today)`
+        : money.refunded
         ? `after ${formatPrice(money.refunded)} given back · gym income ${formatPrice(money.gymIncome)}`
         : `gym income ${formatPrice(money.gymIncome)}`,
       icon: CalendarDays,
