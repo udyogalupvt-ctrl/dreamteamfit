@@ -10,7 +10,7 @@ service cloud.firestore {
     // Owner accounts. Keep in sync with OWNER_EMAILS in src/constants/owners.ts.
     function isOwner() {
       return request.auth != null
-        && request.auth.token.email in ['rebuildfitnesskkd@gmail.com', 'admin@elevategym.com'];
+        && request.auth.token.email in ['rebuildfitnesskkd@gmail.com'];
     }
     function accessPath() {
       return /databases/$(database)/documents/staffAccess/$(request.auth.uid);
