@@ -5,7 +5,7 @@ Branch `cfo-v1`, local commits only. Contracts: `src/lib/cfo/types.ts`.
 Reviewed 2026-10-06 by three independent reviewers (maths, code, owner/safety); their fixes are in.
 
 ## 1. Architecture
-
+   
 ```
 Firestore ──(single-field queries, getAll)──> src/server/cfo-data.ts ──CfoInput──> src/lib/cfo (pure maths)
                                                                                   │
