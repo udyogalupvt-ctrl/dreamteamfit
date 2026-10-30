@@ -53,3 +53,7 @@ serviceAccount*.json
 # Python cache
 __pycache__/
 *.pyc
+
+.env.vercel
+
+.env*
