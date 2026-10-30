@@ -1,8 +1,8 @@
 # Handoff
 
-Last updated: 2026-10-30 (wrong-thumb fix 21a0e51 on `five-features`, LOCAL only; needs rules deploy + push with founder OK. Live = main c0d4e0f. History: `docs/archive/HANDOFF-history-to-2026-10-22.md`, `docs/archive/HANDOFF-history-2026-10-22-to-24.md`)
+Last updated: 2026-10-30 (wrong-thumb fix LIVE: main 494620f, /api/version = 494620f4eba0; rules 5377c302. History: `docs/archive/HANDOFF-history-to-2026-10-22.md`, `docs/archive/HANDOFF-history-2026-10-22-to-24.md`)
 
-## State: wrong-thumb fix on `five-features` (2026-10-30, 21a0e51, NOT live)
+## State: wrong-thumb fix LIVE (2026-10-30, 21a0e51, main 494620f)
 
 - Problem: another member's finger got registered for a member. Now: member page → Entry (thumb) →
   "Wrong thumb? Register again" (confirm). Server task `thumb_reset` (src/server/biometric.ts `resetThumb`,
@@ -12,11 +12,12 @@ Last updated: 2026-10-30 (wrong-thumb fix 21a0e51 on `five-features`, LOCAL only
   Then the normal "Register thumb" shows. Staff dialog "Register again" does the same first, then the form opens.
 - Checks: tsc OK, unit 505/505, rules 72/72 (thumb_reset cases added), build OK, local E2E 14/14
   (scratchpad 9c17ca11…/k/rethumb_local.py, `bash regress.sh rethumb_local.py`; shots in shots_rethumb/).
-- To go live: production rules deploy (firestore.rules adds 'thumb_reset' to the note list) BEFORE the code
-  push (old rules refuse the note: button would show an error), then merge to main + push. Both need founder OK.
+- SHIPPED 2026-10-30 (founder OK): production rules 5377c302 deployed first (matches file; old ruleset 9d846f06 backup
+  in scratchpad 74f47232…/live_rules_backup_2026-10-30.txt), then main + five-features pushed, live build 494620f4eba0.
+  Founder confirmed it works live.
 - Visits logged under the wrong member while the wrong thumb was on: remove them with the existing remove-visit button.
 
-## Earlier state: LIVE main c0d4e0f (2026-10-24)
+## Earlier state: main c0d4e0f (2026-10-24)
 
 - Collected today: a ONE-day "Collected" (Dashboard card + its list, Billing card) leaves out money paid in the
   old software (its date = the old plan's start; the old export has no payment date) and shows it apart, like the
