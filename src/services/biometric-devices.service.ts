@@ -113,6 +113,42 @@ export const subscribeClientBiometricCommands = (
     fail,
   );
 
+/**
+ * Wrong thumb registered (someone else's finger): asks the server to take this person off the
+ * machine, erase the saved thumb and mark them "thumb not registered". It happens at the
+ * machine's next check-in; the server first checks the machine ID is really theirs.
+ */
+export async function requestThumbReset(
+  who: { clientId: string } | { staffId: string },
+  pin: string,
+  deviceId: string,
+  by: string,
+) {
+  const now = serverTimestamp();
+  const ref = await addDoc(col(COLLECTIONS.biometricCommands), {
+    type: "thumb_reset",
+    clientId: "clientId" in who ? who.clientId : "",
+    staffId: "staffId" in who ? who.staffId : "",
+    deviceId,
+    biometricUserId: pin,
+    serialNumber: "",
+    enrollmentId: null,
+    command: "",
+    order: 0,
+    door: false,
+    requestedBy: by.slice(0, 60),
+    status: "pending",
+    cmdNo: null,
+    returnCode: null,
+    error: "",
+    sentAt: null,
+    completedAt: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return ref.id;
+}
+
 const devices = () => col(COLLECTIONS.biometricDevices);
 
 export async function saveDevice(input: DeviceInput, id?: string) {

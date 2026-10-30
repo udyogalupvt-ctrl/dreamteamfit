@@ -374,7 +374,7 @@ service cloud.firestore {
       return d.status == 'pending'
         && d.biometricUserId is string && d.biometricUserId.matches('[A-Za-z0-9]{0,24}')
         && d.command is string
-        && ((d.type in ['door_check', 'forget', 'bin_off', 'staff_off', 'photo_sync'] && d.command == '')
+        && ((d.type in ['door_check', 'forget', 'bin_off', 'staff_off', 'photo_sync', 'thumb_reset'] && d.command == '')
           || (d.type == 'user_upsert' && d.biometricUserId.matches('[0-9]{1,9}')
             && d.command.matches('DATA UPDATE USERINFO PIN=' + d.biometricUserId
               + '\tName=[^\t\r\n]{0,40}\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000100000000\tVerify=0'))

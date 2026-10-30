@@ -70,6 +70,7 @@ const COMMAND_TEXT: Record<string, [string, string]> = {
   query_fp: ["Device asked to confirm the new thumb", "Device"],
   delete_user: ["Removed from the door device", "System (automatic)"],
   restore_fp: ["Thumb restored on the door device", "System (automatic)"],
+  thumb_reset: ["Wrong thumb removed, to register the right one", "Staff"],
 };
 
 /**

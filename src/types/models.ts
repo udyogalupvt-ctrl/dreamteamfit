@@ -449,6 +449,8 @@ export const BIOMETRIC_COMMAND_TYPES = [
   "query_fp",
   "delete_user",
   "restore_fp",
+  /** Server task: takes a wrongly registered thumb off the machine and out of the app. */
+  "thumb_reset",
 ] as const;
 export type BiometricCommandType = (typeof BIOMETRIC_COMMAND_TYPES)[number];
 export const BIOMETRIC_COMMAND_STATUSES = [

@@ -75,6 +75,9 @@ test("door notes carry no command and a clean machine ID", async () => {
   await assertSucceeds(add(desk, note("forget", { biometricUserId: "IIFM12" })));
   await assertSucceeds(add(desk, note("bin_off", { biometricUserId: "12" })));
   await assertSucceeds(add(desk, note("staff_off", { biometricUserId: "7", staffId: "s1" })));
+  await assertSucceeds(add(desk, note("thumb_reset", { biometricUserId: "12" })));
+  await assertSucceeds(add(desk, note("thumb_reset", { biometricUserId: "7", staffId: "s1" })));
+  await assertFails(add(desk, note("thumb_reset", { command: "DATA DELETE USERINFO PIN=13" })));
   await assertFails(add(desk, note("forget", { biometricUserId: "1\nC:9:CLEAR DATA" })));
   await assertFails(add(desk, note("forget", { biometricUserId: "1 2" })));
   await assertFails(add(desk, note("door_check", { command: "CLEAR DATA" })));

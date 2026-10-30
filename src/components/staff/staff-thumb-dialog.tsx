@@ -15,7 +15,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLive } from "@/hooks/use-live-query";
-import { deviceConnection, subscribeDevices } from "@/services/biometric-devices.service";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  deviceConnection,
+  requestThumbReset,
+  subscribeDevices,
+} from "@/services/biometric-devices.service";
 import { firestoreErrorMessage } from "@/services/firestore.service";
 import {
   cancelStaffFingerprintRequest,
@@ -32,6 +37,7 @@ import type { BiometricCommand, BiometricDevice, Staff } from "@/types/models";
  */
 export function StaffThumbDialog({ staff, onClose }: { staff: Staff | null; onClose: () => void }) {
   const now = useNow(1000);
+  const { user } = useAuth();
   const devices = useLive<BiometricDevice[]>(subscribeDevices, [], []);
   const usable = useMemo(
     () =>
@@ -48,7 +54,6 @@ export function StaffThumbDialog({ staff, onClose }: { staff: Staff | null; onCl
   const [deviceId, setDeviceId] = useState("");
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
-  const [again, setAgain] = useState(false);
   // Only this window's request drives the status; old attempts stay in history.
   const [requestId, setRequestId] = useState<string | null>(null);
   const [requestedAfter, setRequestedAfter] = useState(() => Date.now() - 15 * 60 * 1000);
@@ -56,7 +61,6 @@ export function StaffThumbDialog({ staff, onClose }: { staff: Staff | null; onCl
   useEffect(() => {
     setRequestId(null);
     setRequestedAfter(Date.now() - 15 * 60 * 1000);
-    setAgain(false);
     setPin("");
     setDeviceId(staff?.biometricDeviceId ?? "");
   }, [staff?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -83,7 +87,31 @@ export function StaffThumbDialog({ staff, onClose }: { staff: Staff | null; onCl
     phase.kind === "waiting_device" ||
     phase.kind === "place_thumb" ||
     (phase.kind === "confirming" && now - stepAt < 90_000);
-  const registered = Boolean(staff?.firstThumbRegistered) && !again;
+  const registered = Boolean(staff?.firstThumbRegistered);
+  // Register again first takes the old thumb off the machine (it may be someone else's finger),
+  // then the form opens by itself once the server marks them "not registered".
+  const reset = cmds.data.find(
+    (c) => c.type === "thumb_reset" && now - c.createdAt.getTime() < 3600_000,
+  );
+  const resetting = !!reset && ["pending", "sent"].includes(reset.status);
+  const registerAgain = async () => {
+    if (!staff) return;
+    setBusy(true);
+    try {
+      await requestThumbReset(
+        { staffId: staff.id },
+        staff.biometricUserId,
+        staff.biometricDeviceId ?? "",
+        user?.displayName || user?.email || "Staff",
+      );
+      setRequestId(null);
+      setRequestedAfter(Date.now());
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const start = async () => {
     if (!staff || !device || !pin) return;
@@ -93,7 +121,6 @@ export function StaffThumbDialog({ staff, onClose }: { staff: Staff | null; onCl
       setRequestedAfter(Date.now() - 5000);
       const id = await requestStaffFingerprint(staff, device, pin);
       setRequestId(id);
-      setAgain(false);
       toast.success("Sent to the machine", {
         description: "Ask them to place the right thumb on the scanner 3 times.",
       });
@@ -125,15 +152,12 @@ export function StaffThumbDialog({ staff, onClose }: { staff: Staff | null; onCl
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
-          {registered ? (
-            <Button
-              variant="outline"
-              onClick={() => {
-                setAgain(true);
-                setRequestId(null);
-                setRequestedAfter(Date.now());
-              }}
-            >
+          {registered && resetting ? (
+            <Button variant="outline" onClick={() => cancel()}>
+              <X aria-hidden /> Cancel
+            </Button>
+          ) : registered ? (
+            <Button variant="outline" disabled={busy} onClick={() => registerAgain()}>
               <RotateCcw aria-hidden /> Register again
             </Button>
           ) : active ? (
@@ -160,7 +184,11 @@ export function StaffThumbDialog({ staff, onClose }: { staff: Staff | null; onCl
           <CheckCircle2 className="size-12 text-success" aria-hidden />
           <p className="text-card-title">Thumb registered · ID {staff.biometricUserId}</p>
           <p className="text-meta max-w-sm">
-            Confirmed by the machine. Their punches now count as staff attendance.
+            {resetting
+              ? "Removing this thumb from the machine at its next check-in (usually within 15–30 s). Then the form to register again opens here."
+              : reset?.status === "failed"
+                ? `Could not remove the old thumb: ${reset.error || "the machine did not answer"}`
+                : "Confirmed by the machine. Their punches now count as staff attendance. Wrong finger registered? Register again removes it first."}
           </p>
         </div>
       ) : devices.loading ? (

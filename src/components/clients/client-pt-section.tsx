@@ -14,7 +14,13 @@ import { StatusPill } from "@/components/common/status-pill";
 import { useEnrollment } from "@/components/enrollment/enrollment-context";
 import { useLive } from "@/hooks/use-live-query";
 import { formatDateISO, formatPrice, todayISO } from "@/lib/format";
-import { subscribeDevices } from "@/services/biometric-devices.service";
+import {
+  requestThumbReset,
+  subscribeClientBiometricCommands,
+  subscribeDevices,
+} from "@/services/biometric-devices.service";
+import { cancelFingerprintRequest } from "@/services/enrollment.service";
+import { useNow } from "@/lib/thumb-phase";
 import { setEntryBlocked } from "@/services/clients.service";
 import { EntryTimeline } from "@/components/clients/entry-timeline";
 import { PlanPriceText } from "@/components/clients/plan-price";
@@ -37,6 +43,7 @@ import {
   usePaymentEditRights,
 } from "@/components/billing/edit-payment-dialog";
 import type {
+  BiometricCommand,
   BiometricDevice,
   Booking,
   Client,
@@ -175,6 +182,34 @@ export function ClientBiometricCard({ client }: { client: Client }) {
     [client.id],
   );
   const devices = useLive<BiometricDevice[]>(subscribeDevices, [], []);
+  const commands = useLive<BiometricCommand[]>(
+    (ok, fail) => subscribeClientBiometricCommands(client.id, ok, fail),
+    [],
+    [client.id],
+  );
+  const now = useNow(5000);
+  const [askReset, setAskReset] = useState(false);
+  // The newest "wrong thumb" removal of the last hour (the list is newest first).
+  const reset = commands.data.find(
+    (c) => c.type === "thumb_reset" && now - c.createdAt.getTime() < 3600_000,
+  );
+  const resetWaiting = reset && ["pending", "sent"].includes(reset.status);
+  const startReset = async () => {
+    setAskReset(false);
+    try {
+      await requestThumbReset(
+        { clientId: client.id },
+        client.biometricUserId,
+        client.biometricDeviceId ?? "",
+        by,
+      );
+      toast.success("Removing the wrong thumb", {
+        description: "Done at the machine's next check-in, usually within 15–30 seconds.",
+      });
+    } catch (e) {
+      toast.error(firestoreErrorMessage(e));
+    }
+  };
   const today = todayISO();
   const device = devices.data.find((d) => d.id === client.biometricDeviceId);
   const plan = client.currentMembership;
@@ -249,20 +284,54 @@ export function ClientBiometricCard({ client }: { client: Client }) {
       </dl>
       {note ? <p className="text-meta mt-3">{note}</p> : null}
       {client.firstThumbRegistered ? <EntryTimeline client={client} /> : null}
+      {resetWaiting ? (
+        <div role="status" className="bg-warning/10 mt-3 rounded-lg p-3 text-sm">
+          <p className="font-medium">Removing the wrong thumb…</p>
+          <p className="text-meta mt-0.5">
+            At the machine's next check-in (usually within 15–30 s). Then register the right
+            person's thumb here.
+          </p>
+        </div>
+      ) : reset?.status === "failed" && client.firstThumbRegistered ? (
+        <p role="alert" className="text-destructive mt-3 text-sm">
+          Could not remove the old thumb: {reset.error || "the machine did not answer"}
+        </p>
+      ) : reset?.status === "done" && !client.firstThumbRegistered ? (
+        <p className="text-meta mt-3">
+          Old thumb removed from the machine and the app. Register the right person's thumb now.
+        </p>
+      ) : null}
       {!client.firstThumbRegistered ? (
         <Button className="mt-4" onClick={() => resumeSetup(client)}>
           <Fingerprint /> Register thumb
         </Button>
       ) : (
-        <Button
-          className="mt-4"
-          variant={blocked ? "default" : "outline"}
-          onClick={() => setBlocked(!blocked)}
-        >
-          {blocked ? <ShieldCheck aria-hidden /> : <ShieldX aria-hidden />}
-          {blocked ? "Allow entry" : "Block entry"}
-        </Button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button variant={blocked ? "default" : "outline"} onClick={() => setBlocked(!blocked)}>
+            {blocked ? <ShieldCheck aria-hidden /> : <ShieldX aria-hidden />}
+            {blocked ? "Allow entry" : "Block entry"}
+          </Button>
+          {resetWaiting ? (
+            <Button variant="ghost" onClick={() => void cancelFingerprintRequest(client.id)}>
+              Cancel removal
+            </Button>
+          ) : (
+            <Button variant="ghost" onClick={() => setAskReset(true)}>
+              <RotateCcw aria-hidden /> Wrong thumb? Register again
+            </Button>
+          )}
+        </div>
       )}
+      <ConfirmDialog
+        open={askReset}
+        onOpenChange={setAskReset}
+        title="Remove this thumb and register again?"
+        description={`Use this when someone else's finger was registered for ${client.fullName} by mistake. The saved thumb (ID ${client.biometricUserId || "—"}) is taken off the machine and out of the app at its next check-in. Until the right thumb is registered, ${client.fullName} can't enter by thumb.`}
+        confirmLabel="Remove thumb"
+        cancelLabel="Keep it"
+        destructive
+        onConfirm={() => void startReset()}
+      />
     </section>
   );
 }

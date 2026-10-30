@@ -53,6 +53,7 @@ const SERVER_TASKS = new Set([
   "staff_off",
   "photo_sync",
   "users_gone",
+  "thumb_reset",
 ]);
 /** Machine requests that expire if the machine doesn't pick them up in time. */
 const STALE_WHEN_LATE = new Set(["user_upsert", "import_check", "import_users", "import_fp"]);
@@ -182,7 +183,7 @@ async function claim(ref: DocumentReference) {
  * Someone still in the app who uses this machine ID on this machine (never taken off by a note).
  * Without a machine nothing is sent to one, so nobody is at risk.
  */
-async function pinInUse(pin: string, deviceId: string) {
+async function pinInUse(pin: string, deviceId: string, except = "") {
   if (!deviceId) return false;
   const same = (x: FirebaseFirestore.DocumentData) =>
     !x["biometricDeviceId"] || String(x["biometricDeviceId"]) === deviceId;
@@ -191,8 +192,8 @@ async function pinInUse(pin: string, deviceId: string) {
     db().collection("staff").where("biometricUserId", "==", pin).limit(5).get(),
   ]);
   return (
-    clients.docs.some((c) => same(c.data())) ||
-    staff.docs.some((s) => s.data()["active"] !== false && same(s.data()))
+    clients.docs.some((c) => c.id !== except && same(c.data())) ||
+    staff.docs.some((s) => s.id !== except && s.data()["active"] !== false && same(s.data()))
   );
 }
 
@@ -203,10 +204,23 @@ async function pinInUse(pin: string, deviceId: string) {
  */
 async function taskRefusal(d: FirebaseFirestore.DocumentData) {
   const type = String(d["type"] ?? "");
-  if (!["staff_off", "forget", "bin_off"].includes(type)) return "";
+  if (!["staff_off", "forget", "bin_off", "thumb_reset"].includes(type)) return "";
   const pin = String(d["biometricUserId"] ?? "");
   const deviceId = String(d["deviceId"] ?? "");
   if (pin && !pinOk(pin)) return "the machine ID has characters a machine ID can't have";
+  if (type === "thumb_reset") {
+    // Only the thumb the app has for this person, under the ID they have now: never someone
+    // else's (a staff login can edit the ID on a member's record).
+    const staffId = String(d["staffId"] ?? "");
+    const id = staffId || String(d["clientId"] ?? "");
+    if (!id || id.includes("/")) return "no member or staff member named";
+    const p = await db().doc(`${staffId ? "staff" : "clients"}/${id}`).get();
+    if (!p.exists) return "this person is not in the app";
+    if (String(p.data()?.["biometricUserId"] ?? "") !== pin) return "that machine ID is not theirs";
+    const onDevice = String(p.data()?.["biometricDeviceId"] ?? "");
+    if (pin && (await pinInUse(pin, onDevice, id))) return "that machine ID belongs to someone else too";
+    return "";
+  }
   if (type === "staff_off") {
     const staffId = String(d["staffId"] ?? "");
     if (!staffId) return "no staff member named";
@@ -254,6 +268,12 @@ async function runServerTasks(tasks: QueryDocumentSnapshot[]) {
           String(d["deviceId"] ?? ""),
         );
       else if (d["type"] === "photo_sync") await queueMemberPhoto(String(d["clientId"]));
+      else if (d["type"] === "thumb_reset")
+        await resetThumb(
+          String(d["clientId"] ?? ""),
+          String(d["staffId"] ?? ""),
+          String(d["requestedBy"] ?? "").slice(0, 60),
+        );
       else if (d["type"] === "users_gone")
         await markGoneUsers(
           {
@@ -1191,6 +1211,86 @@ async function forgetDeletedMember(clientId: string, pin: string, deviceId: stri
       }),
     ),
   );
+}
+
+/**
+ * Wrong thumb registered (someone else put their finger on the machine): the person is taken off
+ * the machine with every finger on it, the app's saved copy is erased, and they are marked "thumb
+ * not registered" so staff can register the right thumb. Any thumb sent for them from now on only
+ * counts once staff start that new registration.
+ */
+async function resetThumb(clientId: string, staffId: string, by: string) {
+  const firestore = db();
+  const field = staffId ? "staffId" : "clientId";
+  const id = staffId || clientId;
+  const ref = firestore.doc(`${staffId ? "staff" : "clients"}/${id}`);
+  const snap = await ref.get();
+  if (!snap.exists) return;
+  const p = snap.data() ?? {};
+  const pin = String(p["biometricUserId"] ?? "");
+  const deviceId = String(p["biometricDeviceId"] ?? "");
+  const device = deviceId
+    ? (await firestore.doc(`biometricDevices/${deviceId}`).get()).data()
+    : null;
+  const now = FieldValue.serverTimestamp();
+  // The old registration no longer counts as "staff are registering now", so a late upload of the
+  // wrong finger can't come back as this person's thumb.
+  const old = await firestore.collection("biometricCommands").where(field, "==", id).get();
+  await Promise.all(
+    old.docs
+      .filter((d) => {
+        const x = d.data();
+        if (x["door"] === true || x["status"] === "cancelled") return false;
+        if (["enroll_fp", "query_fp"].includes(String(x["type"]))) return true;
+        return x["type"] === "user_upsert" && ["pending", "sent"].includes(String(x["status"]));
+      })
+      .map((d) =>
+        d.ref.update({ status: "cancelled", error: "Old thumb removed", updatedAt: now }),
+      ),
+  );
+  if (pin && device?.["integrationType"] === "adms")
+    await firestore.collection("biometricCommands").add({
+      deviceId,
+      serialNumber: String(device["serialNumber"] ?? ""),
+      clientId: staffId ? "" : clientId,
+      ...(staffId ? { staffId } : {}),
+      enrollmentId: null,
+      biometricUserId: pin,
+      status: "pending",
+      door: true,
+      type: "delete_user",
+      order: 1,
+      command: `DATA DELETE USERINFO PIN=${pin}`,
+      cmdNo: null,
+      returnCode: null,
+      error: "",
+      sentAt: null,
+      completedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  if (staffId) {
+    await ref.update({ firstThumbRegistered: false, updatedAt: now });
+  } else {
+    await firestore.doc(`biometricTemplates/${clientId}`).delete();
+    await ref.update({
+      firstThumbRegistered: false,
+      // Blocked by staff stays blocked; the new thumb won't open the door until Allow entry.
+      biometricStatus: p["biometricStatus"] === "disabled" ? "disabled" : "not_enrolled",
+      enrollmentId: null,
+      // The new registration puts them back on the machine; the door check then takes a blocked
+      // or expired member off again.
+      deviceAccess: "on",
+      deviceAccessChangedAt: now,
+      updatedAt: now,
+    });
+  }
+  await systemAudit({
+    collection: staffId ? "staff" : "clients",
+    docId: id,
+    summary: `Wrong thumb removed to register again: ${String(p[staffId ? "name" : "fullName"] ?? "")} (ID ${pin || "none"}${by ? `, asked by ${by}` : ""})`,
+    ...(staffId ? {} : { clientId, clientName: String(p["fullName"] ?? "") }),
+  });
 }
 
 /**
