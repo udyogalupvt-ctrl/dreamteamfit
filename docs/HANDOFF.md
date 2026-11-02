@@ -1,6 +1,6 @@
 # Handoff
 
-Last updated: 2026-10-30 (wrong-thumb fix LIVE: main 494620f, /api/version = 494620f4eba0; rules 5377c302. History: `docs/archive/HANDOFF-history-to-2026-10-22.md`, `docs/archive/HANDOFF-history-2026-10-22-to-24.md`)
+Last updated: 2026-11-02 (WhatsApp fix a9938fb local, needs founder OK to push; before: wrong-thumb fix LIVE: main 494620f, /api/version = 494620f4eba0; rules 5377c302. History: `docs/archive/HANDOFF-history-to-2026-10-22.md`, `docs/archive/HANDOFF-history-2026-10-22-to-24.md`)
 
 ## State: wrong-thumb fix LIVE (2026-10-30, 21a0e51, main 494620f)
 
@@ -17,20 +17,19 @@ Last updated: 2026-10-30 (wrong-thumb fix LIVE: main 494620f, /api/version = 494
   Founder confirmed it works live.
 - Visits logged under the wrong member while the wrong thumb was on: remove them with the existing remove-visit button.
 
-## Earlier state: main c0d4e0f (2026-10-24)
+## State: WhatsApp over-messaging fix (2026-11-02, a9938fb, LOCAL only, not pushed)
 
-- Collected today: a ONE-day "Collected" (Dashboard card + its list, Billing card) leaves out money paid in the
-  old software (its date = the old plan's start; the old export has no payment date) and shows it apart, like the
-  Day Book. Month totals and reports still count it. Helper `oldMoneyOnDay` in `lib/periods.ts`. Live check:
-  24 Oct shows ₹0 + "₹7,500 paid in the old software" (Govindha Rao ₹5,000, R.KAVITHA ₹2,500, plans start today).
-- Member 46 (B.Karthikeya) carry: the "clear that first" block now only counts old-marked rows of the SAME kind
-  as the old plan (a PT hand-entry can't be a copy of an old gym plan). Founder-authorised, Claude pressed
-  "Add it here, as it is" live: Annual Package (1 Dec 2025 → 30 Nov 2026) now active, thumb being added back.
-  Left as is: his PT plan 17 Sep → 16 Oct "Paid in the old software" (₹12,000 price) that the old records don't
-  have: owner decides if it was really paid there or here (would be money missing from October).
-- Checks: tsc OK, unit 505/505, build OK. `.gitignore` local edit (`.env*`) is not ours, left uncommitted.
+- Missed-workout nudge counts only OPEN days: Sundays + gym holidays skipped, no nudge on those nights
+  (`gymClosed`/`openDaysMissed` in src/lib/reminders.ts). Settings → Reminders → "Gym holidays" list
+  (settings/automation `holidays: string[]`, ISO dates; rules unchanged).
+- Balance due: was daily for N+1 days; now one message N days before + one on the due day
+  (`paymentDueToday`), max one per member per day.
+- Checks: unit tests pass, build OK, local E2E 8/8 (scratchpad 9c17ca11…/k/holidays_local.py; shots_holidays/).
+- Javani (other repo, a55db98 local): fee reminders 3 per fee (5 days before, due day, 3 days late), late rental every 72 h.
 
 ## Next steps
+
+- Push a9938fb (Rebuild) and a55db98 (Javani) only on the founder's OK; no rules deploy needed. After push: add the gym's holidays in Settings → Reminders.
 
 1. **Live look (founder or Claude in the "gym" Chrome):** owner login, Settings → UPI section, member app health
    form / progress / feedback. Then founder decisions in 2.

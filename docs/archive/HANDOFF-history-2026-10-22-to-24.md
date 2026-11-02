@@ -51,3 +51,17 @@ Prod check for member 46: scratchpad a8c5924e…/prod_member46.mjs (read-only; t
   load; /staff /settings /recycle-bin /backup blocked). NOT checked live: Delete-bills bin, desk collect/undo (money
   write; emulator 17/17), fingerprint enroll (real door command).
 
+
+## Earlier state: main c0d4e0f (2026-10-24)
+
+- Collected today: a ONE-day "Collected" (Dashboard card + its list, Billing card) leaves out money paid in the
+  old software (its date = the old plan's start; the old export has no payment date) and shows it apart, like the
+  Day Book. Month totals and reports still count it. Helper `oldMoneyOnDay` in `lib/periods.ts`. Live check:
+  24 Oct shows ₹0 + "₹7,500 paid in the old software" (Govindha Rao ₹5,000, R.KAVITHA ₹2,500, plans start today).
+- Member 46 (B.Karthikeya) carry: the "clear that first" block now only counts old-marked rows of the SAME kind
+  as the old plan (a PT hand-entry can't be a copy of an old gym plan). Founder-authorised, Claude pressed
+  "Add it here, as it is" live: Annual Package (1 Dec 2025 → 30 Nov 2026) now active, thumb being added back.
+  Left as is: his PT plan 17 Sep → 16 Oct "Paid in the old software" (₹12,000 price) that the old records don't
+  have: owner decides if it was really paid there or here (would be money missing from October).
+- Checks: tsc OK, unit 505/505, build OK. `.gitignore` local edit (`.env*`) is not ours, left uncommitted.
+
