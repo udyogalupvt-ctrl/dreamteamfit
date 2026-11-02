@@ -16,6 +16,7 @@ export const DEFAULT_AUTOMATION_SETTINGS: AutomationSettings = {
   timezone: "Asia/Kolkata",
   pushEnabled: true,
   pushInsteadOfWhatsApp: false,
+  holidays: [],
 };
 export function renderTemplate(template: string, values: Record<string, string>) {
   return template.replace(/{{\s*(\w+)\s*}}/g, (_, key: string) => values[key] ?? "");

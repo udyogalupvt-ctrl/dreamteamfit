@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { remindsBalance, renewalReminderPlans, type ReminderPlan } from "./reminders.ts";
+import {
+  gymClosed,
+  openDaysMissed,
+  paymentDueToday,
+  remindsBalance,
+  renewalReminderPlans,
+  type ReminderPlan,
+} from "./reminders.ts";
 import { OLD_BALANCE_LINE } from "./old-money.ts";
 
 const plan = (over: Partial<ReminderPlan> = {}): ReminderPlan => ({
@@ -92,4 +99,30 @@ test("PT plans count: a PT-only member is reminded; a PT plan running longer mea
   assert.deepEqual(renewalReminderPlans([plan(), laterPt], T), []);
   // Gym and PT ending the same day: one message.
   assert.equal(renewalReminderPlans([plan(), plan({ id: "p3" })], T).length, 1);
+});
+
+// 2026-11-06 is a Friday, 2026-11-08 a Sunday.
+test("missed days skip Sundays", () => {
+  assert.equal(openDaysMissed("2026-11-06", "2026-11-09"), 2); // Sat, Mon
+  assert.equal(openDaysMissed("2026-11-06", "2026-11-10"), 3); // Sat, Mon, Tue
+});
+test("missed days skip holidays", () => {
+  assert.equal(openDaysMissed("2026-11-06", "2026-11-10", ["2026-11-09"]), 2); // Sat, Tue
+});
+test("a visit today means nothing missed", () => {
+  assert.equal(openDaysMissed("2026-11-10", "2026-11-10"), 0);
+});
+test("gym closed on Sundays and holidays only", () => {
+  assert.equal(gymClosed("2026-11-08"), true);
+  assert.equal(gymClosed("2026-11-09"), false);
+  assert.equal(gymClosed("2026-11-09", ["2026-11-09"]), true);
+});
+test("balance due: N days before and on the day, not in between", () => {
+  const due = "2026-11-10";
+  assert.equal(paymentDueToday("2026-11-07", due, 3), true);
+  assert.equal(paymentDueToday("2026-11-08", due, 3), false);
+  assert.equal(paymentDueToday("2026-11-09", due, 3), false);
+  assert.equal(paymentDueToday("2026-11-10", due, 3), true);
+  assert.equal(paymentDueToday("2026-11-10", due, 0), true);
+  assert.equal(paymentDueToday("2026-11-09", due, 0), false);
 });

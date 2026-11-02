@@ -52,3 +52,37 @@ export const remindsBalance = (bill: ReminderBill) =>
   !isOldBalanceBill({ items: bill.items ?? [] }) ||
   bill.remindOldBalance === true ||
   (Number(bill.amountPaid) || 0) > 0;
+
+const isSunday = (iso: string) => new Date(`${iso}T12:00:00Z`).getUTCDay() === 0;
+const nextDay = (iso: string) => {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
+
+/** The gym is closed on Sundays and on the holidays set in Settings → Reminders. */
+export const gymClosed = (iso: string, holidays: readonly string[] = []) =>
+  isSunday(iso) || holidays.includes(iso);
+
+/**
+ * Missed-workout days: the days the gym was open after `since` (the last visit, or the plan
+ * start) up to and including `today`. Sundays and holidays don't count: a member who came on
+ * Friday has missed 2 days on Monday night, not 3.
+ */
+export function openDaysMissed(since: string, today: string, holidays: readonly string[] = []) {
+  let n = 0;
+  for (let d = nextDay(since); d <= today; d = nextDay(d)) if (!gymClosed(d, holidays)) n += 1;
+  return n;
+}
+
+/**
+ * Balance-due reminders go twice per bill: `before` days ahead of the next payment date and on
+ * the day itself (not every day in between).
+ */
+export function paymentDueToday(today: string, dueDate: string, before: number) {
+  if (dueDate === today) return true;
+  const ahead = Math.round(
+    (Date.parse(`${dueDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000,
+  );
+  return before > 0 && ahead === before;
+}

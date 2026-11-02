@@ -7,6 +7,7 @@ import {
   Fingerprint,
   Loader2,
   MessageCircle,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -626,7 +627,7 @@ function ReminderSettings() {
         ) : null}
         <ToggleRow
           label="Balance due reminders"
-          hint="WhatsApp with the balance and bill link, once a day (about 8 AM) from a few days before the next payment date until that day."
+          hint="WhatsApp with the balance and bill link (about 8 AM): once a few days before the next payment date and once on that day."
           checked={f.automationEnabled && f.paymentDueEnabled}
           onChange={(v) =>
             setF((x) => ({
@@ -641,7 +642,7 @@ function ReminderSettings() {
             label="Start reminders this many days before"
             htmlFor="pd-days"
             className="sm:max-w-xs"
-            hint="3 = messages 3, 2 and 1 day before, and on the day. 0 = only on the day."
+            hint="3 = one message 3 days before and one on the day. 0 = only on the day."
           >
             <Input
               id="pd-days"
@@ -690,7 +691,7 @@ function ReminderSettings() {
             label="Send after this many days without a thumb punch"
             htmlFor="abs-days"
             className="sm:max-w-xs"
-            hint="Checked every night at 9:30 PM after closing. One message per absence; sent again only after they come back and miss again."
+            hint="Counts only days the gym is open: Sundays and the holidays below are skipped, and nothing is sent on those nights. Checked every night at 9:30 PM after closing. One message per absence; sent again only after they come back and miss again."
           >
             <Input
               id="abs-days"
@@ -702,8 +703,72 @@ function ReminderSettings() {
             />
           </Field>
         ) : null}
+        {f.absenceEnabled ? (
+          <GymHolidays value={f.holidays ?? []} onChange={(v) => set("holidays", v)} />
+        ) : null}
       </div>
     </FormSection>
+  );
+}
+
+/** Days the gym is closed besides Sundays (festivals, maintenance). Old ones drop off after 60 days. */
+function GymHolidays({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const [day, setDay] = useState("");
+  const cutoff = new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10);
+  const add = () => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+    onChange([...new Set([...value, day])].filter((d) => d >= cutoff).sort());
+    setDay("");
+  };
+  const pretty = (iso: string) =>
+    new Intl.DateTimeFormat("en-IN", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(new Date(`${iso}T00:00:00Z`));
+  return (
+    <Field
+      label="Gym holidays"
+      htmlFor="gym-holiday"
+      hint="Days the gym is closed besides Sundays (festivals, maintenance). Members are not counted as missing a workout on these days. Press Save reminders after changing."
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          id="gym-holiday"
+          type="date"
+          className="w-auto"
+          value={day}
+          onChange={(e) => setDay(e.target.value)}
+        />
+        <Button type="button" variant="outline" onClick={add} disabled={!day}>
+          Add holiday
+        </Button>
+      </div>
+      {value.length ? (
+        <ul className="mt-2 flex flex-wrap gap-2">
+          {value.map((d) => (
+            <li
+              key={d}
+              className="flex items-center gap-1 rounded-full border bg-muted/40 py-1 pr-1 pl-3 text-sm"
+            >
+              {pretty(d)}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7 rounded-full"
+                aria-label={`Remove ${pretty(d)}`}
+                onClick={() => onChange(value.filter((x) => x !== d))}
+              >
+                <X className="size-3.5" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </Field>
   );
 }
 

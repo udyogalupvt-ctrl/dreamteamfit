@@ -1047,7 +1047,7 @@ export interface AutomationSettings {
   absenceEnabled: boolean;
   absenceDays: number;
   /** WhatsApp on the next payment date when a balance is due. */ paymentDueEnabled: boolean;
-  /** Daily reminders start this many days before the next payment date. */
+  /** The first reminder goes this many days before the next payment date (the second on the day). */
   paymentDueDaysBefore: number;
   renewalTemplate: string;
   birthdayTemplate: string;
@@ -1056,6 +1056,8 @@ export interface AutomationSettings {
   pushEnabled: boolean;
   /** Reminders go by WhatsApp only to members whose phones didn't get the app notification. */
   pushInsteadOfWhatsApp: boolean;
+  /** Days the gym is closed (YYYY-MM-DD), besides every Sunday: not counted as missed workouts. */
+  holidays: string[];
 }
 
 export const WHATSAPP_MESSAGE_TYPES = [

@@ -17,7 +17,13 @@ import {
   type CurrentRow,
   type CurrentSummary,
 } from "@/lib/current-plan";
-import { remindsBalance, renewalReminderPlans } from "@/lib/reminders";
+import {
+  gymClosed,
+  openDaysMissed,
+  paymentDueToday,
+  remindsBalance,
+  renewalReminderPlans,
+} from "@/lib/reminders";
 import { sendTemplateMessage, whatsappNumber } from "./whatsapp";
 
 type Kind = "renewal" | "birthday" | "absence" | "payment_due";
@@ -71,6 +77,7 @@ async function settings() {
     renewalTemplate: "Hi {{name}}, your membership expires on {{expiryDate}}.",
     birthdayTemplate: "Happy Birthday {{name}}!",
     pushInsteadOfWhatsApp: false,
+    holidays: [] as string[],
     ...s.data(),
   };
 }
@@ -332,8 +339,9 @@ export async function processBirthdayNotifications() {
 }
 
 /**
- * Balance due: one WhatsApp a day from `paymentDueDaysBefore` days before the next payment date
- * up to that date, with the balance and a View bill button (template gym_payment_due, Utility).
+ * Balance due: a WhatsApp `paymentDueDaysBefore` days before the next payment date and one on that
+ * date, with the balance and a View bill button (template gym_payment_due, Utility). A member with
+ * two bills due gets one message a day (the bill due first).
  */
 export async function processPaymentDueReminders() {
   const cfg = await settings();
@@ -347,8 +355,13 @@ export async function processPaymentDueReminders() {
     .where("dueDate", "<=", plus(today, before))
     .get();
   let sent = 0;
-  for (const b of bills.docs) {
+  const messaged = new Set<string>();
+  const ordered = [...bills.docs].sort((a, b) =>
+    String(a.data()["dueDate"]).localeCompare(String(b.data()["dueDate"])),
+  );
+  for (const b of ordered) {
     const inv = b.data();
+    if (!paymentDueToday(today, String(inv["dueDate"]), before)) continue;
     const balance = Number(inv["balanceDue"] ?? 0);
     if (!(balance > 0) || inv["paymentStatus"] === "refunded" || !inv["clientId"]) continue;
     // A balance carried over from the old software only once staff confirmed it is still owed.
@@ -360,6 +373,7 @@ export async function processPaymentDueReminders() {
       })
     )
       continue;
+    if (messaged.has(String(inv["clientId"]))) continue;
     const cs = await db()
       .doc(`clients/${String(inv["clientId"])}`)
       .get();
@@ -376,6 +390,7 @@ export async function processPaymentDueReminders() {
       `Hi ${c.fullName}, ₹${amount} is due on ${pretty(dueDate)} on bill ${String(inv["invoiceNumber"] ?? "")}.`,
       { invoiceId: b.id, balanceDue: balance, dueDate, type: "payment_due" },
     );
+    messaged.add(c.id);
     if (!queued) continue;
     sent += 1;
     await deliver(
@@ -414,13 +429,12 @@ const QUOTES = [
 ];
 const pickQuote = (key: string) =>
   QUOTES[[...key].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) >>> 0, 7) % QUOTES.length]!;
-const daysBetween = (from: string, to: string) =>
-  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 
 /**
  * Missed-workout nudge (off by default; Settings → Reminders). A member with a running plan and a
- * registered thumb whose last allowed thumb punch is `absenceDays` or more days ago gets ONE
- * message per absence. It repeats only after they come back and miss again.
+ * registered thumb who has missed `absenceDays` or more OPEN days since their last allowed thumb
+ * punch gets ONE message per absence (Sundays and gym holidays are not missed days, and nothing
+ * goes out on those nights). It repeats only after they come back and miss again.
  */
 export async function processAbsenceNudges() {
   const cfg = await settings();
@@ -428,6 +442,8 @@ export async function processAbsenceNudges() {
   const wa = await whatsappSettings();
   const minDays = Math.max(2, Number(cfg.absenceDays) || 3);
   const today = localDate();
+  const holidays = Array.isArray(cfg.holidays) ? cfg.holidays.map(String) : [];
+  if (gymClosed(today, holidays)) return 0;
   // Each member's last allowed visit is kept on their record (lastVisitDate, set at punch time),
   // so this never reads the attendance history.
   const [clients, plans, pts] = await Promise.all([
@@ -452,7 +468,7 @@ export async function processAbsenceNudges() {
     // from the old machine mid-plan, from the day it was linked: earlier visits aren't here).
     const from = c.thumbSince && c.thumbSince > planStart ? c.thumbSince : planStart;
     const since = last && last >= from ? last : from;
-    const gap = daysBetween(since, today);
+    const gap = openDaysMissed(since, today, holidays);
     if (gap < minDays) continue;
     const key = id(c.id, "absence", since);
     const quote = pickQuote(key);
