@@ -301,7 +301,16 @@ export async function processRenewalReminders() {
         "renewal",
         key,
         c,
-        [c.fullName, wa.gymName, pretty(m.endDate)],
+        [
+          c.fullName,
+          wa.gymName,
+          pretty(m.endDate),
+          // gym_plan_renewal_due (Utility) also says the days left; the old Marketing template
+          // gym_membership_expiry takes 3 values only.
+          ...(wa.renewalTemplate === "gym_membership_expiry"
+            ? []
+            : [round.n === 0 ? "today" : round.n === 1 ? "1 day left" : `${round.n} days left`]),
+        ],
         wa,
         {
           title:
