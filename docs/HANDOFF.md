@@ -1,6 +1,6 @@
 # Handoff
 
-Last updated: 2026-11-03 (WhatsApp fix a9938fb pushed to GitHub on founder OK, Vercel builds it; before: wrong-thumb fix LIVE: main 494620f, /api/version = 494620f4eba0; rules 5377c302. History: `docs/archive/HANDOFF-history-to-2026-10-22.md`, `docs/archive/HANDOFF-history-2026-10-22-to-24.md`)
+Last updated: 2026-11-03 (reminder fixes b5f6f9f LOCAL, push on founder OK: expiry-day renewal, PT reminded alone, Meta-refused shows failed; WhatsApp fix a9938fb pushed to GitHub on founder OK, Vercel builds it; before: wrong-thumb fix LIVE: main 494620f, /api/version = 494620f4eba0; rules 5377c302. History: `docs/archive/HANDOFF-history-to-2026-10-22.md`, `docs/archive/HANDOFF-history-2026-10-22-to-24.md`)
 
 ## State: wrong-thumb fix LIVE (2026-10-30, 21a0e51, main 494620f)
 
