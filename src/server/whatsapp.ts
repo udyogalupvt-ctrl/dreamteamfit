@@ -371,6 +371,13 @@ async function webhook(request: Request, url: URL) {
         await firestore.runTransaction(async (tx) => {
           if ((await tx.get(eventRef)).exists) return;
           const target = matches.docs[0] ? await tx.get(matches.docs[0].ref) : null;
+          // A reminder Meta refuses after accepting it: Message History shows it as failed, not
+          // sent (191 members were blocked by Meta's marketing limit while showing "sent").
+          const refId = String(target?.data()?.["referenceId"] ?? "");
+          const notice =
+            state === "failed" && refId
+              ? await tx.get(firestore.doc(`notifications/${refId}`))
+              : null;
           tx.set(eventRef, {
             providerMessageId: providerId,
             status: state,
@@ -380,6 +387,12 @@ async function webhook(request: Request, url: URL) {
           const current = String(target.data()?.["status"] ?? "queued");
           if (state !== "failed" && (rank[state] ?? 0) < (rank[current] ?? 0)) return;
           const errors = status["errors"] as Array<{ code?: unknown; title?: unknown }> | undefined;
+          if (notice?.exists)
+            tx.update(notice.ref, {
+              status: "failed",
+              error: String(errors?.[0]?.title ?? "WhatsApp delivery failed."),
+              updatedAt: FieldValue.serverTimestamp(),
+            });
           tx.update(target.ref, {
             status: state,
             [`${state}At`]: FieldValue.serverTimestamp(),

@@ -9,31 +9,37 @@ export interface ReminderPlan {
   clientId: string;
   status: string;
   endDate: string;
+  /** Gym plan or PT plan: each kind is reminded on its own (unset = gym). */
+  kind?: "gym" | "pt" | undefined;
 }
 
 /**
- * Renewal reminders: at most one per member, for the plan that ends last. The member is reminded
- * when their latest-ending plan (running, queued or waiting for the thumb) ends on `target` and is
- * running. Two running plans with the same end date get one message, not two; a later plan
- * (a renewal already sold) means no reminder. Cancelled plans are left out by the caller.
+ * Renewal reminders: at most one per member, for the plan that ends last of its kind (gym or PT).
+ * The member is reminded when their latest-ending plan of that kind (running, queued or waiting
+ * for the thumb) ends on `target` and is running, so a PT plan ending while the gym plan runs on
+ * is reminded too. Plans ending the same day get one message, not two (the gym plan wins); a later
+ * plan of the same kind (a renewal already sold) means no reminder. Cancelled plans are left out.
  */
 export function renewalReminderPlans<T extends ReminderPlan>(plans: T[], target: string): T[] {
-  const byMember = new Map<string, T[]>();
+  const byKind = new Map<string, T[]>();
   for (const p of plans) {
     if (p.status === "cancelled") continue;
-    byMember.set(p.clientId, [...(byMember.get(p.clientId) ?? []), p]);
+    const k = `${p.clientId}|${p.kind ?? "gym"}`;
+    byKind.set(k, [...(byKind.get(k) ?? []), p]);
   }
-  const out: T[] = [];
-  for (const list of byMember.values()) {
+  const byMember = new Map<string, T>();
+  for (const list of byKind.values()) {
     const last = list.reduce((a, p) => (p.endDate > a ? p.endDate : a), "");
     if (last !== target) continue;
     // The same plan every run (cron retries never pick another one and send twice).
     const pick = list
       .filter((p) => p.endDate === target && p.status === "active")
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
-    if (pick) out.push(pick);
+    if (!pick) continue;
+    const had = byMember.get(pick.clientId);
+    if (!had || (had.kind === "pt" && pick.kind !== "pt")) byMember.set(pick.clientId, pick);
   }
-  return out;
+  return [...byMember.values()];
 }
 
 export interface ReminderBill {

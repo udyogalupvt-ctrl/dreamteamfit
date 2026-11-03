@@ -252,47 +252,63 @@ export async function processRenewalReminders() {
   ]);
   const ptIds = new Set(ptPlans.docs.map((x) => x.id));
   const all = [
-    ...members.docs.map((x) => ({ id: x.id, ...x.data() }) as MembershipRow),
-    ...ptPlans.docs.map((x) => ({ id: x.id, ...x.data() }) as MembershipRow),
+    ...members.docs.map((x) => ({
+      ...({ id: x.id, ...x.data() } as MembershipRow),
+      kind: "gym" as const,
+    })),
+    ...ptPlans.docs.map((x) => ({
+      ...({ id: x.id, ...x.data() } as MembershipRow),
+      kind: "pt" as const,
+    })),
   ];
   const cm = new Map(clients.docs.map((x) => [x.id, { id: x.id, ...x.data() } as ClientRow]));
   let sent = 0;
-  // One per member, for the plan that ends last: none when already renewed (a later plan is
-  // running, queued or waiting for the thumb), one when two plans end the same day.
-  for (const m of renewalReminderPlans(all, target)) {
-    const c = cm.get(m.clientId);
-    if (!c) continue;
-    const isPt = ptIds.has(m.id);
-    const key = id(m.id, "renewal_7_days", today);
-    const queued = await queue(
-      "renewal",
-      key,
-      c,
-      render(String(cfg.renewalTemplate), { name: c.fullName, expiryDate: pretty(m.endDate) }),
-      {
-        ...(isPt ? { ptAssignmentId: m.id, membershipId: null } : { membershipId: m.id }),
-        expiryDate: m.endDate,
-        reminderDate: today,
-        type: "renewal_7_days",
-      },
-    );
-    if (!queued) continue;
-    sent += 1;
-    await deliver(
-      "renewal",
-      key,
-      c,
-      [c.fullName, wa.gymName, pretty(m.endDate)],
-      wa,
-      {
-        title: `Your ${isPt ? "PT plan" : "package"} ends on ${pretty(m.endDate)}`,
-        body: `Hi ${first(c.fullName)}, renew at the front desk to keep training without a break.`,
-        path: "?tab=payments",
-        tag: "renewal",
-      },
-      cfg.pushInsteadOfWhatsApp === true,
-    );
-  }
+  // Twice per plan: N days ahead and on the last day (members read one early reminder and still
+  // missed the end, Kalyan Devaraju 2026-10-27). One per member each time, for the plan of each
+  // kind that ends last: none when already renewed, one when two plans end the same day.
+  const rounds = [
+    { day: target, type: "renewal_7_days" },
+    { day: today, type: "renewal_expiry_day" },
+  ].filter((r, i, list) => list.findIndex((x) => x.day === r.day) === i);
+  for (const round of rounds)
+    for (const m of renewalReminderPlans(all, round.day)) {
+      const c = cm.get(m.clientId);
+      if (!c) continue;
+      const isPt = ptIds.has(m.id);
+      const key = id(m.id, round.type, today);
+      const queued = await queue(
+        "renewal",
+        key,
+        c,
+        render(String(cfg.renewalTemplate), { name: c.fullName, expiryDate: pretty(m.endDate) }),
+        {
+          ...(isPt ? { ptAssignmentId: m.id, membershipId: null } : { membershipId: m.id }),
+          expiryDate: m.endDate,
+          reminderDate: today,
+          type: round.type,
+        },
+      );
+      if (!queued) continue;
+      sent += 1;
+      const plan = isPt ? "PT plan" : "package";
+      await deliver(
+        "renewal",
+        key,
+        c,
+        [c.fullName, wa.gymName, pretty(m.endDate)],
+        wa,
+        {
+          title:
+            round.day === today
+              ? `Your ${plan} ends today`
+              : `Your ${plan} ends on ${pretty(m.endDate)}`,
+          body: `Hi ${first(c.fullName)}, renew at the front desk to keep training without a break.`,
+          path: "?tab=payments",
+          tag: "renewal",
+        },
+        cfg.pushInsteadOfWhatsApp === true,
+      );
+    }
   return sent;
 }
 

@@ -89,16 +89,31 @@ test("a normal sale's balance is reminded as before", () => {
   assert.equal(remindsBalance({}), true);
 });
 
-test("PT plans count: a PT-only member is reminded; a PT plan running longer means not due yet", () => {
-  const pt = plan({ id: "p1" });
+test("PT plans are reminded on their own: PT-only, PT ending inside a longer gym plan", () => {
+  const pt = plan({ id: "p1", kind: "pt" });
   assert.deepEqual(
     renewalReminderPlans([pt], T).map((p) => p.id),
     ["p1"],
   );
-  const laterPt = plan({ id: "p2", endDate: "2026-11-30" });
-  assert.deepEqual(renewalReminderPlans([plan(), laterPt], T), []);
-  // Gym and PT ending the same day: one message.
-  assert.equal(renewalReminderPlans([plan(), plan({ id: "p3" })], T).length, 1);
+  // PT ends while the gym plan runs on (Y. Divya, 2026-09-30): reminded.
+  const longGym = plan({ id: "g1", endDate: "2027-07-31" });
+  assert.deepEqual(
+    renewalReminderPlans([longGym, pt], T).map((p) => p.id),
+    ["p1"],
+  );
+  // Gym ends while PT runs on: the gym plan is reminded.
+  const laterPt = plan({ id: "p2", kind: "pt", endDate: "2026-11-30" });
+  assert.deepEqual(
+    renewalReminderPlans([plan(), laterPt], T).map((p) => p.id),
+    ["m1"],
+  );
+  // A renewed PT plan (a later PT plan sold): no PT reminder.
+  assert.deepEqual(renewalReminderPlans([pt, laterPt], T), []);
+  // Gym and PT ending the same day: one message, for the gym plan.
+  assert.deepEqual(
+    renewalReminderPlans([plan({ id: "p3", kind: "pt" }), plan()], T).map((p) => p.id),
+    ["m1"],
+  );
 });
 
 // 2026-11-06 is a Friday, 2026-11-08 a Sunday.
