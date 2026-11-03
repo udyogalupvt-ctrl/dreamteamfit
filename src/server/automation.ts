@@ -238,7 +238,6 @@ export async function processRenewalReminders() {
   if (!cfg.automationEnabled || !cfg.renewalEnabled) return 0;
   const wa = await whatsappSettings();
   const today = localDate();
-  const target = plus(today, Number(cfg.renewalDaysBefore));
   const [members, ptPlans, clients] = await Promise.all([
     // Queued renewals are "pending" (or waiting for a thumb): they count as renewed too.
     db()
@@ -263,13 +262,16 @@ export async function processRenewalReminders() {
   ];
   const cm = new Map(clients.docs.map((x) => [x.id, { id: x.id, ...x.data() } as ClientRow]));
   let sent = 0;
-  // Twice per plan: N days ahead and on the last day (members read one early reminder and still
-  // missed the end, Kalyan Devaraju 2026-10-27). One per member each time, for the plan of each
-  // kind that ends last: none when already renewed, one when two plans end the same day.
-  const rounds = [
-    { day: target, type: "renewal_7_days" },
-    { day: today, type: "renewal_expiry_day" },
-  ].filter((r, i, list) => list.findIndex((x) => x.day === r.day) === i);
+  // Every day from N days ahead to the last day (founder 2026-11-03: 7, 6, … 1 and the day itself;
+  // one early reminder was read and still missed, Kalyan Devaraju 2026-10-27). One per member each
+  // day, for the plan of each kind that ends last: none once renewed, one when two plans end the
+  // same day.
+  const before = Math.max(0, Number(cfg.renewalDaysBefore) || 0);
+  const rounds = Array.from({ length: before + 1 }, (_, i) => before - i).map((n) => ({
+    n,
+    day: plus(today, n),
+    type: n === 0 ? "renewal_expiry_day" : `renewal_${n}_days`,
+  }));
   for (const round of rounds)
     for (const m of renewalReminderPlans(all, round.day)) {
       const c = cm.get(m.clientId);
@@ -280,7 +282,11 @@ export async function processRenewalReminders() {
         "renewal",
         key,
         c,
-        render(String(cfg.renewalTemplate), { name: c.fullName, expiryDate: pretty(m.endDate) }),
+        render(String(cfg.renewalTemplate), {
+          name: c.fullName,
+          expiryDate: pretty(m.endDate),
+          daysLeft: String(round.n),
+        }),
         {
           ...(isPt ? { ptAssignmentId: m.id, membershipId: null } : { membershipId: m.id }),
           expiryDate: m.endDate,
