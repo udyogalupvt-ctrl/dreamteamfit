@@ -29,6 +29,8 @@ Last updated: 2026-11-03 (reminder fixes b5f6f9f LOCAL, push on founder OK: expi
 
 ## Next steps
 
+- 2026-11-03 reminder fixes LIVE (0030e86): daily renewal 7..0 days, PT reminded alone, Meta-refused shows failed. Settings text "7 days remaining" removed. TODO: when Meta approves Utility template `gym_plan_renewal_due` (id 1047712781662645, check `GET /<id>?fields=status`), set `settings/whatsapp.renewalTemplate` = `gym_plan_renewal_due` (code sends the 4th days-left value for any template other than gym_membership_expiry). Check the 159 old notifications got status failed (one-off script in scratchpad, rerun idea: whatsappMessages failed → notifications/{referenceId}). Divya PT renewal sent manually via gym_announcement 2026-11-03.
+
 - Push a9938fb (Rebuild) and a55db98 (Javani) only on the founder's OK; no rules deploy needed. After push: add the gym's holidays in Settings → Reminders.
 
 1. **Live look (founder or Claude in the "gym" Chrome):** owner login, Settings → UPI section, member app health
