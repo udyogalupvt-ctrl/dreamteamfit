@@ -6,13 +6,14 @@ import {
   Copy,
   Download,
   ExternalLink,
-  FileText,
+  ChevronDown,
   Image as ImageIcon,
   Loader2,
   MoreHorizontal,
   Pencil,
   Plus,
   Printer,
+  Files,
   QrCode,
   RotateCcw,
   Star,
@@ -68,6 +69,7 @@ import {
   downloadQrPng,
   printPoster,
   type PosterInput,
+  type PosterResult,
 } from "@/lib/feedback-poster";
 import { choicesWith } from "@/lib/periods";
 import {
@@ -579,6 +581,28 @@ function QrList({
     }
   };
 
+  const posterFor = (l: FeedbackLink): PosterInput => ({
+    url: feedbackUrl(origin, l.id),
+    gymName: business.data.businessName,
+    place: l.name,
+    logoUrl: business.data.logoUrl,
+  });
+  const [allBusy, setAllBusy] = useState(false);
+  const live = links.filter((l) => l.active);
+  const downloadAll = async () => {
+    setAllBusy(true);
+    try {
+      await posterJob(
+        () => downloadPosterPdf(live.map(posterFor), "feedback-qr-posters-all.pdf"),
+        `${live.length} posters in one PDF: take it to the print shop`,
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't make the PDF. Try again.");
+    } finally {
+      setAllBusy(false);
+    }
+  };
+
   if (error) return <ErrorState error={error} title="Couldn't load the QR posters" />;
   if (loading) return <LoadingRows rows={2} />;
   if (!links.length)
@@ -605,17 +629,31 @@ function QrList({
           </span>
         </p>
       ) : null}
+      {live.length > 1 ? (
+        <div className="surface-card flex flex-col gap-3 sm:flex-row sm:items-center px-4 py-3">
+          <p className="min-w-0 text-sm sm:flex-1">
+            <b>Printing at a shop?</b>{" "}
+            <span className="text-muted-foreground">
+              One PDF with every switched-on poster, one A4 page each, print quality (300 dpi).
+            </span>
+          </p>
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            disabled={allBusy}
+            onClick={() => void downloadAll()}
+          >
+            {allBusy ? <Loader2 className="animate-spin" aria-hidden /> : <Files aria-hidden />}
+            Download all {live.length} posters
+          </Button>
+        </div>
+      ) : null}
       <ul aria-label="QR posters" className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
         {links.map((l) => (
           <QrCard
             key={l.id}
             link={l}
-            poster={{
-              url: feedbackUrl(origin, l.id),
-              gymName: business.data.businessName,
-              place: l.name,
-              logoUrl: business.data.logoUrl,
-            }}
+            poster={posterFor(l)}
             onRename={() => onRename(l)}
             onRemove={() => setRemoving(l)}
           />
@@ -634,6 +672,16 @@ function QrList({
   );
 }
 
+const LOGO_WARN =
+  "The gym logo couldn't load, so this file has no logo. Check the logo in Settings → Business, then download again.";
+
+/** Runs a poster job; warns when the logo was left out. */
+async function posterJob(job: () => Promise<PosterResult>, done?: string) {
+  const r = await job();
+  if (r.logoMissing) toast.warning(LOGO_WARN);
+  else if (done) toast.success(done);
+}
+
 function QrCard({
   link: l,
   poster,
@@ -646,11 +694,12 @@ function QrCard({
   onRemove: () => void;
 }) {
   const [busy, setBusy] = useState("");
-  const run = async (what: string, job: () => Promise<void>, done?: string) => {
+  const run = async (what: string, job: () => Promise<unknown>, done?: string) => {
     setBusy(what);
     try {
-      await job();
-      if (done) toast.success(done);
+      const r = await job();
+      if ((r as PosterResult | undefined)?.logoMissing) toast.warning(LOGO_WARN);
+      else if (done) toast.success(done);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Something went wrong. Try again.");
     } finally {
@@ -702,6 +751,25 @@ function QrCard({
         <Button
           size="sm"
           disabled={!!busy}
+          onClick={() =>
+            void run(
+              "pdf",
+              () => downloadPosterPdf([poster]),
+              "Poster PDF saved: print it on A4 at the print shop",
+            )
+          }
+        >
+          {busy === "pdf" ? (
+            <Loader2 className="animate-spin" aria-hidden />
+          ) : (
+            <Download aria-hidden />
+          )}
+          Download to print
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!!busy}
           onClick={() => void run("print", () => printPoster(poster))}
         >
           {busy === "print" ? (
@@ -709,28 +777,22 @@ function QrCard({
           ) : (
             <Printer aria-hidden />
           )}
-          Print poster
+          Print
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="sm" variant="outline" disabled={!!busy}>
-              {busy === "dl" ? (
-                <Loader2 className="animate-spin" aria-hidden />
-              ) : (
-                <Download aria-hidden />
-              )}
-              Download
+            <Button size="sm" variant="ghost" disabled={!!busy}>
+              {busy === "dl" ? <Loader2 className="animate-spin" aria-hidden /> : null}
+              More files
+              <ChevronDown aria-hidden />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuItem onSelect={() => void run("dl", () => downloadPosterPdf(poster))}>
-              <FileText aria-hidden /> Poster · PDF (A4)
-            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => void run("dl", () => downloadPosterPng(poster))}>
-              <ImageIcon aria-hidden /> Poster · PNG image
+              <ImageIcon aria-hidden /> Poster · PNG image (300 dpi)
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => void run("dl", () => downloadQrPng(poster))}>
-              <QrCode aria-hidden /> QR code only · PNG
+              <QrCode aria-hidden /> QR code only, with logo · PNG
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

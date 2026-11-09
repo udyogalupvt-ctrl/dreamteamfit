@@ -14,6 +14,9 @@ Last updated: 2026-11-09 (anonymous feedback QR LIVE 86f2055; earlier states in 
 - Rules (feedbackLinks, anonymousFeedback, anonFeedbackRate) deployed to `rebuildfitos` 2026-11-09, ruleset 9ce9e33f (read back = file), via the
   Rules REST API with the repo's admin key (the CLI logins on this PC get 403). Previous live ruleset 5377c302 (= old main file).
 - Push: Credential Manager defaults to the wrong GitHub login; use `git push https://udyogalupvt-ctrl@github.com/udyogalupvt-ctrl/dreamteamfit.git main`.
+- Print (2026-11-09 later): posters drawn at 300 dpi (2480x3508), gym logo big on top + in the QR centre (ECC H);
+  per QR "Download to print" (A4 PDF), Print, More files (PNG 300 dpi, QR-only 2048 px); "Download all N posters" = one PDF.
+  E2E decodes every downloaded QR with OpenCV (34/34).
 - Also fixed: /feedback opened one WhatsApp-settings listener per message card (now one per page).
 - Checks: tsc + build OK, unit 517/517, rules 77/77, E2E 30/30 (`bash scripts/test/anon_feedback_run.sh` after the
   emulator build in its header), screenshots light/dark 390/1440 checked.

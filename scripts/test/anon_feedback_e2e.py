@@ -1,5 +1,5 @@
 """Anonymous feedback QR, end to end on the local emulators + built app server (scripts/test/anon_feedback_run.sh). Nothing touches production."""
-import json, os, sys, time, urllib.request
+import json, os, subprocess, sys, time, urllib.request
 from datetime import datetime, timezone
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -7,6 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from emu_helpers import BASE, FS, OWNER_EMAIL, OWNER_PASSWORD, req, put, get, signup  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SHOTS = os.environ.get("SHOTS", os.path.join(os.environ.get("TMPDIR", "."), "anon-shots"))
 os.makedirs(SHOTS, exist_ok=True)
 OWNER = (OWNER_EMAIL, OWNER_PASSWORD)
@@ -39,7 +40,9 @@ fb = signup(*FB)
 desk = signup(*DESK)
 put(f"staffAccess/{fb['localId']}", {"active": True, "admin": False, "permissions": ["feedback"], "staffId": "", "email": FB[0], "name": "Feedback Staff"})
 put(f"staffAccess/{desk['localId']}", {"active": True, "admin": False, "permissions": ["members"], "staffId": "", "email": DESK[0], "name": "Desk"})
-put("settings/business", {"businessName": "Rebuild Fitness", "logoUrl": ""})
+# The real gym logo (public Cloudinary file, sends CORS): posters must carry it.
+LOGO = "https://res.cloudinary.com/dcoimqij/image/upload/v1790762888/rebuild-fitness/branding/b3tvypdrsutjg5yd3qsf.png"
+put("settings/business", {"businessName": "Rebuild Fitness", "logoUrl": LOGO})
 
 
 def ctx_for(browser, theme, width, height=900):
@@ -82,15 +85,49 @@ with sync_playwright() as p:
     step("two links saved with 24-char tokens", len(links) == 2 and all(len(t) == 24 for t in links.values()), links)
     tok = links["Front desk"]
 
-    # Poster downloads
+    # Poster downloads (print quality, logo, and every QR must scan)
+    import cv2  # noqa: E402
+
+    def scans(path):
+        img = cv2.imread(path)
+        for scale in (1.0, 0.5, 0.25):
+            im = img if scale == 1.0 else cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            text, _, _ = cv2.QRCodeDetector().detectAndDecode(im)
+            if text:
+                return text
+        return ""
+
+    def pdf_pages(path):
+        js = "require('pdf-lib').PDFDocument.load(require('fs').readFileSync(process.argv[1])).then(d=>console.log(d.getPageCount()))"
+        out = subprocess.run(["node", "-e", js, path], capture_output=True, text=True, cwd=REPO)
+        return int(out.stdout.strip() or 0)
+
+    want = f"{BASE}/f/{tok}"
     card = page.locator("li", has=page.get_by_role("heading", name="Front desk"))
-    for item, ext in [("Poster · PDF (A4)", "pdf"), ("Poster · PNG image", "png"), ("QR code only · PNG", "png")]:
-        card.get_by_role("button", name="Download").click()
-        with page.expect_download(timeout=20000) as dl:
+    with page.expect_download(timeout=30000) as dl:
+        card.get_by_role("button", name="Download to print").click()
+    pdf = f"{SHOTS}/dl-{dl.value.suggested_filename}"
+    dl.value.save_as(pdf)
+    step("Download to print = 1-page PDF", pdf.endswith(".pdf") and pdf_pages(pdf) == 1, (pdf, pdf_pages(pdf)))
+    step("no logo warning", page.get_by_text("logo couldn't load").count() == 0)
+    for item, key in [("Poster · PNG image (300 dpi)", "poster"), ("QR code only, with logo · PNG", "qr")]:
+        card.get_by_role("button", name="More files").click()
+        with page.expect_download(timeout=30000) as dl:
             page.get_by_role("menuitem", name=item).click()
-        path = f"{SHOTS}/dl-{item.split()[0].lower()}-{dl.value.suggested_filename}"
+        path = f"{SHOTS}/dl-{key}-{dl.value.suggested_filename}"
         dl.value.save_as(path)
-        step(f"download {item}", os.path.getsize(path) > 5000, os.path.getsize(path))
+        h, w = cv2.imread(path).shape[:2]
+        size_ok = (w, h) == (2480, 3508) if key == "poster" else (w, h) == (2048, 2048)
+        step(f"{key} PNG is print size", size_ok, (w, h))
+        got = scans(path)
+        step(f"{key} QR (with logo) scans to the link", got == want, (got, want))
+    page.get_by_role("button", name="Download all 2 posters").wait_for(timeout=10000)
+    with page.expect_download(timeout=60000) as dl:
+        page.get_by_role("button", name="Download all 2 posters").click()
+    allpdf = f"{SHOTS}/dl-{dl.value.suggested_filename}"
+    dl.value.save_as(allpdf)
+    step("Download all = one PDF, 2 pages", pdf_pages(allpdf) == 2, pdf_pages(allpdf))
+    page.screenshot(path=f"{SHOTS}/02b-qr-list-print.png", full_page=True)
     step("no page errors on staff page", not errs, errs)
     ctx.close()
 
