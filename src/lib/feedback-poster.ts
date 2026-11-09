@@ -186,15 +186,13 @@ export async function drawPoster(
   const where = wrap(ctx, p.place, W - 300, 1)[0] ?? "";
   if (where) ctx.fillText(where, W / 2, 1574);
 
-  // Footer: the promise, and the address for anyone without a camera app.
+  // Footer: the promise only. Never print the link or its token (founder rule 2026-11-09): it is
+  // ugly, nobody types it, and the QR is the only way in.
   ctx.fillStyle = INK;
   ctx.fillRect(0, 1630, W, H - 1630);
   ctx.fillStyle = "#fff";
-  ctx.font = `700 34px ${SANS}`;
-  ctx.fillText("100% anonymous · We never see who wrote it", W / 2, 1684);
-  ctx.font = `500 22px ${SANS}`;
-  ctx.fillStyle = "#cfcfcf";
-  ctx.fillText(p.url.replace(/^https?:\/\//, ""), W / 2, 1724);
+  ctx.font = `700 36px ${SANS}`;
+  ctx.fillText("100% anonymous · We never see who wrote it", W / 2, 1705);
   return { canvas, logoMissing: !!p.logoUrl && !logo };
 }
 

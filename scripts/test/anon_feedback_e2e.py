@@ -119,6 +119,11 @@ with sync_playwright() as p:
         h, w = cv2.imread(path).shape[:2]
         size_ok = (w, h) == (2480, 3508) if key == "poster" else (w, h) == (2048, 2048)
         step(f"{key} PNG is print size", size_ok, (w, h))
+        if key == "poster":
+            # Founder rule 2026-11-09: no link / token text printed on the poster. The footer under
+            # the promise line (y 1716..1754 of 1754 units) must be plain dark band.
+            band = cv2.imread(path, cv2.IMREAD_GRAYSCALE)[3432:3508, :]
+            step("poster prints no link text", int(band.max()) < 60, int(band.max()))
         got = scans(path)
         step(f"{key} QR (with logo) scans to the link", got == want, (got, want))
     page.get_by_role("button", name="Download all 2 posters").wait_for(timeout=10000)
