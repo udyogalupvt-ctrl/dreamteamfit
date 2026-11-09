@@ -1,5 +1,6 @@
 import {
   MessageSquareHeart,
+  QrCode,
   BarChart3,
   BookOpenCheck,
   Bell,
@@ -77,6 +78,13 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Member feedback",
     to: "/feedback",
     icon: MessageSquareHeart,
+    feature: "feedback",
+    group: "Workspace",
+  },
+  {
+    label: "Anonymous feedback",
+    to: "/anonymous-feedback",
+    icon: QrCode,
     feature: "feedback",
     group: "Workspace",
   },

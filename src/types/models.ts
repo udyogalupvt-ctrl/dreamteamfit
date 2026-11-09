@@ -279,6 +279,41 @@ export interface Feedback {
   createdAt: Date | null;
 }
 
+/** feedbackLinks/{token}: one named QR poster for anonymous feedback (src/lib/anon-feedback.ts). */
+export interface FeedbackLink {
+  /** The random token: the doc id and the end of the /f/<token> address. */
+  id: string;
+  name: string;
+  active: boolean;
+  /** Counted by the server. */
+  responseCount: number;
+  /** Start of the hour of the last message (kept to the hour, like the messages). */
+  lastResponseAt: Date | null;
+  createdBy: string;
+  createdAt: Date | null;
+}
+
+/** anonymousFeedback/{id}: one message from a QR poster. No name, phone or exact time. */
+export interface AnonFeedback {
+  id: string;
+  linkId: string;
+  linkName: string;
+  kind: FeedbackKind;
+  /** 1–5; 0 = not rated. */
+  rating: number;
+  message: string;
+  /** YYYY-MM-DD, India time. */
+  day: string;
+  /** Start of the hour it came in. */
+  createdAt: Date | null;
+  status: "new" | "resolved";
+  /** Staff-only note (the sender never sees it). */
+  note: string;
+  noteBy: string;
+  resolvedBy: string;
+  resolvedAt: Date | null;
+}
+
 // ------------------------------------------------------------------ health form (settings/healthForm)
 
 export type HealthQuestionKind = "yesno" | "text";

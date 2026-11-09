@@ -7,6 +7,7 @@ import {
   MessageCircle,
   MessageSquareHeart,
   Phone,
+  QrCode,
   Reply,
   RotateCcw,
 } from "lucide-react";
@@ -86,6 +87,8 @@ function FeedbackPage() {
   const [kind, setKind] = useState<"all" | FeedbackKind>("all");
   const [q, setQ] = useState("");
   const [replying, setReplying] = useState<Feedback | null>(null);
+  // One listener for the page (each card used to open its own).
+  const wa = useLive(subscribeWhatsAppSettings, DEFAULT_WHATSAPP_SETTINGS, []);
 
   // One member: all their messages. New: everything still open, however old. Otherwise a period.
   const live = useLive<Feedback[]>(
@@ -121,6 +124,13 @@ function FeedbackPage() {
         title="Member feedback"
         description="Complaints, ideas and praise members send from their app. Your reply shows in their app, with a notification."
         breadcrumbs={[{ label: "Home", to: "/dashboard" }, { label: "Member feedback" }]}
+        actions={
+          <Button variant="outline" asChild>
+            <Link to="/anonymous-feedback">
+              <QrCode aria-hidden /> Anonymous QR feedback
+            </Link>
+          </Button>
+        }
       />
       {clientId ? (
         <p className="surface-card flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
@@ -190,7 +200,12 @@ function FeedbackPage() {
       ) : (
         <ul aria-label="Messages" className="grid gap-3 xl:grid-cols-2">
           {rows.map((f) => (
-            <FeedbackCard key={f.id} item={f} onReply={() => setReplying(f)} />
+            <FeedbackCard
+              key={f.id}
+              item={f}
+              countryCode={wa.data.defaultCountryCode}
+              onReply={() => setReplying(f)}
+            />
           ))}
         </ul>
       )}
@@ -201,9 +216,16 @@ function FeedbackPage() {
   );
 }
 
-function FeedbackCard({ item: f, onReply }: { item: Feedback; onReply: () => void }) {
-  const wa = useLive(subscribeWhatsAppSettings, DEFAULT_WHATSAPP_SETTINGS, []);
-  const phone = normalizeWhatsAppPhone(f.phone, wa.data.defaultCountryCode);
+function FeedbackCard({
+  item: f,
+  countryCode,
+  onReply,
+}: {
+  item: Feedback;
+  countryCode: string;
+  onReply: () => void;
+}) {
+  const phone = normalizeWhatsAppPhone(f.phone, countryCode);
   const [busy, setBusy] = useState(false);
   const resolve = async (resolved: boolean) => {
     setBusy(true);

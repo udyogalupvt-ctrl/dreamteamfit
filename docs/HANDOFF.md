@@ -1,31 +1,21 @@
 # Handoff
 
-Last updated: 2026-11-03 (reminder fixes b5f6f9f LOCAL, push on founder OK: expiry-day renewal, PT reminded alone, Meta-refused shows failed; WhatsApp fix a9938fb pushed to GitHub on founder OK, Vercel builds it; before: wrong-thumb fix LIVE: main 494620f, /api/version = 494620f4eba0; rules 5377c302. History: `docs/archive/HANDOFF-history-to-2026-10-22.md`, `docs/archive/HANDOFF-history-2026-10-22-to-24.md`)
+Last updated: 2026-11-09 (anonymous feedback QR built + tested LOCAL; earlier states in `docs/archive/` incl. `HANDOFF-history-2026-10-30-to-11-03.md`)
 
-## State: wrong-thumb fix LIVE (2026-10-30, 21a0e51, main 494620f)
+## State: anonymous feedback QR (2026-11-09, LOCAL until the founder OKs the rules deploy + push)
 
-- Problem: another member's finger got registered for a member. Now: member page → Entry (thumb) →
-  "Wrong thumb? Register again" (confirm). Server task `thumb_reset` (src/server/biometric.ts `resetThumb`,
-  checked in `taskRefusal`: the ID must be that person's and no one else's) at the machine's next check-in:
-  DATA DELETE USERINFO PIN=x, erases `biometricTemplates/<id>`, cancels the old enroll/query commands (a late
-  upload can't come back), member → firstThumbRegistered false, not_enrolled (a staff block stays), audit line.
-  Then the normal "Register thumb" shows. Staff dialog "Register again" does the same first, then the form opens.
-- Checks: tsc OK, unit 505/505, rules 72/72 (thumb_reset cases added), build OK, local E2E 14/14
-  (scratchpad 9c17ca11…/k/rethumb_local.py, `bash regress.sh rethumb_local.py`; shots in shots_rethumb/).
-- SHIPPED 2026-10-30 (founder OK): production rules 5377c302 deployed first (matches file; old ruleset 9d846f06 backup
-  in scratchpad 74f47232…/live_rules_backup_2026-10-30.txt), then main + five-features pushed, live build 494620f4eba0.
-  Founder confirmed it works live.
-- Visits logged under the wrong member while the wrong thumb was on: remove them with the existing remove-visit button.
-
-## State: WhatsApp over-messaging fix (2026-11-02, a9938fb, LOCAL only, not pushed)
-
-- Missed-workout nudge counts only OPEN days: Sundays + gym holidays skipped, no nudge on those nights
-  (`gymClosed`/`openDaysMissed` in src/lib/reminders.ts). Settings → Reminders → "Gym holidays" list
-  (settings/automation `holidays: string[]`, ISO dates; rules unchanged).
-- Balance due: was daily for N+1 days; now one message N days before + one on the due day
-  (`paymentDueToday`), max one per member per day.
-- Checks: unit tests pass, build OK, local E2E 8/8 (scratchpad 9c17ca11…/k/holidays_local.py; shots_holidays/).
-- Javani (other repo, a55db98 local): fee reminders 3 per fee (5 days before, due day, 3 days late), late rental every 72 h.
+- Staff page `/anonymous-feedback` (feature "feedback", menu badge = new messages): make many QR links
+  (one per spot, named "Front desk" etc.), switch on/off, rename, remove only if 0 messages; per QR: Print
+  poster (A4), Download PDF / PNG / QR only, copy/open link. Inbox: New/Resolved/All, filter by QR + type,
+  period, summary (count, avg rating, complaints), note, resolve with Undo; Spam delete = owner only.
+- Public page `/f/<token>` (no login): type, optional 1-5 stars, message; POST `/api/feedback/<token>`
+  (src/server/anon-feedback.ts). Nothing about the sender is stored; time kept to the hour; no audit line.
+  Limits (HMAC counters `anonFeedbackRate`): 5/day per phone+network, 40/day per network, 300/day per QR; honeypot.
+- New rules blocks: feedbackLinks, anonymousFeedback, anonFeedbackRate → **production rules deploy needed BEFORE the push**.
+- Also fixed: /feedback opened one WhatsApp-settings listener per message card (now one per page).
+- Checks: tsc + build OK, unit 517/517, rules 77/77, E2E 30/30 (`bash scripts/test/anon_feedback_run.sh` after the
+  emulator build in its header), screenshots light/dark 390/1440 checked.
+- Optional later: Firestore TTL policy on `anonFeedbackRate.expireAt` (counters are 2-day junk otherwise).
 
 ## Next steps
 

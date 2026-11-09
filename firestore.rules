@@ -271,6 +271,45 @@ service cloud.firestore {
       allow delete: if heldBinning('feedback', id);
     }
 
+    // ---- Anonymous feedback from QR posters (src/server/anon-feedback.ts writes the messages).
+    // feedbackLinks/{token}: one named QR. "Member feedback" logins make, rename and switch them
+    // off; the server alone counts responses. A link that has taken messages stays (switch it off).
+    match /feedbackLinks/{token} {
+      allow read: if can('feedback');
+      allow create: if can('feedback')
+        && token.matches('^[A-Za-z0-9_-]{24}$')
+        && request.resource.data.keys().hasOnly(['name', 'active', 'responseCount',
+          'lastResponseAt', 'rate', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 60
+        && request.resource.data.active is bool
+        && request.resource.data.responseCount == 0
+        && request.resource.data.lastResponseAt == null;
+      allow update: if can('feedback')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'active',
+          'updatedBy', 'updatedAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 60
+        && request.resource.data.active is bool;
+      allow delete: if can('feedback') && resource.data.get('responseCount', 0) == 0;
+    }
+    // anonymousFeedback/{id}: what a visitor wrote never changes. Staff resolve it and keep a
+    // private note; only the owner removes one (spam), so nobody hides a complaint about them.
+    match /anonymousFeedback/{id} {
+      allow read: if can('feedback');
+      allow create: if false;
+      allow update: if can('feedback')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'note',
+          'noteBy', 'resolvedBy', 'resolvedAt', 'updatedAt'])
+        && request.resource.data.status in ['new', 'resolved']
+        && request.resource.data.note is string && request.resource.data.note.size() <= 500;
+      allow delete: if isOwner();
+    }
+    // The spam counters (keyed hashes): server only.
+    match /anonFeedbackRate/{id} {
+      allow read, write: if false;
+    }
+
     // ---- Referral rewards (src/lib/referrals.ts): one doc per referred member, id = their id.
     // Any login that adds members writes it (reward due) and may move it while still due;
     // deciding the reward needs "Referral rewards".

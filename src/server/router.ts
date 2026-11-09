@@ -2,6 +2,7 @@
  * Server endpoints that live inside the same Vercel deployment as the app (one function on the
  * free plan). src/server.ts sends every /api/* and /iclock/* request here.
  */
+import { handleAnonFeedback } from "./anon-feedback";
 import { handleCron } from "./automation";
 import { handleCfo } from "./cfo";
 import { handleIclock } from "./biometric";
@@ -37,6 +38,7 @@ export async function handleServerRoute(request: Request): Promise<Response> {
     if (path === "/api/member-photo") return await handleMemberPhoto(request, url);
     if (path.startsWith("/api/portal/")) return await handlePortal(request, url);
     if (path.startsWith("/api/pay/")) return await handlePay(request, url);
+    if (path.startsWith("/api/feedback/")) return await handleAnonFeedback(request, url);
     if (path.startsWith("/api/push/")) return await handlePush(request, url);
     if (path.startsWith("/api/backup/sheet/")) return await handleSheetBackup(request, url);
     if (path.startsWith("/api/old-data/")) return await handleOldData(request, url);

@@ -130,6 +130,7 @@ const PAGE_FEATURES: [prefix: string, feature: StaffFeature | "owner"][] = [
   ["/recycle-bin", "recycleBin"],
   ["/backup", "backup"],
   ["/feedback", "feedback"],
+  ["/anonymous-feedback", "feedback"],
 ];
 
 export function featureForPath(pathname: string): StaffFeature | "owner" | null {

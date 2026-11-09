@@ -326,6 +326,23 @@ function describe(col: string, action: AuditAction, b: D, a: D, f: string[]): st
       if (became(f, b, a, "status", "new")) return `Feedback opened again (${what})`;
       return f.includes("reply") ? "Feedback reply removed" : null;
     }
+    case "feedbackLinks": {
+      const name = s(d["name"]) || "QR";
+      if (action === "created") return `Feedback QR made: ${name}`;
+      if (action === "deleted") return `Feedback QR removed: ${name}`;
+      if (f.includes("name")) return `Feedback QR renamed: ${s(b["name"])} → ${name}`;
+      if (became(f, b, a, "active", false)) return `Feedback QR switched off: ${name}`;
+      if (became(f, b, a, "active", true)) return `Feedback QR switched on: ${name}`;
+      return null;
+    }
+    case "anonymousFeedback": {
+      const where = s(d["linkName"]) ? ` (${s(d["linkName"])})` : "";
+      if (action === "deleted") return `Anonymous feedback removed${where}`;
+      if (became(f, b, a, "status", "resolved"))
+        return `Anonymous feedback marked resolved${where}`;
+      if (became(f, b, a, "status", "new")) return `Anonymous feedback opened again${where}`;
+      return f.includes("note") ? `Note on anonymous feedback${where}` : null;
+    }
     case "referrals": {
       const who = s(d["referrerName"]) || "a member";
       const friend = s(d["newClientName"]) || "a member";

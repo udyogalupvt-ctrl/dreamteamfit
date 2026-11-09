@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedActivityLogRouteImport } from './routes/_authenticated/activity-log'
 import { Route as AuthenticatedAnnouncementsRouteImport } from './routes/_authenticated/announcements'
+import { Route as AuthenticatedAnonymousFeedbackRouteImport } from './routes/_authenticated/anonymous-feedback'
 import { Route as AuthenticatedAttendanceRouteImport } from './routes/_authenticated/attendance'
 import { Route as AuthenticatedBackupRouteImport } from './routes/_authenticated/backup'
 import { Route as AuthenticatedBillingRouteImport } from './routes/_authenticated/billing'
@@ -42,6 +43,7 @@ import { Route as AuthenticatedStaffRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedWhatsappRouteImport } from './routes/_authenticated/whatsapp'
 import { Route as AuthenticatedWhatsappUsageRouteImport } from './routes/_authenticated/whatsapp-usage'
 import { Route as AuthenticatedWorkoutPlansRouteImport } from './routes/_authenticated/workout-plans'
+import { Route as FTokenRouteImport } from './routes/f.$token'
 import { Route as InvoiceTokenRouteImport } from './routes/invoice.$token'
 import { Route as MCodeRouteImport } from './routes/m.$code'
 import { Route as PayTokenRouteImport } from './routes/pay.$token'
@@ -75,6 +77,12 @@ const AuthenticatedAnnouncementsRoute =
   AuthenticatedAnnouncementsRouteImport.update({
     id: '/announcements',
     path: '/announcements',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAnonymousFeedbackRoute =
+  AuthenticatedAnonymousFeedbackRouteImport.update({
+    id: '/anonymous-feedback',
+    path: '/anonymous-feedback',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedAttendanceRoute = AuthenticatedAttendanceRouteImport.update({
@@ -223,6 +231,11 @@ const AuthenticatedWorkoutPlansRoute =
     path: '/workout-plans',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const FTokenRoute = FTokenRouteImport.update({
+  id: '/f/$token',
+  path: '/f/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InvoiceTokenRoute = InvoiceTokenRouteImport.update({
   id: '/invoice/$token',
   path: '/invoice/$token',
@@ -272,6 +285,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/activity-log': typeof AuthenticatedActivityLogRoute
   '/announcements': typeof AuthenticatedAnnouncementsRoute
+  '/anonymous-feedback': typeof AuthenticatedAnonymousFeedbackRoute
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/backup': typeof AuthenticatedBackupRoute
   '/billing': typeof AuthenticatedBillingRoute
@@ -300,6 +314,7 @@ export interface FileRoutesByFullPath {
   '/whatsapp': typeof AuthenticatedWhatsappRoute
   '/whatsapp-usage': typeof AuthenticatedWhatsappUsageRoute
   '/workout-plans': typeof AuthenticatedWorkoutPlansRoute
+  '/f/$token': typeof FTokenRoute
   '/invoice/$token': typeof InvoiceTokenRoute
   '/m/$code': typeof MCodeRoute
   '/pay/$token': typeof PayTokenRoute
@@ -314,6 +329,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/activity-log': typeof AuthenticatedActivityLogRoute
   '/announcements': typeof AuthenticatedAnnouncementsRoute
+  '/anonymous-feedback': typeof AuthenticatedAnonymousFeedbackRoute
   '/attendance': typeof AuthenticatedAttendanceRoute
   '/backup': typeof AuthenticatedBackupRoute
   '/billing': typeof AuthenticatedBillingRoute
@@ -342,6 +358,7 @@ export interface FileRoutesByTo {
   '/whatsapp': typeof AuthenticatedWhatsappRoute
   '/whatsapp-usage': typeof AuthenticatedWhatsappUsageRoute
   '/workout-plans': typeof AuthenticatedWorkoutPlansRoute
+  '/f/$token': typeof FTokenRoute
   '/invoice/$token': typeof InvoiceTokenRoute
   '/m/$code': typeof MCodeRoute
   '/pay/$token': typeof PayTokenRoute
@@ -358,6 +375,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authenticated/activity-log': typeof AuthenticatedActivityLogRoute
   '/_authenticated/announcements': typeof AuthenticatedAnnouncementsRoute
+  '/_authenticated/anonymous-feedback': typeof AuthenticatedAnonymousFeedbackRoute
   '/_authenticated/attendance': typeof AuthenticatedAttendanceRoute
   '/_authenticated/backup': typeof AuthenticatedBackupRoute
   '/_authenticated/billing': typeof AuthenticatedBillingRoute
@@ -386,6 +404,7 @@ export interface FileRoutesById {
   '/_authenticated/whatsapp': typeof AuthenticatedWhatsappRoute
   '/_authenticated/whatsapp-usage': typeof AuthenticatedWhatsappUsageRoute
   '/_authenticated/workout-plans': typeof AuthenticatedWorkoutPlansRoute
+  '/f/$token': typeof FTokenRoute
   '/invoice/$token': typeof InvoiceTokenRoute
   '/m/$code': typeof MCodeRoute
   '/pay/$token': typeof PayTokenRoute
@@ -402,6 +421,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/activity-log'
     | '/announcements'
+    | '/anonymous-feedback'
     | '/attendance'
     | '/backup'
     | '/billing'
@@ -430,6 +450,7 @@ export interface FileRouteTypes {
     | '/whatsapp'
     | '/whatsapp-usage'
     | '/workout-plans'
+    | '/f/$token'
     | '/invoice/$token'
     | '/m/$code'
     | '/pay/$token'
@@ -444,6 +465,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/activity-log'
     | '/announcements'
+    | '/anonymous-feedback'
     | '/attendance'
     | '/backup'
     | '/billing'
@@ -472,6 +494,7 @@ export interface FileRouteTypes {
     | '/whatsapp'
     | '/whatsapp-usage'
     | '/workout-plans'
+    | '/f/$token'
     | '/invoice/$token'
     | '/m/$code'
     | '/pay/$token'
@@ -487,6 +510,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_authenticated/activity-log'
     | '/_authenticated/announcements'
+    | '/_authenticated/anonymous-feedback'
     | '/_authenticated/attendance'
     | '/_authenticated/backup'
     | '/_authenticated/billing'
@@ -515,6 +539,7 @@ export interface FileRouteTypes {
     | '/_authenticated/whatsapp'
     | '/_authenticated/whatsapp-usage'
     | '/_authenticated/workout-plans'
+    | '/f/$token'
     | '/invoice/$token'
     | '/m/$code'
     | '/pay/$token'
@@ -529,6 +554,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   LoginRoute: typeof LoginRoute
+  FTokenRoute: typeof FTokenRoute
   InvoiceTokenRoute: typeof InvoiceTokenRoute
   MCodeRoute: typeof MCodeRoute
   PayTokenRoute: typeof PayTokenRoute
@@ -571,6 +597,13 @@ declare module '@tanstack/react-router' {
       path: '/announcements'
       fullPath: '/announcements'
       preLoaderRoute: typeof AuthenticatedAnnouncementsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/anonymous-feedback': {
+      id: '/_authenticated/anonymous-feedback'
+      path: '/anonymous-feedback'
+      fullPath: '/anonymous-feedback'
+      preLoaderRoute: typeof AuthenticatedAnonymousFeedbackRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/attendance': {
@@ -769,6 +802,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWorkoutPlansRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/f/$token': {
+      id: '/f/$token'
+      path: '/f/$token'
+      fullPath: '/f/$token'
+      preLoaderRoute: typeof FTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/invoice/$token': {
       id: '/invoice/$token'
       path: '/invoice/$token'
@@ -831,6 +871,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedActivityLogRoute: typeof AuthenticatedActivityLogRoute
   AuthenticatedAnnouncementsRoute: typeof AuthenticatedAnnouncementsRoute
+  AuthenticatedAnonymousFeedbackRoute: typeof AuthenticatedAnonymousFeedbackRoute
   AuthenticatedAttendanceRoute: typeof AuthenticatedAttendanceRoute
   AuthenticatedBackupRoute: typeof AuthenticatedBackupRoute
   AuthenticatedBillingRoute: typeof AuthenticatedBillingRoute
@@ -867,6 +908,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedActivityLogRoute: AuthenticatedActivityLogRoute,
   AuthenticatedAnnouncementsRoute: AuthenticatedAnnouncementsRoute,
+  AuthenticatedAnonymousFeedbackRoute: AuthenticatedAnonymousFeedbackRoute,
   AuthenticatedAttendanceRoute: AuthenticatedAttendanceRoute,
   AuthenticatedBackupRoute: AuthenticatedBackupRoute,
   AuthenticatedBillingRoute: AuthenticatedBillingRoute,
@@ -907,6 +949,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   LoginRoute: LoginRoute,
+  FTokenRoute: FTokenRoute,
   InvoiceTokenRoute: InvoiceTokenRoute,
   MCodeRoute: MCodeRoute,
   PayTokenRoute: PayTokenRoute,
