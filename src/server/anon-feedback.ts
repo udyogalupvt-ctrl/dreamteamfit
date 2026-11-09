@@ -38,8 +38,13 @@ function hashKey() {
 const hashed = (...parts: string[]) =>
   createHmac("sha256", hashKey()).update(parts.join("|")).digest("hex").slice(0, 40);
 
+/**
+ * The sender's network, as set by Vercel's edge (it overwrites any client-sent value). The body's
+ * device id only splits a network's allowance further; the per-network and per-QR caps still hold.
+ */
 function networkOf(request: Request) {
   return (
+    request.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ||
     (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ||
     request.headers.get("x-real-ip")?.trim() ||
     "unknown"
